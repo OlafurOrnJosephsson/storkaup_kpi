@@ -1,0 +1,7 @@
+# Keep browser-only Webflow scripts out of Apps Script deployments.
+Webflow/**
+
+# Local/editor metadata
+.vscode/**
+.git/**
+.gitignore

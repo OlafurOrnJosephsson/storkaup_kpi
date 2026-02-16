@@ -1,0 +1,2621 @@
+/************************************************************
+ * 📦 Stórkaup KPI CORE — utils.gs (V6 Enterprise)
+ * ----------------------------------------------------------
+ * - Universal loader (Schema + Config Driven)
+ * - SKU + Category helpers
+ * - Date helpers
+ * - String helpers
+ * - Sheet formatting
+ * - Runtime cache
+ * - Company resolver (BC + Magento)
+ * - OLDWEB Company ID normalizer
+ ************************************************************/
+
+
+/************************************************************
+ * 🧩 loadTableBySchema_(schemaKey)
+ * - Les gögn út frá STORKAUP_SCHEMA
+ * - Skilar ALWAYS Array<Object> (lyklar = schema fields)
+ * - Notað af Sales Summaries + fleiri módúlum
+ ************************************************************/
+function loadTableBySchema_(schemaKey) {
+  const schema = STORKAUP_SCHEMA[schemaKey];
+  if (!schema) {
+    throw new Error('Schema not found: ' + schemaKey);
+  }
+
+  // FILE = service key í CONFIG.SHEETS (t.d. "WEBSALES", "OLDWEB", "PRODUCTS")
+  const cfg = loadConfig_();
+  const fileKey = schema.FILE;          // t.d. 'WEBSALES' eða 'BC_SALES'
+  const binding = cfg.SHEETS[fileKey];
+
+  if (!binding) {
+    throw new Error('CONFIG.SHEETS missing binding for: ' + fileKey);
+  }
+
+  const ss = SpreadsheetApp.openById(binding.ID);
+
+  // Sum schema þurfa sér flipaname (t.d. "Bókaðar sölureikningslínur"), annars notum við FILE
+  const sheetName = schema.SHEET || binding.NAME || fileKey;
+  const sh = ss.getSheetByName(sheetName);
+  if (!sh) {
+    throw new Error('Sheet not found: ' + sheetName + ' (service ' + fileKey + ')');
+  }
+
+  const values = sh.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  const header = values[0].map(String);
+  const colIndex = {};
+  header.forEach((name, i) => { colIndex[name] = i; });
+
+  const rows = [];
+
+  for (let r = 1; r < values.length; r++) {
+    const rowVals = values[r];
+    const obj = {};
+
+    // Fyrir hvert field í schema (nema FILE, PK, SHEET) náum við viðeigandi dálk
+    Object.keys(schema).forEach(key => {
+      if (key === 'FILE' || key === 'PK' || key === 'SHEET') return;
+
+      // Sérmeðferð fyrir nested COLUMNS object (t.d. BC_LINES.COLUMNS)
+      if (key === 'COLUMNS' && schema.COLUMNS && typeof schema.COLUMNS === 'object') {
+        Object.keys(schema.COLUMNS).forEach(subKey => {
+          const colName = schema.COLUMNS[subKey];
+          const idx = colIndex[colName];
+          obj[subKey] = (idx != null && idx >= 0) ? rowVals[idx] : '';
+        });
+        return;
+      }
+
+      const colName = schema[key];
+      const idx = colIndex[colName];
+
+      obj[key] = (idx != null && idx >= 0) ? rowVals[idx] : '';
+    });
+
+    rows.push(obj);
+  }
+
+  return rows;
+}
+
+
+/************************************************************
+ * 🧩 loadTableBySchemaFull_(schemaKey)
+ * - Skilar { sheet, header, rows }
+ * - rows = 2D array (án header)
+ * - Notað fyrir normalization / batch-writing
+ ************************************************************/
+function loadTableBySchemaFull_(schemaKey) {
+  const schema = STORKAUP_SCHEMA[schemaKey];
+  if (!schema) {
+    throw new Error('Schema not found: ' + schemaKey);
+  }
+
+  const cfg = loadConfig_();
+  const fileKey = schema.FILE;
+  const binding = cfg.SHEETS[fileKey];
+
+  if (!binding) {
+    throw new Error('CONFIG.SHEETS missing binding for: ' + fileKey);
+  }
+
+  const ss = SpreadsheetApp.openById(binding.ID);
+  const sheetName = schema.SHEET || binding.NAME || fileKey;
+  const sh = ss.getSheetByName(sheetName);
+  if (!sh) {
+    throw new Error('Sheet not found: ' + sheetName + ' (service ' + fileKey + ')');
+  }
+
+  const values = sh.getDataRange().getValues();
+  if (!values.length) {
+    return { sheet: sh, header: [], rows: [] };
+  }
+
+  const header = values[0].map(String);
+  const rows = values.slice(1);
+
+  return { sheet: sh, header, rows };
+}
+/************************************************************
+ * 🧩 Compatibility wrappers (legacy support)
+ * - Eldri modules kalla loadTableBySchema() → vísað yfir í loadTableBySchema_()
+ ************************************************************/
+function loadTableBySchema(schemaKey) {
+  return loadTableBySchema_(schemaKey);
+}
+
+function loadTableBySchemaFull(schemaKey) {
+  return loadTableBySchemaFull_(schemaKey);
+}
+
+/************************************************************
+ * Cached loader to avoid repeated sheet reads in one execution
+ ************************************************************/
+function loadTableCached_(schemaKey) {
+  const key = 'TABLE_' + schemaKey;
+  const hit = cacheGet_(key);
+  if (hit) return hit;
+  const rows = loadTableBySchema_(schemaKey);
+  return cacheSet_(key, rows);
+}
+
+/************************************************************
+ * 🎨 applySheetStyling_(sh, options)
+ ************************************************************/
+function applySheetStyling_(sh, options) {
+  if (!sh) return;
+
+  const opts = options || {};
+  const sortBy = opts.sortBy || null;
+  const zebra = opts.zebra || false;
+  const headerBg = opts.headerBg || '#f5f5f5';
+  const headerBold = opts.headerBold !== false;
+
+  const range = sh.getDataRange();
+  const vals = range.getValues();
+  if (vals.length < 1) return;
+
+  try { sh.setFrozenRows(1); } catch (_) {}
+  try {
+    const f = sh.getFilter();
+    if (f) f.remove();
+    range.createFilter();
+  } catch (_) {}
+
+  if (sortBy) {
+    const headers = vals[0].map(String);
+    const idx = headers.indexOf(sortBy);
+    if (idx !== -1) {
+      try { range.sort({ column: idx + 1, ascending: false }); } catch (_) {}
+    }
+  }
+
+  try {
+    for (let c = 1; c <= sh.getLastColumn(); c++) {
+      sh.autoResizeColumn(c);
+    }
+  } catch (_) {}
+
+  try {
+    const headerRange = sh.getRange(1, 1, 1, sh.getLastColumn());
+    headerRange.setBackground(headerBg);
+    if (headerBold) headerRange.setFontWeight('bold');
+  } catch (_) {}
+
+  if (zebra && vals.length > 2) {
+    for (let r = 2; r <= sh.getLastRow(); r++) {
+      const bg = (r % 2 === 0) ? '#fafafa' : '#ffffff';
+      sh.getRange(r, 1, 1, sh.getLastColumn()).setBackground(bg);
+    }
+  }
+}
+
+
+/************************************************************
+ * 🔗 applyStylingTo(serviceKey)
+ ************************************************************/
+function applyStylingTo(serviceKey, options) {
+  const cfg = loadConfig_();
+  const svc = cfg.SHEETS[serviceKey];
+  if (!svc) throw new Error(`Unknown service "${serviceKey}"`);
+
+  const ss = SpreadsheetApp.openById(svc.ID);
+  const sh = ss.getSheetByName(svc.NAME);
+  if (!sh) return;
+
+  applySheetStyling_(sh, options || {});
+}
+
+
+/************************************************************
+ * 📚 makeColumnMap_
+ ************************************************************/
+function makeColumnMap_(headers) {
+  const map = {};
+  headers.forEach((h, i) => map[h] = i);
+  return map;
+}
+
+
+/************************************************************
+ * 📅 DATE HELPERS
+ ************************************************************/
+function toDate_(v) {
+  if (!v) return null;
+  try {
+    const d = new Date(v);
+    return isNaN(d) ? null : d;
+  } catch (_) {
+    return null;
+  }
+}
+
+function parseDateSafe_(v) {
+  return toDate_(v);
+}
+
+function formatDateYMD_(d) {
+  if (!(d instanceof Date)) return '';
+  return Utilities.formatDate(d, 'GMT', 'yyyy-MM-dd');
+}
+
+function formatDateDMY_(d) {
+  if (!(d instanceof Date)) return '';
+  return Utilities.formatDate(d, 'GMT', 'dd.MM.yyyy');
+}
+
+
+/************************************************************
+ * 🔤 STRING HELPERS
+ ************************************************************/
+function cleanString_(s) {
+  return String(s || '').replace(/\s+/g, ' ').trim();
+}
+
+// Small alias til að vera backwards compatible (ef eitthvað kallar á cleanString())
+function cleanString(s) {
+  return cleanString_(s);
+}
+
+function normalizeName_(s) {
+  return cleanString_(s).toLowerCase();
+}
+
+function safeJsonParse_(str) {
+  try { return JSON.parse(str); } catch (_) { return null; }
+}
+
+/************************************************************
+ * 🧠 NAME NORMALIZATION + FUZZY HELPERS
+ ************************************************************/
+
+function normalizeNameAdvanced_(s) {
+  let out = cleanString_(s || '').toLowerCase();
+
+  // Remove legal suffixes like ehf/hf/ohf etc.
+  out = out.replace(/\b(ehf|hf|ohf|ltd|inc|corp|co|company)\.?/g, '');
+
+  // Remove punctuation
+  out = out.replace(/[.,]/g, ' ');
+
+  // Normalize Icelandic letters to ASCII
+  out = out
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\u00f0/g, 'd')  // eth -> d
+    .replace(/\u00fe/g, 'th') // thorn -> th
+    .replace(/\u00e6/g, 'ae') // ae ligature -> ae
+    .replace(/\u00f6/g, 'o')  // o-umlaut -> o
+    .replace(/\u00e1/g, 'a')  // a-acute -> a
+    .replace(/\u00e9/g, 'e')  // e-acute -> e
+    .replace(/\u00ed/g, 'i')  // i-acute -> i
+    .replace(/\u00f3/g, 'o')  // o-acute -> o
+    .replace(/\u00fa/g, 'u')  // u-acute -> u
+    .replace(/\u00fd/g, 'y'); // y-acute -> y
+
+  // Collapse whitespace
+  out = out.replace(/\s+/g, ' ').trim();
+
+  return out;
+}
+
+function tokenizeCompanyName_(s) {
+  var base = normalizeNameAdvanced_(s || '');
+  if (!base) return [];
+  return base.split(' ').filter(function(t){ return t && t.length > 1; });
+}
+
+// Létt kennitöluték – leyfir líka “undirkennitölur”
+function isLikelyKennitala_(v) {
+  if (!v) return false;
+  var s = String(v).replace(/\D/g, '');
+  return s.length >= 7 && s.length <= 12;
+}
+
+/************************************************************
+ * 🧮 LEVENSHTEIN + STRING SIMILARITY
+ ************************************************************/
+function levenshteinDistance_(a, b) {
+  if (a === b) return 0;
+  if (!a) return b.length;
+  if (!b) return a.length;
+
+  a = String(a);
+  b = String(b);
+
+  var m = a.length;
+  var n = b.length;
+  var dp = [];
+
+  for (var i = 0; i <= m; i++) {
+    dp[i] = [i];
+  }
+  for (var j = 1; j <= n; j++) {
+    dp[0][j] = j;
+  }
+
+  for (var i2 = 1; i2 <= m; i2++) {
+    for (var j2 = 1; j2 <= n; j2++) {
+      var cost = a[i2 - 1] === b[j2 - 1] ? 0 : 1;
+      dp[i2][j2] = Math.min(
+        dp[i2 - 1][j2] + 1,         // delete
+        dp[i2][j2 - 1] + 1,         // insert
+        dp[i2 - 1][j2 - 1] + cost   // substitute
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+function stringSimilarity_(a, b) {
+  if (!a || !b) return 0;
+  a = String(a);
+  b = String(b);
+  var maxLen = Math.max(a.length, b.length);
+  if (!maxLen) return 0;
+  var dist = levenshteinDistance_(a, b);
+  return 1 - dist / maxLen; // 0–1
+}
+
+/************************************************************
+ * 🔢 NUMBERS
+ ************************************************************/
+function toNum_(v) {
+  if (!v && v !== 0) return 0;
+  v = String(v).replace(/[^\d.-]/g, '');
+  const n = Number(v);
+  return isNaN(n) ? 0 : n;
+}
+
+// Alias (ef eitthvað kallar á toNum())
+function toNum(v) {
+  return toNum_(v);
+}
+
+
+/************************************************************
+ * 🔐 SKU HELPERS
+ ************************************************************/
+function normalizeSkuGlobal_(sku) {
+  if (!sku) return '';
+  sku = String(sku).trim();
+  sku = sku.split(',')[0].trim();
+  sku = sku.replace(/_[A-Za-z0-9]+$/i, '');
+  sku = sku.replace(/[^0-9]/g, '');
+  return sku;
+}
+
+function splitSkuList_(str) {
+  if (!str) return [];
+  return String(str)
+    .split(',')
+    .map(s => normalizeSkuGlobal_(s))
+    .filter(Boolean);
+}
+
+function extractBaseSku_(rawSku) {
+  if (!rawSku) return "";
+  return String(rawSku)
+    .replace(/[_-](STK|KASSI|KS|KRT|BRETTI|BOX|PKG|UNIT|CTN)$/i, "")
+    .trim();
+}
+
+function extractUom_(rawSku) {
+  if (!rawSku) return "UNKNOWN";
+  const m = String(rawSku).match(/(?:[_-])(STK|KASSI|KS|KRT|BRETTI|BOX|PKG|UNIT|CTN)$/i);
+  return m ? m[1].toUpperCase() : "UNKNOWN";
+}
+
+
+
+/************************************************************
+ * 🗂 RANGE HELPERS
+ ************************************************************/
+function clearSheetKeepHeader_(sh) {
+  const last = sh.getLastRow();
+  if (last > 1) sh.getRange(2, 1, last - 1, sh.getLastColumn()).clearContent();
+}
+
+function writeRows_(sh, rows, row, col) {
+  if (!rows || !rows.length) return;
+  sh.getRange(row, col, rows.length, rows[0].length).setValues(rows);
+}
+
+
+/************************************************************
+ * 📝 LOG HELPERS
+ ************************************************************/
+function log_(msg, obj) {
+  if (obj !== undefined) Logger.log(msg + ' ' + JSON.stringify(obj, null, 2));
+  else Logger.log(msg);
+}
+
+
+/************************************************************
+ * ⚡ RUNTIME CACHE
+ ************************************************************/
+var RUNTIME_CACHE = {};
+
+function cacheGet_(key) {
+  return RUNTIME_CACHE[key];
+}
+
+function cacheSet_(key, value) {
+  RUNTIME_CACHE[key] = value;
+  return value;
+}
+
+
+/************************************************************
+ * 🧰 loadSheetObjects_
+ * - Les heilt sheet og skilar Array<Object> með raw header labels
+ ************************************************************/
+function loadSheetObjects_(ssId, sheetName) {
+  if (!ssId) throw new Error("loadSheetObjects_: Missing ssId");
+  if (!sheetName) throw new Error("loadSheetObjects_: Missing sheetName");
+
+  const ss = SpreadsheetApp.openById(ssId);
+  const sh = ss.getSheetByName(sheetName);
+  if (!sh) throw new Error(`loadSheetObjects_: Sheet not found: ${sheetName}`);
+
+  const vals = sh.getDataRange().getValues();
+  if (vals.length < 2) return [];
+
+  const headers = vals[0].map(h => String(h).trim());
+
+  return vals.slice(1).map(row => {
+    const obj = {};
+    headers.forEach((h, i) => {
+      obj[h] = row[i];
+    });
+    return obj;
+  });
+}
+
+
+/************************************************************
+ * (Legacy helper – ef þú vilt enn nota þetta annars staðar)
+ ************************************************************/
+function loadBcSalesCustomers_(cfg) {
+  const binding = cfg.SHEETS['BC_SALES'];
+  if (!binding) return [];
+
+  const ss = SpreadsheetApp.openById(binding.ID);
+  const sh = ss.getSheetByName('Viðskiptamenn');
+  if (!sh) return [];
+
+  const values = sh.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  const header = values[0].map(String);
+  const map = {};
+  header.forEach((h,i) => map[h] = i);
+
+  const out = [];
+
+  for (let r = 1; r < values.length; r++) {
+    const row = values[r];
+    const id = cleanString_(row[map['Nr.']] || '');
+    const name = cleanString_(row[map['Heiti']] || '');
+    if (!id && !name) continue;
+
+    out.push({
+      id,
+      name,
+      phone: row[map['Sími']] || '',
+      balance: row[map['Hreyfing (SGM)']] || '',
+      lastModified: row[map['Síðast breytt, dags.']] || ''
+    });
+  }
+  return out;
+}
+
+
+/************************************************************
+ * 🧩 COMPANY RESOLVER (v9)
+ * - Sameinar BC_CUSTOMERS + MAGENTO_CUSTOMERS
+ * - Primary key: Company ID (kennitala / nr.)
+ * - Alias: normalizeNameAdvanced_(Company Name)
+ * - Bætir við tokenIndex fyrir fuzzy leit
+ ************************************************************/
+function buildCompanyResolver_(cfg) {
+  const cached = cacheGet_('RESOLVER_V1');
+  if (cached) return cached;
+
+  var bcMapById   = {};   // id -> entry
+  var bcMapByName = {};   // normName -> entry
+  var tokenIndex  = {};   // token -> Array<entry>
+
+  function indexTokens_(entry) {
+    if (!entry.normName) return;
+    var tokens = tokenizeCompanyName_(entry.companyName);
+    entry.tokens = tokens;
+    tokens.forEach(function(t) {
+      if (!tokenIndex[t]) tokenIndex[t] = [];
+      tokenIndex[t].push(entry);
+    });
+  }
+
+  function registerCompany_(source, rawId, rawName, region, realEmail) {
+    var id   = String(rawId || '').trim();
+    var name = cleanString_(rawName || '');
+    if (!id && !name) return;
+
+    var norm = normalizeNameAdvanced_(name);
+    var existing = id ? bcMapById[id] : null;
+
+    if (!existing) {
+      existing = {
+        companyId:   id || '',
+        companyName: name || '',
+        normName:    norm || '',
+        region:      region || '',
+        realEmail:   realEmail || '',
+        source:      source
+      };
+      if (id) bcMapById[id] = existing;
+      if (norm) {
+        if (!bcMapByName[norm]) {
+          bcMapByName[norm] = existing;
+        } else {
+          // BC fær forgang ef conflict
+          if (source === 'BC' && bcMapByName[norm].source !== 'BC') {
+            bcMapByName[norm] = existing;
+          }
+        }
+      }
+      indexTokens_(existing);
+    } else {
+      // Merge inn í tilverandi entry
+      if (name && !existing.companyName) existing.companyName = name;
+      if (norm && !existing.normName)    existing.normName    = norm;
+      if (region && !existing.region)    existing.region      = region;
+      if (realEmail && !existing.realEmail) existing.realEmail = realEmail;
+      if (existing.source.indexOf(source) === -1) {
+        existing.source += '+' + source;
+      }
+    }
+  }
+
+  /***********************
+   * 1) BC_CUSTOMERS (master)
+   ***********************/
+  try {
+    var svcBC = cfg.SHEETS.BC_CUSTOMERS;
+    if (svcBC) {
+      var bcRows = loadSheetObjects_(svcBC.ID, svcBC.NAME); // 'Viðskiptamenn'
+      bcRows.forEach(function(r) {
+        var id   = r['Nr.'];
+        var name = r['Heiti'];
+        registerCompany_('BC', id, name, '', '');
+      });
+      log_('🏢 buildCompanyResolver_: BC_CUSTOMERS loaded: ' + bcRows.length + ' rows');
+    }
+  } catch (e) {
+    log_('⚠️ buildCompanyResolver_: Gat ekki hlaðið BC_CUSTOMERS: ' + e);
+  }
+
+  /***********************
+   * 1b) BC_SALES customers (legacy)
+   ***********************/
+  try {
+    var svcBCSales = cfg.SHEETS.BC_SALES;
+    if (svcBCSales) {
+      var bcSalesRows = loadSheetObjects_(svcBCSales.ID, svcBCSales.NAME); // 'Viðskiptamenn'
+      bcSalesRows.forEach(function(r) {
+        var id   = r['Nr.'];
+        var name = r['Heiti'];
+        registerCompany_('BC_SALES', id, name, '', '');
+      });
+      log_('🏢 buildCompanyResolver_: BC_SALES loaded: ' + bcSalesRows.length + ' rows');
+    }
+  } catch (e) {
+    log_('⚠️ buildCompanyResolver_: Gat ekki hlaðið BC_SALES: ' + e);
+  }
+
+  /***********************
+   * 2) MAGENTO_CUSTOMERS (vefur)
+   ***********************/
+  try {
+    var svcMC = cfg.SHEETS.CUSTOMERS;
+    if (svcMC) {
+      var mcRows = loadSheetObjects_(svcMC.ID, svcMC.NAME); // 'MAGENTO_CUSTOMERS'
+      mcRows.forEach(function(r) {
+        var id        = r['Company ID'];
+        var name      = r['Company Name'] || r['Name'];
+        var region    = r['Region'] || '';
+        var realEmail = r['Real Email'] || r['Email'] || '';
+        registerCompany_('MAGENTO', id, name, region, realEmail);
+      });
+      log_('🛒 buildCompanyResolver_: MAGENTO_CUSTOMERS loaded: ' + mcRows.length + ' rows');
+    }
+  } catch (e) {
+    log_('⚠️ buildCompanyResolver_: Gat ekki hlaðið CUSTOMERS (MAGENTO_CUSTOMERS): ' + e);
+  }
+
+  return cacheSet_('RESOLVER_V1', {
+    bcMapById:   bcMapById,
+    bcMapByName: bcMapByName,
+    tokenIndex:  tokenIndex
+  });
+}
+
+/************************************************************
+ * 🔍 fuzzy helper: leita að besta company út frá nafni
+ ************************************************************/
+function fuzzyCompanyLookupByName_(resolver, rawName, threshold) {
+  threshold = threshold || 0.88;
+  if (!rawName) return null;
+
+  var base = normalizeNameAdvanced_(rawName);
+  if (!base) return null;
+
+  var tokens = tokenizeCompanyName_(rawName);
+  if (!tokens.length) return null;
+
+  var tokenIndex = resolver.tokenIndex || {};
+  var candidatesMap = {};
+  var key;
+
+  // Safna mögulegum candidates út frá tokenum
+  tokens.forEach(function(t) {
+    var list = tokenIndex[t];
+    if (!list) return;
+    list.forEach(function(entry) {
+      key = entry.companyId + '|' + entry.companyName;
+      if (!candidatesMap[key]) {
+        candidatesMap[key] = entry;
+      }
+    });
+  });
+
+  var candidates = Object.keys(candidatesMap).map(function(k){ return candidatesMap[k]; });
+  if (!candidates.length) return null;
+
+  var best = null;
+  var bestScore = 0;
+
+  candidates.forEach(function(entry) {
+    var ref = entry.normName || normalizeNameAdvanced_(entry.companyName);
+    var score = stringSimilarity_(base, ref);
+    if (score > bestScore) {
+      bestScore = score;
+      best = entry;
+    }
+  });
+
+  return (best && bestScore >= threshold) ? best : null;
+}
+
+/************************************************************
+ * 🔍 resolveCompanyInfo_ (v9)
+ * - Same regla og áður + fuzzy name match
+ ************************************************************/
+function resolveCompanyInfo_(resolver, rawId, rawName, rawGroup, customerName, allowFuzzy) {
+  resolver = resolver || {};
+  var bcMapById   = resolver.bcMapById   || {};
+  var bcMapByName = resolver.bcMapByName || {};
+
+  var idRaw  = String(rawId || '').trim();
+  var group  = String(rawGroup || '').trim();
+  var name   = cleanString_(rawName || '');
+  var cust   = cleanString_(customerName || '');
+
+  if (allowFuzzy === undefined || allowFuzzy === null) allowFuzzy = true;
+
+  var best = null;
+
+  // RULE 1 — Company ID (NEWWEB) ef til í master
+  if (idRaw && bcMapById[idRaw]) {
+    best = bcMapById[idRaw];
+  }
+
+  // RULE 2 — Customer Group (OLDWEB) ef lítur út eins og kennitala
+  if (!best && group && isLikelyKennitala_(group) && bcMapById[group]) {
+    best = bcMapById[group];
+    if (!idRaw) idRaw = group;
+  }
+
+  // RULE 3 — Exact match á Company Name
+  if (!best && name) {
+    var normName = normalizeNameAdvanced_(name);
+    if (bcMapByName[normName]) {
+      best = bcMapByName[normName];
+    }
+  }
+
+  // RULE 4 — Exact match á Customer Name
+  if (!best && cust) {
+    var normCust = normalizeNameAdvanced_(cust);
+    if (bcMapByName[normCust]) {
+      best = bcMapByName[normCust];
+    }
+  }
+
+  // RULE 5 — Fuzzy match (Company Name fyrst, svo Customer Name)
+  if (allowFuzzy) {
+    if (!best && name) {
+      best = fuzzyCompanyLookupByName_(resolver, name, 0.88);
+    }
+    if (!best && cust) {
+      best = fuzzyCompanyLookupByName_(resolver, cust, 0.88);
+    }
+  }
+
+  // RULE 6 — Fallback: notum bara order-gögn (og mögulegt group sem kt)
+  if (!best) {
+    // If we have a valid ID, keep it and don't override with fuzzy matches.
+    var fallbackId = idRaw;
+    if (!fallbackId && isLikelyKennitala_(group)) {
+      fallbackId = group;
+    }
+    return {
+      companyId:   fallbackId || '',
+      companyName: name || cust || '',
+      region:      '',
+      realEmail:   ''
+    };
+  }
+
+  // Final samsetning
+  return {
+    companyId:   best.companyId   || idRaw || '',
+    companyName: best.companyName || name || cust || '',
+    region:      best.region      || '',
+    realEmail:   best.realEmail   || ''
+  };
+}
+
+
+/************************************************************
+ * 🧮 ID HELPERS
+ ************************************************************/
+function looksLikeKennitala_(v) {
+  if (!v) return false;
+  const s = String(v).replace(/\D/g, '');  // tökum bara tölur
+  // Leyfum 7–12 stafi: 10 fyrir venjulega kt, 11–12 fyrir undirkennitölur o.fl.
+  return s.length >= 7 && s.length <= 12;
+}
+
+function extractRawDigits_(s) {
+  if (!s) return "";
+  return String(s).replace(/\D/g, "");
+}
+
+function similarity_(a, b) {
+  if (!a || !b) return 0;
+  let matches = 0;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    if (a[i] === b[i]) matches++;
+  }
+  return matches / Math.max(a.length, b.length);
+}
+
+
+/************************************************************
+ * 🔧 normalizeOldwebCompanyIds_
+ * - Fyllir út/leiðréttir Company ID dálk í OLDWEB
+ * - Notar NÝJA buildCompanyResolver_ + resolveCompanyInfo_
+ ************************************************************/
+function normalizeOldwebCompanyIds() {
+  Logger.log('🔧 normalizeOldwebCompanyIds_: starting…');
+
+  var cfg = loadConfig_();
+  var resolver = buildCompanyResolver_(cfg);
+
+  var binding = cfg.SHEETS.OLDWEB;
+  if (!binding) {
+    throw new Error('CONFIG.SHEETS vantar OLDWEB binding');
+  }
+
+  var ss = SpreadsheetApp.openById(binding.ID);
+  var sh = ss.getSheetByName(binding.NAME); // 'OLDWEB'
+  if (!sh) {
+    throw new Error('OLDWEB sheet not found: ' + binding.NAME);
+  }
+
+  var range = sh.getDataRange();
+  var values = range.getValues();
+  if (values.length < 2) {
+    Logger.log('⚠️ OLDWEB hefur engar raðir');
+    return { updated: 0, unresolvedCount: 0, unresolved: [] };
+  }
+
+  var header = values[0].map(String);
+  var idxCID   = header.indexOf('Company ID');
+  var idxCust  = header.indexOf('Customer Name');
+  var idxComp  = header.indexOf('Company Name');
+  var idxBill  = header.indexOf('Bill-to Name');
+  var idxShip  = header.indexOf('Ship-to Name');
+  var idxGroup = header.indexOf('Customer Group');
+
+  if (idxCID === -1) throw new Error("❌ OLDWEB vantar 'Company ID' dálk!");
+  if (idxCust === -1) throw new Error("❌ OLDWEB vantar 'Customer Name' dálk!");
+  if (idxComp === -1) throw new Error("❌ OLDWEB vantar 'Company Name' dálk!");
+
+  var updated = 0;
+  var unresolved = [];
+  var outCol = [];
+
+  for (var r = 1; r < values.length; r++) {
+    var row = values[r];
+    var oldVal    = String(row[idxCID] || '').trim();
+    var custName  = row[idxCust] || '';
+    var compName  = row[idxComp] || '';
+    var groupVal  = idxGroup !== -1 ? (row[idxGroup] || '') : '';
+
+    // Gild Company ID (kennitala) → sleppum
+    if (oldVal && isLikelyKennitala_(oldVal)) {
+      outCol.push([oldVal]);
+      continue;
+    }
+
+    var info = resolveCompanyInfo_(
+      resolver,
+      null,          // OLDWEB hefur ekki companyId í sér dálki (fyrir normalization)
+      compName,
+      groupVal,
+      custName
+    );
+
+    if (info && info.companyId && isLikelyKennitala_(info.companyId)) {
+      outCol.push([info.companyId]);
+      updated++;
+    } else {
+      outCol.push([oldVal]); // viðheldum gömlu gildi
+      unresolved.push({
+        row: r + 1, // 1-based í Sheet
+        companyName: compName,
+        customerName: custName,
+        oldValue: oldVal
+      });
+    }
+  }
+
+  // Skrifum bara Company ID dálkinn aftur (hraðvirkt & safe)
+  if (outCol.length) {
+    sh.getRange(2, idxCID + 1, outCol.length, 1).setValues(outCol);
+  }
+
+  Logger.log('✅ normalizeOldwebCompanyIds_: updated ' + updated + ' rows.');
+  Logger.log('⚠️ unresolved: ' + unresolved.length);
+  Logger.log(JSON.stringify(unresolved.slice(0, 50), null, 2));
+
+  return {
+    updated: updated,
+    unresolvedCount: unresolved.length,
+    unresolved: unresolved
+  };
+}
+
+function testNormalizeOldweb() {
+  var res = normalizeOldwebCompanyIds();
+  Logger.log(res);
+}
+
+/************************************************************
+ * 🔧 normalizeOldwebCompanyIdsAndNames_
+ * - Overwrites OLDWEB Company ID + Company Name when matched
+ * - Uses BC_CUSTOMERS + BC_SALES + MAGENTO_CUSTOMERS resolver
+ * - Matches by exact name or strong fuzzy; keeps original if no match
+ ************************************************************/
+function normalizeOldwebCompanyIdsAndNames() {
+  Logger.log('🔧 normalizeOldwebCompanyIdsAndNames_: starting…');
+
+  var cfg = loadConfig_();
+  var resolver = buildCompanyResolver_(cfg);
+
+  var binding = cfg.SHEETS.OLDWEB;
+  if (!binding) throw new Error('CONFIG.SHEETS vantar OLDWEB binding');
+
+  var ss = SpreadsheetApp.openById(binding.ID);
+  var sh = ss.getSheetByName(binding.NAME);
+  if (!sh) throw new Error('OLDWEB sheet not found: ' + binding.NAME);
+
+  var range = sh.getDataRange();
+  var values = range.getValues();
+  if (values.length < 2) {
+    Logger.log('⚠️ OLDWEB hefur engar raðir');
+    return { updated: 0, unresolvedCount: 0, unresolved: [] };
+  }
+
+  var header = values[0].map(String);
+  var idxCID   = header.indexOf('Company ID');
+  var idxCust  = header.indexOf('Customer Name');
+  var idxComp  = header.indexOf('Company Name');
+  var idxBill  = header.indexOf('Bill-to Name');
+  var idxShip  = header.indexOf('Ship-to Name');
+  var idxGroup = header.indexOf('Customer Group');
+
+  if (idxCID === -1) throw new Error("❌ OLDWEB vantar 'Company ID' dálk!");
+  if (idxCust === -1) throw new Error("❌ OLDWEB vantar 'Customer Name' dálk!");
+  if (idxComp === -1) throw new Error("❌ OLDWEB vantar 'Company Name' dálk!");
+
+  var bcById = resolver.bcMapById || {};
+  var bcByName = resolver.bcMapByName || {};
+
+  var updated = 0;
+  var unresolved = [];
+  var outCID = [];
+  var outComp = [];
+  var report = [['Row', 'Old Company ID', 'Old Company Name', 'Customer Name', 'Suggested Company ID', 'Suggested Company Name', 'Match Type', 'Changed?']];
+  var unresolvedReport = [['Row', 'Old Company ID', 'Old Company Name', 'Customer Name', 'Customer Group']];
+
+  for (var r = 1; r < values.length; r++) {
+    var row = values[r];
+    var oldId   = String(row[idxCID] || '').trim();
+    var custName = row[idxCust] || '';
+    var compName = row[idxComp] || '';
+    var billName = idxBill !== -1 ? (row[idxBill] || '') : '';
+    var shipName = idxShip !== -1 ? (row[idxShip] || '') : '';
+    var groupVal = idxGroup !== -1 ? (row[idxGroup] || '') : '';
+
+    var oldIdNorm = oldId.replace(/\s+/g, '').toLowerCase();
+    if (oldIdNorm.indexOf('customergroups') === 0) oldId = '';
+    var compNorm = normalizeNameAdvanced_(compName || '');
+    if (!compNorm || compNorm === 'storkaup' || compNorm === 'storkaup company') {
+      compName = '';
+    }
+
+    var candidates = [compName, custName, billName, shipName].filter(function(v){ return v && String(v).trim(); });
+
+    var match = null;
+    var matchType = '';
+
+    // 1) Keep valid ID if it exists in resolver
+    if (oldId && isLikelyKennitala_(oldId) && bcById[oldId]) {
+      match = bcById[oldId];
+      matchType = 'ID';
+    }
+
+    // 2) Exact name match on any candidate
+    if (!match && candidates.length) {
+      for (var i = 0; i < candidates.length; i++) {
+        var normName = normalizeNameAdvanced_(candidates[i]);
+        if (bcByName[normName]) {
+          match = bcByName[normName];
+          matchType = (i === 0 ? 'CompanyName' : 'AltName');
+          break;
+        }
+      }
+    }
+
+    // 3) Token containment match (handles "Tokyo ehf." vs "Tokyo veitingar ehf.")
+    if (!match && candidates.length) {
+      var tokenIndex = resolver.tokenIndex || {};
+      for (var j = 0; j < candidates.length && !match; j++) {
+        var cand = candidates[j];
+        var tokens = tokenizeCompanyName_(cand);
+        if (!tokens.length) continue;
+        var list = tokenIndex[tokens[0]] || [];
+        var best = null;
+        var bestScore = 0;
+        list.forEach(function(entry) {
+          var ok = true;
+          for (var k = 0; k < tokens.length; k++) {
+            if (!entry.tokens || entry.tokens.indexOf(tokens[k]) === -1) { ok = false; break; }
+          }
+          if (!ok) return;
+          var ref = entry.normName || normalizeNameAdvanced_(entry.companyName);
+          var score = stringSimilarity_(normalizeNameAdvanced_(cand), ref);
+          if (score > bestScore) { bestScore = score; best = entry; }
+        });
+        if (best && bestScore >= 0.85) {
+          match = best;
+          matchType = 'Token(0.85)';
+        }
+      }
+    }
+
+    // 4) Fuzzy match (strong threshold)
+    if (!match && candidates.length) {
+      var base = candidates[0];
+      match = fuzzyCompanyLookupByName_(resolver, base, 0.88);
+      if (match) matchType = 'Fuzzy(0.88)';
+    }
+
+    if (match && match.companyId && isLikelyKennitala_(match.companyId)) {
+      var newId = match.companyId;
+      var newName = match.companyName || compName || custName || '';
+      outCID.push([newId]);
+      outComp.push([newName]);
+      var changed = (String(oldId || '') !== String(newId || '')) || (String(compName || '') !== String(newName || ''));
+      if (changed) updated++;
+      report.push([r + 1, oldId, compName, custName, newId, match.companyName || '', matchType, changed ? 'Y' : 'N']);
+    } else {
+      outCID.push([oldId]);
+      outComp.push([compName]);
+      unresolved.push({ row: r + 1, companyName: compName, customerName: custName, oldValue: oldId });
+      unresolvedReport.push([r + 1, oldId, compName, custName, groupVal]);
+    }
+  }
+
+  if (outCID.length) sh.getRange(2, idxCID + 1, outCID.length, 1).setValues(outCID);
+  if (outComp.length) sh.getRange(2, idxComp + 1, outComp.length, 1).setValues(outComp);
+
+  // Write report sheet
+  var reportName = 'OLDWEB - ID Fix Report';
+  var rep = ss.getSheetByName(reportName) || ss.insertSheet(reportName);
+  rep.clear();
+  rep.getRange(1, 1, report.length, report[0].length).setValues(report);
+  rep.setFrozenRows(1);
+  rep.autoResizeColumns(1, report[0].length);
+
+  var unresolvedName = 'OLDWEB - ID Fix Unresolved';
+  var repUn = ss.getSheetByName(unresolvedName) || ss.insertSheet(unresolvedName);
+  repUn.clear();
+  repUn.getRange(1, 1, unresolvedReport.length, unresolvedReport[0].length).setValues(unresolvedReport);
+  repUn.setFrozenRows(1);
+  repUn.autoResizeColumns(1, unresolvedReport[0].length);
+
+  Logger.log('✅ normalizeOldwebCompanyIdsAndNames_: updated ' + updated + ' rows.');
+  Logger.log('⚠️ unresolved: ' + unresolved.length);
+
+  return {
+    updated: updated,
+    unresolvedCount: unresolved.length,
+    unresolved: unresolved
+  };
+}
+
+// Backwards-compatible wrapper (older name with underscore)
+function normalizeOldwebCompanyIdsAndNames_() {
+  return normalizeOldwebCompanyIdsAndNames();
+}
+
+/************************************************************
+ * SUPABASE MIGRATION: OLDWEB (one-time/backfill)
+ ************************************************************/
+function getSupabaseRestConfig_() {
+  const cfg = loadConfig_();
+  const baseUrlRaw = cfg.ENDPOINTS && cfg.ENDPOINTS.SUPABASE && cfg.ENDPOINTS.SUPABASE.REST_URL;
+  const serviceRole = cfg.API && cfg.API.SUPABASE && cfg.API.SUPABASE.SERVICE_ROLE_KEY;
+  const baseUrl = String(baseUrlRaw || '').replace(/\/$/, '');
+
+  if (!baseUrl) {
+    throw new Error('Supabase config missing ENDPOINTS.SUPABASE.REST_URL');
+  }
+  if (!serviceRole) {
+    throw new Error('Supabase config missing API.SUPABASE.SERVICE_ROLE_KEY');
+  }
+
+  return { baseUrl: baseUrl, serviceRole: serviceRole };
+}
+
+function parseOldwebDateForSupabase_(raw) {
+  var d = null;
+
+  if (typeof parseOldwebDate_ === 'function') {
+    d = parseOldwebDate_(raw);
+    if (d && !isNaN(d.getTime())) return d.toISOString();
+  }
+
+  d = parseDateSafe_(raw);
+  if (d && !isNaN(d.getTime())) return d.toISOString();
+
+  d = new Date(raw);
+  if (d && !isNaN(d.getTime())) return d.toISOString();
+
+  return null;
+}
+
+function upsertOldwebRowsToSupabase_(rows) {
+  if (!rows || !rows.length) return { uploaded: 0 };
+
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/oldweb_orders_raw?on_conflict=order_id';
+  var payload = rows.map(function(r) {
+    return {
+      order_id: String(r.ID || ''),
+      purchase_date: parseOldwebDateForSupabase_(r.DATE),
+      customer_name: r.CUSTOMER_NAME || null,
+      bill_to_name: r.BILL_TO || null,
+      ship_to_name: r.SHIP_TO || null,
+      company_name: r.COMPANY_NAME || null,
+      company_id: r.COMPANY_ID || null,
+      customer_email: r.CUSTOMER_EMAIL || null,
+      subtotal_excl: toNum_(r.SUBTOTAL_EXCL),
+      subtotal_incl: toNum_(r.SUBTOTAL_INCL),
+      subtotal_base: toNum_(r.SUBTOTAL_BASE),
+      shipping_amount: toNum_(r.SHIPPING),
+      ls_order_id: r.LS_ORDER_ID || null,
+      sku_list: r.SKU_LIST || null,
+      product_name_list: r.NAME_LIST || null,
+      qty_list: r.QTY_LIST || null,
+      items_block: r.ITEMS_BLOCK || null,
+      source: 'oldweb_backfill'
+    };
+  }).filter(function(x) { return x.order_id; });
+
+  if (!payload.length) return { uploaded: 0 };
+
+  var chunkSize = 500;
+  var uploaded = 0;
+
+  for (var i = 0; i < payload.length; i += chunkSize) {
+    var chunk = payload.slice(i, i + chunkSize);
+    var res = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw',
+        'Accept-Profile': 'raw',
+        Prefer: 'resolution=merge-duplicates,return=minimal'
+      },
+      payload: JSON.stringify(chunk),
+      muteHttpExceptions: true
+    });
+
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error('OLDWEB Supabase upsert failed: ' + code + ' ' + res.getContentText());
+    }
+    uploaded += chunk.length;
+  }
+
+  return { uploaded: uploaded };
+}
+
+function backfillOldwebToSupabase_v1() {
+  var rows = loadTableBySchema_('OLDWEB') || [];
+  if (!rows.length) {
+    Logger.log('[OLDWEB][INFO] No OLDWEB rows found for backfill.');
+    return { totalRows: 0, uploaded: 0 };
+  }
+
+  var batchSize = 2000;
+  var uploaded = 0;
+
+  for (var i = 0; i < rows.length; i += batchSize) {
+    var batch = rows.slice(i, i + batchSize);
+    var out = upsertOldwebRowsToSupabase_(batch);
+    uploaded += out.uploaded || 0;
+    Logger.log('[OLDWEB][INFO] Backfill batch uploaded: ' + uploaded + '/' + rows.length);
+  }
+
+  Logger.log('[OLDWEB][INFO] Backfill completed. Uploaded: ' + uploaded);
+  return { totalRows: rows.length, uploaded: uploaded };
+}
+
+/************************************************************
+ * SUPABASE MIGRATION: BC_INVOICES (one-time + repeatable)
+ ************************************************************/
+function parseBcDateForSupabase_(raw) {
+  var d = null;
+
+  if (typeof parseOldwebDate_ === 'function') {
+    d = parseOldwebDate_(raw);
+    if (d && !isNaN(d.getTime())) return d.toISOString();
+  }
+
+  d = parseDateSafe_(raw);
+  if (d && !isNaN(d.getTime())) return d.toISOString();
+
+  d = new Date(raw);
+  if (d && !isNaN(d.getTime())) return d.toISOString();
+
+  return null;
+}
+
+function getScriptProperties_() {
+  return PropertiesService.getScriptProperties();
+}
+
+function parseIsoToDate_(iso) {
+  if (!iso) return null;
+  var d = new Date(iso);
+  if (!d || isNaN(d.getTime())) return null;
+  return d;
+}
+
+function toIsoNow_() {
+  return new Date().toISOString();
+}
+
+function getBcSyncState_() {
+  var props = getScriptProperties_();
+  return {
+    invoicesWatermarkIso: props.getProperty('BC_INVOICES_LAST_SYNC_ISO') || '',
+    linesWatermarkIso: props.getProperty('BC_LINES_LAST_SYNC_ISO') || '',
+    linesFullCursor: Number(props.getProperty('BC_LINES_FULL_CURSOR') || 0) || 0
+  };
+}
+
+function setBcSyncState_(next) {
+  var props = getScriptProperties_();
+  if (next && Object.prototype.hasOwnProperty.call(next, 'invoicesWatermarkIso')) {
+    props.setProperty('BC_INVOICES_LAST_SYNC_ISO', String(next.invoicesWatermarkIso || ''));
+  }
+  if (next && Object.prototype.hasOwnProperty.call(next, 'linesWatermarkIso')) {
+    props.setProperty('BC_LINES_LAST_SYNC_ISO', String(next.linesWatermarkIso || ''));
+  }
+  if (next && Object.prototype.hasOwnProperty.call(next, 'linesFullCursor')) {
+    var cursor = Number(next.linesFullCursor || 0) || 0;
+    props.setProperty('BC_LINES_FULL_CURSOR', String(cursor));
+  }
+}
+
+function shouldIncludeByWatermark_(rowIso, watermarkIso, lookbackDays) {
+  if (!watermarkIso) return true;
+
+  var rowDate = parseIsoToDate_(rowIso);
+  var watermarkDate = parseIsoToDate_(watermarkIso);
+  if (!rowDate || !watermarkDate) return true;
+
+  var lookback = Number(lookbackDays || 0);
+  if (lookback > 0) {
+    watermarkDate = new Date(watermarkDate.getTime() - (lookback * 24 * 60 * 60 * 1000));
+  }
+  return rowDate >= watermarkDate;
+}
+
+function upsertBcInvoicesToSupabase_(rows) {
+  if (!rows || !rows.length) return { uploaded: 0 };
+
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/bc_invoices_raw?on_conflict=document_no';
+  var payload = rows.map(function(r) {
+    var documentNo = String(r.DOCUMENT_NO || '').trim();
+    return {
+      document_no: documentNo,
+      company_id: r.COMPANY_ID || null,
+      external_doc_no: r.EXTERNAL_DOC_NO || null,
+      company_name: r.COMPANY_NAME || null,
+      currency: r.CURRENCY || null,
+      due_date: parseBcDateForSupabase_(r.DUE_DATE),
+      order_date: parseBcDateForSupabase_(r.ORDER_DATE),
+      email: r.EMAIL || null,
+      amount_excl: toNum_(r.AMOUNT_EXCL),
+      amount_incl: toNum_(r.AMOUNT_INCL),
+      salesperson_code: r.SALESPERSON_CODE || null,
+      remaining_amount: toNum_(r.REMAINING),
+      location_code: r.LOCATION_CODE || null,
+      printed: r.PRINTED || null,
+      closed: r.CLOSED || null,
+      canceled: r.CANCELED || null,
+      corrective: r.CORRECTIVE || null,
+      rsm_provider: r.RSM_PROVIDER || null,
+      rsm_date: parseBcDateForSupabase_(r.RSM_DATE),
+      source: 'bc_invoices_backfill'
+    };
+  }).filter(function(x) { return x.document_no; });
+
+  if (!payload.length) return { uploaded: 0 };
+
+  var chunkSize = 500;
+  var uploaded = 0;
+
+  for (var i = 0; i < payload.length; i += chunkSize) {
+    var chunk = payload.slice(i, i + chunkSize);
+    var res = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw',
+        'Accept-Profile': 'raw',
+        Prefer: 'resolution=merge-duplicates,return=minimal'
+      },
+      payload: JSON.stringify(chunk),
+      muteHttpExceptions: true
+    });
+
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error('BC_INVOICES Supabase upsert failed: ' + code + ' ' + res.getContentText());
+    }
+    uploaded += chunk.length;
+  }
+
+  return { uploaded: uploaded };
+}
+
+function backfillBcInvoicesToSupabase_v1(options) {
+  var opts = options || {};
+  var full = !!opts.full;
+  var lookbackDays = Number(opts.lookbackDays != null ? opts.lookbackDays : 2);
+  var state = getBcSyncState_();
+  var previousIso = full ? '' : (state.invoicesWatermarkIso || '');
+  var runStartedIso = toIsoNow_();
+
+  var rows = loadTableBySchema_('BC_INVOICES') || [];
+  if (!rows.length) {
+    Logger.log('[BC_INVOICES][INFO] No rows found for backfill.');
+    return { totalRows: 0, selectedRows: 0, uploaded: 0, mode: full ? 'full' : 'incremental' };
+  }
+
+  var selected = full ? rows : rows.filter(function(r) {
+    var rowIso = parseBcDateForSupabase_(r.ORDER_DATE);
+    return shouldIncludeByWatermark_(rowIso, previousIso, lookbackDays);
+  });
+
+  if (!selected.length) {
+    Logger.log('[BC_INVOICES][INFO] No incremental rows to upload.');
+    setBcSyncState_({ invoicesWatermarkIso: runStartedIso });
+    return {
+      totalRows: rows.length,
+      selectedRows: 0,
+      uploaded: 0,
+      mode: full ? 'full' : 'incremental',
+      previousIso: previousIso || '',
+      nextIso: runStartedIso
+    };
+  }
+
+  var batchSize = 2000;
+  var uploaded = 0;
+
+  for (var i = 0; i < selected.length; i += batchSize) {
+    var batch = selected.slice(i, i + batchSize);
+    var out = upsertBcInvoicesToSupabase_(batch);
+    uploaded += out.uploaded || 0;
+    Logger.log('[BC_INVOICES][INFO] Backfill batch uploaded: ' + uploaded + '/' + selected.length);
+  }
+
+  setBcSyncState_({ invoicesWatermarkIso: runStartedIso });
+  Logger.log('[BC_INVOICES][INFO] Backfill completed. Uploaded: ' + uploaded);
+  return {
+    totalRows: rows.length,
+    selectedRows: selected.length,
+    uploaded: uploaded,
+    mode: full ? 'full' : 'incremental',
+    previousIso: previousIso || '',
+    nextIso: runStartedIso
+  };
+}
+
+/************************************************************
+ * SUPABASE MIGRATION: BC_LINES (one-time + repeatable)
+ ************************************************************/
+function upsertBcLinesToSupabase_(rows) {
+  if (!rows || !rows.length) return { uploaded: 0 };
+
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/bc_lines_raw?on_conflict=document_no,sku,product_name,qty,amount_excl';
+  var payload = rows.map(function(r) {
+    var documentNo = String(r.DOCUMENT_NO || '').trim();
+    var sku = r.SKU != null ? String(r.SKU).trim() : '';
+    return {
+      document_no: documentNo,
+      company_id: r.COMPANY_ID || null,
+      line_type: r.TYPE || null,
+      sku: sku || null,
+      product_name: r.PRODUCT_NAME || null,
+      qty: toNum_(r.QTY),
+      uom: r.UOM || null,
+      unit_price_excl: toNum_(r.UNIT_PRICE_EXCL),
+      amount_excl: toNum_(r.AMOUNT_EXCL),
+      discount_pct: toNum_(r.DISCOUNT),
+      source: 'bc_lines_backfill'
+    };
+  }).filter(function(x) {
+    return x.document_no && x.sku;
+  });
+
+  if (!payload.length) return { uploaded: 0 };
+
+  // Deduplicate within the payload to avoid Postgres ON CONFLICT "affect row a second time".
+  var dedupedMap = {};
+  payload.forEach(function(p) {
+    var key = [
+      p.document_no || '',
+      p.sku || '',
+      p.product_name || '',
+      String(p.qty || 0),
+      String(p.amount_excl || 0)
+    ].join('|');
+    dedupedMap[key] = p;
+  });
+  payload = Object.keys(dedupedMap).map(function(k) { return dedupedMap[k]; });
+
+  var chunkSize = 500;
+  var uploaded = 0;
+
+  for (var i = 0; i < payload.length; i += chunkSize) {
+    var chunk = payload.slice(i, i + chunkSize);
+    var res = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw',
+        'Accept-Profile': 'raw',
+        Prefer: 'resolution=ignore-duplicates,return=minimal'
+      },
+      payload: JSON.stringify(chunk),
+      muteHttpExceptions: true
+    });
+
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error('BC_LINES Supabase upsert failed: ' + code + ' ' + res.getContentText());
+    }
+    uploaded += chunk.length;
+  }
+
+  return { uploaded: uploaded };
+}
+
+function backfillBcLinesToSupabase_v1(options) {
+  var opts = options || {};
+  var full = !!opts.full;
+  var lookbackDays = Number(opts.lookbackDays != null ? opts.lookbackDays : 2);
+  var maxRows = Number(opts.maxRows != null ? opts.maxRows : 0);
+  if (maxRows < 0) maxRows = 0;
+  var state = getBcSyncState_();
+  var previousIso = full ? '' : (state.linesWatermarkIso || state.invoicesWatermarkIso || '');
+  var runStartedIso = toIsoNow_();
+
+  var rows = loadTableBySchema_('BC_LINES') || [];
+  if (!rows.length) {
+    Logger.log('[BC_LINES][INFO] No rows found for backfill.');
+    return { totalRows: 0, selectedRows: 0, uploaded: 0, mode: full ? 'full' : 'incremental' };
+  }
+
+  var selected = rows;
+  if (!full && previousIso) {
+    var invoiceRows = loadTableBySchema_('BC_INVOICES') || [];
+    var changedDocNos = {};
+    invoiceRows.forEach(function(inv) {
+      var rowIso = parseBcDateForSupabase_(inv.ORDER_DATE);
+      if (!shouldIncludeByWatermark_(rowIso, previousIso, lookbackDays)) return;
+      var doc = String(inv.DOCUMENT_NO || '').trim();
+      if (doc) changedDocNos[doc] = true;
+    });
+
+    selected = rows.filter(function(line) {
+      var docNo = String(line.DOCUMENT_NO || '').trim();
+      return !!changedDocNos[docNo];
+    });
+  }
+
+  var totalSelected = selected.length;
+  var startIndex = 0;
+  if (full) {
+    startIndex = Math.max(0, Number(opts.startAt != null ? opts.startAt : state.linesFullCursor) || 0);
+    if (startIndex > totalSelected) startIndex = totalSelected;
+    if (maxRows > 0) {
+      selected = selected.slice(startIndex, startIndex + maxRows);
+    } else {
+      selected = selected.slice(startIndex);
+    }
+  }
+
+  if (!selected.length) {
+    Logger.log('[BC_LINES][INFO] No incremental rows to upload.');
+    setBcSyncState_({ linesWatermarkIso: runStartedIso });
+    return {
+      totalRows: rows.length,
+      totalSelectedRows: totalSelected,
+      selectedRows: 0,
+      uploaded: 0,
+      mode: full ? 'full' : 'incremental',
+      previousIso: previousIso || '',
+      nextIso: runStartedIso,
+      startIndex: startIndex,
+      nextCursor: full ? startIndex : 0
+    };
+  }
+
+  var batchSize = 2500;
+  var uploaded = 0;
+  var processedRows = 0;
+
+  for (var i = 0; i < selected.length; i += batchSize) {
+    var batch = selected.slice(i, i + batchSize);
+    var out = upsertBcLinesToSupabase_(batch);
+    uploaded += out.uploaded || 0;
+    processedRows += batch.length;
+    Logger.log('[BC_LINES][INFO] Backfill batch uploaded: ' + uploaded + '/' + selected.length);
+    if (full) {
+      setBcSyncState_({ linesFullCursor: startIndex + processedRows });
+    }
+  }
+
+  setBcSyncState_({
+    linesWatermarkIso: runStartedIso,
+    linesFullCursor: full ? (startIndex + selected.length) : state.linesFullCursor
+  });
+  if (full && (startIndex + selected.length) >= totalSelected) {
+    setBcSyncState_({ linesFullCursor: 0 });
+  }
+  Logger.log('[BC_LINES][INFO] Backfill completed. Uploaded: ' + uploaded);
+  return {
+    totalRows: rows.length,
+    totalSelectedRows: totalSelected,
+    selectedRows: selected.length,
+    uploaded: uploaded,
+    mode: full ? 'full' : 'incremental',
+    previousIso: previousIso || '',
+    nextIso: runStartedIso,
+    startIndex: startIndex,
+    nextCursor: full ? (startIndex + selected.length) : 0
+  };
+}
+
+function syncBcToSupabaseIncremental_v1(options) {
+  var opts = options || {};
+  var invoices = backfillBcInvoicesToSupabase_v1({
+    full: !!opts.full,
+    lookbackDays: opts.lookbackDays
+  });
+  var lines = backfillBcLinesToSupabase_v1({
+    full: !!opts.full,
+    lookbackDays: opts.lookbackDays
+  });
+  var customers = backfillBcCustomersToSupabase_v1();
+  return {
+    invoices: invoices,
+    lines: lines,
+    customers: customers
+  };
+}
+
+function resetBcSupabaseSyncState_v1() {
+  setBcSyncState_({
+    invoicesWatermarkIso: '',
+    linesWatermarkIso: '',
+    linesFullCursor: 0
+  });
+  return { ok: true };
+}
+
+// UI-friendly wrappers (Apps Script Run menu cannot pass function args)
+function runBcLinesFullBackfill_v1() {
+  return backfillBcLinesToSupabase_v1({ full: true, lookbackDays: 0 });
+}
+
+function runBcInvoicesFullBackfill_v1() {
+  return backfillBcInvoicesToSupabase_v1({ full: true, lookbackDays: 0 });
+}
+
+function runBcIncrementalSync_v1() {
+  return syncBcToSupabaseIncremental_v1({ lookbackDays: 2 });
+}
+
+function runBcLinesFullBackfillChunk_v1() {
+  // Safer for Apps Script URL Fetch quotas: process one chunked window per run.
+  return backfillBcLinesToSupabase_v1({ full: true, lookbackDays: 0, maxRows: 50000 });
+}
+
+function resetBcLinesFullBackfillCursor_v1() {
+  setBcSyncState_({ linesFullCursor: 0 });
+  return { ok: true };
+}
+
+/************************************************************
+ * SUPABASE MIGRATION: BC_CUSTOMERS
+ ************************************************************/
+function upsertBcCustomersToSupabase_(rows) {
+  if (!rows || !rows.length) return { uploaded: 0 };
+
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/bc_customers_raw?on_conflict=company_id';
+  var payload = rows.map(function(r) {
+    return {
+      company_id: String(r.COMPANY_ID || '').trim(),
+      company_name: r.COMPANY_NAME || null,
+      credit_limit: toNum_(r.CREDIT_LIMIT),
+      phone: r.PHONE || null,
+      balance: toNum_(r.BALANCE),
+      payments: toNum_(r.PAYMENTS),
+      sales: toNum_(r.SALES),
+      modified_date: parseBcDateForSupabase_(r.MODIFIED_DATE),
+      source: 'bc_customers_backfill'
+    };
+  }).filter(function(x) { return x.company_id; });
+
+  if (!payload.length) return { uploaded: 0 };
+
+  var chunkSize = 500;
+  var uploaded = 0;
+  for (var i = 0; i < payload.length; i += chunkSize) {
+    var chunk = payload.slice(i, i + chunkSize);
+    var res = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw',
+        'Accept-Profile': 'raw',
+        Prefer: 'resolution=merge-duplicates,return=minimal'
+      },
+      payload: JSON.stringify(chunk),
+      muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error('BC_CUSTOMERS Supabase upsert failed: ' + code + ' ' + res.getContentText());
+    }
+    uploaded += chunk.length;
+  }
+
+  return { uploaded: uploaded };
+}
+
+function backfillBcCustomersToSupabase_v1() {
+  var rows = loadTableBySchema_('BC_CUSTOMERS') || [];
+  if (!rows.length) {
+    Logger.log('[BC_CUSTOMERS][INFO] No rows found for backfill.');
+    return { totalRows: 0, uploaded: 0 };
+  }
+
+  var out = upsertBcCustomersToSupabase_(rows);
+  Logger.log('[BC_CUSTOMERS][INFO] Backfill completed. Uploaded: ' + out.uploaded);
+  return { totalRows: rows.length, uploaded: out.uploaded || 0 };
+}
+
+/************************************************************
+ * SUPABASE MIGRATION: MAGENTO CUSTOMERS
+ ************************************************************/
+function upsertMagentoCustomersToSupabase_(rows) {
+  if (!rows || !rows.length) return { uploaded: 0 };
+
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/magento_customers_raw?on_conflict=customer_id';
+  var payload = rows.map(function(r) {
+    return {
+      customer_id: String(r.ID || '').trim(),
+      name: r.NAME || null,
+      email: r.EMAIL || null,
+      real_email: r.REAL_EMAIL || null,
+      role: r.ROLE || null,
+      company_name: r.COMPANY_NAME || null,
+      company_id: r.COMPANY_ID || null,
+      region: r.REGION || null,
+      updated_at_source: parseBcDateForSupabase_(r.UPDATED),
+      source: 'magento_customers_backfill'
+    };
+  }).filter(function(x) { return x.customer_id; });
+
+  if (!payload.length) return { uploaded: 0 };
+
+  var chunkSize = 500;
+  var uploaded = 0;
+  for (var i = 0; i < payload.length; i += chunkSize) {
+    var chunk = payload.slice(i, i + chunkSize);
+    var res = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw',
+        'Accept-Profile': 'raw',
+        Prefer: 'resolution=merge-duplicates,return=minimal'
+      },
+      payload: JSON.stringify(chunk),
+      muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error('MAGENTO_CUSTOMERS Supabase upsert failed: ' + code + ' ' + res.getContentText());
+    }
+    uploaded += chunk.length;
+  }
+
+  return { uploaded: uploaded };
+}
+
+function backfillMagentoCustomersToSupabase_v1() {
+  var rows = loadTableBySchema_('CUSTOMERS') || [];
+  if (!rows.length) {
+    Logger.log('[MAGENTO_CUSTOMERS][INFO] No rows found for backfill.');
+    return { totalRows: 0, uploaded: 0 };
+  }
+
+  var out = upsertMagentoCustomersToSupabase_(rows);
+  Logger.log('[MAGENTO_CUSTOMERS][INFO] Backfill completed. Uploaded: ' + out.uploaded);
+  return { totalRows: rows.length, uploaded: out.uploaded || 0 };
+}
+
+function backfillMagentoCustomersToSupabaseIncremental_v1(sinceIso) {
+  var rows = loadTableBySchema_('CUSTOMERS') || [];
+  if (!rows.length) {
+    Logger.log('[MAGENTO_CUSTOMERS][INFO] No rows found for incremental backfill.');
+    return { totalRows: 0, filteredRows: 0, uploaded: 0, mode: 'incremental' };
+  }
+
+  var since = sinceIso ? new Date(sinceIso) : null;
+  var hasValidSince = since && !isNaN(since.getTime());
+  if (!hasValidSince) {
+    Logger.log('[MAGENTO_CUSTOMERS][INFO] Invalid/missing sinceIso, falling back to full backfill.');
+    var full = backfillMagentoCustomersToSupabase_v1();
+    full.mode = 'full_fallback';
+    return full;
+  }
+
+  var filtered = rows.filter(function(r) {
+    var d = parseBcDateForSupabase_(r.UPDATED);
+    if (!d) return false;
+    var updated = new Date(d);
+    if (isNaN(updated.getTime())) return false;
+    return updated > since;
+  });
+
+  if (!filtered.length) {
+    Logger.log('[MAGENTO_CUSTOMERS][INFO] Incremental backfill found no changed rows.');
+    return { totalRows: rows.length, filteredRows: 0, uploaded: 0, mode: 'incremental' };
+  }
+
+  var out = upsertMagentoCustomersToSupabase_(filtered);
+  Logger.log('[MAGENTO_CUSTOMERS][INFO] Incremental backfill completed. Uploaded: ' + out.uploaded);
+  return {
+    totalRows: rows.length,
+    filteredRows: filtered.length,
+    uploaded: out.uploaded || 0,
+    mode: 'incremental'
+  };
+}
+
+/************************************************************
+ * SUPABASE MIGRATION: PRODUCTS
+ ************************************************************/
+function upsertProductsToSupabase_(rows) {
+  if (!rows || !rows.length) return { uploaded: 0 };
+
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/products_raw?on_conflict=sku';
+  var payload = rows.map(function(r) {
+    return {
+      sku: String(r.SKU || '').trim(),
+      product_name: r.NAME || null,
+      product_url: r.URL || null,
+      category_path: r.CATEGORY_PATH || null,
+      level1: r.LEVEL1 || null,
+      level2: r.LEVEL2 || null,
+      level3: r.LEVEL3 || null,
+      source_timestamp: parseBcDateForSupabase_(r.TIMESTAMP),
+      source: 'products_backfill'
+    };
+  }).filter(function(x) { return x.sku; });
+
+  if (!payload.length) return { uploaded: 0 };
+
+  var chunkSize = 500;
+  var uploaded = 0;
+  for (var i = 0; i < payload.length; i += chunkSize) {
+    var chunk = payload.slice(i, i + chunkSize);
+    var res = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw',
+        'Accept-Profile': 'raw',
+        Prefer: 'resolution=merge-duplicates,return=minimal'
+      },
+      payload: JSON.stringify(chunk),
+      muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error('PRODUCTS Supabase upsert failed: ' + code + ' ' + res.getContentText());
+    }
+    uploaded += chunk.length;
+  }
+
+  return { uploaded: uploaded };
+}
+
+function backfillProductsToSupabase_v1() {
+  var rows = loadTableBySchema_('PRODUCTS') || [];
+  if (!rows.length) {
+    Logger.log('[PRODUCTS][INFO] No rows found for backfill.');
+    return { totalRows: 0, uploaded: 0 };
+  }
+
+  var out = upsertProductsToSupabase_(rows);
+  Logger.log('[PRODUCTS][INFO] Backfill completed. Uploaded: ' + out.uploaded);
+  return { totalRows: rows.length, uploaded: out.uploaded || 0 };
+}
+
+/************************************************************
+ * SUPABASE MIGRATION: CUSTOMER_ANALYSIS (Sales Summaries)
+ ************************************************************/
+function toBoolish_(v) {
+  if (typeof v === 'boolean') return v;
+  if (v === null || v === undefined) return false;
+  var s = String(v).trim().toLowerCase();
+  return s === 'true' || s === '1' || s === 'yes' || s === 'ja';
+}
+
+function upsertCustomerAnalysisToSupabase_(rows) {
+  if (!rows || !rows.length) return { uploaded: 0 };
+
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/customer_analysis_raw?on_conflict=customer_id';
+  var nowIso = new Date().toISOString();
+
+  var payload = rows.map(function(r) {
+    var customerId = String(r.CUSTOMER_ID || '').trim();
+    return {
+      customer_id: customerId,
+      customer_name: r.CUSTOMER_NAME || null,
+      webshop_active: toBoolish_(r.WEBSHOP_ACTIVE),
+      webshop_added_date: parseBcDateForSupabase_(r.WEBSHOP_ADDED_DATE),
+      phone: r.PHONE || null,
+      credit_limit: toNum_(r.CREDIT_LIMIT),
+      primary_email: r.PRIMARY_EMAIL || null,
+
+      lifetime_bc_sales: toNum_(r.LIFETIME_BC_SALES),
+      total_bc_orders: toNum_(r.TOTAL_BC_ORDERS),
+      average_bc_order_value: toNum_(r.AVG_BC_ORDER_VALUE),
+      last_bc_order_date: parseBcDateForSupabase_(r.LAST_BC_ORDER_DATE),
+      orders_bc_90d: toNum_(r.ORDERS_BC_90D),
+      orders_bc_365d: toNum_(r.ORDERS_BC_365D),
+
+      webshop_orders: toNum_(r.WEBSHOP_ORDERS),
+      webshop_sales: toNum_(r.WEBSHOP_SALES),
+      webshop_aov: toNum_(r.WEBSHOP_AOV),
+      webshop_last_order: parseBcDateForSupabase_(r.WEBSHOP_LAST_ORDER),
+      webshop_share_lifetime_pct: toNum_(r.WEBSHOP_SHARE_LIFETIME),
+
+      total_value: toNum_(r.TOTAL_VALUE),
+      total_orders: toNum_(r.TOTAL_ORDERS),
+      frequency_score: toNum_(r.FREQUENCY_SCORE),
+      recency_score: toNum_(r.RECENCY_SCORE),
+      product_fit_score: toNum_(r.PRODUCT_FIT_SCORE),
+      value_score: toNum_(r.VALUE_SCORE),
+      readiness_score: toNum_(r.READINESS_SCORE),
+      category_fit_score: toNum_(r.CATEGORY_FIT_SCORE),
+      potential_score: toNum_(r.POTENTIAL_SCORE),
+      low_hanging_fruit_score: toNum_(r.LOW_HANGING_FRUIT_SCORE),
+      recommended_action: r.RECOMMENDED_ACTION || null,
+
+      total_sku_count: toNum_(r.TOTAL_SKU_COUNT),
+      top_products: r.TOP_PRODUCTS || null,
+      cat_rekstrarvorur_pct: toNum_(r.CAT_REKSTRARVORUR),
+      cat_heilbrigdisvorur_pct: toNum_(r.CAT_HEILBRIGDISVORUR),
+      cat_matvorur_pct: toNum_(r.CAT_MATVORUR),
+      cat_velar_taeki_pct: toNum_(r.CAT_VELAR_TAEKI),
+      cat_afengi_pct: toNum_(r.CAT_AFENGI),
+      primary_category: r.PRIMARY_CATEGORY || null,
+
+      source: 'customer_analysis_backfill',
+      snapshot_at: nowIso
+    };
+  }).filter(function(x) { return x.customer_id; });
+
+  if (!payload.length) return { uploaded: 0 };
+
+  var chunkSize = 250;
+  var uploaded = 0;
+  for (var i = 0; i < payload.length; i += chunkSize) {
+    var chunk = payload.slice(i, i + chunkSize);
+    var res = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw',
+        'Accept-Profile': 'raw',
+        Prefer: 'resolution=merge-duplicates,return=minimal'
+      },
+      payload: JSON.stringify(chunk),
+      muteHttpExceptions: true
+    });
+
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error('CUSTOMER_ANALYSIS Supabase upsert failed: ' + code + ' ' + res.getContentText());
+    }
+    uploaded += chunk.length;
+  }
+
+  return { uploaded: uploaded };
+}
+
+function backfillCustomerAnalysisToSupabase_v1() {
+  var rows = loadTableBySchema_('CUSTOMER_ANALYSIS') || [];
+  if (!rows.length) {
+    Logger.log('[CUSTOMER_ANALYSIS][INFO] No rows found for backfill.');
+    return { totalRows: 0, uploaded: 0 };
+  }
+
+  var out = upsertCustomerAnalysisToSupabase_(rows);
+  Logger.log('[CUSTOMER_ANALYSIS][INFO] Backfill completed. Uploaded: ' + out.uploaded);
+  return { totalRows: rows.length, uploaded: out.uploaded || 0 };
+}
+
+function backfillReferenceDataToSupabase_v1() {
+  var bc = backfillBcCustomersToSupabase_v1();
+  var mc = backfillMagentoCustomersToSupabase_v1();
+  var pr = backfillProductsToSupabase_v1();
+  var ca = backfillCustomerAnalysisToSupabase_v1();
+  return {
+    bc_customers: bc,
+    magento_customers: mc,
+    products: pr,
+    customer_analysis: ca
+  };
+}
+
+/************************************************************
+ * SCHEDULED REFERENCE SYNC (Magento customers + Cludo products)
+ ************************************************************/
+function startIngestionRun_(jobName, sourceName, details) {
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/ingestion_runs';
+  var payload = {
+    job_name: String(jobName || ''),
+    source_name: String(sourceName || ''),
+    status: 'running',
+    started_at: new Date().toISOString(),
+    details: details || null
+  };
+
+  var res = UrlFetchApp.fetch(endpoint, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      apikey: conf.serviceRole,
+      Authorization: 'Bearer ' + conf.serviceRole,
+      'Content-Profile': 'raw',
+      'Accept-Profile': 'raw',
+      Prefer: 'return=representation'
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  var code = res.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error('startIngestionRun_ failed: ' + code + ' ' + res.getContentText());
+  }
+
+  var body = JSON.parse(res.getContentText() || '[]');
+  var row = body && body[0] ? body[0] : null;
+  if (!row || !row.id) {
+    throw new Error('startIngestionRun_ failed: no id returned');
+  }
+  return row.id;
+}
+
+function finishIngestionRun_(runId, status, rowsProcessed, details, errorMessage) {
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/ingestion_runs?id=eq.' + encodeURIComponent(runId);
+  var payload = {
+    ended_at: new Date().toISOString(),
+    status: status || 'success',
+    rows_processed: typeof rowsProcessed === 'number' ? rowsProcessed : null,
+    details: details || null,
+    error_message: errorMessage || null
+  };
+
+  var res = UrlFetchApp.fetch(endpoint, {
+    method: 'patch',
+    contentType: 'application/json',
+    headers: {
+      apikey: conf.serviceRole,
+      Authorization: 'Bearer ' + conf.serviceRole,
+      'Content-Profile': 'raw',
+      'Accept-Profile': 'raw',
+      Prefer: 'return=minimal'
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  var code = res.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error('finishIngestionRun_ failed: ' + code + ' ' + res.getContentText());
+  }
+}
+
+function callSupabaseRpc_(rpcName, payloadObj) {
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/rpc/' + encodeURIComponent(String(rpcName || ''));
+  var payload = payloadObj || {};
+
+  var res = UrlFetchApp.fetch(endpoint, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      apikey: conf.serviceRole,
+      Authorization: 'Bearer ' + conf.serviceRole
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  var code = res.getResponseCode();
+  var body = res.getContentText();
+  if (code < 200 || code >= 300) {
+    throw new Error('RPC ' + rpcName + ' failed: ' + code + ' ' + body);
+  }
+
+  return body;
+}
+
+/**
+ * Refreshes materialized marts used by Webflow product widgets.
+ * Expected RPCs in Supabase:
+ * - public.refresh_mv_top_products_30d()
+ * - public.refresh_mv_top_products_all()
+ */
+function refreshSupabaseMarts_v1(options) {
+  var opts = options || {};
+  var strict = !!opts.strict;
+  var out = {
+    top_products_30d: 'skipped',
+    top_products_all: 'skipped',
+    error: null
+  };
+
+  try {
+    callSupabaseRpc_('refresh_mv_top_products_30d', {});
+    out.top_products_30d = 'ok';
+  } catch (e30) {
+    out.top_products_30d = 'error';
+    out.error = String(e30);
+    Logger.log('[MART_REFRESH][WARN] refresh_mv_top_products_30d failed: ' + e30);
+    if (strict) throw e30;
+  }
+
+  try {
+    callSupabaseRpc_('refresh_mv_top_products_all', {});
+    out.top_products_all = 'ok';
+  } catch (eAll) {
+    out.top_products_all = 'error';
+    out.error = out.error || String(eAll);
+    Logger.log('[MART_REFRESH][WARN] refresh_mv_top_products_all failed: ' + eAll);
+    if (strict) throw eAll;
+  }
+
+  Logger.log('[MART_REFRESH][INFO] refreshSupabaseMarts_v1 result: ' + JSON.stringify(out));
+  return out;
+}
+
+function scheduledReferenceSync_v1() {
+  var startedAt = new Date();
+  var runId = null;
+  var previousMagentoSyncIso = PropertiesService.getScriptProperties().getProperty('MAGENTO_CUSTOMERS_LAST_SYNC');
+  Logger.log('[REFSYNC][INFO] Started scheduledReferenceSync_v1 at ' + startedAt.toISOString());
+
+  var result = {
+    startedAt: startedAt.toISOString(),
+    previousMagentoSyncIso: previousMagentoSyncIso || '',
+    magentoSync: 'skipped',
+    magentoBackfill: null,
+    cludoSync: 'skipped',
+    productsBackfill: null,
+    customerAnalysisBackfill: null,
+    martRefresh: null,
+    finishedAt: null
+  };
+
+  try {
+    try {
+      runId = startIngestionRun_('scheduledReferenceSync_v1', 'reference_data', {
+        trigger_type: 'time_based'
+      });
+      result.runId = runId;
+    } catch (logErr) {
+      Logger.log('[REFSYNC][WARN] Could not start ingestion run log: ' + logErr);
+    }
+
+    if (typeof syncMagentoCustomers === 'function') {
+      syncMagentoCustomers();
+      result.magentoSync = 'ok';
+    } else {
+      result.magentoSync = 'missing_function';
+    }
+
+    if (typeof backfillMagentoCustomersToSupabaseIncremental_v1 === 'function') {
+      result.magentoBackfill = backfillMagentoCustomersToSupabaseIncremental_v1(previousMagentoSyncIso);
+    } else if (typeof backfillMagentoCustomersToSupabase_v1 === 'function') {
+      result.magentoBackfill = backfillMagentoCustomersToSupabase_v1();
+    }
+
+    if (typeof runCludoFullSync === 'function') {
+      runCludoFullSync();
+      result.cludoSync = 'ok';
+    } else if (typeof syncCludoToSalesSheets === 'function') {
+      syncCludoToSalesSheets();
+      result.cludoSync = 'ok_fallback';
+    } else {
+      result.cludoSync = 'missing_function';
+    }
+
+    if (typeof backfillProductsToSupabase_v1 === 'function') {
+      result.productsBackfill = backfillProductsToSupabase_v1();
+    }
+
+    if (typeof backfillCustomerAnalysisToSupabase_v1 === 'function') {
+      result.customerAnalysisBackfill = backfillCustomerAnalysisToSupabase_v1();
+    }
+
+    if (typeof refreshSupabaseMarts_v1 === 'function') {
+      result.martRefresh = refreshSupabaseMarts_v1({ strict: false });
+    }
+
+    result.finishedAt = new Date().toISOString();
+
+    var rowsProcessed =
+      toNum_(result.magentoBackfill && result.magentoBackfill.uploaded) +
+      toNum_(result.productsBackfill && result.productsBackfill.uploaded) +
+      toNum_(result.customerAnalysisBackfill && result.customerAnalysisBackfill.uploaded);
+
+    if (runId) {
+      try {
+        finishIngestionRun_(runId, 'success', rowsProcessed, result, null);
+      } catch (logErr2) {
+        Logger.log('[REFSYNC][WARN] Could not finish ingestion run log (success): ' + logErr2);
+      }
+    }
+
+    Logger.log('[REFSYNC][INFO] Completed scheduledReferenceSync_v1: ' + JSON.stringify(result));
+    return result;
+  } catch (e) {
+    result.finishedAt = new Date().toISOString();
+    result.error = {
+      name: e && e.name ? e.name : '',
+      message: e && e.message ? e.message : String(e),
+      stack: e && e.stack ? e.stack : ''
+    };
+
+    var rowsProcessedErr =
+      toNum_(result.magentoBackfill && result.magentoBackfill.uploaded) +
+      toNum_(result.productsBackfill && result.productsBackfill.uploaded) +
+      toNum_(result.customerAnalysisBackfill && result.customerAnalysisBackfill.uploaded);
+
+    if (runId) {
+      try {
+        finishIngestionRun_(runId, 'error', rowsProcessedErr, result, result.error.message);
+      } catch (logErr3) {
+        Logger.log('[REFSYNC][WARN] Could not finish ingestion run log (error): ' + logErr3);
+      }
+    }
+
+    Logger.log('[REFSYNC][ERROR] scheduledReferenceSync_v1 failed: ' + JSON.stringify(result));
+    throw e;
+  }
+}
+
+function installScheduledReferenceSyncTrigger_v1() {
+  var fn = 'scheduledReferenceSync_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+
+  if (existing.length) {
+    Logger.log('[REFSYNC][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .everyHours(6)
+    .create();
+
+  Logger.log('[REFSYNC][INFO] Created trigger for ' + fn + ' (every 6 hours)');
+  return { created: true, schedule: 'everyHours(6)' };
+}
+
+/************************************************************
+ * SPLIT SCHEDULES: Magento-only and Cludo-only
+ ************************************************************/
+function scheduledMagentoSync_v1() {
+  var startedAt = new Date();
+  var runId = null;
+  Logger.log('[MAGSYNC][INFO] Started scheduledMagentoSync_v1 at ' + startedAt.toISOString());
+
+  var previousMagentoSyncIso = PropertiesService.getScriptProperties().getProperty('MAGENTO_CUSTOMERS_LAST_SYNC');
+  var result = {
+    startedAt: startedAt.toISOString(),
+    previousMagentoSyncIso: previousMagentoSyncIso || '',
+    magentoSync: 'skipped',
+    magentoBackfill: null,
+    finishedAt: null
+  };
+
+  try {
+    try {
+      runId = startIngestionRun_('scheduledMagentoSync_v1', 'magento_customers', {
+        trigger_type: 'time_based'
+      });
+      result.runId = runId;
+    } catch (logErr) {
+      Logger.log('[MAGSYNC][WARN] Could not start ingestion run log: ' + logErr);
+    }
+
+    if (typeof syncMagentoCustomers === 'function') {
+      syncMagentoCustomers();
+      result.magentoSync = 'ok';
+    } else {
+      result.magentoSync = 'missing_function';
+    }
+
+    if (typeof backfillMagentoCustomersToSupabaseIncremental_v1 === 'function') {
+      result.magentoBackfill = backfillMagentoCustomersToSupabaseIncremental_v1(previousMagentoSyncIso);
+    } else if (typeof backfillMagentoCustomersToSupabase_v1 === 'function') {
+      result.magentoBackfill = backfillMagentoCustomersToSupabase_v1();
+    }
+
+    result.finishedAt = new Date().toISOString();
+
+    if (runId) {
+      try {
+        finishIngestionRun_(
+          runId,
+          'success',
+          toNum_(result.magentoBackfill && result.magentoBackfill.uploaded),
+          result,
+          null
+        );
+      } catch (logErr2) {
+        Logger.log('[MAGSYNC][WARN] Could not finish ingestion run log (success): ' + logErr2);
+      }
+    }
+
+    Logger.log('[MAGSYNC][INFO] Completed scheduledMagentoSync_v1: ' + JSON.stringify(result));
+    return result;
+  } catch (e) {
+    result.finishedAt = new Date().toISOString();
+    result.error = {
+      name: e && e.name ? e.name : '',
+      message: e && e.message ? e.message : String(e),
+      stack: e && e.stack ? e.stack : ''
+    };
+
+    if (runId) {
+      try {
+        finishIngestionRun_(
+          runId,
+          'error',
+          toNum_(result.magentoBackfill && result.magentoBackfill.uploaded),
+          result,
+          result.error.message
+        );
+      } catch (logErr3) {
+        Logger.log('[MAGSYNC][WARN] Could not finish ingestion run log (error): ' + logErr3);
+      }
+    }
+
+    Logger.log('[MAGSYNC][ERROR] scheduledMagentoSync_v1 failed: ' + JSON.stringify(result));
+    throw e;
+  }
+}
+
+function scheduledCludoSync_v1() {
+  var startedAt = new Date();
+  var runId = null;
+  Logger.log('[CLUDOSYNC][INFO] Started scheduledCludoSync_v1 at ' + startedAt.toISOString());
+
+  var result = {
+    startedAt: startedAt.toISOString(),
+    cludoSync: 'skipped',
+    productsBackfill: null,
+    martRefresh: null,
+    finishedAt: null
+  };
+
+  try {
+    try {
+      runId = startIngestionRun_('scheduledCludoSync_v1', 'products_cludo', {
+        trigger_type: 'time_based'
+      });
+      result.runId = runId;
+    } catch (logErr) {
+      Logger.log('[CLUDOSYNC][WARN] Could not start ingestion run log: ' + logErr);
+    }
+
+    if (typeof runCludoFullSync === 'function') {
+      runCludoFullSync();
+      result.cludoSync = 'ok';
+    } else if (typeof syncCludoToSalesSheets === 'function') {
+      syncCludoToSalesSheets();
+      result.cludoSync = 'ok_fallback';
+    } else {
+      result.cludoSync = 'missing_function';
+    }
+
+    if (typeof backfillProductsToSupabase_v1 === 'function') {
+      result.productsBackfill = backfillProductsToSupabase_v1();
+    }
+
+    if (typeof refreshSupabaseMarts_v1 === 'function') {
+      result.martRefresh = refreshSupabaseMarts_v1({ strict: false });
+    }
+
+    result.finishedAt = new Date().toISOString();
+
+    if (runId) {
+      try {
+        finishIngestionRun_(
+          runId,
+          'success',
+          toNum_(result.productsBackfill && result.productsBackfill.uploaded),
+          result,
+          null
+        );
+      } catch (logErr2) {
+        Logger.log('[CLUDOSYNC][WARN] Could not finish ingestion run log (success): ' + logErr2);
+      }
+    }
+
+    Logger.log('[CLUDOSYNC][INFO] Completed scheduledCludoSync_v1: ' + JSON.stringify(result));
+    return result;
+  } catch (e) {
+    result.finishedAt = new Date().toISOString();
+    result.error = {
+      name: e && e.name ? e.name : '',
+      message: e && e.message ? e.message : String(e),
+      stack: e && e.stack ? e.stack : ''
+    };
+
+    if (runId) {
+      try {
+        finishIngestionRun_(
+          runId,
+          'error',
+          toNum_(result.productsBackfill && result.productsBackfill.uploaded),
+          result,
+          result.error.message
+        );
+      } catch (logErr3) {
+        Logger.log('[CLUDOSYNC][WARN] Could not finish ingestion run log (error): ' + logErr3);
+      }
+    }
+
+    Logger.log('[CLUDOSYNC][ERROR] scheduledCludoSync_v1 failed: ' + JSON.stringify(result));
+    throw e;
+  }
+}
+
+function scheduledCustomerAnalysisSync_v1() {
+  var startedAt = new Date();
+  var runId = null;
+  Logger.log('[CASYNC][INFO] Started scheduledCustomerAnalysisSync_v1 at ' + startedAt.toISOString());
+
+  var result = {
+    startedAt: startedAt.toISOString(),
+    customerAnalysisBuild: 'skipped',
+    customerAnalysisBackfill: null,
+    finishedAt: null
+  };
+
+  try {
+    try {
+      runId = startIngestionRun_('scheduledCustomerAnalysisSync_v1', 'customer_analysis', {
+        trigger_type: 'time_based'
+      });
+      result.runId = runId;
+    } catch (logErr) {
+      Logger.log('[CASYNC][WARN] Could not start ingestion run log: ' + logErr);
+    }
+
+    if (typeof buildCustomerAnalysis === 'function') {
+      buildCustomerAnalysis();
+      result.customerAnalysisBuild = 'ok';
+    } else {
+      result.customerAnalysisBuild = 'missing_function';
+    }
+
+    if (typeof backfillCustomerAnalysisToSupabase_v1 === 'function') {
+      result.customerAnalysisBackfill = backfillCustomerAnalysisToSupabase_v1();
+    }
+
+    result.finishedAt = new Date().toISOString();
+
+    if (runId) {
+      try {
+        finishIngestionRun_(
+          runId,
+          'success',
+          toNum_(result.customerAnalysisBackfill && result.customerAnalysisBackfill.uploaded),
+          result,
+          null
+        );
+      } catch (logErr2) {
+        Logger.log('[CASYNC][WARN] Could not finish ingestion run log (success): ' + logErr2);
+      }
+    }
+
+    Logger.log('[CASYNC][INFO] Completed scheduledCustomerAnalysisSync_v1: ' + JSON.stringify(result));
+    return result;
+  } catch (e) {
+    result.finishedAt = new Date().toISOString();
+    result.error = {
+      name: e && e.name ? e.name : '',
+      message: e && e.message ? e.message : String(e),
+      stack: e && e.stack ? e.stack : ''
+    };
+
+    if (runId) {
+      try {
+        finishIngestionRun_(
+          runId,
+          'error',
+          toNum_(result.customerAnalysisBackfill && result.customerAnalysisBackfill.uploaded),
+          result,
+          result.error.message
+        );
+      } catch (logErr3) {
+        Logger.log('[CASYNC][WARN] Could not finish ingestion run log (error): ' + logErr3);
+      }
+    }
+
+    Logger.log('[CASYNC][ERROR] scheduledCustomerAnalysisSync_v1 failed: ' + JSON.stringify(result));
+    throw e;
+  }
+}
+
+function installScheduledMagentoSyncTrigger_v1() {
+  var fn = 'scheduledMagentoSync_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[MAGSYNC][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .everyHours(1)
+    .create();
+
+  Logger.log('[MAGSYNC][INFO] Created trigger for ' + fn + ' (every 1 hour)');
+  return { created: true, schedule: 'everyHours(1)' };
+}
+
+function installScheduledCludoSyncTrigger_v1() {
+  var fn = 'scheduledCludoSync_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[CLUDOSYNC][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .everyHours(12)
+    .create();
+
+  Logger.log('[CLUDOSYNC][INFO] Created trigger for ' + fn + ' (every 12 hours)');
+  return { created: true, schedule: 'everyHours(12)' };
+}
+
+function installScheduledCustomerAnalysisSyncTrigger_v1() {
+  var fn = 'scheduledCustomerAnalysisSync_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[CASYNC][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .everyHours(24)
+    .create();
+
+  Logger.log('[CASYNC][INFO] Created trigger for ' + fn + ' (every 24 hours)');
+  return { created: true, schedule: 'everyHours(24)' };
+}
+
+/************************************************************
+ * BC incremental sync schedule
+ ************************************************************/
+function scheduledBcSync_v1() {
+  var lock = null;
+  var runId = null;
+  var startedAt = new Date();
+  var result = {
+    startedAt: startedAt.toISOString(),
+    bcSync: null,
+    finishedAt: null
+  };
+
+  try {
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(15000)) {
+      Logger.log('[BCSYNC][WARN] Skipping scheduledBcSync_v1: another run is in progress.');
+      return { skipped: true, reason: 'lock_not_acquired', startedAt: startedAt.toISOString() };
+    }
+
+    try {
+      runId = startIngestionRun_('scheduledBcSync_v1', 'bc_data', {
+        trigger_type: 'time_based'
+      });
+      result.runId = runId;
+    } catch (logErr) {
+      Logger.log('[BCSYNC][WARN] Could not start ingestion run log: ' + logErr);
+    }
+
+    result.bcSync = runBcIncrementalSync_v1();
+    result.finishedAt = new Date().toISOString();
+
+    var rowsProcessed =
+      toNum_(result.bcSync && result.bcSync.invoices && result.bcSync.invoices.uploaded) +
+      toNum_(result.bcSync && result.bcSync.lines && result.bcSync.lines.uploaded) +
+      toNum_(result.bcSync && result.bcSync.customers && result.bcSync.customers.uploaded);
+
+    if (runId) {
+      try {
+        finishIngestionRun_(runId, 'success', rowsProcessed, result, null);
+      } catch (logErr2) {
+        Logger.log('[BCSYNC][WARN] Could not finish ingestion run log (success): ' + logErr2);
+      }
+    }
+
+    Logger.log('[BCSYNC][INFO] Completed scheduledBcSync_v1: ' + JSON.stringify(result));
+    return result;
+  } catch (e) {
+    result.finishedAt = new Date().toISOString();
+    result.error = {
+      name: e && e.name ? e.name : '',
+      message: e && e.message ? e.message : String(e),
+      stack: e && e.stack ? e.stack : ''
+    };
+
+    var rowsProcessedErr =
+      toNum_(result.bcSync && result.bcSync.invoices && result.bcSync.invoices.uploaded) +
+      toNum_(result.bcSync && result.bcSync.lines && result.bcSync.lines.uploaded) +
+      toNum_(result.bcSync && result.bcSync.customers && result.bcSync.customers.uploaded);
+
+    if (runId) {
+      try {
+        finishIngestionRun_(runId, 'error', rowsProcessedErr, result, result.error.message);
+      } catch (logErr3) {
+        Logger.log('[BCSYNC][WARN] Could not finish ingestion run log (error): ' + logErr3);
+      }
+    }
+
+    Logger.log('[BCSYNC][ERROR] scheduledBcSync_v1 failed: ' + JSON.stringify(result));
+    throw e;
+  } finally {
+    if (lock) {
+      try { lock.releaseLock(); } catch (_) {}
+    }
+  }
+}
+
+function installScheduledBcSyncTrigger_v1() {
+  var fn = 'scheduledBcSync_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[BCSYNC][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .everyDays(1)
+    .create();
+
+  Logger.log('[BCSYNC][INFO] Created trigger for ' + fn + ' (every 1 day)');
+  return { created: true, schedule: 'everyDays(1)' };
+}
+
+function removeScheduledBcSyncTrigger_v1() {
+  var fn = 'scheduledBcSync_v1';
+  var triggers = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+
+  triggers.forEach(function(t) {
+    ScriptApp.deleteTrigger(t);
+  });
+
+  Logger.log('[BCSYNC][INFO] Removed ' + triggers.length + ' trigger(s) for ' + fn);
+  return { removed: triggers.length };
+}

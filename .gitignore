@@ -1,0 +1,12 @@
+# Editor/OS files
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Dependency/build folders
+node_modules/
+dist/
+build/
+
+# Logs
+*.log

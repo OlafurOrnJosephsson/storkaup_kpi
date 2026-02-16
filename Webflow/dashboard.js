@@ -1,0 +1,279 @@
+(function () {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  var cfg = window.STORKAUP_CONFIG || {};
+  var rpcUrl = (cfg.supabaseUrl || "") + "/rest/v1/rpc/dashboard_compat";
+  var apiKey = cfg.publishableKey || "";
+  var selectedDay = null;
+  var dayApiUnavailable = false;
+  var DEBUG = true;
+
+  function log() { if (DEBUG && window.console) console.log.apply(console, arguments); }
+
+  function toNumberSafe(v) {
+    if (typeof v === "number") return v;
+    if (v == null) return 0;
+    var cleaned = v.toString().replace(/[^0-9.-]/g, "");
+    var n = Number(cleaned);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function formatNumber(v) {
+    var n = Math.round(toNumberSafe(v));
+    return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  }
+
+  function pct(n) {
+    var value = toNumberSafe(n);
+    return (Math.round(value * 1000) / 10) + "%";
+  }
+
+  function parsePercent(text) {
+    if (!text) return null;
+    var cleaned = text.toString().trim().replace("%", "").replace(",", ".");
+    var n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function setText(metric, valueText) {
+    var el = document.querySelector('[data-metric="' + metric + '"]');
+    if (el) el.textContent = valueText;
+  }
+
+  function buildMetricMap() {
+    var values = {};
+    document.querySelectorAll(".webapp-data[data-metric]").forEach(function (el) {
+      var key = el.getAttribute("data-metric");
+      var p = parsePercent(el.textContent);
+      if (key && p !== null) values[key] = p;
+    });
+    return values;
+  }
+
+  function updateMeters(values) {
+    document.querySelectorAll(".meter-fill[data-fill-from]").forEach(function (fill) {
+      var key = fill.getAttribute("data-fill-from");
+      var p = values[key];
+      var clamped = Math.max(0, Math.min(100, p == null ? 0 : p));
+      fill.style.width = clamped + "%";
+    });
+  }
+
+  function updateDiverging(values) {
+    var BASE = 100;
+    var RIGHT_MAX = 200;
+    document.querySelectorAll(".diverge").forEach(function (track) {
+      var any = track.querySelector("[data-diverge-from]");
+      if (!any) return;
+      var key = any.getAttribute("data-diverge-from");
+      var v = values[key];
+      if (v == null) v = BASE;
+
+      var clamped = Math.max(0, Math.min(RIGHT_MAX, v));
+      var leftWidth = Math.min(clamped / BASE, 1) * 50;
+
+      var rightWidth = 0;
+      if (clamped > BASE) {
+        rightWidth = ((clamped - BASE) / (RIGHT_MAX - BASE)) * 50;
+        rightWidth = Math.max(0, Math.min(50, rightWidth));
+      }
+
+      var neg = track.querySelector('.diverge-neg[data-diverge-from="' + key + '"]');
+      var pos = track.querySelector('.diverge-pos[data-diverge-from="' + key + '"]');
+      if (neg) neg.style.width = leftWidth + "%";
+      if (pos) pos.style.width = rightWidth + "%";
+    });
+  }
+
+  function setActiveByMonth(month) {
+    document.querySelectorAll(".dashboard-date-item").forEach(function (node) {
+      node.classList.toggle("active", node.getAttribute("data-month") === month);
+    });
+  }
+
+  function normalizeRpcPayload(raw) {
+    var data = raw;
+    if (Array.isArray(data)) data = data[0];
+    if (data && data.dashboard_compat) data = data.dashboard_compat;
+    return data;
+  }
+
+  function getTodayIso() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function normalizeDay(day) {
+    var s = String(day || "").trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+  }
+
+  function getActiveMonth() {
+    var active = document.querySelector(".dashboard-date-item.active[data-month]");
+    var first = document.querySelector(".dashboard-date-item[data-month]");
+    return active ? active.getAttribute("data-month") : (first ? first.getAttribute("data-month") : null);
+  }
+
+  function applyDayMetrics(dayKey, orders, revenueExcl, revenueIncl) {
+    setText("day-date", dayKey || "");
+    setText("day-orders", toNumberSafe(orders));
+    setText("day-revenue-excl", formatNumber(revenueExcl));
+    setText("day-revenue-incl", formatNumber(revenueIncl));
+  }
+
+  function fetchDay(dayKey) {
+    var day = normalizeDay(dayKey);
+    if (!day || !cfg.supabaseUrl || !apiKey || dayApiUnavailable) return Promise.resolve();
+
+    var dayUrl = (cfg.supabaseUrl || "") +
+      "/rest/v1/v_web_daily_unified?select=day,revenue_incl,revenue_excl,orders&day=eq." +
+      encodeURIComponent(day) + "&limit=1";
+
+    return fetch(dayUrl, {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        "apikey": apiKey,
+        "Authorization": "Bearer " + apiKey,
+        "Accept-Profile": "mart"
+      }
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("Day endpoint HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (rows) {
+        var row = Array.isArray(rows) && rows.length ? rows[0] : null;
+        applyDayMetrics(
+          day,
+          row ? row.orders : 0,
+          row ? row.revenue_excl : 0,
+          row ? row.revenue_incl : 0
+        );
+      })
+      .catch(function (err) {
+        log("Day fetch failed:", err);
+        if (err && /HTTP 401/.test(String(err.message || err))) {
+          dayApiUnavailable = true;
+        }
+        // Fall back to monthly payload day values if day endpoint is unauthorized/unavailable.
+        selectedDay = null;
+        fetchMonth(getActiveMonth());
+      });
+  }
+
+  function fetchMonth(month) {
+    if (!cfg.supabaseUrl || !apiKey) {
+      log("Missing STORKAUP_CONFIG.supabaseUrl or publishableKey");
+      return Promise.resolve();
+    }
+
+    log("Fetching month:", month, rpcUrl);
+
+    return fetch(rpcUrl, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": apiKey,
+        "Authorization": "Bearer " + apiKey
+      },
+      body: JSON.stringify({ p_month: month || null })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (raw) {
+        log("Raw RPC response:", raw);
+        var data = normalizeRpcPayload(raw);
+        log("Normalized response:", data);
+
+        if (!data || !data.month) {
+          log("Dashboard error: invalid payload", data);
+          return;
+        }
+
+        setText("month-yoy", pct(data.month.yoyPct));
+        setText("month-weborders-pct", pct(data.month.webOrdersPct));
+        setText("month-webrev-pct", pct(data.month.webRevenuePct));
+        setText("month-salesrep-pct", pct(data.month.salesRepPct));
+        setText("month-yoy-orders", pct(data.month.yoyOrdersPct));
+        if (!selectedDay) {
+          var dayDate = (data.day && data.day.date) ? data.day.date : getTodayIso();
+          var dayOrders = data.dayOrders != null ? data.dayOrders : (data.day ? data.day.orders : 0);
+          var dayRevenueExcl = data.dayRevenueExcl != null ? data.dayRevenueExcl : (data.day ? data.day.revenueExcl : 0);
+          var dayRevenueIncl = data.day && data.day.revenueIncl != null ? data.day.revenueIncl : 0;
+          applyDayMetrics(dayDate, dayOrders, dayRevenueExcl, dayRevenueIncl);
+        }
+        setText("month-selfserve-pct", pct(data.month.selfServePct));
+        setText("month-aov-excl", formatNumber(data.month.aovExcl));
+        setText("month-bc-aov-excl", formatNumber(data.month.bcAovExcl));
+        setText("month-revenue-excl", formatNumber(data.month.revenueExcl || 0));
+        setText("month-orders", data.month.orders || 0);
+        setText("month-aov-web-pct", pct(data.month.aovWebPct));
+        setText("month-aov-bc-pct", pct(data.month.aovBcPct));
+        var firstTimeWebBuyers = (data.month.firstTimeWebBuyers != null)
+          ? data.month.firstTimeWebBuyers
+          : data.month.newWebCustomers;
+        var firstTimeWebBuyersPct = (data.month.firstTimeWebBuyersPct != null)
+          ? data.month.firstTimeWebBuyersPct
+          : data.month.newWebCustomersPct;
+        setText("month-new-web-customers", toNumberSafe(firstTimeWebBuyers));
+        setText("month-new-web-customers-pct", pct(firstTimeWebBuyersPct));
+        setText("month-first-time-web-buyers", toNumberSafe(firstTimeWebBuyers));
+        setText("month-first-time-web-buyers-pct", pct(firstTimeWebBuyersPct));
+
+        var values = buildMetricMap();
+        updateMeters(values);
+        updateDiverging(values);
+      })
+      .catch(function (err) {
+        log("Fetch failed:", err);
+      });
+  }
+
+  function init() {
+    var items = document.querySelectorAll(".dashboard-date-item[data-month]");
+    log("Found month items:", items.length);
+    var dayPicker = document.querySelector("input[data-day-picker], [data-day-picker] input[type='date'], input[type='date'][data-day-picker]");
+
+    if (dayPicker) {
+      var initialDay = normalizeDay(dayPicker.value) || getTodayIso();
+      dayPicker.value = initialDay;
+      dayPicker.addEventListener("change", function () {
+        var next = normalizeDay(dayPicker.value);
+        selectedDay = next || null;
+        if (selectedDay) {
+          fetchDay(selectedDay);
+        } else {
+          fetchMonth(getActiveMonth());
+        }
+      });
+    }
+
+    document.addEventListener("click", function (ev) {
+      var el = ev.target && ev.target.closest ? ev.target.closest(".dashboard-date-item[data-month]") : null;
+      if (!el) return;
+      var month = el.getAttribute("data-month");
+      setActiveByMonth(month);
+      fetchMonth(month);
+      if (selectedDay) fetchDay(selectedDay);
+    });
+
+    var active = document.querySelector(".dashboard-date-item.active[data-month]");
+    var first = document.querySelector(".dashboard-date-item[data-month]");
+    var initialMonth = active ? active.getAttribute("data-month") : (first ? first.getAttribute("data-month") : null);
+
+    fetchMonth(initialMonth);
+    if (selectedDay) fetchDay(selectedDay);
+
+    setInterval(function () {
+      var activeNow = document.querySelector(".dashboard-date-item.active[data-month]");
+      var month = activeNow ? activeNow.getAttribute("data-month") : initialMonth;
+      fetchMonth(month);
+      if (selectedDay) fetchDay(selectedDay);
+    }, 120000);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
