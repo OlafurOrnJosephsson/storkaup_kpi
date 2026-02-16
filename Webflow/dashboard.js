@@ -119,6 +119,27 @@
     setText("day-revenue-incl", formatNumber(revenueIncl));
   }
 
+  function initFlatpickrIfAvailable(dayPicker) {
+    if (!dayPicker || typeof window.flatpickr !== "function") return;
+    if (dayPicker._flatpickr) return;
+
+    try {
+      window.flatpickr(dayPicker, {
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "d/m/Y",
+        allowInput: true,
+        defaultDate: normalizeDay(dayPicker.value) || getTodayIso(),
+        onChange: function (_selectedDates, dateStr) {
+          dayPicker.value = normalizeDay(dateStr) || "";
+          dayPicker.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      });
+    } catch (err) {
+      log("Flatpickr init failed:", err);
+    }
+  }
+
   function fetchDay(dayKey) {
     var day = normalizeDay(dayKey);
     if (!day || !cfg.supabaseUrl || !apiKey || dayApiUnavailable) return Promise.resolve();
@@ -236,6 +257,7 @@
     if (dayPicker) {
       var initialDay = normalizeDay(dayPicker.value) || getTodayIso();
       dayPicker.value = initialDay;
+      initFlatpickrIfAvailable(dayPicker);
       dayPicker.addEventListener("change", function () {
         var next = normalizeDay(dayPicker.value);
         selectedDay = next || null;
