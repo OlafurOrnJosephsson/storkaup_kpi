@@ -115,10 +115,35 @@
   }
 
   function applyDayMetrics(dayKey, orders, revenueExcl, revenueIncl) {
-    setText("day-date", dayKey || "");
+    setText("day-date", formatDayLabel(dayKey || ""));
     setText("day-orders", toNumberSafe(orders));
     setText("day-revenue-excl", formatNumber(revenueExcl));
     setText("day-revenue-incl", formatNumber(revenueIncl));
+  }
+
+  function formatDayLabel(dayKey) {
+    var s = normalizeDay(dayKey);
+    if (!s) return dayKey || "";
+
+    var target = document.querySelector('[data-metric="day-date"]');
+    var mode = target ? String(target.getAttribute("data-date-format") || "").trim().toLowerCase() : "";
+
+    var parts = s.split("-");
+    var yyyy = parts[0];
+    var mm = parts[1];
+    var dd = parts[2];
+
+    if (mode === "iso") return s;
+    if (mode === "slash") return dd + "/" + mm + "/" + yyyy;
+    if (mode === "long-is") {
+      var d = new Date(s + "T00:00:00");
+      if (!isNaN(d.getTime()) && typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+        return new Intl.DateTimeFormat("is-IS", { day: "numeric", month: "long", year: "numeric" }).format(d);
+      }
+    }
+
+    // Default: dd.mm.yyyy
+    return dd + "." + mm + "." + yyyy;
   }
 
   function initFlatpickrIfAvailable(dayPicker) {
