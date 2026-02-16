@@ -1,13 +1,15 @@
 (function () {
   if (typeof window === "undefined" || typeof document === "undefined") return;
-  var cfg = window.STORKAUP_CONFIG || {};
-  var rpcUrl = (cfg.supabaseUrl || "") + "/rest/v1/rpc/dashboard_compat";
-  var apiKey = cfg.publishableKey || "";
   var selectedDay = null;
   var dayApiUnavailable = false;
   var DEBUG = true;
 
   function log() { if (DEBUG && window.console) console.log.apply(console, arguments); }
+  function getCfg() { return window.STORKAUP_CONFIG || {}; }
+  function getRpcUrl() {
+    var cfg = getCfg();
+    return (cfg.supabaseUrl || "") + "/rest/v1/rpc/dashboard_compat";
+  }
 
   function toNumberSafe(v) {
     if (typeof v === "number") return v;
@@ -141,6 +143,8 @@
   }
 
   function fetchDay(dayKey) {
+    var cfg = getCfg();
+    var apiKey = cfg.publishableKey || "";
     var day = normalizeDay(dayKey);
     if (!day || !cfg.supabaseUrl || !apiKey || dayApiUnavailable) return Promise.resolve();
 
@@ -182,6 +186,9 @@
   }
 
   function fetchMonth(month) {
+    var cfg = getCfg();
+    var apiKey = cfg.publishableKey || "";
+    var rpcUrl = getRpcUrl();
     if (!cfg.supabaseUrl || !apiKey) {
       log("Missing STORKAUP_CONFIG.supabaseUrl or publishableKey");
       return Promise.resolve();
