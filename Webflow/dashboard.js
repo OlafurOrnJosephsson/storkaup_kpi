@@ -1,5 +1,7 @@
 (function () {
   if (typeof window === "undefined" || typeof document === "undefined") return;
+  if (window.__STORKAUP_DASHBOARD_INIT__) return;
+  window.__STORKAUP_DASHBOARD_INIT__ = true;
   var selectedDay = null;
   var dayApiUnavailable = false;
   var DEBUG = true;
