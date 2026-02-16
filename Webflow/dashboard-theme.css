@@ -1,0 +1,99 @@
+/* Storkaup dashboard theme overrides (including Flatpickr). */
+
+/* Keep native input in DOM for JS, but render Flatpickr alt input visually */
+input[data-day-picker] {
+  position: absolute !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 1px !important;
+  height: 1px !important;
+}
+
+/* Visible date field (compact to fit top nav controls) */
+.flatpickr-input[readonly] {
+  min-width: 9.5rem;
+  height: 2.125rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--light-gray-border, #e9e9e9);
+  border-radius: var(--8px, 8px);
+  background: var(--white, #fff);
+  color: var(--blue, #10069f);
+  font-family: var(--primary-font, "Sf Pro Text", Arial, sans-serif);
+  font-size: var(--_sizes---1rem-base, 1rem);
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: none;
+}
+
+.flatpickr-input[readonly]:hover {
+  border-color: var(--gray, #dedfdc);
+}
+
+.flatpickr-input[readonly]:focus {
+  outline: none;
+  border-color: var(--blue, #10069f);
+  box-shadow: 0 0 0 2px rgba(16, 6, 159, 0.18);
+}
+
+/* Calendar shell */
+.flatpickr-calendar {
+  border: 1px solid var(--light-gray-border, #e9e9e9);
+  border-radius: var(--12px, 12px);
+  background: var(--white, #fff);
+  box-shadow: 0 12px 24px rgba(16, 6, 159, 0.12);
+  font-family: var(--primary-font, "Sf Pro Text", Arial, sans-serif);
+}
+
+/* Header */
+.flatpickr-months {
+  background: var(--blue-background, #f5f6ff);
+  border-top-left-radius: var(--12px, 12px);
+  border-top-right-radius: var(--12px, 12px);
+}
+
+.flatpickr-current-month,
+.flatpickr-current-month .flatpickr-monthDropdown-months,
+.flatpickr-current-month input.cur-year {
+  color: var(--blue, #10069f);
+  font-weight: 700;
+}
+
+/* Weekdays */
+span.flatpickr-weekday {
+  color: var(--black-700, #5b5b5b);
+  font-weight: 600;
+}
+
+/* Days */
+.flatpickr-day {
+  color: var(--black, #282828);
+  border-radius: var(--4px, 4px);
+}
+
+.flatpickr-day:hover {
+  background: var(--blue-100, #c5c1fd);
+  border-color: var(--blue-100, #c5c1fd);
+  color: var(--blue, #10069f);
+}
+
+.flatpickr-day.today {
+  border-color: var(--blue, #10069f);
+  color: var(--blue, #10069f);
+}
+
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange {
+  background: var(--blue, #10069f);
+  border-color: var(--blue, #10069f);
+  color: var(--white, #fff);
+}
+
+/* Disabled / outside */
+.flatpickr-day.prevMonthDay,
+.flatpickr-day.nextMonthDay,
+.flatpickr-day.flatpickr-disabled {
+  color: var(--black-600, #757575);
+  opacity: 0.45;
+}
+

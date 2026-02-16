@@ -36,6 +36,10 @@
   if (document.querySelector('script[data-storkaup-dashboard="1"]')) return;
 
   ensureCss("https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css", "data-flatpickr-css");
+  ensureCss(
+    "https://cdn.jsdelivr.net/gh/OlafurOrnJosephsson/storkaup_kpi@main/Webflow/dashboard-theme.css",
+    "data-storkaup-theme-css"
+  );
   ensureScript("https://cdn.jsdelivr.net/npm/flatpickr", "data-flatpickr-js", function () {
     ensureScript(
       "https://cdn.jsdelivr.net/gh/OlafurOrnJosephsson/storkaup_kpi@main/Webflow/dashboard.js",
