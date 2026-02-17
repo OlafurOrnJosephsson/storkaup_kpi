@@ -3,8 +3,12 @@
   if (window.__STORKAUP_DASHBOARD_INIT__) return;
   window.__STORKAUP_DASHBOARD_INIT__ = true;
   var selectedDay = null;
+  var selectedWeekdayIso = null; // 1..7 (Mon..Sun) for separate weekday-average chart override
+  var weekdayGridCacheDay = null;
+  var weekdayGridCacheTs = 0;
   var dayApiUnavailable = false;
   var DEBUG = true;
+  var WEEKDAY_SHORT_IS = { 1: "Mán", 2: "Þri", 3: "Mið", 4: "Fim", 5: "Fös", 6: "Lau", 7: "Sun" };
 
   function log() { if (DEBUG && window.console) console.log.apply(console, arguments); }
   function getCfg() { return window.STORKAUP_CONFIG || {}; }
@@ -130,6 +134,34 @@
     return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
   }
 
+  function isoDowFromDay(dayStr) {
+    var s = normalizeDay(dayStr);
+    if (!s) return null;
+    var d = new Date(s + "T00:00:00Z");
+    if (isNaN(d.getTime())) return null;
+    var wd = d.getUTCDay(); // 0..6 (Sun..Sat)
+    return wd === 0 ? 7 : wd; // 1..7 (Mon..Sun)
+  }
+
+  function shiftDay(dayStr, diffDays) {
+    var s = normalizeDay(dayStr);
+    if (!s) return "";
+    var d = new Date(s + "T00:00:00Z");
+    if (isNaN(d.getTime())) return "";
+    d.setUTCDate(d.getUTCDate() + diffDays);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function nearestDayByIsoDow(baseDay, isoDow) {
+    var b = normalizeDay(baseDay);
+    var target = Number(isoDow || 0);
+    if (!b || target < 1 || target > 7) return "";
+    var baseIso = isoDowFromDay(b);
+    if (!baseIso) return "";
+    var diff = target - baseIso;
+    return shiftDay(b, diff);
+  }
+
   function getActiveMonth() {
     var active = document.querySelector(".dashboard-date-item.active[data-month]");
     var first = document.querySelector(".dashboard-date-item[data-month]");
@@ -193,10 +225,7 @@
     var hourly = row.hourly_series || [];
     setText("day-hourly-series-json", JSON.stringify(hourly));
     renderHourlyChart(hourly);
-    var weekdayHourly = row.weekday_hourly_avg_series || [];
-    setText("day-weekday-hourly-series-json", JSON.stringify(weekdayHourly));
-    setText("day-weekday-hourly-sample-days", toNumberSafe(row.weekday_hourly_avg_days));
-    renderHourlyChart(weekdayHourly, "[data-hourly-weekday-chart]", "Meðaltal");
+    applyWeekdayAverageChart(row);
   }
 
   function normalizeSingleRow(raw) {
@@ -238,6 +267,162 @@
     });
     html += '</div>';
     host.innerHTML = html;
+  }
+
+  function buildHourlyBarsHtml(series, maxOrders, cssClass) {
+    var arr = Array.isArray(series) ? series : [];
+    var html = '<div class="' + (cssClass || "hourly-chart") + '">';
+    arr.forEach(function (p) {
+      var hour = String(p && p.hour != null ? p.hour : "").padStart(2, "0");
+      var orders = toNumberSafe(p && p.orders);
+      var height = Math.max(4, Math.round((orders / maxOrders) * 100));
+      html += ''
+        + '<div class="hourly-col" title="' + hour + ':00 - ' + orders + ' meðaltal">'
+        +   '<div class="hourly-bar-wrap">'
+        +     '<div class="hourly-bar" style="height:' + height + '%"></div>'
+        +   '</div>'
+        +   '<div class="hourly-label">' + hour + '</div>'
+        + '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderWeekdayComparisonGrid(items) {
+    var host = document.querySelector("[data-hourly-weekday-grid]");
+    if (!host) return;
+    var rows = Array.isArray(items) ? items : [];
+    if (!rows.length) {
+      host.innerHTML = "";
+      return;
+    }
+    var globalMax = 0;
+    rows.forEach(function (r) {
+      (r.series || []).forEach(function (p) {
+        var n = toNumberSafe(p && p.orders);
+        if (n > globalMax) globalMax = n;
+      });
+    });
+    if (globalMax <= 0) globalMax = 1;
+
+    var html = '<div class="weekday-grid">';
+    rows.sort(function (a, b) { return a.isoDow - b.isoDow; }).forEach(function (r) {
+      var label = WEEKDAY_SHORT_IS[r.isoDow] || String(r.isoDow);
+      html += ''
+        + '<div class="weekday-card">'
+        +   '<div class="weekday-card-title">' + label + '</div>'
+        +   buildHourlyBarsHtml(r.series || [], globalMax, "hourly-chart hourly-chart-mini")
+        +   '<div class="weekday-card-meta">' + toNumberSafe(r.sampleDays) + ' dagar</div>'
+        + '</div>';
+    });
+    html += '</div>';
+    host.innerHTML = html;
+  }
+
+  function applyWeekdayAverageChart(row) {
+    var weekdayHourly = row && row.weekday_hourly_avg_series ? row.weekday_hourly_avg_series : [];
+    setText("day-weekday-hourly-series-json", JSON.stringify(weekdayHourly));
+    setText("day-weekday-hourly-sample-days", toNumberSafe(row && row.weekday_hourly_avg_days));
+    renderHourlyChart(weekdayHourly, "[data-hourly-weekday-chart]", "Meðaltal");
+  }
+
+  function setWeekdayChipActive() {
+    document.querySelectorAll("[data-weekday-iso]").forEach(function (el) {
+      var iso = Number(el.getAttribute("data-weekday-iso"));
+      el.classList.toggle("active", selectedWeekdayIso != null && iso === selectedWeekdayIso);
+    });
+  }
+
+  function fetchWeekdayAverage(isoDow) {
+    var target = Number(isoDow || 0);
+    if (target < 1 || target > 7) return Promise.resolve();
+
+    var cfg = getCfg();
+    var apiKey = cfg.publishableKey || "";
+    if (!cfg.supabaseUrl || !apiKey) return Promise.resolve();
+
+    var baseDay = normalizeDay(selectedDay) || getTodayIso();
+    var anchorDay = nearestDayByIsoDow(baseDay, target);
+    if (!anchorDay) return Promise.resolve();
+
+    var dayRpcUrl = (cfg.supabaseUrl || "") + "/rest/v1/rpc/day_kpi_pack";
+    return fetch(dayRpcUrl, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": apiKey,
+        "Authorization": "Bearer " + apiKey
+      },
+      body: JSON.stringify({ p_day: anchorDay })
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("Weekday pack HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (raw) {
+        var row = normalizeSingleRow(raw);
+        if (!row) throw new Error("Weekday pack empty payload");
+        applyWeekdayAverageChart(row);
+      })
+      .catch(function (err) {
+        log("Weekday average fetch failed:", err);
+      });
+  }
+
+  function fetchWeekdayComparisonGrid(force) {
+    var host = document.querySelector("[data-hourly-weekday-grid]");
+    if (!host) return Promise.resolve();
+
+    var baseDay = normalizeDay(selectedDay) || getTodayIso();
+    var nowMs = Date.now();
+    if (!force && weekdayGridCacheDay === baseDay && (nowMs - weekdayGridCacheTs) < (30 * 60 * 1000)) {
+      return Promise.resolve();
+    }
+
+    var cfg = getCfg();
+    var apiKey = cfg.publishableKey || "";
+    if (!cfg.supabaseUrl || !apiKey) return Promise.resolve();
+    var dayRpcUrl = (cfg.supabaseUrl || "") + "/rest/v1/rpc/day_kpi_pack";
+    var isos = [1, 2, 3, 4, 5, 6, 7];
+
+    return Promise.all(isos.map(function (iso) {
+      var anchorDay = nearestDayByIsoDow(baseDay, iso);
+      if (!anchorDay) return Promise.resolve(null);
+      return fetch(dayRpcUrl, {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": apiKey,
+          "Authorization": "Bearer " + apiKey
+        },
+        body: JSON.stringify({ p_day: anchorDay })
+      })
+        .then(function (r) {
+          if (!r.ok) throw new Error("Weekday grid HTTP " + r.status);
+          return r.json();
+        })
+        .then(function (raw) {
+          var row = normalizeSingleRow(raw);
+          if (!row) return null;
+          return {
+            isoDow: iso,
+            sampleDays: toNumberSafe(row.weekday_hourly_avg_days),
+            series: Array.isArray(row.weekday_hourly_avg_series) ? row.weekday_hourly_avg_series : []
+          };
+        })
+        .catch(function () { return null; });
+    }))
+      .then(function (items) {
+        var ok = (items || []).filter(function (x) { return !!x; });
+        renderWeekdayComparisonGrid(ok);
+        weekdayGridCacheDay = baseDay;
+        weekdayGridCacheTs = Date.now();
+      })
+      .catch(function (err) {
+        log("Weekday comparison fetch failed:", err);
+      });
   }
 
   function formatDayLabel(dayKey) {
@@ -321,6 +506,8 @@
           row.revenue_incl
         );
         applyDayAdvancedMetrics(row);
+        fetchWeekdayComparisonGrid(false);
+        if (selectedWeekdayIso != null) fetchWeekdayAverage(selectedWeekdayIso);
       })
       .catch(function () {
         // Backward-compatible fallback if RPC is not available yet.
@@ -462,12 +649,28 @@
       if (selectedDay) fetchDay(selectedDay);
     });
 
+    document.addEventListener("click", function (ev) {
+      var el = ev.target && ev.target.closest ? ev.target.closest("[data-weekday-iso]") : null;
+      if (!el) return;
+      ev.preventDefault();
+      var iso = Number(el.getAttribute("data-weekday-iso"));
+      if (!Number.isFinite(iso) || iso < 1 || iso > 7) return;
+      selectedWeekdayIso = (selectedWeekdayIso === iso) ? null : iso;
+      setWeekdayChipActive();
+      if (selectedWeekdayIso == null) {
+        if (selectedDay) fetchDay(selectedDay);
+        return;
+      }
+      fetchWeekdayAverage(selectedWeekdayIso);
+    });
+
     var active = document.querySelector(".dashboard-date-item.active[data-month]");
     var first = document.querySelector(".dashboard-date-item[data-month]");
     var initialMonth = active ? active.getAttribute("data-month") : (first ? first.getAttribute("data-month") : null);
 
     fetchMonth(initialMonth);
     if (selectedDay) fetchDay(selectedDay);
+    fetchWeekdayComparisonGrid(true);
 
     setInterval(function () {
       var activeNow = document.querySelector(".dashboard-date-item.active[data-month]");
