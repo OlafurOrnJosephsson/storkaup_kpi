@@ -13,7 +13,7 @@
         shoppingFiltered: [],
         sortKey: "total_revenue",
         sortDir: "desc",
-        activeChip: "none"
+        activeChip: "all"
     };
 
     function headers(profile) {
@@ -480,7 +480,10 @@
         setCustomerListVisible(root, true);
 
         state.customers = await fetchProfiles();
-        root.querySelectorAll("[data-chip]").forEach(function(b) { b.classList.remove("is-active"); });
+        root.querySelectorAll("[data-chip]").forEach(function(b) {
+            var chip = b.getAttribute("data-chip") || "";
+            b.classList.toggle("is-active", chip === state.activeChip);
+        });
         applyFilters(root, "");
 
         var searchInput = root.querySelector('[data-input="customer-search"]');
