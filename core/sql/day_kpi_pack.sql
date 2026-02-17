@@ -17,12 +17,20 @@ returns table (
   unique_buyers bigint,
   repeat_buyer_pct numeric,
   first_time_buyers bigint,
+  registrations_today bigint,
+  registrations_bought_today bigint,
+  registrations_conversion_pct numeric,
   current_hour_orders bigint,
   current_hour_revenue_excl numeric,
   eod_orders_forecast numeric,
   eod_revenue_excl_forecast numeric,
   eod_orders_vs_lastweek_pct numeric,
   eod_revenue_excl_vs_lastweek_pct numeric,
+  noon_hour int,
+  noon_sales_vs_lastweek_pct numeric,
+  noon_orders_vs_lastweek_pct numeric,
+  alert_noon_sales_drop boolean,
+  alert_noon_orders_drop boolean,
   top_customer_1 text,
   top_customer_2 text,
   top_customer_3 text,
@@ -83,6 +91,13 @@ buyers_today as (
   where purchase_date >= (select day::timestamp from params)
     and purchase_date < ((select day::timestamp from params) + interval '1 day')
 ),
+buyers_today_email as (
+  select distinct lower(trim(real_email)) as email
+  from raw.newweb_orders_raw
+  where purchase_date >= (select day::timestamp from params)
+    and purchase_date < ((select day::timestamp from params) + interval '1 day')
+    and nullif(trim(real_email), '') is not null
+),
 first_seen as (
   select
     buyer_key,
@@ -112,6 +127,45 @@ buyer_stats as (
   left join first_seen fs on fs.buyer_key = bt.buyer_key
   where bt.buyer_key is not null
 ),
+registrations_base as (
+  select
+    lower(trim(
+      coalesce(
+        nullif(to_jsonb(mc)->>'real_email', ''),
+        nullif(to_jsonb(mc)->>'email', '')
+      )
+    )) as email,
+    coalesce(
+      nullif(to_jsonb(mc)->>'created_at', ''),
+      nullif(to_jsonb(mc)->>'created_at_source', ''),
+      nullif(to_jsonb(mc)->>'customer_created_at', ''),
+      nullif(to_jsonb(mc)->>'created', '')
+    ) as created_text
+  from raw.magento_customers_raw mc
+),
+registrations_parsed as (
+  select
+    rb.email,
+    case
+      when rb.created_text ~ '^\d{4}-\d{2}-\d{2}' then rb.created_text::timestamptz
+      else null
+    end as created_ts
+  from registrations_base rb
+  where rb.email is not null and rb.email <> ''
+),
+registrations_today as (
+  select distinct rp.email
+  from registrations_parsed rp
+  where rp.created_ts is not null
+    and rp.created_ts::date = (select day from params)
+),
+registration_stats as (
+  select
+    count(*)::bigint as registrations_today,
+    count(*) filter (where bte.email is not null)::bigint as registrations_bought_today
+  from registrations_today rt
+  left join buyers_today_email bte on bte.email = rt.email
+),
 hourly_raw as (
   select
     extract(hour from purchase_date)::int as hour_of_day,
@@ -122,6 +176,16 @@ hourly_raw as (
     and purchase_date < ((select day::timestamp from params) + interval '1 day')
   group by 1
 ),
+hourly_lastweek_raw as (
+  select
+    extract(hour from purchase_date)::int as hour_of_day,
+    count(distinct order_id)::bigint as orders,
+    coalesce(sum(subtotal_excl), 0)::numeric as revenue_excl
+  from raw.newweb_orders_raw
+  where purchase_date >= ((select day::timestamp from params) - interval '7 day')
+    and purchase_date < (((select day::timestamp from params) - interval '7 day') + interval '1 day')
+  group by 1
+),
 hourly_full as (
   select
     g.hour_of_day,
@@ -130,18 +194,28 @@ hourly_full as (
   from generate_series(0, 23) as g(hour_of_day)
   left join hourly_raw h on h.hour_of_day = g.hour_of_day
 ),
+hourly_lastweek_full as (
+  select
+    g.hour_of_day,
+    coalesce(h.orders, 0)::bigint as orders,
+    coalesce(h.revenue_excl, 0)::numeric as revenue_excl
+  from generate_series(0, 23) as g(hour_of_day)
+  left join hourly_lastweek_raw h on h.hour_of_day = g.hour_of_day
+),
+hour_cutoff as (
+  select
+    case
+      when p.day = p.today_utc then p.hour_utc
+      else 23
+    end::int as hour_cutoff
+  from params p
+),
 hourly_pick as (
   select
     hf.orders as current_hour_orders,
     hf.revenue_excl as current_hour_revenue_excl
   from hourly_full hf
-  where hf.hour_of_day = (
-    select case
-      when p.day = p.today_utc then p.hour_utc
-      else coalesce((select max(hour_of_day) from hourly_raw), 23)
-    end
-    from params p
-  )
+  where hf.hour_of_day = (select hour_cutoff from hour_cutoff)
   limit 1
 ),
 elapsed as (
@@ -158,6 +232,18 @@ forecast as (
     case when e.elapsed_hours > 0 then d0.revenue_excl * 24 / e.elapsed_hours else d0.revenue_excl end as eod_revenue_excl_forecast
   from d0
   cross join elapsed e
+),
+noon_compare as (
+  select
+    hc.hour_cutoff,
+    coalesce(sum(hf.orders), 0)::numeric as cur_orders_to_cutoff,
+    coalesce(sum(hf.revenue_excl), 0)::numeric as cur_rev_to_cutoff,
+    coalesce(sum(hlf.orders), 0)::numeric as lw_orders_to_cutoff,
+    coalesce(sum(hlf.revenue_excl), 0)::numeric as lw_rev_to_cutoff
+  from hour_cutoff hc
+  left join hourly_full hf on hf.hour_of_day <= hc.hour_cutoff
+  left join hourly_lastweek_full hlf on hlf.hour_of_day <= hc.hour_cutoff
+  group by hc.hour_cutoff
 ),
 top_customers as (
   select
@@ -271,12 +357,32 @@ select
   coalesce(bs.unique_buyers, 0) as unique_buyers,
   case when coalesce(bs.unique_buyers, 0) > 0 then coalesce(bs.repeat_buyers, 0)::numeric / bs.unique_buyers::numeric else 0 end as repeat_buyer_pct,
   coalesce(bs.first_time_buyers, 0) as first_time_buyers,
+  coalesce(rs.registrations_today, 0) as registrations_today,
+  coalesce(rs.registrations_bought_today, 0) as registrations_bought_today,
+  case
+    when coalesce(rs.registrations_today, 0) > 0
+      then coalesce(rs.registrations_bought_today, 0)::numeric / rs.registrations_today::numeric
+    else 0
+  end as registrations_conversion_pct,
   coalesce(hp.current_hour_orders, 0) as current_hour_orders,
   coalesce(hp.current_hour_revenue_excl, 0) as current_hour_revenue_excl,
   coalesce(fc.eod_orders_forecast, 0) as eod_orders_forecast,
   coalesce(fc.eod_revenue_excl_forecast, 0) as eod_revenue_excl_forecast,
   case when d7.orders > 0 then (coalesce(fc.eod_orders_forecast, 0) - d7.orders::numeric) / d7.orders::numeric else 0 end as eod_orders_vs_lastweek_pct,
   case when d7.revenue_excl > 0 then (coalesce(fc.eod_revenue_excl_forecast, 0) - d7.revenue_excl) / d7.revenue_excl else 0 end as eod_revenue_excl_vs_lastweek_pct,
+  coalesce(nc.hour_cutoff, 0) as noon_hour,
+  case when nc.lw_rev_to_cutoff > 0 then (nc.cur_rev_to_cutoff - nc.lw_rev_to_cutoff) / nc.lw_rev_to_cutoff else 0 end as noon_sales_vs_lastweek_pct,
+  case when nc.lw_orders_to_cutoff > 0 then (nc.cur_orders_to_cutoff - nc.lw_orders_to_cutoff) / nc.lw_orders_to_cutoff else 0 end as noon_orders_vs_lastweek_pct,
+  case
+    when nc.hour_cutoff >= 12 and nc.lw_rev_to_cutoff > 0
+      then ((nc.cur_rev_to_cutoff - nc.lw_rev_to_cutoff) / nc.lw_rev_to_cutoff) <= -0.30
+    else false
+  end as alert_noon_sales_drop,
+  case
+    when nc.hour_cutoff >= 12 and nc.lw_orders_to_cutoff > 0
+      then ((nc.cur_orders_to_cutoff - nc.lw_orders_to_cutoff) / nc.lw_orders_to_cutoff) <= -0.30
+    else false
+  end as alert_noon_orders_drop,
   (select tr.label from top_ranked tr where tr.rn = 1) as top_customer_1,
   (select tr.label from top_ranked tr where tr.rn = 2) as top_customer_2,
   (select tr.label from top_ranked tr where tr.rn = 3) as top_customer_3,
@@ -293,8 +399,10 @@ from d0
 cross join d1
 cross join d7
 left join buyer_stats bs on true
+left join registration_stats rs on true
 left join hourly_pick hp on true
-left join forecast fc on true;
+left join forecast fc on true
+left join noon_compare nc on true;
 $function$;
 
 grant execute on function public.day_kpi_pack(date) to anon, authenticated;

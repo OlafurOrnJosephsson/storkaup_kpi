@@ -135,3 +135,14 @@ span.flatpickr-weekday {
   color: var(--black-700, #5b5b5b);
   line-height: 1;
 }
+
+/* Simple alert chips for noon checks */
+.alert-on {
+  color: var(--error-dark, #c23340);
+  font-weight: 700;
+}
+
+.alert-off {
+  color: var(--success-dark, #257b17);
+  font-weight: 600;
+}

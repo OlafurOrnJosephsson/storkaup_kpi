@@ -54,6 +54,15 @@
     else el.classList.add("is-flat");
   }
 
+  function setAlertMetric(metric, isAlert, alertText, okText) {
+    var el = document.querySelector('[data-metric="' + metric + '"]');
+    if (!el) return;
+    var on = !!isAlert;
+    el.textContent = on ? alertText : (okText || "");
+    el.classList.remove("alert-on", "alert-off");
+    el.classList.add(on ? "alert-on" : "alert-off");
+  }
+
   function buildMetricMap() {
     var values = {};
     document.querySelectorAll(".webapp-data[data-metric]").forEach(function (el) {
@@ -146,12 +155,30 @@
     setText("day-unique-buyers", toNumberSafe(row.unique_buyers));
     setText("day-repeat-buyer-pct", pct(row.repeat_buyer_pct));
     setText("day-first-time-buyers", toNumberSafe(row.first_time_buyers));
+    setText("day-registrations-today", toNumberSafe(row.registrations_today));
+    setText("day-registrations-bought-today", toNumberSafe(row.registrations_bought_today));
+    setText("day-registrations-conversion-pct", pct(row.registrations_conversion_pct));
     setText("day-current-hour-orders", toNumberSafe(row.current_hour_orders));
     setText("day-current-hour-revenue-excl", formatNumber(row.current_hour_revenue_excl));
     setText("day-eod-orders-forecast", formatNumber(row.eod_orders_forecast));
     setText("day-eod-revenue-excl-forecast", formatNumber(row.eod_revenue_excl_forecast));
     setSignedMetric("day-eod-orders-vs-lastweek-pct", row.eod_orders_vs_lastweek_pct);
     setSignedMetric("day-eod-revenue-vs-lastweek-pct", row.eod_revenue_excl_vs_lastweek_pct);
+    setText("day-noon-hour", toNumberSafe(row.noon_hour));
+    setSignedMetric("day-noon-sales-vs-lastweek-pct", row.noon_sales_vs_lastweek_pct);
+    setSignedMetric("day-noon-orders-vs-lastweek-pct", row.noon_orders_vs_lastweek_pct);
+    setAlertMetric(
+      "day-alert-noon-sales",
+      row.alert_noon_sales_drop,
+      "Viðvörun: sala undir viðmiði fyrir hádegi",
+      "Sala í lagi fyrir hádegi"
+    );
+    setAlertMetric(
+      "day-alert-noon-orders",
+      row.alert_noon_orders_drop,
+      "Viðvörun: pantanir undir viðmiði fyrir hádegi",
+      "Pantanir í lagi fyrir hádegi"
+    );
     setText("day-top-customer-1", row.top_customer_1 || "");
     setText("day-top-customer-2", row.top_customer_2 || "");
     setText("day-top-customer-3", row.top_customer_3 || "");
