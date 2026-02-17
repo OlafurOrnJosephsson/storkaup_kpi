@@ -44,7 +44,9 @@ returns table (
   top_cat_3 text,
   hourly_series jsonb,
   weekday_hourly_avg_series jsonb,
-  weekday_hourly_avg_days int
+  weekday_hourly_avg_days int,
+  weekday_avg_orders_per_day numeric,
+  weekday_avg_revenue_excl_per_day numeric
 )
 language sql
 stable
@@ -358,6 +360,25 @@ weekday_hour_orders as (
     and extract(isodow from n.purchase_date) = extract(isodow from p.day)
   group by 1, 2
 ),
+weekday_day_totals as (
+  select
+    n.purchase_date::date as day,
+    count(distinct n.order_id)::numeric as orders,
+    coalesce(sum(n.subtotal_excl), 0)::numeric as revenue_excl
+  from raw.newweb_orders_raw n
+  join params p on true
+  where n.purchase_date >= (p.day - interval '365 day')::timestamp
+    and n.purchase_date < p.day::timestamp
+    and extract(isodow from n.purchase_date) = extract(isodow from p.day)
+  group by 1
+),
+weekday_avg_totals as (
+  select
+    avg(coalesce(wdt.orders, 0))::numeric as avg_orders_per_day,
+    avg(coalesce(wdt.revenue_excl, 0))::numeric as avg_revenue_excl_per_day
+  from weekday_days wd
+  left join weekday_day_totals wdt on wdt.day = wd.day
+),
 weekday_hourly_avg as (
   select
     h.hour_of_day,
@@ -445,7 +466,9 @@ select
   (select cr.label from cat_ranked cr where cr.rn = 3) as top_cat_3,
   coalesce((select hj.series from hourly_json hj), '[]'::jsonb) as hourly_series,
   coalesce((select whj.series from weekday_hourly_json whj), '[]'::jsonb) as weekday_hourly_avg_series,
-  coalesce((select wdc.n from weekday_days_count wdc), 0) as weekday_hourly_avg_days
+  coalesce((select wdc.n from weekday_days_count wdc), 0) as weekday_hourly_avg_days,
+  coalesce((select wat.avg_orders_per_day from weekday_avg_totals wat), 0) as weekday_avg_orders_per_day,
+  coalesce((select wat.avg_revenue_excl_per_day from weekday_avg_totals wat), 0) as weekday_avg_revenue_excl_per_day
 from d0
 cross join d1
 cross join d7

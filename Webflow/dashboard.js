@@ -313,6 +313,8 @@
         +   '<div class="weekday-card-title">' + label + '</div>'
         +   buildHourlyBarsHtml(r.series || [], globalMax, "hourly-chart hourly-chart-mini")
         +   '<div class="weekday-card-meta">' + toNumberSafe(r.sampleDays) + ' dagar</div>'
+        +   '<div class="weekday-card-meta">Meðalpantanir: ' + formatNumber(r.avgOrdersPerDay) + '</div>'
+        +   '<div class="weekday-card-meta">Meðalsala: ' + formatNumber(r.avgRevenuePerDay) + ' kr</div>'
         + '</div>';
     });
     host.innerHTML = html;
@@ -408,6 +410,8 @@
           return {
             isoDow: iso,
             sampleDays: toNumberSafe(row.weekday_hourly_avg_days),
+            avgOrdersPerDay: toNumberSafe(row.weekday_avg_orders_per_day),
+            avgRevenuePerDay: toNumberSafe(row.weekday_avg_revenue_excl_per_day),
             series: Array.isArray(row.weekday_hourly_avg_series) ? row.weekday_hourly_avg_series : []
           };
         })
