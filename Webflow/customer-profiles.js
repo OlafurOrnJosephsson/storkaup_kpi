@@ -59,10 +59,50 @@
     }
 
     async function fetchProfiles() {
-        var path = "/rest/v1/v_customer_profiles_labeled_trends?select=*&order=low_hanging_fruit_score.desc&limit=5000";
-        var res = await fetch(URL + path, { headers: headers("api") });
-        if (!res.ok) throw new Error(await res.text());
-        return res.json();
+        var fields = [
+            "customer_id",
+            "customer_name",
+            "webshop_active",
+            "recommended_action",
+            "low_hanging_fruit_score",
+            "lhfs_percentile",
+            "lhfs_label",
+            "orders_bc_365d",
+            "orders_web_365d",
+            "avg_days_between_bc_orders",
+            "avg_days_between_web_orders",
+            "bc_orders_30d",
+            "bc_orders_prev_30d",
+            "web_orders_30d",
+            "web_orders_prev_30d",
+            "bc_revenue_30d",
+            "bc_revenue_prev_30d",
+            "web_revenue_30d",
+            "web_revenue_prev_30d"
+        ].join(",");
+
+        var pageSize = 500;
+        var maxRows = 6000;
+        var out = [];
+
+        for (var offset = 0; offset < maxRows; offset += pageSize) {
+            var path =
+                "/rest/v1/v_customer_profiles_labeled_trends?select=" + encodeURIComponent(fields) +
+                "&order=customer_id.asc.nullslast&limit=" + pageSize +
+                "&offset=" + offset;
+            var res = await fetch(URL + path, { headers: headers("api") });
+            if (!res.ok) throw new Error(await res.text());
+            var rows = await res.json();
+            if (!Array.isArray(rows) || !rows.length) break;
+            out = out.concat(rows);
+            if (rows.length < pageSize) break;
+        }
+
+        out.sort(function(a, b) {
+            return numOrZero(b.low_hanging_fruit_score) - numOrZero(a.low_hanging_fruit_score);
+        });
+
+        return out;
     }
 
     function matchesChip(c, chip) {

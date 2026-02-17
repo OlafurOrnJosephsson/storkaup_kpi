@@ -426,8 +426,11 @@
 
   function init() {
     var items = document.querySelectorAll(".dashboard-date-item[data-month]");
-    log("Found month items:", items.length);
+    var hasMetrics = !!document.querySelector("[data-metric]");
     var dayPicker = document.querySelector("input[data-day-picker], [data-day-picker] input[type='date'], input[type='date'][data-day-picker]");
+
+    if (!items.length && !hasMetrics && !dayPicker) return;
+    log("Found month items:", items.length);
 
     if (dayPicker) {
       var initialDay = normalizeDay(dayPicker.value) || getTodayIso();
