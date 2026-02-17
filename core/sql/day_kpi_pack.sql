@@ -353,7 +353,7 @@ weekday_hour_orders as (
     n.purchase_date::date as day,
     extract(hour from n.purchase_date)::int as hour_of_day,
     count(distinct n.order_id)::numeric as orders
-  from raw.newweb_orders_raw n
+  from mart.v_web_orders_unified n
   join params p on true
   where n.purchase_date >= (p.day - interval '365 day')::timestamp
     and n.purchase_date < p.day::timestamp
@@ -364,8 +364,8 @@ weekday_day_totals as (
   select
     n.purchase_date::date as day,
     count(distinct n.order_id)::numeric as orders,
-    coalesce(sum(n.subtotal_excl), 0)::numeric as revenue_excl
-  from raw.newweb_orders_raw n
+    coalesce(sum(n.revenue_excl), 0)::numeric as revenue_excl
+  from mart.v_web_orders_unified n
   join params p on true
   where n.purchase_date >= (p.day - interval '365 day')::timestamp
     and n.purchase_date < p.day::timestamp
