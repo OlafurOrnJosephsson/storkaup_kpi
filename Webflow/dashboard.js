@@ -146,6 +146,16 @@
     setText("day-unique-buyers", toNumberSafe(row.unique_buyers));
     setText("day-repeat-buyer-pct", pct(row.repeat_buyer_pct));
     setText("day-first-time-buyers", toNumberSafe(row.first_time_buyers));
+    setText("day-current-hour-orders", toNumberSafe(row.current_hour_orders));
+    setText("day-current-hour-revenue-excl", formatNumber(row.current_hour_revenue_excl));
+    setText("day-eod-orders-forecast", formatNumber(row.eod_orders_forecast));
+    setText("day-eod-revenue-excl-forecast", formatNumber(row.eod_revenue_excl_forecast));
+    setSignedMetric("day-eod-orders-vs-lastweek-pct", row.eod_orders_vs_lastweek_pct);
+    setSignedMetric("day-eod-revenue-vs-lastweek-pct", row.eod_revenue_excl_vs_lastweek_pct);
+    setText("day-top-customer-1", row.top_customer_1 || "");
+    setText("day-top-customer-2", row.top_customer_2 || "");
+    setText("day-top-customer-3", row.top_customer_3 || "");
+    setText("day-hourly-series-json", JSON.stringify(row.hourly_series || []));
   }
 
   function normalizeSingleRow(raw) {
