@@ -432,6 +432,7 @@
     if (dayPicker) {
       var initialDay = normalizeDay(dayPicker.value) || getTodayIso();
       dayPicker.value = initialDay;
+      selectedDay = initialDay;
       initFlatpickrIfAvailable(dayPicker);
       dayPicker.addEventListener("change", function () {
         var next = normalizeDay(dayPicker.value);
