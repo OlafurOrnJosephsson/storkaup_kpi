@@ -380,7 +380,7 @@
         renderOpenTasks(root, tasks);
 
     }
-   async function fetchOpenTasks(customerId) {
+    async function fetchOpenTasks(customerId) {
   var res = await fetch(URL + "/rest/v1/rpc/get_open_tasks", {
     method: "POST",
     headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
@@ -389,6 +389,46 @@
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+    async function fetchLastOrders(customerId, limit) {
+        var res = await fetch(URL + "/rest/v1/rpc/get_customer_last_orders", {
+            method: "POST",
+            headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+            body: JSON.stringify({
+                p_customer_id: String(customerId || "").trim(),
+                p_limit: Number(limit || 5)
+            })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+
+    function renderLastOrders(root, rows) {
+        var list = root.querySelector('[data-list="last-orders"]');
+        var proto = resolveProto(root, "last-order-row");
+        if (!list || !proto) return;
+        list.innerHTML = "";
+
+        (rows || []).forEach(function(r) {
+            var n = proto.node.cloneNode(true);
+            if (proto.type === "prototype") {
+                n.removeAttribute("data-prototype");
+                n.style.display = "";
+            }
+
+            var fOrder = n.querySelector('[data-field="last_order_id"]');
+            var fTotal = n.querySelector('[data-field="last_order_total"]');
+            var fUser = n.querySelector('[data-field="last_order_user"]');
+            var fDate = n.querySelector('[data-field="last_order_date"]');
+
+            if (fOrder) fOrder.textContent = r.order_id || "-";
+            if (fTotal) fTotal.textContent = fmtCurrency(r.total);
+            if (fUser) fUser.textContent = r.order_user || "-";
+            if (fDate) fDate.textContent = r.purchase_date ? new Date(r.purchase_date).toLocaleDateString("is-IS") : "-";
+
+            list.appendChild(n);
+        });
+    }
 
 
     function renderOpenTasks(root, tasks) {
@@ -563,6 +603,14 @@
                     renderOpenTasks(root, []); // keep UI usable
                 }
 
+                try {
+                    var orders = await fetchLastOrders(state.selected.customer_id, 5);
+                    renderLastOrders(root, orders);
+                } catch (err2) {
+                    console.error(err2);
+                    renderLastOrders(root, []);
+                }
+
                 state.shoppingRows = [];
                 state.shoppingFiltered = [];
                 var sl = root.querySelector('[data-list="shopping-list"]');
@@ -577,6 +625,7 @@
                 setCustomerListVisible(root, true);
                 setProfileVisible(root, false);
                 state.selected = null;
+                renderLastOrders(root, []);
                 return;
             }
 
