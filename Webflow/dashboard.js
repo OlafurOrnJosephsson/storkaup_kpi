@@ -123,6 +123,26 @@
     setText("day-revenue-incl", formatNumber(revenueIncl));
   }
 
+  function applyDayAdvancedMetrics(row) {
+    if (!row) return;
+    setText("day-aov-excl", formatNumber(row.aov_excl));
+    setText("day-vs-yesterday-orders-pct", pct(row.vs_yesterday_orders_pct));
+    setText("day-vs-yesterday-revenue-pct", pct(row.vs_yesterday_revenue_excl_pct));
+    setText("day-vs-yesterday-aov-pct", pct(row.vs_yesterday_aov_excl_pct));
+    setText("day-vs-lastweek-orders-pct", pct(row.vs_lastweek_orders_pct));
+    setText("day-vs-lastweek-revenue-pct", pct(row.vs_lastweek_revenue_excl_pct));
+    setText("day-vs-lastweek-aov-pct", pct(row.vs_lastweek_aov_excl_pct));
+    setText("day-unique-buyers", toNumberSafe(row.unique_buyers));
+    setText("day-repeat-buyer-pct", pct(row.repeat_buyer_pct));
+    setText("day-first-time-buyers", toNumberSafe(row.first_time_buyers));
+  }
+
+  function normalizeSingleRow(raw) {
+    var data = raw;
+    if (Array.isArray(data)) data = data[0];
+    return data || null;
+  }
+
   function formatDayLabel(dayKey) {
     var s = normalizeDay(dayKey);
     if (!s) return dayKey || "";
@@ -175,31 +195,60 @@
     var day = normalizeDay(dayKey);
     if (!day || !cfg.supabaseUrl || !apiKey || dayApiUnavailable) return Promise.resolve();
 
-    var dayUrl = (cfg.supabaseUrl || "") +
+    var dayRpcUrl = (cfg.supabaseUrl || "") + "/rest/v1/rpc/day_kpi_pack";
+    var dayBaseUrl = (cfg.supabaseUrl || "") +
       "/rest/v1/v_web_daily_unified?select=day,revenue_incl,revenue_excl,orders&day=eq." +
       encodeURIComponent(day) + "&limit=1";
 
-    return fetch(dayUrl, {
-      method: "GET",
+    return fetch(dayRpcUrl, {
+      method: "POST",
       cache: "no-store",
       headers: {
+        "Content-Type": "application/json",
         "apikey": apiKey,
-        "Authorization": "Bearer " + apiKey,
-        "Accept-Profile": "mart"
-      }
+        "Authorization": "Bearer " + apiKey
+      },
+      body: JSON.stringify({ p_day: day })
     })
       .then(function (r) {
-        if (!r.ok) throw new Error("Day endpoint HTTP " + r.status);
+        if (!r.ok) throw new Error("Day pack HTTP " + r.status);
         return r.json();
       })
-      .then(function (rows) {
-        var row = Array.isArray(rows) && rows.length ? rows[0] : null;
+      .then(function (raw) {
+        var row = normalizeSingleRow(raw);
+        if (!row) throw new Error("Day pack returned empty payload");
         applyDayMetrics(
-          day,
-          row ? row.orders : 0,
-          row ? row.revenue_excl : 0,
-          row ? row.revenue_incl : 0
+          row.day || day,
+          row.orders,
+          row.revenue_excl,
+          row.revenue_incl
         );
+        applyDayAdvancedMetrics(row);
+      })
+      .catch(function () {
+        // Backward-compatible fallback if RPC is not available yet.
+        return fetch(dayBaseUrl, {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            "apikey": apiKey,
+            "Authorization": "Bearer " + apiKey,
+            "Accept-Profile": "mart"
+          }
+        })
+          .then(function (r) {
+            if (!r.ok) throw new Error("Day endpoint HTTP " + r.status);
+            return r.json();
+          })
+          .then(function (rows) {
+            var row = Array.isArray(rows) && rows.length ? rows[0] : null;
+            applyDayMetrics(
+              day,
+              row ? row.orders : 0,
+              row ? row.revenue_excl : 0,
+              row ? row.revenue_incl : 0
+            );
+          });
       })
       .catch(function (err) {
         log("Day fetch failed:", err);
