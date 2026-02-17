@@ -163,13 +163,49 @@
     setText("top_cat_1", row.top_cat_1 || "");
     setText("top_cat_2", row.top_cat_2 || "");
     setText("top_cat_3", row.top_cat_3 || "");
-    setText("day-hourly-series-json", JSON.stringify(row.hourly_series || []));
+    var hourly = row.hourly_series || [];
+    setText("day-hourly-series-json", JSON.stringify(hourly));
+    renderHourlyChart(hourly);
   }
 
   function normalizeSingleRow(raw) {
     var data = raw;
     if (Array.isArray(data)) data = data[0];
     return data || null;
+  }
+
+  function renderHourlyChart(series) {
+    var host = document.querySelector("[data-hourly-chart]");
+    if (!host) return;
+
+    var arr = Array.isArray(series) ? series : [];
+    if (!arr.length) {
+      host.innerHTML = "";
+      return;
+    }
+
+    var maxOrders = 0;
+    arr.forEach(function (p) {
+      var n = toNumberSafe(p && p.orders);
+      if (n > maxOrders) maxOrders = n;
+    });
+    if (maxOrders <= 0) maxOrders = 1;
+
+    var html = '<div class="hourly-chart">';
+    arr.forEach(function (p) {
+      var hour = String(p && p.hour != null ? p.hour : "").padStart(2, "0");
+      var orders = toNumberSafe(p && p.orders);
+      var height = Math.max(4, Math.round((orders / maxOrders) * 100));
+      html += ''
+        + '<div class="hourly-col" title="' + hour + ':00 - ' + orders + ' pantanir">'
+        +   '<div class="hourly-bar-wrap">'
+        +     '<div class="hourly-bar" style="height:' + height + '%"></div>'
+        +   '</div>'
+        +   '<div class="hourly-label">' + hour + '</div>'
+        + '</div>';
+    });
+    html += '</div>';
+    host.innerHTML = html;
   }
 
   function formatDayLabel(dayKey) {
