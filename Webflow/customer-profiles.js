@@ -58,51 +58,58 @@
         listWrap.hidden = !visible;
     }
 
-    async function fetchProfiles() {
-        var fields = [
-            "customer_id",
-            "customer_name",
-            "webshop_active",
-            "recommended_action",
-            "low_hanging_fruit_score",
-            "lhfs_percentile",
-            "lhfs_label",
-            "orders_bc_365d",
-            "orders_web_365d",
-            "avg_days_between_bc_orders",
-            "avg_days_between_web_orders",
-            "bc_orders_30d",
-            "bc_orders_prev_30d",
-            "web_orders_30d",
-            "web_orders_prev_30d",
-            "bc_revenue_30d",
-            "bc_revenue_prev_30d",
-            "web_revenue_30d",
-            "web_revenue_prev_30d"
-        ].join(",");
+    var PROFILE_FIELDS = [
+        "customer_id",
+        "customer_name",
+        "webshop_active",
+        "recommended_action",
+        "low_hanging_fruit_score",
+        "lhfs_percentile",
+        "lhfs_label",
+        "orders_bc_365d",
+        "orders_web_365d",
+        "avg_days_between_bc_orders",
+        "avg_days_between_web_orders",
+        "bc_orders_30d",
+        "bc_orders_prev_30d",
+        "web_orders_30d",
+        "web_orders_prev_30d",
+        "bc_revenue_30d",
+        "bc_revenue_prev_30d",
+        "web_revenue_30d",
+        "web_revenue_prev_30d"
+    ].join(",");
 
-        var pageSize = 500;
-        var maxRows = 6000;
-        var out = [];
+    async function fetchProfilesPage(offset, pageSize) {
+        var path =
+            "/rest/v1/v_customer_profiles_labeled_trends?select=" + encodeURIComponent(PROFILE_FIELDS) +
+            "&order=customer_id.asc.nullslast&limit=" + pageSize +
+            "&offset=" + offset;
+        var res = await fetch(URL + path, { headers: headers("api") });
+        if (!res.ok) throw new Error(await res.text());
+        var rows = await res.json();
+        return Array.isArray(rows) ? rows : [];
+    }
 
-        for (var offset = 0; offset < maxRows; offset += pageSize) {
-            var path =
-                "/rest/v1/v_customer_profiles_labeled_trends?select=" + encodeURIComponent(fields) +
-                "&order=customer_id.asc.nullslast&limit=" + pageSize +
-                "&offset=" + offset;
-            var res = await fetch(URL + path, { headers: headers("api") });
-            if (!res.ok) throw new Error(await res.text());
-            var rows = await res.json();
-            if (!Array.isArray(rows) || !rows.length) break;
-            out = out.concat(rows);
-            if (rows.length < pageSize) break;
-        }
-
-        out.sort(function(a, b) {
+    function sortProfilesByScore(rows) {
+        rows.sort(function(a, b) {
             return numOrZero(b.low_hanging_fruit_score) - numOrZero(a.low_hanging_fruit_score);
         });
+    }
 
-        return out;
+    async function hydrateProfilesInBackground(root, startOffset, pageSize, maxRows) {
+        for (var offset = startOffset; offset < maxRows; offset += pageSize) {
+            var rows = await fetchProfilesPage(offset, pageSize);
+            if (!rows.length) break;
+
+            state.customers = state.customers.concat(rows);
+            sortProfilesByScore(state.customers);
+            var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
+            applyFilters(root, q);
+
+            if (rows.length < pageSize) break;
+            await new Promise(function(resolve) { setTimeout(resolve, 0); });
+        }
     }
 
     function matchesChip(c, chip) {
@@ -539,12 +546,20 @@
         setProfileVisible(root, false);
         setCustomerListVisible(root, true);
 
-        state.customers = await fetchProfiles();
+        var pageSize = 300;
+        var maxRows = 6000;
+        var firstPage = await fetchProfilesPage(0, pageSize);
+        state.customers = firstPage;
+        sortProfilesByScore(state.customers);
         root.querySelectorAll("[data-chip]").forEach(function(b) {
             var chip = b.getAttribute("data-chip") || "";
             b.classList.toggle("is-active", chip === state.activeChip);
         });
         applyFilters(root, "");
+
+        hydrateProfilesInBackground(root, pageSize, pageSize, maxRows).catch(function(err) {
+            console.error("Background profile hydration failed:", err);
+        });
 
         var searchInput = root.querySelector('[data-input="customer-search"]');
         if (searchInput) {
