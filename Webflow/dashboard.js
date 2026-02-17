@@ -193,6 +193,10 @@
     var hourly = row.hourly_series || [];
     setText("day-hourly-series-json", JSON.stringify(hourly));
     renderHourlyChart(hourly);
+    var weekdayHourly = row.weekday_hourly_avg_series || [];
+    setText("day-weekday-hourly-series-json", JSON.stringify(weekdayHourly));
+    setText("day-weekday-hourly-sample-days", toNumberSafe(row.weekday_hourly_avg_days));
+    renderHourlyChart(weekdayHourly, "[data-hourly-weekday-chart]", "Meðaltal");
   }
 
   function normalizeSingleRow(raw) {
@@ -201,8 +205,8 @@
     return data || null;
   }
 
-  function renderHourlyChart(series) {
-    var host = document.querySelector("[data-hourly-chart]");
+  function renderHourlyChart(series, hostSelector, valueLabel) {
+    var host = document.querySelector(hostSelector || "[data-hourly-chart]");
     if (!host) return;
 
     var arr = Array.isArray(series) ? series : [];
@@ -223,8 +227,9 @@
       var hour = String(p && p.hour != null ? p.hour : "").padStart(2, "0");
       var orders = toNumberSafe(p && p.orders);
       var height = Math.max(4, Math.round((orders / maxOrders) * 100));
+      var unit = valueLabel || "pantanir";
       html += ''
-        + '<div class="hourly-col" title="' + hour + ':00 - ' + orders + ' pantanir">'
+        + '<div class="hourly-col" title="' + hour + ':00 - ' + orders + ' ' + unit + '">'
         +   '<div class="hourly-bar-wrap">'
         +     '<div class="hourly-bar" style="height:' + height + '%"></div>'
         +   '</div>'

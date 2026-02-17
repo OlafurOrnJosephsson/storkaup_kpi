@@ -42,7 +42,9 @@ returns table (
   top_cat_1 text,
   top_cat_2 text,
   top_cat_3 text,
-  hourly_series jsonb
+  hourly_series jsonb,
+  weekday_hourly_avg_series jsonb,
+  weekday_hourly_avg_days int
 )
 language sql
 stable
@@ -333,6 +335,53 @@ hourly_json as (
     order by hf.hour_of_day
   ) as series
   from hourly_full hf
+),
+weekday_days as (
+  select gs.day::date as day
+  from params p
+  cross join lateral generate_series(
+    (p.day - interval '180 day')::date,
+    (p.day - interval '1 day')::date,
+    interval '1 day'
+  ) as gs(day)
+  where extract(isodow from gs.day) = extract(isodow from p.day)
+),
+weekday_hour_orders as (
+  select
+    n.purchase_date::date as day,
+    extract(hour from n.purchase_date)::int as hour_of_day,
+    count(distinct n.order_id)::numeric as orders
+  from raw.newweb_orders_raw n
+  join params p on true
+  where n.purchase_date >= (p.day - interval '180 day')::timestamp
+    and n.purchase_date < p.day::timestamp
+    and extract(isodow from n.purchase_date) = extract(isodow from p.day)
+  group by 1, 2
+),
+weekday_hourly_avg as (
+  select
+    h.hour_of_day,
+    avg(coalesce(who.orders, 0))::numeric as avg_orders
+  from weekday_days wd
+  cross join generate_series(0, 23) as h(hour_of_day)
+  left join weekday_hour_orders who
+    on who.day = wd.day
+   and who.hour_of_day = h.hour_of_day
+  group by h.hour_of_day
+),
+weekday_hourly_json as (
+  select jsonb_agg(
+    jsonb_build_object(
+      'hour', wha.hour_of_day,
+      'orders', round(wha.avg_orders, 2)
+    )
+    order by wha.hour_of_day
+  ) as series
+  from weekday_hourly_avg wha
+),
+weekday_days_count as (
+  select count(*)::int as n
+  from weekday_days
 )
 select
   d0.day,
@@ -394,7 +443,9 @@ select
   (select cr.label from cat_ranked cr where cr.rn = 1) as top_cat_1,
   (select cr.label from cat_ranked cr where cr.rn = 2) as top_cat_2,
   (select cr.label from cat_ranked cr where cr.rn = 3) as top_cat_3,
-  coalesce((select hj.series from hourly_json hj), '[]'::jsonb) as hourly_series
+  coalesce((select hj.series from hourly_json hj), '[]'::jsonb) as hourly_series,
+  coalesce((select whj.series from weekday_hourly_json whj), '[]'::jsonb) as weekday_hourly_avg_series,
+  coalesce((select wdc.n from weekday_days_count wdc), 0) as weekday_hourly_avg_days
 from d0
 cross join d1
 cross join d7
