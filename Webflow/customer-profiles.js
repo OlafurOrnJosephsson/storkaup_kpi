@@ -13,8 +13,11 @@
         shoppingFiltered: [],
         sortKey: "total_revenue",
         sortDir: "desc",
-        activeChip: "all"
+        activeChip: "all",
+        searchTerm: "",
+        searchDebounceId: null
     };
+    var MAX_RENDERED_CUSTOMERS = 150;
 
     function headers(profile) {
         var h = { apikey: KEY, Authorization: "Bearer " + KEY };
@@ -104,11 +107,16 @@
 
             state.customers = state.customers.concat(rows);
             sortProfilesByScore(state.customers);
-            var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
-            applyFilters(root, q);
+            if (!state.searchTerm) {
+                applyFilters(root, "");
+            }
 
             if (rows.length < pageSize) break;
             await new Promise(function(resolve) { setTimeout(resolve, 0); });
+        }
+        if (state.searchTerm) {
+            var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
+            applyFilters(root, q);
         }
     }
 
@@ -171,8 +179,10 @@
         var proto = resolveProto(root, "customer-row");
         if (!list || !proto) return;
         list.innerHTML = "";
+        var frag = document.createDocumentFragment();
+        var rows = state.filtered.slice(0, MAX_RENDERED_CUSTOMERS);
 
-        state.filtered.forEach(function(c) {
+        rows.forEach(function(c) {
             var n = proto.node.cloneNode(true);
             if (proto.type === "prototype") {
                 n.removeAttribute("data-prototype");
@@ -201,8 +211,14 @@
             if (fl) fl.textContent = c.lhfs_label || "-";
 
             open.setAttribute("data-customer-id", c.customer_id || "");
-            list.appendChild(n);
+            frag.appendChild(n);
         });
+        list.appendChild(frag);
+
+        var shownEl = root.querySelector('[data-bind="customers-shown"]');
+        if (shownEl) shownEl.textContent = String(rows.length);
+        var totalEl = root.querySelector('[data-bind="customers-total"]');
+        if (totalEl) totalEl.textContent = String(state.filtered.length);
     }
 
     function buildScoreDrivers(p) {
@@ -528,6 +544,7 @@
 
     function applyFilters(root, q) {
         var s = (q || "").trim().toLowerCase();
+        state.searchTerm = s;
         var out = state.customers.filter(function(c) {
             if (!matchesChip(c, state.activeChip)) return false;
             if (!s) return true;
@@ -564,7 +581,10 @@
         var searchInput = root.querySelector('[data-input="customer-search"]');
         if (searchInput) {
             searchInput.addEventListener("input", function() {
-                applyFilters(root, searchInput.value);
+                if (state.searchDebounceId) clearTimeout(state.searchDebounceId);
+                state.searchDebounceId = setTimeout(function() {
+                    applyFilters(root, searchInput.value);
+                }, 120);
             });
         }
 
