@@ -35,21 +35,13 @@ as $function$
       n.purchase_date::timestamptz as purchase_date
     from raw.newweb_orders_raw n
     join in_customer c on c.customer_id <> ''
-    where trim(coalesce(n.company_id, '')) = c.customer_id
-       or trim(coalesce(n.national_id, '')) = c.customer_id
+    where n.company_id = c.customer_id
+       or n.national_id = c.customer_id
   ),
-  bc_totals as (
-    select
-      l.document_no::text as document_no,
-      sum(coalesce(l.amount_excl, 0))::numeric as total_excl
-    from raw.bc_lines_raw l
-    group by l.document_no
-  ),
-  bc_orders as (
+  bc_docs_raw as (
     select
       'bc'::text as source,
       coalesce(i.document_no::text, '') as order_id,
-      coalesce(t.total_excl, 0)::numeric as total,
       coalesce(
         nullif(trim(to_jsonb(i)->>'salesperson_name'), ''),
         nullif(trim(to_jsonb(i)->>'salesperson_code'), ''),
@@ -62,12 +54,40 @@ as $function$
         (to_jsonb(i)->>'document_date')::timestamptz
       ) as purchase_date
     from raw.bc_invoices_raw i
-    left join bc_totals t on t.document_no = i.document_no::text
     join in_customer c on c.customer_id <> ''
-    where trim(coalesce(i.company_id::text, '')) = c.customer_id
-       or trim(coalesce(to_jsonb(i)->>'national_id', '')) = c.customer_id
-       or trim(coalesce(to_jsonb(i)->>'customer_no', '')) = c.customer_id
-       or trim(coalesce(to_jsonb(i)->>'sell_to_customer_no', '')) = c.customer_id
+    where i.company_id::text = c.customer_id
+      and upper(
+        coalesce(
+          nullif(trim(to_jsonb(i)->>'salesperson_name'), ''),
+          nullif(trim(to_jsonb(i)->>'salesperson_code'), ''),
+          nullif(trim(to_jsonb(i)->>'salesperson'), ''),
+          ''
+        )
+      ) <> 'VEFUR'
+  ),
+  bc_docs as (
+    select *
+    from bc_docs_raw
+    order by purchase_date desc nulls last
+    limit greatest(10, least(coalesce(p_limit, 5) * 8, 200))
+  ),
+  bc_totals as (
+    select
+      l.document_no::text as order_id,
+      sum(coalesce(l.amount_excl, 0))::numeric as total_excl
+    from raw.bc_lines_raw l
+    join bc_docs d on d.order_id = l.document_no::text
+    group by l.document_no
+  ),
+  bc_orders as (
+    select
+      d.source,
+      d.order_id,
+      coalesce(t.total_excl, 0)::numeric as total,
+      d.order_user,
+      d.purchase_date
+    from bc_docs d
+    left join bc_totals t on t.order_id = d.order_id
   ),
   combined as (
     select * from web_orders
