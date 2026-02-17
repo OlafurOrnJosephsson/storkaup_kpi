@@ -203,8 +203,10 @@ sku_agg as (
 sku_ranked as (
   select
     row_number() over (order by s.hits desc, s.revenue_excl desc, s.sku_norm asc) as rn,
-    s.sku_norm || ' (' || s.hits || ')' as label
+    s.sku_norm || ' | ' || coalesce(nullif(trim(p.product_name), ''), 'Óþekkt vara') || ' (' || s.hits || ')' as label
   from sku_agg s
+  left join raw.products_raw p
+    on regexp_replace(coalesce(p.sku, ''), '[^0-9]', '', 'g') = s.sku_norm
 ),
 cat_lookup as (
   select
