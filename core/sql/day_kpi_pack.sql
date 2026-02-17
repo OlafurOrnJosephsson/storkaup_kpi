@@ -26,6 +26,14 @@ returns table (
   top_customer_1 text,
   top_customer_2 text,
   top_customer_3 text,
+  top_sku_1 text,
+  top_sku_2 text,
+  top_sku_3 text,
+  top_sku_4 text,
+  top_sku_5 text,
+  top_cat_1 text,
+  top_cat_2 text,
+  top_cat_3 text,
   hourly_series jsonb
 )
 language sql
@@ -166,6 +174,67 @@ top_ranked as (
     t.buyer_name || ' - ' || to_char(round(t.revenue_excl), 'FM999G999G999G990') || ' kr' as label
   from top_customers t
 ),
+sku_lines as (
+  select
+    nullif(regexp_replace(trim(x.sku_token), '[^0-9]', '', 'g'), '') as sku_norm,
+    coalesce(n.subtotal_excl, 0)::numeric as order_revenue_excl
+  from raw.newweb_orders_raw n
+  cross join lateral unnest(
+    string_to_array(
+      case
+        when nullif(trim(coalesce(n.sku_normalized, '')), '') is not null then n.sku_normalized
+        else coalesce(n.sku, '')
+      end,
+      ','
+    )
+  ) as x(sku_token)
+  where n.purchase_date >= (select day::timestamp from params)
+    and n.purchase_date < ((select day::timestamp from params) + interval '1 day')
+),
+sku_agg as (
+  select
+    sl.sku_norm,
+    count(*)::bigint as hits,
+    coalesce(sum(sl.order_revenue_excl), 0)::numeric as revenue_excl
+  from sku_lines sl
+  where sl.sku_norm is not null
+  group by sl.sku_norm
+),
+sku_ranked as (
+  select
+    row_number() over (order by s.hits desc, s.revenue_excl desc, s.sku_norm asc) as rn,
+    s.sku_norm || ' (' || s.hits || ')' as label
+  from sku_agg s
+),
+cat_lookup as (
+  select
+    sa.sku_norm,
+    sa.hits,
+    sa.revenue_excl,
+    coalesce(
+      nullif(trim(p.level1), ''),
+      nullif(trim(p.level2), ''),
+      nullif(trim(p.level3), ''),
+      'Óflokkað'
+    ) as cat_l1
+  from sku_agg sa
+  left join raw.products_raw p
+    on regexp_replace(coalesce(p.sku, ''), '[^0-9]', '', 'g') = sa.sku_norm
+),
+cat_agg as (
+  select
+    cl.cat_l1,
+    coalesce(sum(cl.hits), 0)::bigint as hits,
+    coalesce(sum(cl.revenue_excl), 0)::numeric as revenue_excl
+  from cat_lookup cl
+  group by cl.cat_l1
+),
+cat_ranked as (
+  select
+    row_number() over (order by c.hits desc, c.revenue_excl desc, c.cat_l1 asc) as rn,
+    c.cat_l1 || ' (' || c.hits || ')' as label
+  from cat_agg c
+),
 hourly_json as (
   select jsonb_agg(
     jsonb_build_object(
@@ -209,6 +278,14 @@ select
   (select tr.label from top_ranked tr where tr.rn = 1) as top_customer_1,
   (select tr.label from top_ranked tr where tr.rn = 2) as top_customer_2,
   (select tr.label from top_ranked tr where tr.rn = 3) as top_customer_3,
+  (select sr.label from sku_ranked sr where sr.rn = 1) as top_sku_1,
+  (select sr.label from sku_ranked sr where sr.rn = 2) as top_sku_2,
+  (select sr.label from sku_ranked sr where sr.rn = 3) as top_sku_3,
+  (select sr.label from sku_ranked sr where sr.rn = 4) as top_sku_4,
+  (select sr.label from sku_ranked sr where sr.rn = 5) as top_sku_5,
+  (select cr.label from cat_ranked cr where cr.rn = 1) as top_cat_1,
+  (select cr.label from cat_ranked cr where cr.rn = 2) as top_cat_2,
+  (select cr.label from cat_ranked cr where cr.rn = 3) as top_cat_3,
   coalesce((select hj.series from hourly_json hj), '[]'::jsonb) as hourly_series
 from d0
 cross join d1

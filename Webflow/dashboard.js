@@ -155,6 +155,14 @@
     setText("day-top-customer-1", row.top_customer_1 || "");
     setText("day-top-customer-2", row.top_customer_2 || "");
     setText("day-top-customer-3", row.top_customer_3 || "");
+    setText("top_sku_1", row.top_sku_1 || "");
+    setText("top_sku_2", row.top_sku_2 || "");
+    setText("top_sku_3", row.top_sku_3 || "");
+    setText("top_sku_4", row.top_sku_4 || "");
+    setText("top_sku_5", row.top_sku_5 || "");
+    setText("top_cat_1", row.top_cat_1 || "");
+    setText("top_cat_2", row.top_cat_2 || "");
+    setText("top_cat_3", row.top_cat_3 || "");
     setText("day-hourly-series-json", JSON.stringify(row.hourly_series || []));
   }
 
