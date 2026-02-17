@@ -43,6 +43,17 @@
     if (el) el.textContent = valueText;
   }
 
+  function setSignedMetric(metric, rawValue) {
+    var el = document.querySelector('[data-metric="' + metric + '"]');
+    if (!el) return;
+    var n = toNumberSafe(rawValue);
+    el.textContent = pct(n);
+    el.classList.remove("is-pos", "is-neg", "is-flat");
+    if (n > 0.0001) el.classList.add("is-pos");
+    else if (n < -0.0001) el.classList.add("is-neg");
+    else el.classList.add("is-flat");
+  }
+
   function buildMetricMap() {
     var values = {};
     document.querySelectorAll(".webapp-data[data-metric]").forEach(function (el) {
@@ -126,12 +137,12 @@
   function applyDayAdvancedMetrics(row) {
     if (!row) return;
     setText("day-aov-excl", formatNumber(row.aov_excl));
-    setText("day-vs-yesterday-orders-pct", pct(row.vs_yesterday_orders_pct));
-    setText("day-vs-yesterday-revenue-pct", pct(row.vs_yesterday_revenue_excl_pct));
-    setText("day-vs-yesterday-aov-pct", pct(row.vs_yesterday_aov_excl_pct));
-    setText("day-vs-lastweek-orders-pct", pct(row.vs_lastweek_orders_pct));
-    setText("day-vs-lastweek-revenue-pct", pct(row.vs_lastweek_revenue_excl_pct));
-    setText("day-vs-lastweek-aov-pct", pct(row.vs_lastweek_aov_excl_pct));
+    setSignedMetric("day-vs-yesterday-orders-pct", row.vs_yesterday_orders_pct);
+    setSignedMetric("day-vs-yesterday-revenue-pct", row.vs_yesterday_revenue_excl_pct);
+    setSignedMetric("day-vs-yesterday-aov-pct", row.vs_yesterday_aov_excl_pct);
+    setSignedMetric("day-vs-lastweek-orders-pct", row.vs_lastweek_orders_pct);
+    setSignedMetric("day-vs-lastweek-revenue-pct", row.vs_lastweek_revenue_excl_pct);
+    setSignedMetric("day-vs-lastweek-aov-pct", row.vs_lastweek_aov_excl_pct);
     setText("day-unique-buyers", toNumberSafe(row.unique_buyers));
     setText("day-repeat-buyer-pct", pct(row.repeat_buyer_pct));
     setText("day-first-time-buyers", toNumberSafe(row.first_time_buyers));
