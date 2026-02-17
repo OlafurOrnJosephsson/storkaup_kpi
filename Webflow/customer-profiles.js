@@ -403,12 +403,9 @@
         return res.json();
     }
 
-    function renderLastOrders(root, rows) {
-        var list = root.querySelector('[data-list="last-orders"]');
-        var proto = resolveProto(root, "last-order-row");
+    function renderLastOrderRows(list, proto, rows) {
         if (!list || !proto) return;
         list.innerHTML = "";
-
         (rows || []).forEach(function(r) {
             var n = proto.node.cloneNode(true);
             if (proto.type === "prototype") {
@@ -420,14 +417,37 @@
             var fTotal = n.querySelector('[data-field="last_order_total"]');
             var fUser = n.querySelector('[data-field="last_order_user"]');
             var fDate = n.querySelector('[data-field="last_order_date"]');
+            var fSource = n.querySelector('[data-field="last_order_source"]');
 
             if (fOrder) fOrder.textContent = r.order_id || "-";
             if (fTotal) fTotal.textContent = fmtCurrency(r.total);
             if (fUser) fUser.textContent = r.order_user || "-";
             if (fDate) fDate.textContent = r.purchase_date ? new Date(r.purchase_date).toLocaleDateString("is-IS") : "-";
+            if (fSource) fSource.textContent = String(r.source || "").toLowerCase() === "bc" ? "BC" : "Vefur";
 
             list.appendChild(n);
         });
+    }
+
+    function renderLastOrders(root, rows) {
+        var all = rows || [];
+        var webRows = all.filter(function(r) { return String(r.source || "").toLowerCase() !== "bc"; });
+        var bcRows = all.filter(function(r) { return String(r.source || "").toLowerCase() === "bc"; });
+
+        var webList = root.querySelector('[data-list="last-orders-web"]');
+        var bcList = root.querySelector('[data-list="last-orders-bc"]');
+        var webProto = resolveProto(root, "last-order-row-web") || resolveProto(root, "last-order-row");
+        var bcProto = resolveProto(root, "last-order-row-bc") || resolveProto(root, "last-order-row");
+
+        if (webList && bcList) {
+            renderLastOrderRows(webList, webProto, webRows);
+            renderLastOrderRows(bcList, bcProto, bcRows);
+            return;
+        }
+
+        var legacyList = root.querySelector('[data-list="last-orders"]');
+        var legacyProto = resolveProto(root, "last-order-row");
+        renderLastOrderRows(legacyList, legacyProto, all);
     }
 
 
