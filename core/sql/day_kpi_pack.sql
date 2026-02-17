@@ -336,11 +336,11 @@ hourly_json as (
   ) as series
   from hourly_full hf
 ),
-weekday_days as (
+  weekday_days as (
   select gs.day::date as day
   from params p
-  cross join lateral generate_series(
-    (p.day - interval '180 day')::date,
+    cross join lateral generate_series(
+    (p.day - interval '365 day')::date,
     (p.day - interval '1 day')::date,
     interval '1 day'
   ) as gs(day)
@@ -353,7 +353,7 @@ weekday_hour_orders as (
     count(distinct n.order_id)::numeric as orders
   from raw.newweb_orders_raw n
   join params p on true
-  where n.purchase_date >= (p.day - interval '180 day')::timestamp
+  where n.purchase_date >= (p.day - interval '365 day')::timestamp
     and n.purchase_date < p.day::timestamp
     and extract(isodow from n.purchase_date) = extract(isodow from p.day)
   group by 1, 2

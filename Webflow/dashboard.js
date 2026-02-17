@@ -305,17 +305,16 @@
     });
     if (globalMax <= 0) globalMax = 1;
 
-    var html = '<div class="weekday-grid">';
+    var html = '';
     rows.sort(function (a, b) { return a.isoDow - b.isoDow; }).forEach(function (r) {
       var label = WEEKDAY_SHORT_IS[r.isoDow] || String(r.isoDow);
       html += ''
-        + '<div class="weekday-card">'
+        + '<div class="weekday-card" data-weekday-card="' + r.isoDow + '">'
         +   '<div class="weekday-card-title">' + label + '</div>'
         +   buildHourlyBarsHtml(r.series || [], globalMax, "hourly-chart hourly-chart-mini")
         +   '<div class="weekday-card-meta">' + toNumberSafe(r.sampleDays) + ' dagar</div>'
         + '</div>';
     });
-    html += '</div>';
     host.innerHTML = html;
   }
 
