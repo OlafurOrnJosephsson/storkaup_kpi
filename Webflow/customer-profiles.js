@@ -83,13 +83,24 @@
         "web_revenue_prev_30d"
     ].join(",");
 
-    async function fetchProfilesPage(offset, pageSize) {
+    function isTimeoutErrorText(txt) {
+        var t = String(txt || "").toLowerCase();
+        return t.indexOf("57014") !== -1 || t.indexOf("statement timeout") !== -1 || t.indexOf("canceling statement") !== -1;
+    }
+
+    async function fetchProfilesPage(offset, pageSize, useOrder) {
         var path =
             "/rest/v1/v_customer_profiles_labeled_trends?select=" + encodeURIComponent(PROFILE_FIELDS) +
-            "&order=customer_id.asc.nullslast&limit=" + pageSize +
+            (useOrder === false ? "" : "&order=customer_id.asc.nullslast") +
+            "&limit=" + pageSize +
             "&offset=" + offset;
         var res = await fetch(URL + path, { headers: headers("api") });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+            var errText = await res.text();
+            var e = new Error(errText);
+            e.__isTimeout = isTimeoutErrorText(errText);
+            throw e;
+        }
         var rows = await res.json();
         return Array.isArray(rows) ? rows : [];
     }
@@ -100,9 +111,9 @@
         });
     }
 
-    async function hydrateProfilesInBackground(root, startOffset, pageSize, maxRows) {
+    async function hydrateProfilesInBackground(root, startOffset, pageSize, maxRows, useOrder) {
         for (var offset = startOffset; offset < maxRows; offset += pageSize) {
-            var rows = await fetchProfilesPage(offset, pageSize);
+            var rows = await fetchProfilesPage(offset, pageSize, useOrder);
             if (!rows.length) break;
 
             state.customers = state.customers.concat(rows);
@@ -565,7 +576,18 @@
 
         var pageSize = 300;
         var maxRows = 6000;
-        var firstPage = await fetchProfilesPage(0, pageSize);
+        var useOrder = true;
+        var firstPage;
+        try {
+            firstPage = await fetchProfilesPage(0, pageSize, useOrder);
+        } catch (err) {
+            if (!err || !err.__isTimeout) throw err;
+            // Timeout-safe fallback for heavy view scans on some environments.
+            useOrder = false;
+            pageSize = 100;
+            maxRows = 3000;
+            firstPage = await fetchProfilesPage(0, pageSize, useOrder);
+        }
         state.customers = firstPage;
         sortProfilesByScore(state.customers);
         root.querySelectorAll("[data-chip]").forEach(function(b) {
@@ -574,7 +596,7 @@
         });
         applyFilters(root, "");
 
-        hydrateProfilesInBackground(root, pageSize, pageSize, maxRows).catch(function(err) {
+        hydrateProfilesInBackground(root, pageSize, pageSize, maxRows, useOrder).catch(function(err) {
             console.error("Background profile hydration failed:", err);
         });
 
