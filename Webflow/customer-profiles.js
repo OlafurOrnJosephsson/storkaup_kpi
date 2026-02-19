@@ -15,7 +15,8 @@
         sortDir: "desc",
         activeChip: "all",
         searchTerm: "",
-        searchDebounceId: null
+        searchDebounceId: null,
+        searchSeq: 0
     };
     var MAX_RENDERED_CUSTOMERS = 150;
 
@@ -181,6 +182,22 @@
         rows.sort(function(a, b) {
             return numOrZero(b.low_hanging_fruit_score) - numOrZero(a.low_hanging_fruit_score);
         });
+    }
+
+    async function fetchProfilesByQuery(query, limit) {
+        var q = String(query || "").trim();
+        if (!q) return [];
+        var lim = Number(limit || 50);
+        var escaped = q.replace(/[%*,()]/g, "");
+        var orExpr = "(customer_name.ilike.*" + escaped + "*,customer_id.ilike.*" + escaped + "*)";
+        var path =
+            "/rest/v1/v_customer_profiles_labeled_trends?select=" + encodeURIComponent(PROFILE_FIELDS) +
+            "&or=" + encodeURIComponent(orExpr) +
+            "&limit=" + lim;
+        var res = await fetch(URL + path, { headers: headers("api"), cache: "no-store" });
+        if (!res.ok) return [];
+        var rows = await res.json();
+        return Array.isArray(rows) ? rows : [];
     }
 
     async function hydrateProfilesInBackground(root, startOffset, pageSize, maxRows, useOrder) {
@@ -653,8 +670,9 @@
         doc.save("innkaupalisti.pdf");
     }
 
-    function applyFilters(root, q) {
+    async function applyFilters(root, q) {
         var s = (q || "").trim().toLowerCase();
+        var seq = ++state.searchSeq;
         state.searchTerm = s;
         var out = state.customers.filter(function(c) {
             if (!matchesChip(c, state.activeChip)) return false;
@@ -663,6 +681,31 @@
             var id = String(c.customer_id || "").toLowerCase();
             return name.indexOf(s) !== -1 || id.indexOf(s) !== -1;
         });
+
+        // Fallback: query server when local cache misses the term.
+        if (s && out.length === 0 && s.length >= 3) {
+            var remote = await fetchProfilesByQuery(s, 80);
+            if (seq !== state.searchSeq) return; // stale async response
+            if (remote.length) {
+                var seen = {};
+                state.customers.forEach(function(r) { seen[String(r.customer_id || "")] = true; });
+                remote.forEach(function(r) {
+                    var k = String(r.customer_id || "");
+                    if (!seen[k]) {
+                        state.customers.push(r);
+                        seen[k] = true;
+                    }
+                });
+                sortProfilesByScore(state.customers);
+                out = state.customers.filter(function(c) {
+                    if (!matchesChip(c, state.activeChip)) return false;
+                    var name = String(c.customer_name || "").toLowerCase();
+                    var id = String(c.customer_id || "").toLowerCase();
+                    return name.indexOf(s) !== -1 || id.indexOf(s) !== -1;
+                });
+            }
+        }
+
         state.filtered = out;
         renderCustomers(root);
     }
