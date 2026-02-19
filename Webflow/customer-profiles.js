@@ -509,6 +509,34 @@
         return res.json();
     }
 
+    async function fetchLastOrdersCombined(selectedProfile, limit) {
+        var ids = [];
+        var primary = String((selectedProfile && selectedProfile.customer_id) || "").trim();
+        var queryId = String((selectedProfile && selectedProfile._queryCustomerId) || "").trim();
+        if (primary) ids.push(primary);
+        if (queryId && queryId !== primary) ids.push(queryId);
+        if (!ids.length) return [];
+
+        var perIdLimit = Number(limit || 5);
+        var batches = await Promise.all(ids.map(function(id) {
+            return fetchLastOrders(id, perIdLimit).catch(function() { return []; });
+        }));
+
+        var map = {};
+        batches.forEach(function(rows) {
+            (rows || []).forEach(function(r) {
+                var k = String(r.source || "") + "|" + String(r.order_id || "");
+                if (!map[k]) map[k] = r;
+            });
+        });
+
+        return Object.keys(map)
+            .map(function(k) { return map[k]; })
+            .sort(function(a, b) {
+                return new Date(b.purchase_date || 0).getTime() - new Date(a.purchase_date || 0).getTime();
+            });
+    }
+
     function renderLastOrderRows(list, proto, rows) {
         if (!list || !proto) return;
         list.innerHTML = "";
@@ -754,7 +782,7 @@
                 }
 
                 try {
-                    var orders = await fetchLastOrders(getSelectedQueryCustomerId(), 5);
+                    var orders = await fetchLastOrdersCombined(state.selected, 5);
                     renderLastOrders(root, orders);
                 } catch (err2) {
                     console.error(err2);
