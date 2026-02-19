@@ -68,18 +68,10 @@ function menu_buildCustomerAnalysis() {
 
 function menu_refreshNEWWEB() {
   toast_('Fetching NEWWEB orders...', 'KPI CORE');
-
-  if (typeof safePoll_v2 === 'function') {
-    safePoll_v2();
-  } else if (typeof safePoll === 'function') {
-    safePoll();
-  } else if (typeof pollMagentoNewOrders === 'function') {
-    pollMagentoNewOrders();
-  } else if (typeof pollMagentoOrders_v2 === 'function') {
-    pollMagentoOrders_v2();
-  } else {
-    throw new Error('No NEWWEB poller found (expected safePoll_v2/safePoll/pollMagentoNewOrders).');
+  if (typeof safePoll_v2 !== 'function') {
+    throw new Error('safePoll_v2() not found. Ensure core/newsales_v2.js is deployed.');
   }
+  safePoll_v2();
 
   toast_('NEWWEB updated.', 'KPI CORE');
 }

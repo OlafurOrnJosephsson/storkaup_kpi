@@ -48,7 +48,6 @@ function pollMagentoOrders_v2() {
   }
 
   const startRow = sh.getLastRow() + 1;
-  sh.insertRowsAfter(sh.getLastRow(), rows.length);
   sh.getRange(startRow, 1, rows.length, headers.length).setValues(rows);
 
   try {
@@ -64,7 +63,13 @@ function pollMagentoOrders_v2() {
       .setProperty(NEWWEB_V2_CHECKPOINT_KEY, checkpointIso);
   }
 
-  applyStylingTo("WEBSALES", { sortBy: "Purchase Date", zebra: true });
+  if (shouldApplyNewwebStyling_v2_()) {
+    try {
+      applyStylingTo("WEBSALES", { sortBy: "Purchase Date", zebra: true });
+    } catch (e) {
+      logNewwebEvent_('WARN', 'Skipping styling due to error', serializeError_(e));
+    }
+  }
 
   const checkpointValue = lastWrittenCreatedAt || startAfter;
   logNewwebEvent_('INFO', 'NEWWEB v2 import completed', {
@@ -386,6 +391,66 @@ function truncateBody_(str, maxLen) {
 /************************************************************
  * Build rows + track latest created_at written
  ************************************************************/
+function mapOrdersToOrderRows_(orders, headers) {
+  const idx = {};
+  headers.forEach((h, i) => { idx[h] = i; });
+
+  const rows = [];
+  for (const o of orders) {
+    const row = new Array(headers.length).fill('');
+
+    const ext  = o.extension_attributes || {};
+    const comp = ext.company_order_attributes || {};
+    const b2bName = comp.company_name || '';
+    const b2bId   = comp.company_id || '';
+
+    const items   = o.items || [];
+    const rawSku  = items.map(i => i.sku || '');
+    const normSku = rawSku.map(normalizeSkuGlobal_);
+    const names   = items.map(i => i.name || '');
+    const qty     = items.reduce((a, i) => a + (i.qty_ordered || 0), 0);
+    const customerName = [o.customer_firstname, o.customer_lastname].filter(Boolean).join(' ');
+
+    let enriched = null;
+    if (globalCustomerLookup) {
+      const L = globalCustomerLookup;
+      if (o.customer_id) enriched = L.byId[String(o.customer_id)];
+      if (!enriched && o.customer_email) enriched = L.byEmail[String(o.customer_email).toLowerCase()];
+    }
+
+    const finalCompanyName = b2bName || (enriched ? enriched.company_name : '');
+    const finalCompanyId = b2bId || (enriched ? enriched.company_id : '');
+    const finalRealEmail = enriched && enriched.real_email ? enriched.real_email : (o.customer_email || '');
+    const finalRegion = enriched ? enriched.region : '';
+    const finalNationalId = enriched ? enriched.national_id : '';
+
+    row[idx['ID']] = o.increment_id || '';
+    row[idx['Purchase Point']] = (o.store_name || '').split('\n')[0] || 'Main Website';
+    row[idx['Purchase Date']] = toDate_(o.created_at);
+    row[idx['Ship-to Name']] = o.customer_firstname || '';
+    row[idx['Subtotal (Excl Tax)']] = Number(o.subtotal) || 0;
+    row[idx['Subtotal (Incl Tax)']] = Number(o.subtotal_incl_tax) || 0;
+    row[idx['Tax Amount']] = Number(o.tax_amount) || 0;
+    row[idx['Grand Total (Purchased)']] = Number(o.grand_total) || 0;
+    row[idx['Customer Name']] = customerName;
+    row[idx['Company Name']] = finalCompanyName;
+    row[idx['Company ID']] = finalCompanyId;
+    row[idx['Real Email']] = finalRealEmail;
+    row[idx['Region']] = finalRegion;
+    row[idx['National ID']] = finalNationalId;
+    row[idx['Payment Method']] = (o.payment && o.payment.method) || '';
+    row[idx['Status']] = o.status || '';
+    row[idx['SKU']] = rawSku.join(', ');
+    row[idx['SKU (Normalized)']] = normSku.join(', ');
+    row[idx['Product Name']] = names.join(', ');
+    row[idx['Qty']] = qty;
+    row[idx['Items']] = items.length + ' items';
+
+    rows.push(row);
+  }
+  return rows;
+}
+
 function mapOrdersToOrderRowsWithMax_(orders, headers) {
   if (!orders || !orders.length) return { rows: [], maxCreatedAt: null };
 
@@ -535,6 +600,12 @@ function logNewwebEvent_(lvl, msg, extra) {
  * Safe Poll wrapper (v2)
  ************************************************************/
 function safePoll_v2() {
+  var windowDecision = getNewwebRunWindowDecision_v2_();
+  if (!windowDecision.shouldRun) {
+    logNewwebEvent_('INFO', 'Skipping run by schedule window', windowDecision);
+    return;
+  }
+
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
     logNewwebEvent_('WARN', 'Another v2 run in progress');
@@ -547,4 +618,54 @@ function safePoll_v2() {
   } finally {
     lock.releaseLock();
   }
+}
+
+function shouldApplyNewwebStyling_v2_() {
+  var props = PropertiesService.getScriptProperties();
+  var key = 'NEWWEB_V2_LAST_STYLE_AT_MS';
+  var now = Date.now();
+  var minIntervalMs = 6 * 60 * 60 * 1000; // Style at most every 6 hours.
+  var last = Number(props.getProperty(key) || 0);
+  if (last && (now - last) < minIntervalMs) return false;
+  props.setProperty(key, String(now));
+  return true;
+}
+
+function getNewwebRunWindowDecision_v2_() {
+  var tz = Session.getScriptTimeZone() || 'GMT';
+  var now = new Date();
+  var hour = Number(Utilities.formatDate(now, tz, 'H')); // 0..23
+  var minute = Number(Utilities.formatDate(now, tz, 'm')); // 0..59
+
+  // Night window OFF: 00:00-06:59
+  if (hour >= 0 && hour < 7) {
+    return {
+      shouldRun: false,
+      mode: 'off_night',
+      timezone: tz,
+      hour: hour,
+      minute: minute
+    };
+  }
+
+  // Business hours: every 5-minute trigger run (07:00-15:59)
+  if (hour >= 7 && hour < 16) {
+    return {
+      shouldRun: true,
+      mode: 'business_5m',
+      timezone: tz,
+      hour: hour,
+      minute: minute
+    };
+  }
+
+  // Evening: run only on quarter-hours (effective 15m on top of 5m trigger).
+  var quarter = (minute % 15 === 0);
+  return {
+    shouldRun: quarter,
+    mode: quarter ? 'evening_15m_run' : 'evening_15m_skip',
+    timezone: tz,
+    hour: hour,
+    minute: minute
+  };
 }
