@@ -48,78 +48,6 @@
         return sign + pct.toFixed(1).replace(".", ",") + "%";
     }
 
-    function normalizeCustomerId(value) {
-        var raw = String(value || "").trim();
-        if (!raw) return "";
-        return raw.replace(/\D/g, "") || raw;
-    }
-
-    function customerFamilyId(value) {
-        var n = normalizeCustomerId(value);
-        if (!n) return "";
-        return n.length > 10 ? n.slice(0, 10) : n;
-    }
-
-    function avgPositive(rows, field) {
-        var sum = 0;
-        var count = 0;
-        (rows || []).forEach(function(r) {
-            var v = numOrZero(r && r[field]);
-            if (v > 0) {
-                sum += v;
-                count += 1;
-            }
-        });
-        return count ? (sum / count) : 0;
-    }
-
-    function buildSelectedProfile(selected, allRows) {
-        if (!selected) return null;
-        var out = Object.assign({}, selected);
-        var fam = customerFamilyId(selected.customer_id);
-        if (!fam) {
-            out._queryCustomerId = String(selected.customer_id || "").trim();
-            return out;
-        }
-
-        var familyRows = (allRows || []).filter(function(r) {
-            return customerFamilyId(r && r.customer_id) === fam;
-        });
-        if (!familyRows.length) {
-            out._queryCustomerId = String(selected.customer_id || "").trim();
-            return out;
-        }
-
-        var sumFields = [
-            "orders_bc_365d",
-            "orders_web_365d",
-            "bc_orders_30d",
-            "bc_orders_prev_30d",
-            "web_orders_30d",
-            "web_orders_prev_30d",
-            "bc_revenue_30d",
-            "bc_revenue_prev_30d",
-            "web_revenue_30d",
-            "web_revenue_prev_30d"
-        ];
-        sumFields.forEach(function(f) {
-            out[f] = familyRows.reduce(function(acc, r) { return acc + numOrZero(r && r[f]); }, 0);
-        });
-        out.avg_days_between_bc_orders = avgPositive(familyRows, "avg_days_between_bc_orders");
-        out.avg_days_between_web_orders = avgPositive(familyRows, "avg_days_between_web_orders");
-
-        var parent = familyRows.find(function(r) {
-            return normalizeCustomerId(r && r.customer_id) === fam;
-        });
-        out._queryCustomerId = String((parent && parent.customer_id) || selected.customer_id || "").trim();
-        return out;
-    }
-
-    function getSelectedQueryCustomerId() {
-        if (!state.selected) return "";
-        return String(state.selected._queryCustomerId || state.selected.customer_id || "").trim();
-    }
-
     function setProfileVisible(root, visible) {
         var panel = root.querySelector('[data-panel="customer-profile"]');
         if (!panel) return;
@@ -738,8 +666,7 @@
             if (open) {
                 e.preventDefault();
                 var id = open.getAttribute("data-customer-id");
-                var selectedRaw = state.customers.find(function(c) { return String(c.customer_id) === String(id); }) || null;
-                state.selected = buildSelectedProfile(selectedRaw, state.customers);
+                state.selected = state.customers.find(function(c) { return String(c.customer_id) === String(id); }) || null;
 
                 bindSelected(root);
                 setProfileVisible(root, !!state.selected);
@@ -754,7 +681,7 @@
                 }
 
                 try {
-                    var orders = await fetchLastOrders(getSelectedQueryCustomerId(), 5);
+                    var orders = await fetchLastOrders(state.selected.customer_id, 5);
                     renderLastOrders(root, orders);
                 } catch (err2) {
                     console.error(err2);
@@ -784,7 +711,7 @@
                 e.preventDefault();
                 if (!state.selected || !state.selected.customer_id) return;
 
-                var rows = await generateList(getSelectedQueryCustomerId());
+                var rows = await generateList(state.selected.customer_id);
                 var skuMap = await fetchCategoriesForSkus(rows.map(function(r) { return r.sku; }));
                 state.shoppingRows = rows.map(function(r) {
                     return Object.assign({}, r, { category: skuMap[String(r.sku || "").trim()] || "Óflokkað" });
