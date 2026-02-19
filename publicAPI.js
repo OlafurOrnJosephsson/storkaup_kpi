@@ -10,23 +10,16 @@ function loadConfig() {
 }
 
 var UI = {
-  open: openCompanySearchUI,
-  searchCustomers: searchCustomersUI,
-  buildShoppingList: buildShoppingListUI
+  open: function() { throw new Error('Deprecated: Sheet UI search was removed. Use Webflow/Supabase frontend.'); },
+  searchCustomers: function() { throw new Error('Deprecated: customer search API was removed. Use Webflow/Supabase frontend.'); },
+  buildShoppingList: function() { throw new Error('Deprecated: sheet shopping list API was removed. Use Webflow/Supabase frontend.'); }
 };
 
 /***********************
  * 🔍 CUSTOMER SEARCH
  ***********************/
 function searchCustomers(query, debug) {
-  const cfg = loadConfig_();
-  const res = searchCustomersV3_(query, cfg);
-
-  if (debug) {
-    Logger.log("🔍 DEBUG SEARCH INPUT: " + query);
-    Logger.log("🔍 DEBUG RESULTS:\n" + JSON.stringify(res, null, 2));
-  }
-  return res;
+  throw new Error('Deprecated: searchCustomers() was removed. Use Webflow/Supabase frontend.');
 }
 
 
@@ -34,8 +27,7 @@ function searchCustomers(query, debug) {
  * 🛒 BUILD SHOPPING LIST
  ***********************/
 function buildShoppingList(companyId, mode) {
-  const cfg = loadConfig_();
-  return buildShoppingListForCompany_(companyId, mode, cfg);
+  throw new Error('Deprecated: buildShoppingList() was removed. Use Webflow/Supabase frontend.');
 }
 
 
@@ -43,8 +35,7 @@ function buildShoppingList(companyId, mode) {
  * 👤 GET CUSTOMER PROFILE
  ***********************/
 function getCustomerProfile(companyId, mode) {
-  const cfg = loadConfig_();
-  return buildCustomerProfileV3_(companyId, mode, cfg);
+  throw new Error('Deprecated: getCustomerProfile() was removed. Use Webflow/Supabase frontend.');
 }
 
 

@@ -49,6 +49,11 @@ function pollMagentoOrders_v2() {
 
   const startRow = sh.getLastRow() + 1;
   sh.getRange(startRow, 1, rows.length, headers.length).setValues(rows);
+  try {
+    sortNewwebByPurchaseDate_v2_(sh, headers);
+  } catch (e) {
+    logNewwebEvent_('WARN', 'Lightweight sort failed', serializeError_(e));
+  }
 
   try {
     upsertNewwebRowsToSupabase_(headers, rows);
@@ -629,6 +634,14 @@ function shouldApplyNewwebStyling_v2_() {
   if (last && (now - last) < minIntervalMs) return false;
   props.setProperty(key, String(now));
   return true;
+}
+
+function sortNewwebByPurchaseDate_v2_(sh, headers) {
+  var dateCol = headers.indexOf('Purchase Date') + 1;
+  if (dateCol < 1) return;
+  var lastRow = sh.getLastRow();
+  if (lastRow <= 2) return;
+  sh.getRange(2, 1, lastRow - 1, headers.length).sort([{ column: dateCol, ascending: false }]);
 }
 
 function getNewwebRunWindowDecision_v2_() {
