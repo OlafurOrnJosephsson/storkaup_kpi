@@ -2,7 +2,7 @@
 -- Attribution rule: last click, 7-day window, email match
 
 create schema if not exists raw;
-create schema if not exists marts;
+create schema if not exists mart;
 
 create table if not exists raw.raw_klaviyo_events (
   event_id text primary key,
@@ -41,7 +41,7 @@ create table if not exists raw.dim_klaviyo_campaigns (
   updated_at timestamptz not null default now()
 );
 
-create materialized view if not exists marts.mv_klaviyo_attribution_daily as
+create materialized view if not exists mart.mv_klaviyo_attribution_daily as
 with web_orders as (
   select
     o.order_id,
@@ -99,7 +99,7 @@ where rn = 1
 group by 1, 2, 3;
 
 create index if not exists idx_mv_klaviyo_attribution_daily_order_date
-  on marts.mv_klaviyo_attribution_daily (order_date desc);
+  on mart.mv_klaviyo_attribution_daily (order_date desc);
 
 create or replace function public.refresh_mv_klaviyo_attribution_daily()
 returns void
@@ -107,6 +107,6 @@ language plpgsql
 security definer
 as $$
 begin
-  refresh materialized view marts.mv_klaviyo_attribution_daily;
+  refresh materialized view mart.mv_klaviyo_attribution_daily;
 end;
 $$;

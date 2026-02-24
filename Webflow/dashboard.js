@@ -653,7 +653,7 @@
       headers: {
         "apikey": apiKey,
         "Authorization": "Bearer " + apiKey,
-        "Accept-Profile": "marts"
+        "Accept-Profile": "mart"
       }
     })
       .then(function (r) {
