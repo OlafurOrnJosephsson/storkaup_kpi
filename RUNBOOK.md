@@ -56,6 +56,7 @@ Use only when incremental sync is clearly behind or data was re-exported.
 - Full lines backfill (chunked safer): `runBcLinesFullBackfillChunk_v1`
 - Incremental BC wrapper: `runBcIncrementalSync_v1`
 - Optional marts refresh: `refreshSupabaseMarts_v1`
+- NEWWEB missing-field repair (recent rows): `reconcileNewwebMissingData_v2`
 
 Note: `refresh_mv_top_products_all` may timeout (statement timeout) during busy hours. Run heavy refresh off-peak.
 

@@ -30,6 +30,7 @@ function onOpen() {
     .addSubMenu(
       ui.createMenu('NEWWEB Tools')
         .addItem('Reset NEWWEB v2 checkpoint', 'menu_resetNewwebCheckpointV2')
+        .addItem('Reconcile missing NEWWEB fields', 'menu_reconcileNewwebMissingDataV2')
     )
     .addSubMenu(
       ui.createMenu('Tools')
@@ -92,6 +93,15 @@ function menu_resetNewwebCheckpointV2() {
 
   resetNewwebCheckpoint_v2(start || undefined);
   toast_('NEWWEB v2 checkpoint reset.', 'KPI CORE');
+}
+
+function menu_reconcileNewwebMissingDataV2() {
+  toast_('Reconciling missing NEWWEB fields...', 'KPI CORE');
+  if (typeof reconcileNewwebMissingData_v2 !== 'function') {
+    throw new Error('reconcileNewwebMissingData_v2() not found. Ensure core/newsales_v2.js is deployed.');
+  }
+  var out = reconcileNewwebMissingData_v2();
+  toast_('NEWWEB reconcile done. Repaired: ' + (out && out.repaired || 0), 'KPI CORE');
 }
 
 function menu_refreshSalesSummaries() {

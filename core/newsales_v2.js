@@ -14,6 +14,7 @@ const NEWWEB_V2_STATUS_FILTER   = [];       // e.g. ['processing','complete']
 const NEWWEB_V2_MAX_PAGES       = 5;        // limit pages per execution to avoid quota spikes
 const NEWWEB_V2_PAGE_SIZE       = 200;
 const NEWWEB_V2_LOOKBACK_DAYS   = 5;        // never fetch earlier than (today - N days) to keep window small
+var globalCustomerLookup = null;
 
 /************************************************************
  * Entry point
@@ -197,6 +198,119 @@ function backfillNewwebSheetToSupabase_v2() {
   return { totalRows, processed };
 }
 
+function reconcileNewwebMissingData_v2() {
+  return reconcileNewwebMissingDataWindow_v2_({
+    scanRows: 500,
+    maxRepairs: 150
+  });
+}
+
+function reconcileNewwebMissingDataWindow_v2_(options) {
+  var opts = options || {};
+  var scanRows = Math.max(1, Number(opts.scanRows || 500));
+  var maxRepairs = Math.max(1, Number(opts.maxRepairs || 150));
+
+  var sh = ensureNewwebSheetV2_();
+  var headers = ensureNewwebHeaderV2_(sh);
+  var lastRow = sh.getLastRow();
+  if (lastRow <= 1) {
+    logNewwebEvent_('INFO', 'NEWWEB reconcile skipped: no data rows');
+    return { scanned: 0, candidates: 0, repaired: 0, missingInMagento: 0 };
+  }
+
+  var idx = {};
+  headers.forEach(function(h, i) { idx[h] = i; });
+  var required = ['Company Name', 'Company ID', 'Real Email', 'Region', 'National ID'];
+  var startRow = 2;
+  var rowsAvailable = lastRow - 1;
+  var rowsToScan = Math.min(scanRows, rowsAvailable);
+  var values = sh.getRange(startRow, 1, rowsToScan, headers.length).getValues();
+
+  var byOrderId = {};
+  var candidates = [];
+  for (var i = 0; i < values.length; i++) {
+    var row = values[i];
+    var orderId = String(row[idx['ID']] || '').trim();
+    if (!orderId) continue;
+    if (byOrderId[orderId]) continue;
+    if (!rowHasMissingFields_v2_(row, idx, required)) continue;
+    byOrderId[orderId] = true;
+    candidates.push({
+      sheetRow: startRow + i,
+      orderId: orderId,
+      row: row
+    });
+    if (candidates.length >= maxRepairs) break;
+  }
+
+  if (!candidates.length) {
+    logNewwebEvent_('INFO', 'NEWWEB reconcile: no rows with missing enrichment', {
+      scanned: values.length,
+      startRow: startRow,
+      scanDirection: 'top'
+    });
+    return { scanned: values.length, candidates: 0, repaired: 0, missingInMagento: 0 };
+  }
+
+  logNewwebEvent_('INFO', 'NEWWEB reconcile start', {
+    scanned: values.length,
+    candidates: candidates.length,
+    startRow: startRow,
+    scanDirection: 'top'
+  });
+
+  var repairedRows = [];
+  var repaired = 0;
+  var missingInMagento = 0;
+  try {
+    globalCustomerLookup = loadCustomerLookup_();
+  } catch (e) {
+    logNewwebEvent_('WARN', 'NEWWEB reconcile lookup load failed', serializeError_(e));
+  }
+
+  for (var c = 0; c < candidates.length; c++) {
+    var cand = candidates[c];
+    var order = fetchMagentoOrderByIncrementId_v2_(cand.orderId);
+    if (!order) {
+      missingInMagento++;
+      continue;
+    }
+
+    var mapped = mapOrdersToOrderRows_([order], headers);
+    if (!mapped || !mapped.length) continue;
+
+    var updatedRow = applyMissingFieldsFromRow_v2_(cand.row, mapped[0], idx, required);
+    if (!updatedRow.changed) continue;
+
+    sh.getRange(cand.sheetRow, 1, 1, headers.length).setValues([updatedRow.row]);
+    repairedRows.push(updatedRow.row);
+    repaired++;
+  }
+
+  if (repairedRows.length) {
+    try {
+      upsertNewwebRowsToSupabase_(headers, repairedRows);
+      logNewwebEvent_('INFO', 'NEWWEB reconcile Supabase upsert ok', { rows: repairedRows.length });
+    } catch (e) {
+      logNewwebEvent_('ERROR', 'NEWWEB reconcile Supabase upsert failed', serializeError_(e));
+    }
+  }
+
+  logNewwebEvent_('INFO', 'NEWWEB reconcile completed', {
+    scanned: values.length,
+    candidates: candidates.length,
+    repaired: repaired,
+    missingInMagento: missingInMagento
+  });
+
+  return {
+    scanned: values.length,
+    candidates: candidates.length,
+    repaired: repaired,
+    missingInMagento: missingInMagento
+  };
+}
+
 function debugSupabaseConfig_v2() {
   const cfg = loadConfig_();
   const restUrl = cfg.ENDPOINTS && cfg.ENDPOINTS.SUPABASE && cfg.ENDPOINTS.SUPABASE.REST_URL;
@@ -214,6 +328,34 @@ function debugSupabaseConfig_v2() {
     serviceRolePrefix: serviceRole ? String(serviceRole).slice(0, 12) : '',
     secretPrefix: secretKey ? String(secretKey).slice(0, 12) : ''
   };
+}
+
+function rowHasMissingFields_v2_(row, idx, fields) {
+  for (var i = 0; i < fields.length; i++) {
+    var col = idx[fields[i]];
+    if (col == null) continue;
+    if (isMissingCellValue_v2_(row[col])) return true;
+  }
+  return false;
+}
+
+function applyMissingFieldsFromRow_v2_(targetRow, sourceRow, idx, fields) {
+  var out = targetRow.slice();
+  var changed = false;
+  for (var i = 0; i < fields.length; i++) {
+    var key = fields[i];
+    var col = idx[key];
+    if (col == null) continue;
+    if (!isMissingCellValue_v2_(out[col])) continue;
+    if (isMissingCellValue_v2_(sourceRow[col])) continue;
+    out[col] = sourceRow[col];
+    changed = true;
+  }
+  return { row: out, changed: changed };
+}
+
+function isMissingCellValue_v2_(v) {
+  return v === null || v === undefined || String(v).trim() === '';
 }
 
 /************************************************************
@@ -364,6 +506,109 @@ function fetchMagentoPage_(createdAfter, page) {
   return { items, hasMore, newest, headerSource };
 }
 
+function fetchMagentoOrderByIncrementId_v2_(incrementId) {
+  var id = String(incrementId || '').trim();
+  if (!id) return null;
+
+  var CONFIG = loadConfig_();
+  var base = String(CONFIG.ENDPOINTS.Magento.BASE_URL || '').replace(/\/$/, '');
+  var url =
+    base + '/orders' +
+    '?searchCriteria[filter_groups][0][filters][0][field]=increment_id' +
+    '&searchCriteria[filter_groups][0][filters][0][value]=' + encodeURIComponent(id) +
+    '&searchCriteria[filter_groups][0][filters][0][condition_type]=eq' +
+    '&searchCriteria[pageSize]=1' +
+    '&searchCriteria[currentPage]=1';
+
+  var out = fetchMagentoJsonWithRetry_v2_(url);
+  if (!out || out.status !== 200) return null;
+  var items = out.json && out.json.items ? out.json.items : [];
+  return items.length ? items[0] : null;
+}
+
+function fetchMagentoJsonWithRetry_v2_(url) {
+  var headerInfo = magentoHeaders_v2_();
+  var res;
+  var status;
+  var headersUsed = headerInfo.headers;
+  var headerSource = headerInfo.source;
+
+  try {
+    res = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: headersUsed,
+      muteHttpExceptions: true
+    });
+    status = res.getResponseCode();
+  } catch (e) {
+    logNewwebEvent_('ERROR', 'UrlFetch exception (v2 helper)', { url: url, message: e && e.message, stack: e && e.stack });
+    return { status: 0, json: null, headerSource: headerSource };
+  }
+
+  if ((status === 401 || status === 403) && headerInfo.source === 'configToken') {
+    try {
+      headersUsed = magentoHeaders_();
+      headerSource = 'adminToken';
+      res = UrlFetchApp.fetch(url, {
+        method: 'get',
+        headers: headersUsed,
+        muteHttpExceptions: true
+      });
+      status = res.getResponseCode();
+    } catch (e) {
+      logNewwebEvent_('ERROR', 'UrlFetch exception on retry (v2 helper)', { url: url, message: e && e.message, stack: e && e.stack });
+      return { status: 0, json: null, headerSource: headerSource };
+    }
+  }
+
+  if ((status === 401 || status === 403) && headerSource === 'adminToken') {
+    var props = PropertiesService.getScriptProperties();
+    var backoffKey = 'MAGENTO_ADMIN_TOKEN_REFRESH_BACKOFF_UNTIL';
+    var backoffUntil = Number(props.getProperty(backoffKey) || 0);
+    if (!backoffUntil || Date.now() >= backoffUntil) {
+      try {
+        headersUsed = magentoHeaders_({ forceRefresh: true });
+        headerSource = 'adminTokenRefreshed';
+        res = UrlFetchApp.fetch(url, {
+          method: 'get',
+          headers: headersUsed,
+          muteHttpExceptions: true
+        });
+        status = res.getResponseCode();
+        if (status === 200) {
+          props.deleteProperty(backoffKey);
+        } else if (status === 401 || status === 403) {
+          props.setProperty(backoffKey, String(Date.now() + 30 * 60 * 1000));
+        }
+      } catch (e) {
+        logNewwebEvent_('ERROR', 'UrlFetch exception on admin refresh retry (v2 helper)', { url: url, message: e && e.message, stack: e && e.stack });
+        return { status: 0, json: null, headerSource: headerSource };
+      }
+    }
+  }
+
+  if (status !== 200) {
+    logNewwebEvent_('WARN', 'UrlFetch non-200 (v2 helper)', {
+      url: url,
+      status: status,
+      body: res ? truncateBody_(res.getContentText()) : '',
+      headerSource: headerSource
+    });
+    return { status: status, json: null, headerSource: headerSource };
+  }
+
+  try {
+    return {
+      status: status,
+      json: JSON.parse(res.getContentText()),
+      headerSource: headerSource
+    };
+  } catch (e) {
+    logNewwebEvent_('ERROR', 'JSON parse failed (v2 helper)', { url: url, status: status, message: e && e.message });
+    return { status: status, json: null, headerSource: headerSource };
+  }
+}
+
 /************************************************************
  * Start-after clamp (checkpoint with rolling lookback)
  ************************************************************/
@@ -417,8 +662,9 @@ function mapOrdersToOrderRows_(orders, headers) {
     const customerName = [o.customer_firstname, o.customer_lastname].filter(Boolean).join(' ');
 
     let enriched = null;
-    if (globalCustomerLookup) {
-      const L = globalCustomerLookup;
+    const lookup = (typeof globalCustomerLookup !== 'undefined' && globalCustomerLookup) ? globalCustomerLookup : null;
+    if (lookup) {
+      const L = lookup;
       if (o.customer_id) enriched = L.byId[String(o.customer_id)];
       if (!enriched && o.customer_email) enriched = L.byEmail[String(o.customer_email).toLowerCase()];
     }
