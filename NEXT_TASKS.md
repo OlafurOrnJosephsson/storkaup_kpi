@@ -4,9 +4,9 @@
 
 | ID | Task | Owner | Status | Acceptance Check |
 |---|---|---|---|---|
-| P1-1 | Freeze current prod script pins (Webflow/jsDelivr commit IDs) and document them | Olafur | Todo | Commit IDs are written in this file and match live Webflow custom code |
+| P1-1 | Freeze current prod script pins (Webflow/jsDelivr commit IDs) and document them | Olafur | Done | Production pin section added to `README.md`; pins tracked in docs and Webflow custom code |
 | P1-2 | Add quick runbook for daily operations (`safePoll_v2`, `scheduledMagentoSync_v1`, `scheduledBcSync_v1`) | Olafur | Done | `RUNBOOK.md` added; core function guidance and failure playbook documented |
-| P1-3 | Add Apps Script failure alerting for key triggers | Olafur | Todo | Trigger failures produce visible notification within 15 min |
+| P1-3 | Add Apps Script failure alerting for key triggers | Olafur | Done | `notifyTriggerFailure_` wired for key scheduled triggers + `safePoll_v2`; configure `ALERT_EMAILS` in Script Properties |
 | P1-4 | Keep `safePoll_v2` schedule windows validated for 7 days | Olafur | In progress | No night runs, expected daytime/evening cadence in Executions |
 
 ## Priority 2 - Data Quality and Consistency

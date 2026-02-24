@@ -1945,6 +1945,74 @@ function backfillReferenceDataToSupabase_v1() {
 /************************************************************
  * SCHEDULED REFERENCE SYNC (Magento customers + Cludo products)
  ************************************************************/
+function getAlertRecipients_() {
+  var cfg = null;
+  try { cfg = loadConfig_(); } catch (_) {}
+
+  var fromSettings = cfg && cfg.SETTINGS && cfg.SETTINGS.ALERT_EMAILS;
+  var fromApi = cfg && cfg.API && cfg.API.ALERTS && cfg.API.ALERTS.EMAILS;
+  var fromProps = PropertiesService.getScriptProperties().getProperty('ALERT_EMAILS');
+  var raw = fromSettings || fromApi || fromProps || '';
+
+  return String(raw)
+    .split(/[;,]/)
+    .map(function(s) { return String(s || '').trim(); })
+    .filter(function(s) { return !!s; });
+}
+
+function shouldSendAlertNow_(dedupeKey, minIntervalMinutes) {
+  var props = PropertiesService.getScriptProperties();
+  var key = 'ALERT_LAST_SENT_' + String(dedupeKey || 'generic').replace(/[^A-Za-z0-9_]/g, '_');
+  var now = Date.now();
+  var minMs = Math.max(1, Number(minIntervalMinutes || 15)) * 60 * 1000;
+  var last = Number(props.getProperty(key) || 0);
+  if (last && (now - last) < minMs) return false;
+  props.setProperty(key, String(now));
+  return true;
+}
+
+function sendOpsAlert_(subject, body, dedupeKey, minIntervalMinutes) {
+  var recipients = getAlertRecipients_();
+  if (!recipients.length) {
+    Logger.log('[ALERT][WARN] No ALERT_EMAILS configured; skipping alert: ' + subject);
+    return { sent: false, reason: 'no_recipients' };
+  }
+  if (!shouldSendAlertNow_(dedupeKey || subject, minIntervalMinutes || 15)) {
+    Logger.log('[ALERT][INFO] Suppressed duplicate alert: ' + subject);
+    return { sent: false, reason: 'throttled' };
+  }
+
+  MailApp.sendEmail({
+    to: recipients.join(','),
+    subject: subject,
+    body: body
+  });
+  Logger.log('[ALERT][INFO] Alert sent: ' + subject + ' to ' + recipients.join(','));
+  return { sent: true, recipients: recipients.length };
+}
+
+function notifyTriggerFailure_(jobName, errorObj, contextObj) {
+  var name = String(jobName || 'unknown_job');
+  var err = errorObj || {};
+  var msg = err.message || String(err || '');
+  var stack = err.stack || '';
+  var when = new Date().toISOString();
+  var body =
+    'KPI trigger failure detected.\n\n' +
+    'Job: ' + name + '\n' +
+    'Time: ' + when + '\n' +
+    'Message: ' + msg + '\n\n' +
+    'Stack:\n' + stack + '\n\n' +
+    'Context:\n' + JSON.stringify(contextObj || {}, null, 2);
+
+  return sendOpsAlert_(
+    '[KPI ALERT] Trigger failure: ' + name,
+    body,
+    name,
+    15
+  );
+}
+
 function startIngestionRun_(jobName, sourceName, details) {
   var conf = getSupabaseRestConfig_();
   var endpoint = conf.baseUrl + '/ingestion_runs';
@@ -2179,6 +2247,12 @@ function scheduledReferenceSync_v1() {
       }
     }
 
+    try {
+      notifyTriggerFailure_('scheduledReferenceSync_v1', result.error, result);
+    } catch (alertErr) {
+      Logger.log('[REFSYNC][WARN] Failure alert failed: ' + alertErr);
+    }
+
     Logger.log('[REFSYNC][ERROR] scheduledReferenceSync_v1 failed: ' + JSON.stringify(result));
     throw e;
   }
@@ -2284,6 +2358,12 @@ function scheduledMagentoSync_v1() {
       }
     }
 
+    try {
+      notifyTriggerFailure_('scheduledMagentoSync_v1', result.error, result);
+    } catch (alertErr) {
+      Logger.log('[MAGSYNC][WARN] Failure alert failed: ' + alertErr);
+    }
+
     Logger.log('[MAGSYNC][ERROR] scheduledMagentoSync_v1 failed: ' + JSON.stringify(result));
     throw e;
   }
@@ -2370,6 +2450,12 @@ function scheduledCludoSync_v1() {
       }
     }
 
+    try {
+      notifyTriggerFailure_('scheduledCludoSync_v1', result.error, result);
+    } catch (alertErr) {
+      Logger.log('[CLUDOSYNC][WARN] Failure alert failed: ' + alertErr);
+    }
+
     Logger.log('[CLUDOSYNC][ERROR] scheduledCludoSync_v1 failed: ' + JSON.stringify(result));
     throw e;
   }
@@ -2446,6 +2532,12 @@ function scheduledCustomerAnalysisSync_v1() {
       } catch (logErr3) {
         Logger.log('[CASYNC][WARN] Could not finish ingestion run log (error): ' + logErr3);
       }
+    }
+
+    try {
+      notifyTriggerFailure_('scheduledCustomerAnalysisSync_v1', result.error, result);
+    } catch (alertErr) {
+      Logger.log('[CASYNC][WARN] Failure alert failed: ' + alertErr);
     }
 
     Logger.log('[CASYNC][ERROR] scheduledCustomerAnalysisSync_v1 failed: ' + JSON.stringify(result));
@@ -2576,6 +2668,12 @@ function scheduledBcSync_v1() {
       } catch (logErr3) {
         Logger.log('[BCSYNC][WARN] Could not finish ingestion run log (error): ' + logErr3);
       }
+    }
+
+    try {
+      notifyTriggerFailure_('scheduledBcSync_v1', result.error, result);
+    } catch (alertErr) {
+      Logger.log('[BCSYNC][WARN] Failure alert failed: ' + alertErr);
     }
 
     Logger.log('[BCSYNC][ERROR] scheduledBcSync_v1 failed: ' + JSON.stringify(result));

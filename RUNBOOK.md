@@ -7,6 +7,20 @@ This runbook covers daily operations for:
 - Magento customer sync
 - BC sync to Supabase (for web vs BC % and related metrics)
 
+## Alert Setup (P1-3)
+
+Failure alerts for key triggers are enabled in code.
+
+1. Open Apps Script -> `Project Settings` -> `Script properties`
+2. Add property:
+   - Key: `ALERT_EMAILS`
+   - Value: comma-separated recipients (example: `ops@storkaup.is,olafur@storkaup.is`)
+3. Save, then run one trigger manually to confirm normal execution.
+
+Notes:
+- Alerts are throttled per job (15-minute dedupe window).
+- If `ALERT_EMAILS` is missing, logs will show `[ALERT][WARN] No ALERT_EMAILS configured`.
+
 ## Primary Functions (Apps Script)
 
 ### 1) NEWWEB ingestion
@@ -83,4 +97,3 @@ Expected active trigger functions:
 - `scheduledCludoSync_v1`
 - `scheduledCustomerAnalysisSync_v1`
 - `onOpen`
-

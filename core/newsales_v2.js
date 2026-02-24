@@ -619,7 +619,15 @@ function safePoll_v2() {
   try {
     pollMagentoOrders_v2();
   } catch (e) {
-    logNewwebEvent_('ERROR', 'safePoll_v2 exception', serializeError_(e));
+    var errObj = serializeError_(e);
+    logNewwebEvent_('ERROR', 'safePoll_v2 exception', errObj);
+    if (typeof notifyTriggerFailure_ === 'function') {
+      try {
+        notifyTriggerFailure_('safePoll_v2', errObj, { windowDecision: windowDecision });
+      } catch (alertErr) {
+        Logger.log('[NEWWEB][WARN] Failure alert failed: ' + alertErr);
+      }
+    }
   } finally {
     lock.releaseLock();
   }
