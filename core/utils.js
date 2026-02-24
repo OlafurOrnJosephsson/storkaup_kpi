@@ -2664,6 +2664,7 @@ function buildKlaviyoEventsUrl_(baseUrl, sinceIso, pageSize) {
   return (
     baseUrl + '/events' +
     '?filter=' + encodeURIComponent('greater-than(datetime,' + since + ')') +
+    '&include=' + encodeURIComponent('profile,metric') +
     '&sort=' + encodeURIComponent('datetime') +
     '&page[size]=' + encodeURIComponent(String(size))
   );
@@ -2709,9 +2710,45 @@ function truncateText_(raw, maxLen) {
   return s.length > n ? (s.slice(0, n) + '...') : s;
 }
 
-function mapKlaviyoEventToRawRow_(event) {
+function buildKlaviyoIncludedIndex_(payload) {
+  var index = {
+    profilesById: {},
+    metricsById: {}
+  };
+  var included = payload && payload.included ? payload.included : [];
+  if (!Array.isArray(included)) return index;
+
+  for (var i = 0; i < included.length; i++) {
+    var node = included[i] || {};
+    var id = String(node.id || '').trim();
+    var type = String(node.type || '').toLowerCase().trim();
+    var attrs = node.attributes || {};
+    if (!id) continue;
+
+    if (type.indexOf('profile') >= 0) {
+      var email = pickFirstValue_([
+        attrs && attrs.email,
+        getObjPath_(attrs, 'properties.$email'),
+        getObjPath_(attrs, 'properties.email')
+      ]);
+      if (email) index.profilesById[id] = String(email).toLowerCase().trim();
+    } else if (type.indexOf('metric') >= 0) {
+      var metricName = pickFirstValue_([
+        attrs && attrs.name,
+        attrs && attrs.display_name
+      ]);
+      if (metricName) index.metricsById[id] = String(metricName).toLowerCase().trim();
+    }
+  }
+  return index;
+}
+
+function mapKlaviyoEventToRawRow_(event, includedIndex) {
   var attributes = event && event.attributes ? event.attributes : {};
   var relationships = event && event.relationships ? event.relationships : {};
+  var idx = includedIndex || {};
+  var profilesById = idx.profilesById || {};
+  var metricsById = idx.metricsById || {};
   var profileRel = getObjPath_(relationships, 'profile.data.id');
   var campaignRel = getObjPath_(relationships, 'campaign.data.id');
   var flowRel = getObjPath_(relationships, 'flow.data.id');
@@ -2728,6 +2765,8 @@ function mapKlaviyoEventToRawRow_(event) {
 
   var eventType = String(
     pickFirstValue_([
+      metricsById[String(metricRel || '')],
+      getObjPath_(attributes, 'metric.name'),
       attributes && attributes.event_type,
       attributes && attributes.type,
       event && event.type
@@ -2741,6 +2780,7 @@ function mapKlaviyoEventToRawRow_(event) {
   ]));
 
   var email = pickFirstValue_([
+    profilesById[String(profileRel || '')],
     attributes && attributes.email,
     getObjPath_(attributes, 'profile.email'),
     getObjPath_(attributes, 'customer_properties.$email'),
@@ -2861,11 +2901,12 @@ function scheduledKlaviyoSync_v1(options) {
     for (var p = 0; p < maxPages && nextUrl; p++) {
       var payload = fetchKlaviyoEventsPage_(nextUrl, kcfg.apiKey);
       var events = payload && payload.data ? payload.data : [];
+      var includedIndex = buildKlaviyoIncludedIndex_(payload);
       result.pages += 1;
       result.fetched += events.length;
 
       for (var e = 0; e < events.length; e++) {
-        var mapped = mapKlaviyoEventToRawRow_(events[e]);
+        var mapped = mapKlaviyoEventToRawRow_(events[e], includedIndex);
         if (!mapped) continue;
         mappedRows.push(mapped);
         result.mapped += 1;
@@ -2928,6 +2969,14 @@ function scheduledKlaviyoSync_v1(options) {
     Logger.log('[KLAVIYO][ERROR] scheduledKlaviyoSync_v1 failed: ' + JSON.stringify(result));
     throw e;
   }
+}
+
+function resetKlaviyoCheckpoint_v1(startIso) {
+  var fallback = '2020-01-01T00:00:00.000Z';
+  var next = String(startIso || '').trim() || fallback;
+  setKlaviyoCheckpoint_(next);
+  Logger.log('[KLAVIYO][INFO] Reset checkpoint to ' + next);
+  return { checkpoint: next };
 }
 
 function installScheduledKlaviyoSyncTrigger_v1() {
