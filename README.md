@@ -47,6 +47,14 @@ When updating Webflow scripts:
   - `node --check Webflow/customer-profiles.js`
   - `node --check Webflow/top-products.js`
 
+## Klaviyo v1 Notes
+
+- Config key location: `STORKAUP_CONFIG` -> `API` tab
+  - `Service=Klaviyo`, `Key=PRIVATE_API_KEY`, `Value=<private key>`
+  - Optional: `Service=Klaviyo`, `Key=TIMEZONE`, `Value=UTC`
+- GAS function: `scheduledKlaviyoSync_v1`
+- SQL setup file: `core/sql/klaviyo_v1.sql`
+
 ## First-Time Setup (already done here)
 
 - Git remote: `origin` -> `https://github.com/OlafurOrnJosephsson/storkaup_kpi.git`

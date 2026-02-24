@@ -48,6 +48,13 @@ Notes:
   - `[BCSYNC][INFO] Completed scheduledBcSync_v1 ...`
   - result includes uploaded counters for invoices/lines/customers.
 
+### 4) Klaviyo campaign events (v1)
+- Function: `scheduledKlaviyoSync_v1`
+- Purpose: Incrementally ingest Klaviyo events into Supabase `raw_klaviyo_events`.
+- Expected logs:
+  - `[KLAVIYO][INFO] Started scheduledKlaviyoSync_v1 ...`
+  - `[KLAVIYO][INFO] Completed scheduledKlaviyoSync_v1: {"fetched":...,"uploaded":...}`
+
 ## Manual Recovery / Backfill
 
 Use only when incremental sync is clearly behind or data was re-exported.
@@ -97,4 +104,5 @@ Expected active trigger functions:
 - `scheduledBcSync_v1`
 - `scheduledCludoSync_v1`
 - `scheduledCustomerAnalysisSync_v1`
+- `scheduledKlaviyoSync_v1`
 - `onOpen`

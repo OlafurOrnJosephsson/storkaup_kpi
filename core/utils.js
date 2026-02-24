@@ -2146,6 +2146,17 @@ function refreshSupabaseMarts_v1(options) {
   return out;
 }
 
+function refreshKlaviyoAttributionMart_v1() {
+  try {
+    callSupabaseRpc_('refresh_mv_klaviyo_attribution_daily', {});
+    Logger.log('[MART_REFRESH][INFO] refresh_mv_klaviyo_attribution_daily ok');
+    return { klaviyo_attribution_daily: 'ok' };
+  } catch (e) {
+    Logger.log('[MART_REFRESH][WARN] refresh_mv_klaviyo_attribution_daily failed: ' + e);
+    return { klaviyo_attribution_daily: 'error', error: String(e) };
+  }
+}
+
 function scheduledReferenceSync_v1() {
   var startedAt = new Date();
   var runId = null;
@@ -2600,6 +2611,342 @@ function installScheduledCustomerAnalysisSyncTrigger_v1() {
 
   Logger.log('[CASYNC][INFO] Created trigger for ' + fn + ' (every 24 hours)');
   return { created: true, schedule: 'everyHours(24)' };
+}
+
+/************************************************************
+ * KLAVIYO incremental sync (events -> Supabase raw)
+ ************************************************************/
+function getKlaviyoConfig_() {
+  var cfg = loadConfig_();
+  var api = cfg && cfg.API && cfg.API.Klaviyo ? cfg.API.Klaviyo : {};
+  var key = api.PRIVATE_API_KEY || api.API_KEY || '';
+  var baseUrl = String((cfg && cfg.ENDPOINTS && cfg.ENDPOINTS.Klaviyo && cfg.ENDPOINTS.Klaviyo.BASE_URL) || 'https://a.klaviyo.com/api').replace(/\/$/, '');
+  var tz = String(api.TIMEZONE || 'UTC');
+
+  if (!key) {
+    throw new Error('Klaviyo config missing API.Klaviyo.PRIVATE_API_KEY');
+  }
+  return {
+    apiKey: String(key).trim(),
+    baseUrl: baseUrl,
+    timezone: tz
+  };
+}
+
+function klaviyoHeaders_(apiKey) {
+  return {
+    Authorization: 'Klaviyo-API-Key ' + String(apiKey || ''),
+    accept: 'application/json',
+    revision: '2024-02-15'
+  };
+}
+
+function getKlaviyoCheckpoint_() {
+  var props = PropertiesService.getScriptProperties();
+  return props.getProperty('KLAVIYO_LAST_EVENT_TS') || '';
+}
+
+function setKlaviyoCheckpoint_(iso) {
+  if (!iso) return;
+  PropertiesService.getScriptProperties().setProperty('KLAVIYO_LAST_EVENT_TS', String(iso));
+}
+
+function toIsoUtc_(d) {
+  if (!d) return '';
+  var dt = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(dt.getTime())) return '';
+  return dt.toISOString();
+}
+
+function buildKlaviyoEventsUrl_(baseUrl, sinceIso, pageSize) {
+  var since = toIsoUtc_(sinceIso) || toIsoUtc_(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+  var size = Math.max(1, Math.min(100, Number(pageSize || 100)));
+  return (
+    baseUrl + '/events' +
+    '?filter=' + encodeURIComponent('greater-than(datetime,' + since + ')') +
+    '&sort=' + encodeURIComponent('datetime') +
+    '&page[size]=' + encodeURIComponent(String(size))
+  );
+}
+
+function fetchKlaviyoEventsPage_(url, apiKey) {
+  var res = UrlFetchApp.fetch(url, {
+    method: 'get',
+    headers: klaviyoHeaders_(apiKey),
+    muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  var body = res.getContentText();
+  if (code < 200 || code >= 300) {
+    throw new Error('Klaviyo events fetch failed: ' + code + ' ' + truncateText_(body, 500));
+  }
+  return JSON.parse(body || '{}');
+}
+
+function getObjPath_(obj, path) {
+  if (!obj || !path) return null;
+  var ref = obj;
+  var parts = String(path).split('.');
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i];
+    if (!ref || typeof ref !== 'object' || !(p in ref)) return null;
+    ref = ref[p];
+  }
+  return ref == null ? null : ref;
+}
+
+function pickFirstValue_(arr) {
+  for (var i = 0; i < arr.length; i++) {
+    var v = arr[i];
+    if (v !== null && v !== undefined && String(v).trim() !== '') return v;
+  }
+  return null;
+}
+
+function truncateText_(raw, maxLen) {
+  var s = String(raw || '');
+  var n = Math.max(16, Number(maxLen || 300));
+  return s.length > n ? (s.slice(0, n) + '...') : s;
+}
+
+function mapKlaviyoEventToRawRow_(event) {
+  var attributes = event && event.attributes ? event.attributes : {};
+  var relationships = event && event.relationships ? event.relationships : {};
+  var profileRel = getObjPath_(relationships, 'profile.data.id');
+  var campaignRel = getObjPath_(relationships, 'campaign.data.id');
+  var flowRel = getObjPath_(relationships, 'flow.data.id');
+  var metricRel = getObjPath_(relationships, 'metric.data.id');
+  var messageRel = getObjPath_(relationships, 'message.data.id');
+
+  var eventId = String(
+    pickFirstValue_([
+      event && event.id,
+      attributes && attributes.uuid,
+      attributes && attributes.event_id
+    ]) || ''
+  ).trim();
+
+  var eventType = String(
+    pickFirstValue_([
+      attributes && attributes.event_type,
+      attributes && attributes.type,
+      event && event.type
+    ]) || ''
+  ).trim();
+
+  var eventTs = toIsoUtc_(pickFirstValue_([
+    attributes && attributes.datetime,
+    attributes && attributes.timestamp,
+    attributes && attributes.time
+  ]));
+
+  var email = pickFirstValue_([
+    attributes && attributes.email,
+    getObjPath_(attributes, 'profile.email'),
+    getObjPath_(attributes, 'customer_properties.$email'),
+    getObjPath_(attributes, 'properties.$email'),
+    getObjPath_(attributes, 'properties.email')
+  ]);
+
+  var campaignId = pickFirstValue_([
+    campaignRel,
+    getObjPath_(attributes, 'campaign_id'),
+    getObjPath_(attributes, 'campaign.id')
+  ]);
+
+  var flowId = pickFirstValue_([
+    flowRel,
+    getObjPath_(attributes, 'flow_id'),
+    getObjPath_(attributes, 'flow.id')
+  ]);
+
+  var metricId = pickFirstValue_([
+    metricRel,
+    getObjPath_(attributes, 'metric_id'),
+    getObjPath_(attributes, 'metric.id')
+  ]);
+
+  var messageId = pickFirstValue_([
+    messageRel,
+    getObjPath_(attributes, 'message_id'),
+    getObjPath_(attributes, 'message.id')
+  ]);
+
+  if (!eventId || !eventTs) return null;
+
+  return {
+    event_id: eventId,
+    event_type: eventType || null,
+    event_ts: eventTs,
+    profile_id: profileRel ? String(profileRel) : null,
+    email: email ? String(email).toLowerCase().trim() : null,
+    message_id: messageId ? String(messageId) : null,
+    campaign_id: campaignId ? String(campaignId) : null,
+    flow_id: flowId ? String(flowId) : null,
+    metric_id: metricId ? String(metricId) : null,
+    source: 'klaviyo_events_sync_v1',
+    payload: event
+  };
+}
+
+function upsertKlaviyoEventsToSupabase_(rows) {
+  if (!rows || !rows.length) return { uploaded: 0 };
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/raw_klaviyo_events?on_conflict=event_id';
+  var chunkSize = 200;
+  var uploaded = 0;
+
+  for (var i = 0; i < rows.length; i += chunkSize) {
+    var chunk = rows.slice(i, i + chunkSize);
+    var res = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw',
+        'Accept-Profile': 'raw',
+        Prefer: 'resolution=merge-duplicates,return=minimal'
+      },
+      payload: JSON.stringify(chunk),
+      muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error('KLAVIYO Supabase upsert failed: ' + code + ' ' + res.getContentText());
+    }
+    uploaded += chunk.length;
+  }
+
+  return { uploaded: uploaded };
+}
+
+function scheduledKlaviyoSync_v1(options) {
+  var opts = options || {};
+  var maxPages = Math.max(1, Math.min(20, Number(opts.maxPages || 10)));
+  var pageSize = Math.max(1, Math.min(100, Number(opts.pageSize || 100)));
+  var startedAt = new Date();
+  var runId = null;
+  var previousCheckpoint = getKlaviyoCheckpoint_();
+  Logger.log('[KLAVIYO][INFO] Started scheduledKlaviyoSync_v1 at ' + startedAt.toISOString());
+
+  var result = {
+    startedAt: startedAt.toISOString(),
+    previousCheckpoint: previousCheckpoint || '',
+    fetched: 0,
+    mapped: 0,
+    uploaded: 0,
+    martRefresh: null,
+    pages: 0,
+    latestEventTs: null,
+    finishedAt: null
+  };
+
+  try {
+    var kcfg = getKlaviyoConfig_();
+    var nextUrl = buildKlaviyoEventsUrl_(kcfg.baseUrl, previousCheckpoint, pageSize);
+
+    try {
+      runId = startIngestionRun_('scheduledKlaviyoSync_v1', 'klaviyo_events', {
+        trigger_type: 'time_based',
+        page_size: pageSize,
+        max_pages: maxPages
+      });
+      result.runId = runId;
+    } catch (logErr) {
+      Logger.log('[KLAVIYO][WARN] Could not start ingestion run log: ' + logErr);
+    }
+
+    var mappedRows = [];
+    for (var p = 0; p < maxPages && nextUrl; p++) {
+      var payload = fetchKlaviyoEventsPage_(nextUrl, kcfg.apiKey);
+      var events = payload && payload.data ? payload.data : [];
+      result.pages += 1;
+      result.fetched += events.length;
+
+      for (var e = 0; e < events.length; e++) {
+        var mapped = mapKlaviyoEventToRawRow_(events[e]);
+        if (!mapped) continue;
+        mappedRows.push(mapped);
+        result.mapped += 1;
+
+        if (!result.latestEventTs || mapped.event_ts > result.latestEventTs) {
+          result.latestEventTs = mapped.event_ts;
+        }
+      }
+
+      nextUrl = getObjPath_(payload, 'links.next');
+      if (nextUrl) nextUrl = String(nextUrl);
+      if (!events.length) break;
+    }
+
+    if (mappedRows.length) {
+      var up = upsertKlaviyoEventsToSupabase_(mappedRows);
+      result.uploaded = up.uploaded || 0;
+    }
+
+    result.martRefresh = refreshKlaviyoAttributionMart_v1();
+
+    if (result.latestEventTs) {
+      setKlaviyoCheckpoint_(result.latestEventTs);
+    }
+
+    result.finishedAt = new Date().toISOString();
+
+    if (runId) {
+      try {
+        finishIngestionRun_(runId, 'success', Number(result.uploaded || 0), result, null);
+      } catch (logErr2) {
+        Logger.log('[KLAVIYO][WARN] Could not finish ingestion run log (success): ' + logErr2);
+      }
+    }
+
+    Logger.log('[KLAVIYO][INFO] Completed scheduledKlaviyoSync_v1: ' + JSON.stringify(result));
+    return result;
+  } catch (e) {
+    result.finishedAt = new Date().toISOString();
+    result.error = {
+      name: e && e.name ? e.name : '',
+      message: e && e.message ? e.message : String(e),
+      stack: e && e.stack ? e.stack : ''
+    };
+
+    if (runId) {
+      try {
+        finishIngestionRun_(runId, 'error', Number(result.uploaded || 0), result, result.error.message);
+      } catch (logErr3) {
+        Logger.log('[KLAVIYO][WARN] Could not finish ingestion run log (error): ' + logErr3);
+      }
+    }
+
+    try {
+      notifyTriggerFailure_('scheduledKlaviyoSync_v1', result.error, result);
+    } catch (alertErr) {
+      Logger.log('[KLAVIYO][WARN] Failure alert failed: ' + alertErr);
+    }
+
+    Logger.log('[KLAVIYO][ERROR] scheduledKlaviyoSync_v1 failed: ' + JSON.stringify(result));
+    throw e;
+  }
+}
+
+function installScheduledKlaviyoSyncTrigger_v1() {
+  var fn = 'scheduledKlaviyoSync_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[KLAVIYO][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .everyMinutes(15)
+    .create();
+
+  Logger.log('[KLAVIYO][INFO] Created trigger for ' + fn + ' (every 15 minutes)');
+  return { created: true, schedule: 'everyMinutes(15)' };
 }
 
 /************************************************************

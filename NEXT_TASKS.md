@@ -33,6 +33,16 @@
 | P4-2 | Remove `core/newsales_legacy_shims.js` after observation window | Olafur | Todo | No manual runs or trigger references to legacy names |
 | P4-3 | Add `ARCHITECTURE.md` (GAS ingest -> Supabase raw -> marts -> Webflow) | Olafur | Todo | New contributors can understand flow in under 10 min |
 
+## Priority 5 - Klaviyo Attribution
+
+| ID | Task | Owner | Status | Acceptance Check |
+|---|---|---|---|---|
+| P5-1 | Create Klaviyo raw schema in Supabase (`raw_klaviyo_events`, `dim_klaviyo_campaigns`) | Olafur | In progress | SQL draft added in `core/sql/klaviyo_v1.sql`; apply in Supabase and verify indexes |
+| P5-2 | Add GAS incremental sync (`scheduledKlaviyoSync_v1`) for campaign + event ingest | Olafur | In progress | `scheduledKlaviyoSync_v1` implemented; requires Supabase table + trigger install |
+| P5-3 | Implement v1 attribution mart (`last_click`, 7-day window) | Olafur | Todo | Daily campaign-attributed orders and revenue query returns non-empty on active days |
+| P5-4 | Add KPI widgets (campaign revenue, conversions, conv %) to Webflow dashboard | Olafur | Todo | Dashboard shows campaign KPIs with same-day refresh |
+| P5-5 | Add validation check (Klaviyo-attributed orders <= total web orders) | Olafur | Todo | Daily sanity check logs pass/fail without manual intervention |
+
 ## Current Production Pins
 
 Update these whenever Webflow custom code is changed.

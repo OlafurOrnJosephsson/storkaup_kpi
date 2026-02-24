@@ -36,6 +36,7 @@ function onOpen() {
       ui.createMenu('Tools')
         .addItem('Test Config', 'menu_testConfig')
         .addItem('Clear Magento Token Cache', 'menu_clearMagentoTokenCache')
+        .addItem('Run Klaviyo Sync', 'menu_runKlaviyoSync')
         .addItem('Show Runtime Cache', 'menu_showRuntimeCache')
     )
     .addSubMenu(
@@ -166,6 +167,15 @@ function menu_clearMagentoTokenCache() {
 function menu_showRuntimeCache() {
   const cache = (typeof RUNTIME_CACHE === 'undefined') ? { note: 'RUNTIME_CACHE is not defined.' } : RUNTIME_CACHE;
   SpreadsheetApp.getUi().alert('RUNTIME CACHE:\n\n' + JSON.stringify(cache, null, 2));
+}
+
+function menu_runKlaviyoSync() {
+  toast_('Running Klaviyo sync...', 'KPI CORE');
+  if (typeof scheduledKlaviyoSync_v1 !== 'function') {
+    throw new Error('scheduledKlaviyoSync_v1() not found. Ensure core/utils.js is deployed.');
+  }
+  var out = scheduledKlaviyoSync_v1();
+  toast_('Klaviyo sync complete. Uploaded: ' + (out && out.uploaded || 0), 'KPI CORE');
 }
 
 function menu_clearCustomerAnalysis() {
