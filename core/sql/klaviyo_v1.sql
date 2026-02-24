@@ -58,13 +58,19 @@ clicks as (
   select
     e.event_id,
     e.event_ts,
-    lower(e.email) as email,
+    lower(
+      coalesce(
+        nullif(e.email, ''),
+        nullif(e.payload->'attributes'->>'email', ''),
+        nullif(e.payload->'attributes'->'properties'->>'$email', ''),
+        nullif(e.payload->'attributes'->'properties'->>'email', '')
+      )
+    ) as email,
     e.campaign_id,
     e.flow_id
   from raw.raw_klaviyo_events e
-  where lower(coalesce(e.event_type, '')) like '%click%'
-    and e.event_ts is not null
-    and e.email is not null
+  where e.event_ts is not null
+    and lower(e.payload::text) like '%click%'
 ),
 ranked as (
   select
