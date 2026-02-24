@@ -643,8 +643,6 @@
     var endpoint = (cfg.supabaseUrl || "") + "/rest/v1/mv_klaviyo_attribution_daily";
     var query =
       "?select=order_date,campaign_id,attributed_orders,attributed_revenue_excl,attributed_revenue_incl" +
-      "&order_date=gte." + encodeURIComponent(from30d) +
-      "&order_date=lte." + encodeURIComponent(today) +
       "&limit=5000";
 
     return fetch(endpoint + query, {
@@ -669,6 +667,9 @@
           ordersToday: 0,
           revenueExclToday: 0,
           revenueInclToday: 0,
+          ordersAllTime: 0,
+          revenueExclAllTime: 0,
+          revenueInclAllTime: 0,
           campaigns30d: {}
         };
 
@@ -679,10 +680,16 @@
           var revIncl = toNumberSafe(r && r.attributed_revenue_incl);
           var cid = String((r && r.campaign_id) || "").trim();
 
-          totals.orders30d += orders;
-          totals.revenueExcl30d += revExcl;
-          totals.revenueIncl30d += revIncl;
-          if (cid) totals.campaigns30d[cid] = 1;
+          totals.ordersAllTime += orders;
+          totals.revenueExclAllTime += revExcl;
+          totals.revenueInclAllTime += revIncl;
+
+          if (d && d >= from30d && d <= today) {
+            totals.orders30d += orders;
+            totals.revenueExcl30d += revExcl;
+            totals.revenueIncl30d += revIncl;
+            if (cid) totals.campaigns30d[cid] = 1;
+          }
 
           if (d === today) {
             totals.ordersToday += orders;
@@ -698,6 +705,9 @@
         setText("klaviyo-revenue-excl-today", formatNumber(totals.revenueExclToday));
         setText("klaviyo-revenue-incl-today", formatNumber(totals.revenueInclToday));
         setText("klaviyo-active-campaigns-30d", Object.keys(totals.campaigns30d).length);
+        setText("klaviyo-orders-all-time", toNumberSafe(totals.ordersAllTime));
+        setText("klaviyo-revenue-excl-all-time", formatNumber(totals.revenueExclAllTime));
+        setText("klaviyo-revenue-incl-all-time", formatNumber(totals.revenueInclAllTime));
         setText("klaviyo-last-sync-date", today);
       })
       .catch(function (err) {
