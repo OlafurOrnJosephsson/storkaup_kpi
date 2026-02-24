@@ -619,6 +619,93 @@
       });
   }
 
+  function hasKlaviyoMetricTargets() {
+    return !!document.querySelector('[data-metric^="klaviyo-"]');
+  }
+
+  function shiftIsoDays(baseIso, diffDays) {
+    var s = normalizeDay(baseIso);
+    if (!s) return "";
+    var d = new Date(s + "T00:00:00Z");
+    if (isNaN(d.getTime())) return "";
+    d.setUTCDate(d.getUTCDate() + Number(diffDays || 0));
+    return d.toISOString().slice(0, 10);
+  }
+
+  function fetchKlaviyoAttributionSummary() {
+    if (!hasKlaviyoMetricTargets()) return Promise.resolve();
+    var cfg = getCfg();
+    var apiKey = cfg.publishableKey || "";
+    if (!cfg.supabaseUrl || !apiKey) return Promise.resolve();
+
+    var today = getTodayIso();
+    var from30d = shiftIsoDays(today, -29);
+    var endpoint = (cfg.supabaseUrl || "") + "/rest/v1/mv_klaviyo_attribution_daily";
+    var query =
+      "?select=order_date,campaign_id,attributed_orders,attributed_revenue_excl,attributed_revenue_incl" +
+      "&order_date=gte." + encodeURIComponent(from30d) +
+      "&order_date=lte." + encodeURIComponent(today) +
+      "&limit=5000";
+
+    return fetch(endpoint + query, {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        "apikey": apiKey,
+        "Authorization": "Bearer " + apiKey,
+        "Accept-Profile": "marts"
+      }
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("Klaviyo MV HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (rows) {
+        var list = Array.isArray(rows) ? rows : [];
+        var totals = {
+          orders30d: 0,
+          revenueExcl30d: 0,
+          revenueIncl30d: 0,
+          ordersToday: 0,
+          revenueExclToday: 0,
+          revenueInclToday: 0,
+          campaigns30d: {}
+        };
+
+        list.forEach(function (r) {
+          var d = normalizeDay(r && r.order_date);
+          var orders = toNumberSafe(r && r.attributed_orders);
+          var revExcl = toNumberSafe(r && r.attributed_revenue_excl);
+          var revIncl = toNumberSafe(r && r.attributed_revenue_incl);
+          var cid = String((r && r.campaign_id) || "").trim();
+
+          totals.orders30d += orders;
+          totals.revenueExcl30d += revExcl;
+          totals.revenueIncl30d += revIncl;
+          if (cid) totals.campaigns30d[cid] = 1;
+
+          if (d === today) {
+            totals.ordersToday += orders;
+            totals.revenueExclToday += revExcl;
+            totals.revenueInclToday += revIncl;
+          }
+        });
+
+        setText("klaviyo-orders-30d", toNumberSafe(totals.orders30d));
+        setText("klaviyo-revenue-excl-30d", formatNumber(totals.revenueExcl30d));
+        setText("klaviyo-revenue-incl-30d", formatNumber(totals.revenueIncl30d));
+        setText("klaviyo-orders-today", toNumberSafe(totals.ordersToday));
+        setText("klaviyo-revenue-excl-today", formatNumber(totals.revenueExclToday));
+        setText("klaviyo-revenue-incl-today", formatNumber(totals.revenueInclToday));
+        setText("klaviyo-active-campaigns-30d", Object.keys(totals.campaigns30d).length);
+        setText("klaviyo-last-sync-date", today);
+      })
+      .catch(function (err) {
+        log("Klaviyo attribution fetch failed:", err);
+        setText("klaviyo-last-sync-date", "error");
+      });
+  }
+
   function init() {
     var items = document.querySelectorAll(".dashboard-date-item[data-month]");
     var hasMetrics = !!document.querySelector("[data-metric]");
@@ -674,12 +761,14 @@
     fetchMonth(initialMonth);
     if (selectedDay) fetchDay(selectedDay);
     fetchWeekdayComparisonGrid(true);
+    fetchKlaviyoAttributionSummary();
 
     setInterval(function () {
       var activeNow = document.querySelector(".dashboard-date-item.active[data-month]");
       var month = activeNow ? activeNow.getAttribute("data-month") : initialMonth;
       fetchMonth(month);
       if (selectedDay) fetchDay(selectedDay);
+      fetchKlaviyoAttributionSummary();
     }, 120000);
   }
 
