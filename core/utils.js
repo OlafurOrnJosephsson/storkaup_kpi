@@ -2799,7 +2799,9 @@ function mapKlaviyoEventToRawRow_(event, includedIndex) {
     getObjPath_(attributes, 'campaign_id'),
     getObjPath_(attributes, 'campaign.id'),
     getObjPath_(attributes, 'attribution.campaign_id'),
-    getObjPath_(attributes, 'properties.campaign_id')
+    getObjPath_(attributes, 'properties.campaign_id'),
+    getObjPath_(attributes, 'event_properties.$campaign'),
+    getObjPath_(attributes, 'event_properties.campaign_id')
   ]);
 
   var flowId = pickFirstValue_([
@@ -2819,7 +2821,10 @@ function mapKlaviyoEventToRawRow_(event, includedIndex) {
   var messageId = pickFirstValue_([
     messageRel,
     getObjPath_(attributes, 'message_id'),
-    getObjPath_(attributes, 'message.id')
+    getObjPath_(attributes, 'message.id'),
+    getObjPath_(attributes, 'event_properties.$message'),
+    getObjPath_(attributes, 'event_properties.message_id'),
+    getObjPath_(attributes, 'event_properties.$message_interaction')
   ]);
 
   if (!eventId || !eventTs) return null;

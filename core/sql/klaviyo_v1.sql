@@ -73,7 +73,9 @@ clicks as (
       nullif(e.payload #>> '{attributes,campaign_id}', ''),
       nullif(e.payload #>> '{attributes,campaign,id}', ''),
       nullif(e.payload #>> '{attributes,attribution,campaign_id}', ''),
-      nullif(e.payload #>> '{attributes,properties,campaign_id}', '')
+      nullif(e.payload #>> '{attributes,properties,campaign_id}', ''),
+      nullif(e.payload #>> '{attributes,event_properties,$campaign}', ''),
+      nullif(e.payload #>> '{attributes,event_properties,campaign_id}', '')
     ) as campaign_id,
     coalesce(
       nullif(e.flow_id, ''),
@@ -82,7 +84,9 @@ clicks as (
       nullif(e.payload #>> '{attributes,flow_id}', ''),
       nullif(e.payload #>> '{attributes,flow,id}', ''),
       nullif(e.payload #>> '{attributes,attribution,flow_id}', ''),
-      nullif(e.payload #>> '{attributes,properties,flow_id}', '')
+      nullif(e.payload #>> '{attributes,properties,flow_id}', ''),
+      nullif(e.payload #>> '{attributes,event_properties,$flow}', ''),
+      nullif(e.payload #>> '{attributes,event_properties,flow_id}', '')
     ) as flow_id
   from raw.raw_klaviyo_events e
   where e.event_ts is not null
