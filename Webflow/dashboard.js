@@ -658,13 +658,6 @@
         cardsHost.innerHTML = "";
         return;
       }
-      var labels = {
-        orders30d: cardsHost.getAttribute("data-label-orders-30d") || "Orders 30d",
-        revenueExcl30d: cardsHost.getAttribute("data-label-revenue-excl-30d") || "Revenue 30d (excl)",
-        revenueIncl30d: cardsHost.getAttribute("data-label-revenue-incl-30d") || "Revenue 30d (incl)",
-        ordersShare30d: cardsHost.getAttribute("data-label-orders-share-30d") || "Orders share",
-        revenueShare30d: cardsHost.getAttribute("data-label-revenue-share-30d") || "Revenue share"
-      };
       var totalOrders = 0;
       var totalRevenueExcl = 0;
       list.forEach(function (r0) {
@@ -672,10 +665,9 @@
         totalRevenueExcl += toNumberSafe(r0 && r0.attributed_revenue_excl_30d);
       });
 
-      function metricRowHtml(key, label, value) {
+      function metricRowHtml(key, value) {
         return ''
           + '<div class="klaviyo-campaign-card-meta klaviyo-campaign-card-meta-' + key + '" data-kc-row="' + key + '">'
-          +   '<span class="klaviyo-campaign-card-label" data-kc-label="' + key + '">' + label + '</span>'
           +   '<span class="klaviyo-campaign-card-value" data-kc-value="' + key + '">' + value + '</span>'
           + '</div>';
       }
@@ -694,11 +686,11 @@
         html += ''
           + '<div class="klaviyo-campaign-card" data-campaign-id="' + cid + '">'
           +   '<div class="klaviyo-campaign-card-title">' + name + '</div>'
-          +   metricRowHtml("orders-30d", labels.orders30d, String(orders))
-          +   metricRowHtml("revenue-excl-30d", labels.revenueExcl30d, String(revExcl))
-          +   metricRowHtml("revenue-incl-30d", labels.revenueIncl30d, String(revIncl))
-          +   metricRowHtml("orders-share-30d", labels.ordersShare30d, String(ordersShare))
-          +   metricRowHtml("revenue-share-30d", labels.revenueShare30d, String(revenueShare))
+          +   metricRowHtml("orders-30d", String(orders))
+          +   metricRowHtml("revenue-excl-30d", String(revExcl))
+          +   metricRowHtml("revenue-incl-30d", String(revIncl))
+          +   metricRowHtml("orders-share-30d", String(ordersShare))
+          +   metricRowHtml("revenue-share-30d", String(revenueShare))
           + '</div>';
       });
       cardsHost.innerHTML = html;
