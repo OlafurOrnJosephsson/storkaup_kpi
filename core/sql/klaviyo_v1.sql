@@ -1,5 +1,5 @@
 -- Klaviyo v1 raw schema + last-click attribution mart
--- Attribution rule: last click, 7-day window, email match
+-- Attribution rule: last click, 30-day window, email match
 
 create schema if not exists raw;
 create schema if not exists mart;
@@ -66,8 +66,24 @@ clicks as (
         nullif(e.payload->'attributes'->'properties'->>'email', '')
       )
     ) as email,
-    e.campaign_id,
-    e.flow_id
+    coalesce(
+      nullif(e.campaign_id, ''),
+      nullif(e.payload #>> '{relationships,campaign,data,id}', ''),
+      nullif(e.payload #>> '{relationships,campaign,data,0,id}', ''),
+      nullif(e.payload #>> '{attributes,campaign_id}', ''),
+      nullif(e.payload #>> '{attributes,campaign,id}', ''),
+      nullif(e.payload #>> '{attributes,attribution,campaign_id}', ''),
+      nullif(e.payload #>> '{attributes,properties,campaign_id}', '')
+    ) as campaign_id,
+    coalesce(
+      nullif(e.flow_id, ''),
+      nullif(e.payload #>> '{relationships,flow,data,id}', ''),
+      nullif(e.payload #>> '{relationships,flow,data,0,id}', ''),
+      nullif(e.payload #>> '{attributes,flow_id}', ''),
+      nullif(e.payload #>> '{attributes,flow,id}', ''),
+      nullif(e.payload #>> '{attributes,attribution,flow_id}', ''),
+      nullif(e.payload #>> '{attributes,properties,flow_id}', '')
+    ) as flow_id
   from raw.raw_klaviyo_events e
   where e.event_ts is not null
     and lower(e.payload::text) like '%click%'
@@ -91,7 +107,7 @@ ranked as (
   join clicks c
     on c.email = o.email
    and c.event_ts <= o.purchase_date
-   and c.event_ts >= (o.purchase_date - interval '7 days')
+   and c.event_ts >= (o.purchase_date - interval '30 days')
 )
 select
   date_trunc('day', purchase_date)::date as order_date,

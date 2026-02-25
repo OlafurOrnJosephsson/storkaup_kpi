@@ -2750,8 +2750,14 @@ function mapKlaviyoEventToRawRow_(event, includedIndex) {
   var profilesById = idx.profilesById || {};
   var metricsById = idx.metricsById || {};
   var profileRel = getObjPath_(relationships, 'profile.data.id');
-  var campaignRel = getObjPath_(relationships, 'campaign.data.id');
-  var flowRel = getObjPath_(relationships, 'flow.data.id');
+  var campaignRel = pickFirstValue_([
+    getObjPath_(relationships, 'campaign.data.id'),
+    getObjPath_(relationships, 'campaign.data.0.id')
+  ]);
+  var flowRel = pickFirstValue_([
+    getObjPath_(relationships, 'flow.data.id'),
+    getObjPath_(relationships, 'flow.data.0.id')
+  ]);
   var metricRel = getObjPath_(relationships, 'metric.data.id');
   var messageRel = getObjPath_(relationships, 'message.data.id');
 
@@ -2791,13 +2797,17 @@ function mapKlaviyoEventToRawRow_(event, includedIndex) {
   var campaignId = pickFirstValue_([
     campaignRel,
     getObjPath_(attributes, 'campaign_id'),
-    getObjPath_(attributes, 'campaign.id')
+    getObjPath_(attributes, 'campaign.id'),
+    getObjPath_(attributes, 'attribution.campaign_id'),
+    getObjPath_(attributes, 'properties.campaign_id')
   ]);
 
   var flowId = pickFirstValue_([
     flowRel,
     getObjPath_(attributes, 'flow_id'),
-    getObjPath_(attributes, 'flow.id')
+    getObjPath_(attributes, 'flow.id'),
+    getObjPath_(attributes, 'attribution.flow_id'),
+    getObjPath_(attributes, 'properties.flow_id')
   ]);
 
   var metricId = pickFirstValue_([
