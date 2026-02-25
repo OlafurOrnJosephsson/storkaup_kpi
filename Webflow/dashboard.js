@@ -654,10 +654,6 @@
     function renderKlaviyoCampaignCards(rows) {
       if (!cardsHost) return;
       var list = Array.isArray(rows) ? rows : [];
-      if (!list.length) {
-        cardsHost.innerHTML = "";
-        return;
-      }
       var totalOrders = 0;
       var totalRevenueExcl = 0;
       list.forEach(function (r0) {
@@ -665,14 +661,56 @@
         totalRevenueExcl += toNumberSafe(r0 && r0.attributed_revenue_excl_30d);
       });
 
+      var template = cardsHost.querySelector("[data-kc-template]");
+      cardsHost.querySelectorAll("[data-kc-rendered]").forEach(function (el) { el.remove(); });
+
+      if (!list.length) return;
+
+      if (template) {
+        list.forEach(function (r) {
+          var name = String((r && r.campaign_name) || (r && r.campaign_id) || "Unknown campaign");
+          var orders = toNumberSafe(r && r.attributed_orders_30d);
+          var revExclRaw = toNumberSafe(r && r.attributed_revenue_excl_30d);
+          var revExcl = formatNumber(revExclRaw);
+          var revIncl = formatNumber(r && r.attributed_revenue_incl_30d);
+          var ordersShare = totalOrders > 0 ? pct(orders / totalOrders) : "0%";
+          var revenueShare = totalRevenueExcl > 0 ? pct(revExclRaw / totalRevenueExcl) : "0%";
+          var cid = String((r && r.campaign_id) || "");
+
+          var card = template.cloneNode(true);
+          card.removeAttribute("data-kc-template");
+          card.setAttribute("data-kc-rendered", "1");
+          card.setAttribute("data-campaign-id", cid);
+          card.style.display = "";
+
+          var titleEl = card.querySelector("[data-kc-title]") || card.querySelector(".klaviyo-campaign-card-title");
+          if (titleEl) titleEl.textContent = name;
+
+          var valueMap = {
+            "orders-30d": String(orders),
+            "revenue-excl-30d": String(revExcl),
+            "revenue-incl-30d": String(revIncl),
+            "orders-share-30d": String(ordersShare),
+            "revenue-share-30d": String(revenueShare)
+          };
+
+          Object.keys(valueMap).forEach(function (key) {
+            var valueEl = card.querySelector('[data-kc-value="' + key + '"]');
+            if (valueEl) valueEl.textContent = valueMap[key];
+          });
+
+          cardsHost.appendChild(card);
+        });
+        return;
+      }
+
+      var html = "";
       function metricRowHtml(key, value) {
         return ''
           + '<div class="klaviyo-campaign-card-meta klaviyo-campaign-card-meta-' + key + '" data-kc-row="' + key + '">'
           +   '<span class="klaviyo-campaign-card-value" data-kc-value="' + key + '">' + value + '</span>'
           + '</div>';
       }
-
-      var html = "";
       list.forEach(function (r) {
         var name = String((r && r.campaign_name) || (r && r.campaign_id) || "Unknown campaign");
         var orders = toNumberSafe(r && r.attributed_orders_30d);
@@ -684,7 +722,7 @@
         var cid = String((r && r.campaign_id) || "");
 
         html += ''
-          + '<div class="klaviyo-campaign-card" data-campaign-id="' + cid + '">'
+          + '<div class="klaviyo-campaign-card" data-campaign-id="' + cid + '" data-kc-rendered="1">'
           +   '<div class="klaviyo-campaign-card-title">' + name + '</div>'
           +   metricRowHtml("orders-30d", String(orders))
           +   metricRowHtml("revenue-excl-30d", String(revExcl))
@@ -693,7 +731,7 @@
           +   metricRowHtml("revenue-share-30d", String(revenueShare))
           + '</div>';
       });
-      cardsHost.innerHTML = html;
+      cardsHost.insertAdjacentHTML("beforeend", html);
     }
     return fetch(endpoint + query, {
       method: "GET",
