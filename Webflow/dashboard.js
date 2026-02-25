@@ -658,23 +658,51 @@
         cardsHost.innerHTML = "";
         return;
       }
+      var labels = {
+        orders30d: cardsHost.getAttribute("data-label-orders-30d") || "Orders 30d",
+        revenueExcl30d: cardsHost.getAttribute("data-label-revenue-excl-30d") || "Revenue 30d (excl)",
+        revenueIncl30d: cardsHost.getAttribute("data-label-revenue-incl-30d") || "Revenue 30d (incl)",
+        ordersShare30d: cardsHost.getAttribute("data-label-orders-share-30d") || "Orders share",
+        revenueShare30d: cardsHost.getAttribute("data-label-revenue-share-30d") || "Revenue share"
+      };
+      var totalOrders = 0;
+      var totalRevenueExcl = 0;
+      list.forEach(function (r0) {
+        totalOrders += toNumberSafe(r0 && r0.attributed_orders_30d);
+        totalRevenueExcl += toNumberSafe(r0 && r0.attributed_revenue_excl_30d);
+      });
+
+      function metricRowHtml(key, label, value) {
+        return ''
+          + '<div class="klaviyo-campaign-card-meta klaviyo-campaign-card-meta-' + key + '" data-kc-row="' + key + '">'
+          +   '<span class="klaviyo-campaign-card-label" data-kc-label="' + key + '">' + label + '</span>'
+          +   '<span class="klaviyo-campaign-card-value" data-kc-value="' + key + '">' + value + '</span>'
+          + '</div>';
+      }
+
       var html = "";
       list.forEach(function (r) {
         var name = String((r && r.campaign_name) || (r && r.campaign_id) || "Unknown campaign");
         var orders = toNumberSafe(r && r.attributed_orders_30d);
-        var revExcl = formatNumber(r && r.attributed_revenue_excl_30d);
+        var revExclRaw = toNumberSafe(r && r.attributed_revenue_excl_30d);
+        var revExcl = formatNumber(revExclRaw);
         var revIncl = formatNumber(r && r.attributed_revenue_incl_30d);
+        var ordersShare = totalOrders > 0 ? pct(orders / totalOrders) : "0%";
+        var revenueShare = totalRevenueExcl > 0 ? pct(revExclRaw / totalRevenueExcl) : "0%";
+        var cid = String((r && r.campaign_id) || "");
+
         html += ''
-          + '<div class="klaviyo-campaign-card" data-campaign-id="' + String((r && r.campaign_id) || "") + '">'
+          + '<div class="klaviyo-campaign-card" data-campaign-id="' + cid + '">'
           +   '<div class="klaviyo-campaign-card-title">' + name + '</div>'
-          +   '<div class="klaviyo-campaign-card-meta">Pantanir 30d: ' + orders + '</div>'
-          +   '<div class="klaviyo-campaign-card-meta">Sala 30d (án vsk): ' + revExcl + '</div>'
-          +   '<div class="klaviyo-campaign-card-meta">Sala 30d (með vsk): ' + revIncl + '</div>'
+          +   metricRowHtml("orders-30d", labels.orders30d, String(orders))
+          +   metricRowHtml("revenue-excl-30d", labels.revenueExcl30d, String(revExcl))
+          +   metricRowHtml("revenue-incl-30d", labels.revenueIncl30d, String(revIncl))
+          +   metricRowHtml("orders-share-30d", labels.ordersShare30d, String(ordersShare))
+          +   metricRowHtml("revenue-share-30d", labels.revenueShare30d, String(revenueShare))
           + '</div>';
       });
       cardsHost.innerHTML = html;
     }
-
     return fetch(endpoint + query, {
       method: "GET",
       cache: "no-store",
