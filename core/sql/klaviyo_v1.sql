@@ -136,3 +136,53 @@ begin
   refresh materialized view mart.mv_klaviyo_attribution_daily;
 end;
 $$;
+
+create or replace view mart.v_klaviyo_campaign_cards_30d as
+with recent as (
+  select
+    campaign_id,
+    sum(attributed_orders) as attributed_orders_30d,
+    sum(attributed_revenue_excl) as attributed_revenue_excl_30d,
+    sum(attributed_revenue_incl) as attributed_revenue_incl_30d
+  from mart.mv_klaviyo_attribution_daily
+  where order_date >= (current_date - interval '30 days')
+    and campaign_id is not null
+    and campaign_id <> ''
+  group by campaign_id
+),
+events_norm as (
+  select
+    coalesce(
+      nullif(e.campaign_id, ''),
+      nullif(e.payload #>> '{attributes,event_properties,$campaign}', ''),
+      nullif(e.payload #>> '{attributes,event_properties,campaign_id}', '')
+    ) as campaign_id,
+    coalesce(
+      nullif(e.payload #>> '{attributes,event_properties,Campaign Name}', ''),
+      nullif(e.payload #>> '{attributes,event_properties,campaign_name}', ''),
+      nullif(e.payload #>> '{attributes,event_properties,Message Name}', ''),
+      nullif(e.payload #>> '{attributes,event_properties,message_name}', '')
+    ) as campaign_name,
+    e.event_ts
+  from raw.raw_klaviyo_events e
+  where e.event_ts is not null
+),
+campaign_names as (
+  select distinct on (campaign_id)
+    campaign_id,
+    campaign_name
+  from events_norm
+  where campaign_id is not null
+    and campaign_id <> ''
+  order by campaign_id, event_ts desc
+)
+select
+  r.campaign_id,
+  coalesce(nullif(cn.campaign_name, ''), r.campaign_id) as campaign_name,
+  r.attributed_orders_30d,
+  r.attributed_revenue_excl_30d,
+  r.attributed_revenue_incl_30d
+from recent r
+left join campaign_names cn
+  on cn.campaign_id = r.campaign_id
+order by r.attributed_revenue_excl_30d desc, r.attributed_orders_30d desc;

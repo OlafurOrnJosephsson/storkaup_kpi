@@ -620,7 +620,8 @@
   }
 
   function hasKlaviyoMetricTargets() {
-    return !!document.querySelector('[data-metric^="klaviyo-"]');
+    return !!document.querySelector('[data-metric^="klaviyo-"]')
+      || !!document.querySelector("[data-klaviyo-campaign-cards]");
   }
 
   function shiftIsoDays(baseIso, diffDays) {
@@ -644,6 +645,35 @@
     var query =
       "?select=order_date,campaign_id,attributed_orders,attributed_revenue_excl,attributed_revenue_incl" +
       "&limit=5000";
+    var cardsHost = document.querySelector("[data-klaviyo-campaign-cards]");
+    var campaignCardsEndpoint = (cfg.supabaseUrl || "") + "/rest/v1/v_klaviyo_campaign_cards_30d";
+    var campaignCardsQuery =
+      "?select=campaign_id,campaign_name,attributed_orders_30d,attributed_revenue_excl_30d,attributed_revenue_incl_30d" +
+      "&limit=50";
+
+    function renderKlaviyoCampaignCards(rows) {
+      if (!cardsHost) return;
+      var list = Array.isArray(rows) ? rows : [];
+      if (!list.length) {
+        cardsHost.innerHTML = "";
+        return;
+      }
+      var html = "";
+      list.forEach(function (r) {
+        var name = String((r && r.campaign_name) || (r && r.campaign_id) || "Unknown campaign");
+        var orders = toNumberSafe(r && r.attributed_orders_30d);
+        var revExcl = formatNumber(r && r.attributed_revenue_excl_30d);
+        var revIncl = formatNumber(r && r.attributed_revenue_incl_30d);
+        html += ''
+          + '<div class="klaviyo-campaign-card" data-campaign-id="' + String((r && r.campaign_id) || "") + '">'
+          +   '<div class="klaviyo-campaign-card-title">' + name + '</div>'
+          +   '<div class="klaviyo-campaign-card-meta">Pantanir 30d: ' + orders + '</div>'
+          +   '<div class="klaviyo-campaign-card-meta">Sala 30d (án vsk): ' + revExcl + '</div>'
+          +   '<div class="klaviyo-campaign-card-meta">Sala 30d (með vsk): ' + revIncl + '</div>'
+          + '</div>';
+      });
+      cardsHost.innerHTML = html;
+    }
 
     return fetch(endpoint + query, {
       method: "GET",
@@ -709,6 +739,24 @@
         setText("klaviyo-revenue-excl-all-time", formatNumber(totals.revenueExclAllTime));
         setText("klaviyo-revenue-incl-all-time", formatNumber(totals.revenueInclAllTime));
         setText("klaviyo-last-sync-date", today);
+
+        if (!cardsHost) return;
+        return fetch(campaignCardsEndpoint + campaignCardsQuery, {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            "apikey": apiKey,
+            "Authorization": "Bearer " + apiKey,
+            "Accept-Profile": "mart"
+          }
+        })
+          .then(function (r2) {
+            if (!r2.ok) throw new Error("Klaviyo campaign cards HTTP " + r2.status);
+            return r2.json();
+          })
+          .then(function (campaignRows) {
+            renderKlaviyoCampaignCards(campaignRows);
+          });
       })
       .catch(function (err) {
         log("Klaviyo attribution fetch failed:", err);
