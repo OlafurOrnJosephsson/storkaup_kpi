@@ -154,6 +154,7 @@ with base as (
     o.web_revenue_incl,
     o.is_booked_match as is_exact_match
   from mart.v_web_booking_reconciliation_orders o
+  where o.purchase_ts >= (current_date - interval '45 days')
 ),
 bc_web as (
   select
@@ -164,7 +165,7 @@ bc_web as (
   from raw.bc_invoices_raw i
   where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
     and i.order_date is not null
-    and i.order_date >= timestamptz '2025-08-18 00:00:00+00'
+    and i.order_date >= (current_date - interval '45 days')
     and not (
       lower(trim(coalesce(i.canceled::text, ''))) in ('1','true','t','yes','y','ja','já')
       or lower(trim(coalesce(i.corrective::text, ''))) in ('1','true','t','yes','y','ja','já')
