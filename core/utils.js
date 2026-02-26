@@ -2293,6 +2293,7 @@ function installScheduledReferenceSyncTrigger_v1() {
  * SPLIT SCHEDULES: Magento-only and Cludo-only
  ************************************************************/
 function scheduledMagentoSync_v1() {
+  var lock = null;
   var startedAt = new Date();
   var runId = null;
   Logger.log('[MAGSYNC][INFO] Started scheduledMagentoSync_v1 at ' + startedAt.toISOString());
@@ -2307,6 +2308,12 @@ function scheduledMagentoSync_v1() {
   };
 
   try {
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(15000)) {
+      Logger.log('[MAGSYNC][WARN] Skipping scheduledMagentoSync_v1: another run is in progress.');
+      return { skipped: true, reason: 'lock_not_acquired', startedAt: startedAt.toISOString() };
+    }
+
     try {
       runId = startIngestionRun_('scheduledMagentoSync_v1', 'magento_customers', {
         trigger_type: 'time_based'
@@ -2377,10 +2384,15 @@ function scheduledMagentoSync_v1() {
 
     Logger.log('[MAGSYNC][ERROR] scheduledMagentoSync_v1 failed: ' + JSON.stringify(result));
     throw e;
+  } finally {
+    if (lock) {
+      try { lock.releaseLock(); } catch (_) {}
+    }
   }
 }
 
 function scheduledCludoSync_v1() {
+  var lock = null;
   var startedAt = new Date();
   var runId = null;
   Logger.log('[CLUDOSYNC][INFO] Started scheduledCludoSync_v1 at ' + startedAt.toISOString());
@@ -2394,6 +2406,12 @@ function scheduledCludoSync_v1() {
   };
 
   try {
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(15000)) {
+      Logger.log('[CLUDOSYNC][WARN] Skipping scheduledCludoSync_v1: another run is in progress.');
+      return { skipped: true, reason: 'lock_not_acquired', startedAt: startedAt.toISOString() };
+    }
+
     try {
       runId = startIngestionRun_('scheduledCludoSync_v1', 'products_cludo', {
         trigger_type: 'time_based'
@@ -2469,10 +2487,15 @@ function scheduledCludoSync_v1() {
 
     Logger.log('[CLUDOSYNC][ERROR] scheduledCludoSync_v1 failed: ' + JSON.stringify(result));
     throw e;
+  } finally {
+    if (lock) {
+      try { lock.releaseLock(); } catch (_) {}
+    }
   }
 }
 
 function scheduledCustomerAnalysisSync_v1() {
+  var lock = null;
   var startedAt = new Date();
   var runId = null;
   Logger.log('[CASYNC][INFO] Started scheduledCustomerAnalysisSync_v1 at ' + startedAt.toISOString());
@@ -2485,6 +2508,12 @@ function scheduledCustomerAnalysisSync_v1() {
   };
 
   try {
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(15000)) {
+      Logger.log('[CASYNC][WARN] Skipping scheduledCustomerAnalysisSync_v1: another run is in progress.');
+      return { skipped: true, reason: 'lock_not_acquired', startedAt: startedAt.toISOString() };
+    }
+
     try {
       runId = startIngestionRun_('scheduledCustomerAnalysisSync_v1', 'customer_analysis', {
         trigger_type: 'time_based'
@@ -2553,6 +2582,10 @@ function scheduledCustomerAnalysisSync_v1() {
 
     Logger.log('[CASYNC][ERROR] scheduledCustomerAnalysisSync_v1 failed: ' + JSON.stringify(result));
     throw e;
+  } finally {
+    if (lock) {
+      try { lock.releaseLock(); } catch (_) {}
+    }
   }
 }
 
