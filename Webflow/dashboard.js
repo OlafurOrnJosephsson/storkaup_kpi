@@ -659,6 +659,16 @@
       "?select=campaign_id,campaign_name,attributed_orders_30d,attributed_revenue_excl_30d,attributed_revenue_incl_30d" +
       "&limit=50";
 
+    function setKlaviyoQualityLine(orders30d, syncDate) {
+      var host = document.querySelector("[data-klaviyo-quality-line]");
+      if (!host) return;
+      var excludedText = includeBotClicks ? "nei" : "ja";
+      host.textContent =
+        "Gaeðastada: Klaviyo pantanir (30d): " + toNumberSafe(orders30d) +
+        " | Bot Click utilekad: " + excludedText +
+        " | Sidast samstillt: " + (syncDate || "-");
+    }
+
     function fetchAndRenderCampaignCards(retryLeft) {
       if (!cardsHost) return Promise.resolve();
       return fetch(campaignCardsEndpoint + campaignCardsQuery, {
@@ -835,12 +845,14 @@
         setText("klaviyo-revenue-excl-all-time", formatNumber(totals.revenueExclAllTime));
         setText("klaviyo-revenue-incl-all-time", formatNumber(totals.revenueInclAllTime));
         setText("klaviyo-last-sync-date", today);
+        setKlaviyoQualityLine(totals.orders30d, today);
 
         return fetchAndRenderCampaignCards(1);
       })
       .catch(function (err) {
         log("Klaviyo attribution fetch failed:", err);
         setText("klaviyo-last-sync-date", "error");
+        setKlaviyoQualityLine(0, "error");
       });
   }
 
