@@ -466,6 +466,17 @@ function normalizeHeaderKey_(s) {
     .replace(/[^a-z0-9]+/g, '');
 }
 
+
+function parseBcInvoiceDateFromRowByIndex_(row, iBookingDate, iOrderDate) {
+  const bookingVal = iBookingDate >= 0 ? row[iBookingDate] : null;
+  const orderVal = iOrderDate >= 0 ? row[iOrderDate] : null;
+  return parseOldwebDate_(bookingVal) || new Date(bookingVal) || parseOldwebDate_(orderVal) || new Date(orderVal);
+}
+
+function parseBcInvoiceDateFromObject_(row) {
+  return parseOldwebDate_(row.BOOKING_DATE) || new Date(row.BOOKING_DATE) || parseOldwebDate_(row.ORDER_DATE) || new Date(row.ORDER_DATE);
+}
+
 function loadBCMonthlyTotals_() {
   try {
     const full = loadTableBySchemaFull_('BC_INVOICES'); // {header, rows}
@@ -480,21 +491,22 @@ function loadBCMonthlyTotals_() {
       return -1;
     };
 
-    const iDate = findCol(['pöntunardags', 'pöntunardag', 'order date', 'orderdate']);
-    const iIncl = findCol(['upphæð með vsk', 'amount including vat', 'amount incl', 'amountincl']);
+    const iBookingDate = findCol(['bokunardags', 'bokunardag', 'posting date', 'booking date', 'booked date']);
+    const iOrderDate = findCol(['pontunardags', 'pontunardag', 'order date', 'orderdate']);
+    const iIncl = findCol(['upphaed med vsk', 'amount including vat', 'amount incl', 'amountincl']);
 
     const map = {};
-    if (iDate < 0 || iIncl < 0) {
-      Logger.log(`[BCMT] Missing columns: iDate=${iDate} iIncl=${iIncl}`);
-      Logger.log(`[BCMT] Header: ${JSON.stringify(full.header || [])}`);
+    if ((iBookingDate < 0 && iOrderDate < 0) || iIncl < 0) {
+      Logger.log('[BCMT] Missing columns: iBookingDate=' + iBookingDate + ' iOrderDate=' + iOrderDate + ' iIncl=' + iIncl);
+      Logger.log('[BCMT] Header: ' + JSON.stringify(full.header || []));
       return map;
     }
 
     (full.rows || []).forEach(r => {
-      const d = parseOldwebDate_(r[iDate]) || new Date(r[iDate]);
+      const d = parseBcInvoiceDateFromRowByIndex_(r, iBookingDate, iOrderDate);
       if (!(d instanceof Date) || isNaN(d.getTime())) return;
 
-      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
       if (!map[key]) map[key] = 0;
       map[key] += toNum_(r[iIncl]);
     });
@@ -522,7 +534,10 @@ function loadBCMonthlyTotalsExcl_() {
       return -1;
     };
 
-    const dateKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
+    const bookingDateKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
+      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.BOOKING_DATE
+      : '';
+    const orderDateKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
       ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.ORDER_DATE
       : '';
     const exclKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
@@ -532,24 +547,25 @@ function loadBCMonthlyTotalsExcl_() {
       ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.AMOUNT_INCL
       : '';
 
-    const iDate = findCol([dateKey, 'pontunardags', 'pontunardag', 'order date', 'orderdate']);
+    const iBookingDate = findCol([bookingDateKey, 'bokunardags', 'bokunardag', 'posting date', 'booking date', 'booked date']);
+    const iOrderDate = findCol([orderDateKey, 'pontunardags', 'pontunardag', 'order date', 'orderdate']);
     const iExcl = findCol(
       [exclKey, 'upphaed', 'amount excl', 'amount excluding vat', 'amount excluding tax', 'amountexcl'],
       [inclKey, 'medvsk', 'incl', 'withvat']
     );
 
     const map = {};
-    if (iDate < 0 || iExcl < 0) {
-      Logger.log(`[BCMT-EXCL] Missing columns: iDate=${iDate} iExcl=${iExcl}`);
-      Logger.log(`[BCMT-EXCL] Header: ${JSON.stringify(full.header || [])}`);
+    if ((iBookingDate < 0 && iOrderDate < 0) || iExcl < 0) {
+      Logger.log('[BCMT-EXCL] Missing columns: iBookingDate=' + iBookingDate + ' iOrderDate=' + iOrderDate + ' iExcl=' + iExcl);
+      Logger.log('[BCMT-EXCL] Header: ' + JSON.stringify(full.header || []));
       return map;
     }
 
     (full.rows || []).forEach(r => {
-      const d = parseOldwebDate_(r[iDate]) || new Date(r[iDate]);
+      const d = parseBcInvoiceDateFromRowByIndex_(r, iBookingDate, iOrderDate);
       if (!(d instanceof Date) || isNaN(d.getTime())) return;
 
-      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
       if (!map[key]) map[key] = 0;
       map[key] += toNum_(r[iExcl]);
     });
@@ -566,10 +582,10 @@ function loadBCMonthlyOrderCounts_() {
     const rows = loadTableBySchema_('BC_INVOICES') || [];
     const map = {};
     rows.forEach(r => {
-      const d = parseOldwebDate_(r.ORDER_DATE) || new Date(r.ORDER_DATE);
+      const d = parseBcInvoiceDateFromObject_(r);
       if (!(d instanceof Date) || isNaN(d.getTime())) return;
 
-      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
       if (!map[key]) map[key] = 0;
       map[key] += 1;
     });
@@ -579,12 +595,6 @@ function loadBCMonthlyOrderCounts_() {
     Logger.log('loadBCMonthlyOrderCounts_ failed: ' + e);
     return {};
   }
-}
-
-function isWebFlagTruthy_(v) {
-  const s = String(v || '').trim().toLowerCase();
-  if (!s) return false;
-  return s === '1' || s === 'y' || s === 'yes' || s === 'true' || s === 't';
 }
 
 function loadBCMonthlyWebStats_() {
@@ -601,39 +611,37 @@ function loadBCMonthlyWebStats_() {
       return -1;
     };
 
-    const dateKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
+    const bookingDateKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
+      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.BOOKING_DATE
+      : '';
+    const orderDateKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
       ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.ORDER_DATE
       : '';
     const exclKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
       ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.AMOUNT_EXCL
       : '';
-    const inclKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
-      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.AMOUNT_INCL
-      : '';
 
-    const iDate = findCol([dateKey, 'pontunardags', 'pontunardag', 'order date', 'orderdate']);
-    const iExcl = findCol(
-      [exclKey, 'upphaed', 'amount excl', 'amount excluding vat', 'amount excluding tax', 'amountexcl'],
-      [inclKey, 'medvsk', 'incl', 'withvat']
-    );
+    const iBookingDate = findCol([bookingDateKey, 'bokunardags', 'bokunardag', 'posting date', 'booking date', 'booked date']);
+    const iOrderDate = findCol([orderDateKey, 'pontunardags', 'pontunardag', 'order date', 'orderdate']);
+    const iExcl = findCol([exclKey, 'upphaed', 'amount excl', 'amount excluding vat', 'amount excluding tax', 'amountexcl']);
     const spKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
       ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.SALESPERSON_CODE
       : '';
-    const iSalesperson = findCol([spKey, 'koti solumanns', 'sölumanns', 'salesperson', 'sales person', 'salesperson code', 'salespersoncode']);
+    const iSalesperson = findCol([spKey, 'koti solumanns', 'solumanns', 'salesperson', 'sales person', 'salesperson code', 'salespersoncode']);
     const iWebFlag = findCol(['weborder', 'web order', 'web_order', 'vefpontun', 'vefpontun?', 'webshop', 'netverslun', 'isweb']);
 
     const webCodes = ['VEFUR'];
     const orderMap = {};
     const revMap = {};
 
-    if (iDate < 0 || iExcl < 0) {
-      Logger.log(`[BC-WEB] Missing columns: iDate=${iDate} iExcl=${iExcl}`);
-      Logger.log(`[BC-WEB] Header: ${JSON.stringify(full.header || [])}`);
+    if ((iBookingDate < 0 && iOrderDate < 0) || iExcl < 0) {
+      Logger.log('[BC-WEB] Missing columns: iBookingDate=' + iBookingDate + ' iOrderDate=' + iOrderDate + ' iExcl=' + iExcl);
+      Logger.log('[BC-WEB] Header: ' + JSON.stringify(full.header || []));
       return { orders: orderMap, revenueExcl: revMap };
     }
 
     (full.rows || []).forEach(r => {
-      const d = parseOldwebDate_(r[iDate]) || new Date(r[iDate]);
+      const d = parseBcInvoiceDateFromRowByIndex_(r, iBookingDate, iOrderDate);
       if (!(d instanceof Date) || isNaN(d.getTime())) return;
 
       let isWeb = false;
@@ -645,7 +653,7 @@ function loadBCMonthlyWebStats_() {
       }
       if (!isWeb) return;
 
-      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
       if (!orderMap[key]) orderMap[key] = 0;
       if (!revMap[key]) revMap[key] = 0;
       orderMap[key] += 1;
@@ -657,6 +665,11 @@ function loadBCMonthlyWebStats_() {
     Logger.log('loadBCMonthlyWebStats_ failed: ' + e);
     return { orders: {}, revenueExcl: {} };
   }
+}
+function isWebFlagTruthy_(v) {
+  const s = String(v || '').trim().toLowerCase();
+  if (!s) return false;
+  return s === '1' || s === 'y' || s === 'yes' || s === 'true' || s === 't';
 }
 
 /************************************************************
@@ -1563,3 +1576,4 @@ function loadProductsLookup_(cfg) {
     return {};
   }
 }
+

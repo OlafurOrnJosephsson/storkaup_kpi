@@ -335,7 +335,7 @@ function loadBCInvoices_() {
     }
 
     const c    = out[id];
-    const date = parseDateSafe_(r[C.ORDER_DATE]);
+    const date = parseDateSafe_(r[C.BOOKING_DATE]) || parseDateSafe_(r[C.ORDER_DATE]);
     const excl = toNum_(r[C.AMOUNT_EXCL]);
     const incl = toNum_(r[C.AMOUNT_INCL]);
 
@@ -965,3 +965,4 @@ function buildCategoryFit_v2() {
 
   Logger.log(`✅ buildCategoryFit_v2: ${rows.length} company×category rows.`);
 }
+

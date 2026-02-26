@@ -91,8 +91,11 @@ BC_INVOICES: {
     COMPANY_ID:       'Númer viðskiptamanns',
     EXTERNAL_DOC_NO:  'Númer utanaðk. skjals',
     COMPANY_NAME:     'Nafn viðskiptamanns',
+    ORDER_NO:         'Pöntunarnr.',
     CURRENCY:         'Gjaldmiðilskóti',
     DUE_DATE:         'Gjalddagi',
+    BOOKING_DATE:     'Bókunardags.',
+    DOCUMENT_DATE:    'Dags. fylgiskjals',
     EMAIL:            'Netfang',
     AMOUNT_EXCL:      'Upphæð',
     AMOUNT_INCL:      'Upphæð með VSK',
@@ -219,3 +222,4 @@ CUSTOMER_ANALYSIS: {
 
 
 };
+

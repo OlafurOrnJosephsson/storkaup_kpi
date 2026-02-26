@@ -1269,7 +1269,7 @@ function upsertBcInvoicesToSupabase_(rows) {
       company_name: r.COMPANY_NAME || null,
       currency: r.CURRENCY || null,
       due_date: parseBcDateForSupabase_(r.DUE_DATE),
-      order_date: parseBcDateForSupabase_(r.ORDER_DATE),
+      order_date: parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE),
       email: r.EMAIL || null,
       amount_excl: toNum_(r.AMOUNT_EXCL),
       amount_incl: toNum_(r.AMOUNT_INCL),
@@ -1332,7 +1332,7 @@ function backfillBcInvoicesToSupabase_v1(options) {
   }
 
   var selected = full ? rows : rows.filter(function(r) {
-    var rowIso = parseBcDateForSupabase_(r.ORDER_DATE);
+    var rowIso = parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE);
     return shouldIncludeByWatermark_(rowIso, previousIso, lookbackDays);
   });
 
@@ -1465,7 +1465,7 @@ function backfillBcLinesToSupabase_v1(options) {
     var invoiceRows = loadTableBySchema_('BC_INVOICES') || [];
     var changedDocNos = {};
     invoiceRows.forEach(function(inv) {
-      var rowIso = parseBcDateForSupabase_(inv.ORDER_DATE);
+      var rowIso = parseBcDateForSupabase_(inv.BOOKING_DATE) || parseBcDateForSupabase_(inv.ORDER_DATE);
       if (!shouldIncludeByWatermark_(rowIso, previousIso, lookbackDays)) return;
       var doc = String(inv.DOCUMENT_NO || '').trim();
       if (doc) changedDocNos[doc] = true;
