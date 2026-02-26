@@ -112,12 +112,12 @@ candidates as (
     b.external_doc_no as candidate_external_doc_no,
     b.order_ts as candidate_order_ts,
     b.amount_incl as candidate_amount_incl,
-    abs(extract(epoch from (b.order_ts::date - u.purchase_ts::date)) / 86400.0) as day_distance,
+    abs((b.order_ts::date - u.purchase_ts::date)::numeric) as day_distance,
     abs(coalesce(b.amount_incl, 0) - coalesce(u.web_revenue_incl, 0)) as amount_distance,
     row_number() over (
       partition by u.order_id
       order by
-        abs(extract(epoch from (b.order_ts::date - u.purchase_ts::date)) / 86400.0) asc,
+        abs((b.order_ts::date - u.purchase_ts::date)::numeric) asc,
         abs(coalesce(b.amount_incl, 0) - coalesce(u.web_revenue_incl, 0)) asc,
         b.document_no asc
     ) as rn
