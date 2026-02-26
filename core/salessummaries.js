@@ -458,9 +458,14 @@ function buildOrderContext_(cfg) {
  * BC monthly totals: sum "Upphæð með VSK" by "Pöntunardags."
  ************************************************************/
 function normalizeHeaderKey_(s) {
-  return String(s || '')
-    .trim()
-    .toLowerCase()
+  const str = String(s || '').trim().toLowerCase()
+    // Icelandic chars need explicit transliteration before stripping non-ascii.
+    .replace(/ð/g, 'd')
+    .replace(/þ/g, 'th')
+    .replace(/æ/g, 'ae')
+    .replace(/ö/g, 'o');
+
+  return str
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '');
