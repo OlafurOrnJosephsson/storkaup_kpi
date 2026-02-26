@@ -941,6 +941,66 @@
     if (!cfg.supabaseUrl || !apiKey) return Promise.resolve();
 
     var endpoint = (cfg.supabaseUrl || "") + "/rest/v1/rpc/web_booking_reconciliation_30d";
+    var viewEndpoint = (cfg.supabaseUrl || "") + "/rest/v1/v_web_booking_reconciliation_daily_v2";
+
+    function applyRow(row) {
+      if (!row) return;
+      setText("web-booking-orders-30d", toNumberSafe(row.web_orders_30d));
+      setText("web-booking-booked-exact-30d", toNumberSafe(row.web_orders_booked_exact_30d));
+      setText("web-booking-booked-est-30d", toNumberSafe(row.web_orders_booked_est_30d));
+      setText("web-booking-gap-exact-30d", toNumberSafe(row.web_orders_unbooked_gap_exact_30d));
+      setText("web-booking-gap-est-30d", toNumberSafe(row.web_orders_unbooked_gap_est_30d));
+      setText("web-booking-rate-exact-30d", pct(row.booking_rate_exact_30d));
+      setText("web-booking-rate-est-30d", pct(row.booking_rate_est_30d));
+    }
+
+    function fallbackFromView() {
+      var today = getTodayIso();
+      var from30d = shiftIsoDays(today, -29);
+      var query =
+        "?select=day,web_orders_magento,web_orders_booked_exact,web_orders_booked_total_est,web_orders_unbooked_gap_exact,web_orders_unbooked_gap_est" +
+        "&day=gte." + encodeURIComponent(from30d) +
+        "&day=lte." + encodeURIComponent(today) +
+        "&limit=200";
+      return fetch(viewEndpoint + query, {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          "apikey": apiKey,
+          "Authorization": "Bearer " + apiKey,
+          "Accept-Profile": "mart"
+        }
+      })
+        .then(function (r) {
+          if (!r.ok) throw new Error("v_web_booking_reconciliation_daily_v2 HTTP " + r.status);
+          return r.json();
+        })
+        .then(function (rows) {
+          var list = Array.isArray(rows) ? rows : [];
+          var agg = {
+            web_orders_30d: 0,
+            web_orders_booked_exact_30d: 0,
+            web_orders_booked_est_30d: 0,
+            web_orders_unbooked_gap_exact_30d: 0,
+            web_orders_unbooked_gap_est_30d: 0,
+            booking_rate_exact_30d: 0,
+            booking_rate_est_30d: 0
+          };
+          list.forEach(function (r) {
+            agg.web_orders_30d += toNumberSafe(r && r.web_orders_magento);
+            agg.web_orders_booked_exact_30d += toNumberSafe(r && r.web_orders_booked_exact);
+            agg.web_orders_booked_est_30d += toNumberSafe(r && r.web_orders_booked_total_est);
+            agg.web_orders_unbooked_gap_exact_30d += toNumberSafe(r && r.web_orders_unbooked_gap_exact);
+            agg.web_orders_unbooked_gap_est_30d += toNumberSafe(r && r.web_orders_unbooked_gap_est);
+          });
+          if (agg.web_orders_30d > 0) {
+            agg.booking_rate_exact_30d = agg.web_orders_booked_exact_30d / agg.web_orders_30d;
+            agg.booking_rate_est_30d = agg.web_orders_booked_est_30d / agg.web_orders_30d;
+          }
+          applyRow(agg);
+        });
+    }
+
     return fetch(endpoint, {
       method: "POST",
       cache: "no-store",
@@ -957,18 +1017,14 @@
       })
       .then(function (raw) {
         var row = Array.isArray(raw) ? (raw[0] || null) : raw;
-        if (!row) return;
-
-        setText("web-booking-orders-30d", toNumberSafe(row.web_orders_30d));
-        setText("web-booking-booked-exact-30d", toNumberSafe(row.web_orders_booked_exact_30d));
-        setText("web-booking-booked-est-30d", toNumberSafe(row.web_orders_booked_est_30d));
-        setText("web-booking-gap-exact-30d", toNumberSafe(row.web_orders_unbooked_gap_exact_30d));
-        setText("web-booking-gap-est-30d", toNumberSafe(row.web_orders_unbooked_gap_est_30d));
-        setText("web-booking-rate-exact-30d", pct(row.booking_rate_exact_30d));
-        setText("web-booking-rate-est-30d", pct(row.booking_rate_est_30d));
+        if (!row) return fallbackFromView();
+        applyRow(row);
       })
       .catch(function (err) {
         log("Web booking reconciliation fetch failed:", err);
+        return fallbackFromView().catch(function (fallbackErr) {
+          log("Web booking reconciliation fallback failed:", fallbackErr);
+        });
       });
   }
 
