@@ -6,8 +6,8 @@ const STORKAUP_SCHEMA = {
  * NEWWEB (Magento)
  **********************/
 NEWWEB: {
-  FILE: 'WEBSALES',        // vÃ­sar Ã­ CONFIG.SHEETS.WEBSALES
-  PK:   'ID',
+  FILE: 'WEBSALES', // visar i CONFIG.SHEETS.WEBSALES
+  PK: 'ID',
   SHEET: 'NEWWEB',
   ID: 'ID',
   DATE: 'Purchase Date',
@@ -33,7 +33,7 @@ NEWWEB: {
  **********************/
 OLDWEB: {
   FILE: 'OLDWEB',
-  PK:   'ID',
+  PK: 'ID',
   SHEET: 'OLDWEB',
   ID: 'ID',
   DATE: 'Purchase Date',
@@ -47,97 +47,96 @@ OLDWEB: {
   CUSTOMER_EMAIL: 'Customer Email',
   SUBTOTAL_EXCL: 'Subtotal',
   SUBTOTAL_INCL: 'Grand Total (Purchased)',
-  SUBTOTAL_BASE: 'Grand Total (Base)', 
+  SUBTOTAL_BASE: 'Grand Total (Base)',
   SHIPPING: 'Shipping and Handling',
   LS_ORDER_ID: 'LS Central Order ID',
 
-  // NEWWEB style lists (comma separated)
   SKU_LIST: 'SKU',
   NAME_LIST: 'Product Name',
   QTY_LIST: 'Qty',
 
-  // Legacy full block with "Ã—" multipliers
+  // Legacy full block with "x" multipliers
   ITEMS_BLOCK: 'Items'
 },
 
 /**********************
- * BC: ViÃ°skiptamenn
+ * BC: Vidskiptamenn
  **********************/
 BC_CUSTOMERS: {
   FILE: 'BC_CUSTOMERS',
-  SHEET: 'ViÃ°skiptamenn',
+  SHEET: 'Vidskiptamenn',
   PK: 'Nr.',
   COLUMNS: {
-    COMPANY_ID:   'Nr.',
+    COMPANY_ID: 'Nr.',
     COMPANY_NAME: 'Heiti',
-    CREDIT_LIMIT: 'HÃ¡marksskuld (SGM)',
-    PHONE:        'SÃ­mi',
-    BALANCE:      'Hreyfing (SGM)',
-    PAYMENTS:     'GreiÃ°slur (SGM)',
-    SALES:        'Sala (SGM)',
-    MODIFIED_DATE:'SÃ­Ã°ast breytt, dags.'
+    CREDIT_LIMIT: 'Hamarksskuld (SGM)',
+    PHONE: 'Simi',
+    BALANCE: 'Hreyfing (SGM)',
+    PAYMENTS: 'Greidslur (SGM)',
+    SALES: 'Sala (SGM)',
+    MODIFIED_DATE: 'Sidast breytt, dags.'
   }
 },
 
 /**********************
- * BC: BÃ³kaÃ°ir SÃ¶lureikningar
+ * BC: Bokadir Solureikningar
  **********************/
 BC_INVOICES: {
   FILE: 'BC_INVOICES',
-  SHEET: 'BÃ³kaÃ°ir sÃ¶lureikningar',
+  SHEET: 'Bokadir solureikningar',
   PK: 'Nr.',
   COLUMNS: {
-    DOCUMENT_NO:      'Nr.',
-    COMPANY_ID:       'NÃºmer viÃ°skiptamanns',
-    EXTERNAL_DOC_NO:  'NÃºmer utanaÃ°k. skjals',
-    COMPANY_NAME:     'Nafn viÃ°skiptamanns',
-    ORDER_NO:         'PÃ¶ntunarnr.',
-    CURRENCY:         'GjaldmiÃ°ilskÃ³ti',
-    DUE_DATE:         'Gjalddagi',
-    BOOKING_DATE:     'BÃ³kunardags.',
-    DOCUMENT_DATE:    'Dags. fylgiskjals',
-    EMAIL:            'Netfang',
-    AMOUNT_EXCL:      'UpphÃ¦Ã°',
-    AMOUNT_INCL:      'UpphÃ¦Ã° meÃ° VSK',
-    ORDER_DATE:       'PÃ¶ntunardags.',
-    SALESPERSON_CODE: 'KÃ³ti sÃ¶lumanns',
-    REMAINING:        'EftirstÃ¶Ã°var',
-    LOCATION_CODE:    'KÃ³ti birgÃ°ageymslu',
-    PRINTED:          'PrentaÃ°',
-    CLOSED:           'LokaÃ°',
-    CANCELED:         'HÃ¦tt viÃ°',
-    CORRECTIVE:       'LeiÃ°rÃ©ttandi',
-    RSM_PROVIDER:     'RSM Ã¾jÃ³nustuaÃ°ili',
-    RSM_DATE:         'Dags RSM sent'
+    DOCUMENT_NO: 'Nr.',
+    COMPANY_ID: 'Numer vidskiptamanns',
+    EXTERNAL_DOC_NO: 'Numer utanadk. skjals',
+    COMPANY_NAME: 'Nafn vidskiptamanns',
+    ORDER_NO: 'Pontunarnr.',
+    CURRENCY: 'Gjaldmidilskoti',
+    DUE_DATE: 'Gjalddagi',
+    BOOKING_DATE: 'Bokunardags.',
+    DOCUMENT_DATE: 'Dags. fylgiskjals',
+    EMAIL: 'Netfang',
+    AMOUNT_EXCL: 'Upphaed',
+    AMOUNT_INCL: 'Upphaed med VSK',
+    ORDER_DATE: 'Pontunardags.',
+    SALESPERSON_CODE: 'Koti solumanns',
+    REMAINING: 'Eftirstodvar',
+    LOCATION_CODE: 'Koti birgdageymslu',
+    PRINTED: 'Prentad',
+    CLOSED: 'Lokad',
+    CANCELED: 'Haett vid',
+    CORRECTIVE: 'Leidrettandi',
+    RSM_PROVIDER: 'RSM thjonustuaadili',
+    RSM_DATE: 'Dags RSM sent'
   }
 },
 
 /**********************
- * BC: BÃ³kaÃ°ir SÃ¶lukreditreikningar
+ * BC: Bokadir Solukreditreikningar
  **********************/
 BC_CREDIT_INVOICES: {
   FILE: 'BC_INVOICES',
   SHEET: 'Bokadir solukreditreikningar',
   PK: 'Nr.',
   COLUMNS: {
-    DOCUMENT_NO:      'Nr.',
-    COMPANY_ID:       'Selt-til - Vidskm.nr.',
+    DOCUMENT_NO: 'Nr.',
+    COMPANY_ID: 'Selt-til - Vidskm.nr.',
     SALESPERSON_CODE: 'Koti solumanns',
-    COMPANY_NAME:     'Nafn vidskiptamanns',
-    CURRENCY:         'Gjaldmidilskoti',
-    DUE_DATE:         'Gjalddagi',
-    BOOKING_DATE:     'Bokunardags.',
-    DOCUMENT_DATE:    'Dags. fylgiskjals',
-    AMOUNT_EXCL:      'Upphaed',
-    AMOUNT_INCL:      'Upphaed med VSK',
-    REMAINING:        'Eftirstodvar',
-    PAID:             'Greitt',
-    CANCELED:         'Haett vid',
-    CORRECTIVE:       'Leidrettandi',
-    LOCATION_CODE:    'Koti birgdageymslu',
-    PRINTED:          'Prentad',
-    RSM_PROVIDER:     'RSM Thjonusta',
-    RSM_DATE:         'Dags RSM sent'
+    COMPANY_NAME: 'Nafn vidskiptamanns',
+    CURRENCY: 'Gjaldmidilskoti',
+    DUE_DATE: 'Gjalddagi',
+    BOOKING_DATE: 'Bokunardags.',
+    DOCUMENT_DATE: 'Dags. fylgiskjals',
+    AMOUNT_EXCL: 'Upphaed',
+    AMOUNT_INCL: 'Upphaed med VSK',
+    REMAINING: 'Eftirstodvar',
+    PAID: 'Greitt',
+    CANCELED: 'Haett vid',
+    CORRECTIVE: 'Leidrettandi',
+    LOCATION_CODE: 'Koti birgdageymslu',
+    PRINTED: 'Prentad',
+    RSM_PROVIDER: 'RSM Thjonusta',
+    RSM_DATE: 'Dags RSM sent'
   }
 },
 
@@ -146,20 +145,20 @@ BC_CREDIT_INVOICES: {
  **********************/
 BC_LINES: {
   FILE: 'BC_LINES',
-  PK: 'NÃºmer fylgiskjals',
-  SHEET: 'BÃ³kaÃ°ar sÃ¶lureikningslÃ­nur',
-  
+  PK: 'Numer fylgiskjals',
+  SHEET: 'Bokadar solureikningslinur',
+
   COLUMNS: {
-    DOCUMENT_NO:    'NÃºmer fylgiskjals',
-    COMPANY_ID:     'Selt-til - ViÃ°skm.nr.',
-    TYPE:           'Tegund',
-    SKU:            'Nr.',
-    PRODUCT_NAME:   'LÃ½sing',
-    QTY:            'Magn',
-    UOM:            'MÃ¦lieiningarkÃ³Ã°i',
-    UNIT_PRICE_EXCL:'Ein.verÃ° Ã¡n VSK',
-    AMOUNT_EXCL:    'UpphÃ¦Ã°',
-    DISCOUNT:       'LÃ­nuafsl.%'
+    DOCUMENT_NO: 'Numer fylgiskjals',
+    COMPANY_ID: 'Selt-til - Vidskm.nr.',
+    TYPE: 'Tegund',
+    SKU: 'Nr.',
+    PRODUCT_NAME: 'Lysing',
+    QTY: 'Magn',
+    UOM: 'Maelieiningarkodi',
+    UNIT_PRICE_EXCL: 'Ein.verd an VSK',
+    AMOUNT_EXCL: 'Upphaed',
+    DISCOUNT: 'Linuafsl.%'
   }
 },
 
@@ -186,7 +185,7 @@ CUSTOMERS: {
  **********************/
 PRODUCTS: {
   FILE: 'PRODUCTS',
-  PK:   'SKU',
+  PK: 'SKU',
   SHEET: 'PRODUCTS',
   SKU: 'SKU',
   NAME: 'Product Name',
@@ -223,7 +222,7 @@ CUSTOMER_ANALYSIS: {
     WEBSHOP_SALES: 'Webshop Sales',
     WEBSHOP_AOV: 'Webshop AOV',
     WEBSHOP_LAST_ORDER: 'Webshop Last Order',
-    WEBSHOP_SHARE_LIFETIME: 'Webshop Share â€” Lifetime (%)',
+    WEBSHOP_SHARE_LIFETIME: 'Webshop Share - Lifetime (%)',
     TOTAL_VALUE: 'Total Value',
     TOTAL_ORDERS: 'Total Orders',
     FREQUENCY_SCORE: 'Frequency Score',
@@ -237,17 +236,12 @@ CUSTOMER_ANALYSIS: {
     RECOMMENDED_ACTION: 'Recommended Action',
     TOTAL_SKU_COUNT: 'Total SKU Count',
     TOP_PRODUCTS: 'Top 15 Products',
-    CAT_REKSTRARVORUR: 'Category % RekstrarvÃ¶rur',
-    CAT_HEILBRIGDISVORUR: 'Category % HeilbrigÃ°isvÃ¶rur',
-    CAT_MATVORUR: 'Category % MatvÃ¶rur',
-    CAT_VELAR_TAEKI: 'Category % VÃ©lar og tÃ¦ki',
-    CAT_AFENGI: 'Category % Ãfengi',
+    CAT_REKSTRARVORUR: 'Category % Rekstrarvorur',
+    CAT_HEILBRIGDISVORUR: 'Category % Heilbrigdhisvorur',
+    CAT_MATVORUR: 'Category % Matvorur',
+    CAT_VELAR_TAEKI: 'Category % Velar og taeki',
+    CAT_AFENGI: 'Category % Afengi',
     PRIMARY_CATEGORY: 'Primary Category'
   }
-},
-
-
-
-
-
+}
 };
