@@ -493,7 +493,20 @@ function loadBCMonthlyTotals_() {
 
     const iBookingDate = findCol(['bokunardags', 'bokunardag', 'posting date', 'booking date', 'booked date']);
     const iOrderDate = findCol(['pontunardags', 'pontunardag', 'order date', 'orderdate']);
-    const iIncl = findCol(['upphaed med vsk', 'amount including vat', 'amount incl', 'amountincl']);
+    const inclKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
+      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.AMOUNT_INCL
+      : '';
+    let iIncl = findCol([inclKey, 'upphaed med vsk', 'amount including vat', 'amount incl', 'amountincl', 'medvsk', 'withvat', 'vsk']);
+    if (iIncl < 0) {
+      // Last-resort fallback for locale-specific headers where accented letters are dropped during normalization.
+      for (let i = 0; i < headerKeys.length; i++) {
+        const h = headerKeys[i];
+        if (h.includes('vsk') && (h.includes('upph') || h.includes('amount'))) {
+          iIncl = i;
+          break;
+        }
+      }
+    }
 
     const map = {};
     if ((iBookingDate < 0 && iOrderDate < 0) || iIncl < 0) {
