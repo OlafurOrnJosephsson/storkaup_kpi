@@ -669,6 +669,14 @@
         " | Sidast samstillt: " + (syncDate || "-");
     }
 
+    function setKlaviyoAttributionMethodMetric() {
+      var excludedText = includeBotClicks ? "nei" : "ja";
+      setText(
+        "klaviyo-attribution-method",
+        "Last click, 30 dagar, netfangssamsvorun, Bot Click utilekad: " + excludedText
+      );
+    }
+
     function fetchAndRenderCampaignCards(retryLeft) {
       if (!cardsHost) return Promise.resolve();
       return fetch(campaignCardsEndpoint + campaignCardsQuery, {
@@ -845,6 +853,7 @@
         setText("klaviyo-revenue-excl-all-time", formatNumber(totals.revenueExclAllTime));
         setText("klaviyo-revenue-incl-all-time", formatNumber(totals.revenueInclAllTime));
         setText("klaviyo-last-sync-date", today);
+        setKlaviyoAttributionMethodMetric();
         setKlaviyoQualityLine(totals.orders30d, today);
 
         return fetchAndRenderCampaignCards(1);
@@ -852,6 +861,7 @@
       .catch(function (err) {
         log("Klaviyo attribution fetch failed:", err);
         setText("klaviyo-last-sync-date", "error");
+        setKlaviyoAttributionMethodMetric();
         setKlaviyoQualityLine(0, "error");
       });
   }
