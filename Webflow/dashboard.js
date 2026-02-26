@@ -659,6 +659,36 @@
       "?select=campaign_id,campaign_name,attributed_orders_30d,attributed_revenue_excl_30d,attributed_revenue_incl_30d" +
       "&limit=50";
 
+    function fetchAndRenderCampaignCards(retryLeft) {
+      if (!cardsHost) return Promise.resolve();
+      return fetch(campaignCardsEndpoint + campaignCardsQuery, {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          "apikey": apiKey,
+          "Authorization": "Bearer " + apiKey,
+          "Accept-Profile": "mart"
+        }
+      })
+        .then(function (r2) {
+          if (!r2.ok) throw new Error("Klaviyo campaign cards HTTP " + r2.status);
+          return r2.json();
+        })
+        .then(function (campaignRows) {
+          renderKlaviyoCampaignCards(campaignRows);
+        })
+        .catch(function (err2) {
+          if (retryLeft > 0) {
+            return new Promise(function (resolve) {
+              setTimeout(function () {
+                resolve(fetchAndRenderCampaignCards(retryLeft - 1));
+              }, 1200);
+            });
+          }
+          log("Klaviyo campaign cards fetch failed:", err2);
+        });
+    }
+
     function renderKlaviyoCampaignCards(rows) {
       if (!cardsHost) return;
       var list = Array.isArray(rows) ? rows : [];
@@ -806,23 +836,7 @@
         setText("klaviyo-revenue-incl-all-time", formatNumber(totals.revenueInclAllTime));
         setText("klaviyo-last-sync-date", today);
 
-        if (!cardsHost) return;
-        return fetch(campaignCardsEndpoint + campaignCardsQuery, {
-          method: "GET",
-          cache: "no-store",
-          headers: {
-            "apikey": apiKey,
-            "Authorization": "Bearer " + apiKey,
-            "Accept-Profile": "mart"
-          }
-        })
-          .then(function (r2) {
-            if (!r2.ok) throw new Error("Klaviyo campaign cards HTTP " + r2.status);
-            return r2.json();
-          })
-          .then(function (campaignRows) {
-            renderKlaviyoCampaignCards(campaignRows);
-          });
+        return fetchAndRenderCampaignCards(1);
       })
       .catch(function (err) {
         log("Klaviyo attribution fetch failed:", err);
