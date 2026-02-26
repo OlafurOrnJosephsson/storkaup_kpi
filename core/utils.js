@@ -1991,6 +1991,67 @@ function sendOpsAlert_(subject, body, dedupeKey, minIntervalMinutes) {
   return { sent: true, recipients: recipients.length };
 }
 
+function getAlertThrottleMinutes_(jobName, fallbackMinutes) {
+  var props = PropertiesService.getScriptProperties();
+  var globalRaw = props.getProperty('ALERT_MIN_INTERVAL_MINUTES');
+  var globalMinutes = Number(globalRaw || fallbackMinutes || 15);
+  if (!isFinite(globalMinutes) || globalMinutes <= 0) globalMinutes = Number(fallbackMinutes || 15) || 15;
+
+  if (!jobName) return globalMinutes;
+
+  var jobKey = String(jobName).replace(/[^A-Za-z0-9_]/g, '_');
+  var perJobRaw = props.getProperty('ALERT_MIN_INTERVAL_MINUTES__' + jobKey);
+  var perJobMinutes = Number(perJobRaw || '');
+  if (isFinite(perJobMinutes) && perJobMinutes > 0) return perJobMinutes;
+
+  return globalMinutes;
+}
+
+function isTransientSyncError_(errorObj) {
+  var raw = String(
+    (errorObj && (errorObj.message || errorObj.toString && errorObj.toString())) || errorObj || ''
+  ).toLowerCase();
+
+  if (!raw) return false;
+  return (
+    raw.indexOf('http 429') !== -1 ||
+    raw.indexOf('http 500') !== -1 ||
+    raw.indexOf('http 502') !== -1 ||
+    raw.indexOf('http 503') !== -1 ||
+    raw.indexOf('http 504') !== -1 ||
+    raw.indexOf('timed out') !== -1 ||
+    raw.indexOf('timeout') !== -1 ||
+    raw.indexOf('service invoked too many times') !== -1 ||
+    raw.indexOf('internal error') !== -1
+  );
+}
+
+function runWithRetries_(label, fn, opts) {
+  var options = opts || {};
+  var attempts = Math.max(1, Number(options.attempts || 2));
+  var delayMs = Math.max(0, Number(options.delayMs || 5000));
+  var retryIf = typeof options.retryIf === 'function' ? options.retryIf : isTransientSyncError_;
+  var lastErr = null;
+
+  for (var i = 1; i <= attempts; i += 1) {
+    try {
+      return fn();
+    } catch (e) {
+      lastErr = e;
+      var shouldRetry = i < attempts && retryIf(e);
+      Logger.log(
+        '[RETRY][WARN] ' + label + ' attempt ' + i + '/' + attempts +
+        ' failed: ' + (e && e.message ? e.message : e) +
+        (shouldRetry ? ' (retrying)' : ' (no retry)')
+      );
+      if (!shouldRetry) break;
+      Utilities.sleep(delayMs);
+    }
+  }
+
+  throw lastErr || new Error(label + ' failed');
+}
+
 function notifyTriggerFailure_(jobName, errorObj, contextObj) {
   var name = String(jobName || 'unknown_job');
   var err = errorObj || {};
@@ -2009,7 +2070,7 @@ function notifyTriggerFailure_(jobName, errorObj, contextObj) {
     '[KPI ALERT] Trigger failure: ' + name,
     body,
     name,
-    15
+    getAlertThrottleMinutes_(name, 15)
   );
 }
 
@@ -2186,30 +2247,42 @@ function scheduledReferenceSync_v1() {
     }
 
     if (typeof syncMagentoCustomers === 'function') {
-      syncMagentoCustomers();
+      runWithRetries_('syncMagentoCustomers', function() { syncMagentoCustomers(); }, { attempts: 2, delayMs: 7000 });
       result.magentoSync = 'ok';
     } else {
       result.magentoSync = 'missing_function';
     }
 
     if (typeof backfillMagentoCustomersToSupabaseIncremental_v1 === 'function') {
-      result.magentoBackfill = backfillMagentoCustomersToSupabaseIncremental_v1(previousMagentoSyncIso);
+      result.magentoBackfill = runWithRetries_(
+        'backfillMagentoCustomersToSupabaseIncremental_v1',
+        function() { return backfillMagentoCustomersToSupabaseIncremental_v1(previousMagentoSyncIso); },
+        { attempts: 2, delayMs: 7000 }
+      );
     } else if (typeof backfillMagentoCustomersToSupabase_v1 === 'function') {
-      result.magentoBackfill = backfillMagentoCustomersToSupabase_v1();
+      result.magentoBackfill = runWithRetries_(
+        'backfillMagentoCustomersToSupabase_v1',
+        function() { return backfillMagentoCustomersToSupabase_v1(); },
+        { attempts: 2, delayMs: 7000 }
+      );
     }
 
     if (typeof runCludoFullSync === 'function') {
-      runCludoFullSync();
+      runWithRetries_('runCludoFullSync', function() { runCludoFullSync(); }, { attempts: 2, delayMs: 7000 });
       result.cludoSync = 'ok';
     } else if (typeof syncCludoToSalesSheets === 'function') {
-      syncCludoToSalesSheets();
+      runWithRetries_('syncCludoToSalesSheets', function() { syncCludoToSalesSheets(); }, { attempts: 2, delayMs: 7000 });
       result.cludoSync = 'ok_fallback';
     } else {
       result.cludoSync = 'missing_function';
     }
 
     if (typeof backfillProductsToSupabase_v1 === 'function') {
-      result.productsBackfill = backfillProductsToSupabase_v1();
+      result.productsBackfill = runWithRetries_(
+        'backfillProductsToSupabase_v1',
+        function() { return backfillProductsToSupabase_v1(); },
+        { attempts: 2, delayMs: 7000 }
+      );
     }
 
     if (typeof backfillCustomerAnalysisToSupabase_v1 === 'function') {
@@ -2524,14 +2597,18 @@ function scheduledCustomerAnalysisSync_v1() {
     }
 
     if (typeof buildCustomerAnalysis === 'function') {
-      buildCustomerAnalysis();
+      runWithRetries_('buildCustomerAnalysis', function() { buildCustomerAnalysis(); }, { attempts: 2, delayMs: 7000 });
       result.customerAnalysisBuild = 'ok';
     } else {
       result.customerAnalysisBuild = 'missing_function';
     }
 
     if (typeof backfillCustomerAnalysisToSupabase_v1 === 'function') {
-      result.customerAnalysisBackfill = backfillCustomerAnalysisToSupabase_v1();
+      result.customerAnalysisBackfill = runWithRetries_(
+        'backfillCustomerAnalysisToSupabase_v1',
+        function() { return backfillCustomerAnalysisToSupabase_v1(); },
+        { attempts: 2, delayMs: 7000 }
+      );
     }
 
     result.finishedAt = new Date().toISOString();

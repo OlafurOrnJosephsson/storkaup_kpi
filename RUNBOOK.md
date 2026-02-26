@@ -20,6 +20,11 @@ Failure alerts for key triggers are enabled in code.
 Notes:
 - Alerts are throttled per job (15-minute dedupe window).
 - If `ALERT_EMAILS` is missing, logs will show `[ALERT][WARN] No ALERT_EMAILS configured`.
+- Optional: tune alert throttle in Script Properties:
+  - `ALERT_MIN_INTERVAL_MINUTES` (global default for all jobs)
+  - `ALERT_MIN_INTERVAL_MINUTES__scheduledMagentoSync_v1` (per-job override)
+  - Same per-job key pattern works for other jobs, e.g. `__scheduledCludoSync_v1`
+  - Example: set Magento to `180` to avoid hourly alert spam during prolonged incidents.
 
 ## Primary Functions (Apps Script)
 
@@ -90,6 +95,14 @@ Note: `refresh_mv_top_products_all` may timeout (statement timeout) during busy 
 - Action:
   - Usually safe (lock protection works)
   - If excessive, lower trigger frequency or optimize heavy operations
+
+### Issue: repeated sync failure alerts during transient API outages
+- Behavior:
+  - Scheduled sync jobs now retry transient failures once before marking the run failed.
+  - Transient patterns include common `429/5xx/timeout` errors.
+- Action:
+  1. Keep alert throttles at sane values (example: 60-180 minutes for high-frequency jobs).
+  2. Use Apps Script Executions to confirm retries recover before failure.
 
 ### Issue: no new rows in `NEWWEB`
 - Confirm checkpoint in log.
