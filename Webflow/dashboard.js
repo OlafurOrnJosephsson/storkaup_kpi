@@ -866,6 +866,63 @@
       });
   }
 
+  function formatSyncDateTime(iso) {
+    var s = String(iso || "").trim();
+    if (!s) return "-";
+    var d = new Date(s);
+    if (isNaN(d.getTime())) return s;
+    try {
+      return new Intl.DateTimeFormat("is-IS", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }).format(d);
+    } catch (_) {
+      return d.toISOString();
+    }
+  }
+
+  function fetchBcSyncStatus() {
+    if (!document.querySelector('[data-metric="bc-last-sync-at"]')
+      && !document.querySelector('[data-metric="bc-sync-errors-24h"]')) {
+      return Promise.resolve();
+    }
+
+    var cfg = getCfg();
+    var apiKey = cfg.publishableKey || "";
+    if (!cfg.supabaseUrl || !apiKey) return Promise.resolve();
+
+    var endpoint = (cfg.supabaseUrl || "") + "/rest/v1/rpc/bc_sync_status";
+    return fetch(endpoint, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": apiKey,
+        "Authorization": "Bearer " + apiKey
+      },
+      body: JSON.stringify({})
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("BC sync status RPC HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (raw) {
+        var row = Array.isArray(raw) ? (raw[0] || null) : raw;
+        if (!row) return;
+        setText("bc-last-sync-at", formatSyncDateTime(row.last_success_at));
+        if (row.error_count_24h != null) {
+          setText("bc-sync-errors-24h", toNumberSafe(row.error_count_24h));
+        }
+      })
+      .catch(function (err) {
+        log("BC sync status fetch failed:", err);
+      });
+  }
+
   function init() {
     var items = document.querySelectorAll(".dashboard-date-item[data-month]");
     var hasMetrics = !!document.querySelector("[data-metric]");
@@ -922,6 +979,7 @@
     if (selectedDay) fetchDay(selectedDay);
     fetchWeekdayComparisonGrid(true);
     fetchKlaviyoAttributionSummary();
+    fetchBcSyncStatus();
 
     setInterval(function () {
       var activeNow = document.querySelector(".dashboard-date-item.active[data-month]");
@@ -929,6 +987,7 @@
       fetchMonth(month);
       if (selectedDay) fetchDay(selectedDay);
       fetchKlaviyoAttributionSummary();
+      fetchBcSyncStatus();
     }, 120000);
   }
 
