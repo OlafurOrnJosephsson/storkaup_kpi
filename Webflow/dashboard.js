@@ -923,6 +923,55 @@
       });
   }
 
+  function hasWebBookingMetricTargets() {
+    return !!document.querySelector('[data-metric="web-booking-rate-exact-30d"]')
+      || !!document.querySelector('[data-metric="web-booking-rate-est-30d"]')
+      || !!document.querySelector('[data-metric="web-booking-orders-30d"]')
+      || !!document.querySelector('[data-metric="web-booking-booked-exact-30d"]')
+      || !!document.querySelector('[data-metric="web-booking-booked-est-30d"]')
+      || !!document.querySelector('[data-metric="web-booking-gap-exact-30d"]')
+      || !!document.querySelector('[data-metric="web-booking-gap-est-30d"]');
+  }
+
+  function fetchWebBookingReconciliationSummary() {
+    if (!hasWebBookingMetricTargets()) return Promise.resolve();
+
+    var cfg = getCfg();
+    var apiKey = cfg.publishableKey || "";
+    if (!cfg.supabaseUrl || !apiKey) return Promise.resolve();
+
+    var endpoint = (cfg.supabaseUrl || "") + "/rest/v1/rpc/web_booking_reconciliation_30d";
+    return fetch(endpoint, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": apiKey,
+        "Authorization": "Bearer " + apiKey
+      },
+      body: JSON.stringify({})
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("web_booking_reconciliation_30d RPC HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (raw) {
+        var row = Array.isArray(raw) ? (raw[0] || null) : raw;
+        if (!row) return;
+
+        setText("web-booking-orders-30d", toNumberSafe(row.web_orders_30d));
+        setText("web-booking-booked-exact-30d", toNumberSafe(row.web_orders_booked_exact_30d));
+        setText("web-booking-booked-est-30d", toNumberSafe(row.web_orders_booked_est_30d));
+        setText("web-booking-gap-exact-30d", toNumberSafe(row.web_orders_unbooked_gap_exact_30d));
+        setText("web-booking-gap-est-30d", toNumberSafe(row.web_orders_unbooked_gap_est_30d));
+        setText("web-booking-rate-exact-30d", pct(row.booking_rate_exact_30d));
+        setText("web-booking-rate-est-30d", pct(row.booking_rate_est_30d));
+      })
+      .catch(function (err) {
+        log("Web booking reconciliation fetch failed:", err);
+      });
+  }
+
   function init() {
     var items = document.querySelectorAll(".dashboard-date-item[data-month]");
     var hasMetrics = !!document.querySelector("[data-metric]");
@@ -980,6 +1029,7 @@
     fetchWeekdayComparisonGrid(true);
     fetchKlaviyoAttributionSummary();
     fetchBcSyncStatus();
+    fetchWebBookingReconciliationSummary();
 
     setInterval(function () {
       var activeNow = document.querySelector(".dashboard-date-item.active[data-month]");
@@ -988,6 +1038,7 @@
       if (selectedDay) fetchDay(selectedDay);
       fetchKlaviyoAttributionSummary();
       fetchBcSyncStatus();
+      fetchWebBookingReconciliationSummary();
     }, 120000);
   }
 
