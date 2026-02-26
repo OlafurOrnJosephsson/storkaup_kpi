@@ -139,3 +139,97 @@ from unmatched u
 left join candidates c
   on c.order_id = u.order_id
  and c.rn = 1;
+
+-- v2 summary:
+-- - exact match: external_doc_no = order_id
+-- - probable match: unmatched exact orders matched by tight day+amount tolerance
+--   * day distance <= 1 day
+--   * amount distance <= 2 ISK OR <= 0.5%
+create or replace view mart.v_web_booking_reconciliation_daily_v2 as
+with base as (
+  select
+    o.order_id,
+    o.purchase_ts,
+    o.web_revenue_excl,
+    o.web_revenue_incl,
+    o.is_booked_match as is_exact_match
+  from mart.v_web_booking_reconciliation_orders o
+),
+bc_web as (
+  select
+    i.document_no::text as document_no,
+    i.order_date as order_ts,
+    coalesce(i.amount_excl, 0) as amount_excl,
+    coalesce(i.amount_incl, 0) as amount_incl
+  from raw.bc_invoices_raw i
+  where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+    and i.order_date is not null
+    and i.order_date >= timestamptz '2025-08-18 00:00:00+00'
+    and not (
+      lower(trim(coalesce(i.canceled::text, ''))) in ('1','true','t','yes','y','ja','já')
+      or lower(trim(coalesce(i.corrective::text, ''))) in ('1','true','t','yes','y','ja','já')
+    )
+),
+probable as (
+  select
+    b.order_id,
+    c.document_no as probable_document_no,
+    c.order_ts as probable_order_ts,
+    c.amount_incl as probable_amount_incl,
+    c.day_distance,
+    c.amount_distance
+  from base b
+  join lateral (
+    select
+      x.document_no,
+      x.order_ts,
+      x.amount_incl,
+      abs((x.order_ts::date - b.purchase_ts::date)::numeric) as day_distance,
+      abs(coalesce(x.amount_incl, 0) - coalesce(b.web_revenue_incl, 0)) as amount_distance
+    from bc_web x
+    where x.order_ts::date between (b.purchase_ts::date - 1) and (b.purchase_ts::date + 1)
+      and (
+        abs(coalesce(x.amount_incl, 0) - coalesce(b.web_revenue_incl, 0)) <= 2
+        or (
+          abs(coalesce(x.amount_incl, 0) - coalesce(b.web_revenue_incl, 0))
+          / greatest(abs(coalesce(b.web_revenue_incl, 0)), 1)
+        ) <= 0.005
+      )
+    order by
+      abs((x.order_ts::date - b.purchase_ts::date)::numeric) asc,
+      abs(coalesce(x.amount_incl, 0) - coalesce(b.web_revenue_incl, 0)) asc,
+      x.document_no asc
+    limit 1
+  ) c on true
+  where not b.is_exact_match
+),
+final as (
+  select
+    b.order_id,
+    b.purchase_ts,
+    b.web_revenue_excl,
+    b.web_revenue_incl,
+    b.is_exact_match,
+    (p.order_id is not null) as is_probable_match
+  from base b
+  left join probable p
+    on p.order_id = b.order_id
+)
+select
+  date_trunc('day', f.purchase_ts)::date as day,
+  count(*)::bigint as web_orders_magento,
+  count(*) filter (where f.is_exact_match)::bigint as web_orders_booked_exact,
+  count(*) filter (where f.is_probable_match)::bigint as web_orders_booked_probable,
+  count(*) filter (where f.is_exact_match or f.is_probable_match)::bigint as web_orders_booked_total_est,
+  (count(*) - count(*) filter (where f.is_exact_match))::bigint as web_orders_unbooked_gap_exact,
+  (count(*) - count(*) filter (where f.is_exact_match or f.is_probable_match))::bigint as web_orders_unbooked_gap_est,
+  case
+    when count(*) = 0 then 0
+    else round((count(*) filter (where f.is_exact_match))::numeric / count(*)::numeric, 4)
+  end as booking_rate_exact,
+  case
+    when count(*) = 0 then 0
+    else round((count(*) filter (where f.is_exact_match or f.is_probable_match))::numeric / count(*)::numeric, 4)
+  end as booking_rate_est
+from final f
+group by 1;
