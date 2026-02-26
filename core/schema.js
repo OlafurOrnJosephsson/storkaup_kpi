@@ -64,7 +64,6 @@ OLDWEB: {
  **********************/
 BC_CUSTOMERS: {
   FILE: 'BC_CUSTOMERS',
-  SHEET: 'Vidskiptamenn',
   PK: 'Nr.',
   COLUMNS: {
     COMPANY_ID: 'Nr.',
@@ -83,7 +82,6 @@ BC_CUSTOMERS: {
  **********************/
 BC_INVOICES: {
   FILE: 'BC_INVOICES',
-  SHEET: 'Bokadir solureikningar',
   PK: 'Nr.',
   COLUMNS: {
     DOCUMENT_NO: 'Nr.',
@@ -115,7 +113,7 @@ BC_INVOICES: {
  * BC: Bokadir Solukreditreikningar
  **********************/
 BC_CREDIT_INVOICES: {
-  FILE: 'BC_INVOICES',
+  FILE: 'BC_CREDIT_INVOICES',
   SHEET: 'Bokadir solukreditreikningar',
   PK: 'Nr.',
   COLUMNS: {
@@ -146,7 +144,6 @@ BC_CREDIT_INVOICES: {
 BC_LINES: {
   FILE: 'BC_LINES',
   PK: 'Numer fylgiskjals',
-  SHEET: 'Bokadar solureikningslinur',
 
   COLUMNS: {
     DOCUMENT_NO: 'Numer fylgiskjals',
