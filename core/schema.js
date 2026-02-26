@@ -1,9 +1,9 @@
 /************************************************************
- * STORKAUP_SCHEMA — central header mapping (v1)
+ * STORKAUP_SCHEMA - central header mapping (v1)
  ************************************************************/
 const STORKAUP_SCHEMA = {
 /**********************
- * 🟦 NEWWEB (Magento)
+ * NEWWEB (Magento)
  **********************/
 NEWWEB: {
   FILE: 'WEBSALES',        // vísar í CONFIG.SHEETS.WEBSALES
@@ -29,7 +29,7 @@ NEWWEB: {
 },
 
 /**********************
- * 🟥 OLDWEB (legacy Magento 1 export)
+ * OLDWEB (legacy Magento 1 export)
  **********************/
 OLDWEB: {
   FILE: 'OLDWEB',
@@ -61,7 +61,7 @@ OLDWEB: {
 },
 
 /**********************
- * 🟨 BC: Viðskiptamenn
+ * BC: Viðskiptamenn
  **********************/
 BC_CUSTOMERS: {
   FILE: 'BC_CUSTOMERS',
@@ -80,7 +80,7 @@ BC_CUSTOMERS: {
 },
 
 /**********************
- * 🟧 BC: Bókaðir Sölureikningar
+ * BC: Bókaðir Sölureikningar
  **********************/
 BC_INVOICES: {
   FILE: 'BC_INVOICES',
@@ -113,7 +113,36 @@ BC_INVOICES: {
 },
 
 /**********************
- * 🟥 BC: Sölureikningslínur
+ * BC: Bókaðir Sölukreditreikningar
+ **********************/
+BC_CREDIT_INVOICES: {
+  FILE: 'BC_INVOICES',
+  SHEET: 'Bókaðir sölukreditreikningar',
+  PK: 'Nr.',
+  COLUMNS: {
+    DOCUMENT_NO:      'Nr.',
+    COMPANY_ID:       'Selt-til - Viðskm.nr.',
+    SALESPERSON_CODE: 'Kóti sölumanns',
+    COMPANY_NAME:     'Nafn viðskiptamanns',
+    CURRENCY:         'Gjaldmiðilskóti',
+    DUE_DATE:         'Gjalddagi',
+    BOOKING_DATE:     'Bókunardags.',
+    DOCUMENT_DATE:    'Dags. fylgiskjals',
+    AMOUNT_EXCL:      'Upphæð',
+    AMOUNT_INCL:      'Upphæð með VSK',
+    REMAINING:        'Eftirstöðvar',
+    PAID:             'Greitt',
+    CANCELED:         'Hætt við',
+    CORRECTIVE:       'Leiðréttandi',
+    LOCATION_CODE:    'Kóti birgðageymslu',
+    PRINTED:          'Prentað',
+    RSM_PROVIDER:     'RSM Þjónusta',
+    RSM_DATE:         'Dags RSM sent'
+  }
+},
+
+/**********************
+ * BC: Sölureikningslínur
  **********************/
 BC_LINES: {
   FILE: 'BC_LINES',
@@ -135,7 +164,7 @@ BC_LINES: {
 },
 
 /**********************
- * 🟪 CUSTOMERS
+ * CUSTOMERS
  **********************/
 CUSTOMERS: {
   FILE: 'CUSTOMERS',
@@ -153,7 +182,7 @@ CUSTOMERS: {
 },
 
 /**********************
- * 🟪 PRODUCTS
+ * PRODUCTS
  **********************/
 PRODUCTS: {
   FILE: 'PRODUCTS',
@@ -203,7 +232,7 @@ CUSTOMER_ANALYSIS: {
     VALUE_SCORE: 'Value Score',
     READINESS_SCORE: 'Readiness Score',
     CATEGORY_FIT_SCORE: 'Category Fit Score',
-    POTENTIAL_SCORE: 'Potential Score (0–100)',
+    POTENTIAL_SCORE: 'Potential Score (0-100)',
     LOW_HANGING_FRUIT_SCORE: 'Low Hanging Fruit Score',
     RECOMMENDED_ACTION: 'Recommended Action',
     TOTAL_SKU_COUNT: 'Total SKU Count',
@@ -222,4 +251,3 @@ CUSTOMER_ANALYSIS: {
 
 
 };
-
