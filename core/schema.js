@@ -6,7 +6,7 @@ const STORKAUP_SCHEMA = {
  * NEWWEB (Magento)
  **********************/
 NEWWEB: {
-  FILE: 'WEBSALES',        // vísar í CONFIG.SHEETS.WEBSALES
+  FILE: 'WEBSALES',        // vÃ­sar Ã­ CONFIG.SHEETS.WEBSALES
   PK:   'ID',
   SHEET: 'NEWWEB',
   ID: 'ID',
@@ -56,110 +56,110 @@ OLDWEB: {
   NAME_LIST: 'Product Name',
   QTY_LIST: 'Qty',
 
-  // Legacy full block with "×" multipliers
+  // Legacy full block with "Ã—" multipliers
   ITEMS_BLOCK: 'Items'
 },
 
 /**********************
- * BC: Viðskiptamenn
+ * BC: ViÃ°skiptamenn
  **********************/
 BC_CUSTOMERS: {
   FILE: 'BC_CUSTOMERS',
-  SHEET: 'Viðskiptamenn',
+  SHEET: 'ViÃ°skiptamenn',
   PK: 'Nr.',
   COLUMNS: {
     COMPANY_ID:   'Nr.',
     COMPANY_NAME: 'Heiti',
-    CREDIT_LIMIT: 'Hámarksskuld (SGM)',
-    PHONE:        'Sími',
+    CREDIT_LIMIT: 'HÃ¡marksskuld (SGM)',
+    PHONE:        'SÃ­mi',
     BALANCE:      'Hreyfing (SGM)',
-    PAYMENTS:     'Greiðslur (SGM)',
+    PAYMENTS:     'GreiÃ°slur (SGM)',
     SALES:        'Sala (SGM)',
-    MODIFIED_DATE:'Síðast breytt, dags.'
+    MODIFIED_DATE:'SÃ­Ã°ast breytt, dags.'
   }
 },
 
 /**********************
- * BC: Bókaðir Sölureikningar
+ * BC: BÃ³kaÃ°ir SÃ¶lureikningar
  **********************/
 BC_INVOICES: {
   FILE: 'BC_INVOICES',
-  SHEET: 'Bókaðir sölureikningar',
+  SHEET: 'BÃ³kaÃ°ir sÃ¶lureikningar',
   PK: 'Nr.',
   COLUMNS: {
     DOCUMENT_NO:      'Nr.',
-    COMPANY_ID:       'Númer viðskiptamanns',
-    EXTERNAL_DOC_NO:  'Númer utanaðk. skjals',
-    COMPANY_NAME:     'Nafn viðskiptamanns',
-    ORDER_NO:         'Pöntunarnr.',
-    CURRENCY:         'Gjaldmiðilskóti',
+    COMPANY_ID:       'NÃºmer viÃ°skiptamanns',
+    EXTERNAL_DOC_NO:  'NÃºmer utanaÃ°k. skjals',
+    COMPANY_NAME:     'Nafn viÃ°skiptamanns',
+    ORDER_NO:         'PÃ¶ntunarnr.',
+    CURRENCY:         'GjaldmiÃ°ilskÃ³ti',
     DUE_DATE:         'Gjalddagi',
-    BOOKING_DATE:     'Bókunardags.',
+    BOOKING_DATE:     'BÃ³kunardags.',
     DOCUMENT_DATE:    'Dags. fylgiskjals',
     EMAIL:            'Netfang',
-    AMOUNT_EXCL:      'Upphæð',
-    AMOUNT_INCL:      'Upphæð með VSK',
-    ORDER_DATE:       'Pöntunardags.',
-    SALESPERSON_CODE: 'Kóti sölumanns',
-    REMAINING:        'Eftirstöðvar',
-    LOCATION_CODE:    'Kóti birgðageymslu',
-    PRINTED:          'Prentað',
-    CLOSED:           'Lokað',
-    CANCELED:         'Hætt við',
-    CORRECTIVE:       'Leiðréttandi',
-    RSM_PROVIDER:     'RSM þjónustuaðili',
+    AMOUNT_EXCL:      'UpphÃ¦Ã°',
+    AMOUNT_INCL:      'UpphÃ¦Ã° meÃ° VSK',
+    ORDER_DATE:       'PÃ¶ntunardags.',
+    SALESPERSON_CODE: 'KÃ³ti sÃ¶lumanns',
+    REMAINING:        'EftirstÃ¶Ã°var',
+    LOCATION_CODE:    'KÃ³ti birgÃ°ageymslu',
+    PRINTED:          'PrentaÃ°',
+    CLOSED:           'LokaÃ°',
+    CANCELED:         'HÃ¦tt viÃ°',
+    CORRECTIVE:       'LeiÃ°rÃ©ttandi',
+    RSM_PROVIDER:     'RSM Ã¾jÃ³nustuaÃ°ili',
     RSM_DATE:         'Dags RSM sent'
   }
 },
 
 /**********************
- * BC: Bókaðir Sölukreditreikningar
+ * BC: BÃ³kaÃ°ir SÃ¶lukreditreikningar
  **********************/
 BC_CREDIT_INVOICES: {
   FILE: 'BC_INVOICES',
-  SHEET: 'Bókaðir sölukreditreikningar',
+  SHEET: 'Bokadir solukreditreikningar',
   PK: 'Nr.',
   COLUMNS: {
     DOCUMENT_NO:      'Nr.',
-    COMPANY_ID:       'Selt-til - Viðskm.nr.',
-    SALESPERSON_CODE: 'Kóti sölumanns',
-    COMPANY_NAME:     'Nafn viðskiptamanns',
-    CURRENCY:         'Gjaldmiðilskóti',
+    COMPANY_ID:       'Selt-til - Vidskm.nr.',
+    SALESPERSON_CODE: 'Koti solumanns',
+    COMPANY_NAME:     'Nafn vidskiptamanns',
+    CURRENCY:         'Gjaldmidilskoti',
     DUE_DATE:         'Gjalddagi',
-    BOOKING_DATE:     'Bókunardags.',
+    BOOKING_DATE:     'Bokunardags.',
     DOCUMENT_DATE:    'Dags. fylgiskjals',
-    AMOUNT_EXCL:      'Upphæð',
-    AMOUNT_INCL:      'Upphæð með VSK',
-    REMAINING:        'Eftirstöðvar',
+    AMOUNT_EXCL:      'Upphaed',
+    AMOUNT_INCL:      'Upphaed med VSK',
+    REMAINING:        'Eftirstodvar',
     PAID:             'Greitt',
-    CANCELED:         'Hætt við',
-    CORRECTIVE:       'Leiðréttandi',
-    LOCATION_CODE:    'Kóti birgðageymslu',
-    PRINTED:          'Prentað',
-    RSM_PROVIDER:     'RSM Þjónusta',
+    CANCELED:         'Haett vid',
+    CORRECTIVE:       'Leidrettandi',
+    LOCATION_CODE:    'Koti birgdageymslu',
+    PRINTED:          'Prentad',
+    RSM_PROVIDER:     'RSM Thjonusta',
     RSM_DATE:         'Dags RSM sent'
   }
 },
 
 /**********************
- * BC: Sölureikningslínur
+ * BC: Solureikningslinur
  **********************/
 BC_LINES: {
   FILE: 'BC_LINES',
-  PK: 'Númer fylgiskjals',
-  SHEET: 'Bókaðar sölureikningslínur',
+  PK: 'NÃºmer fylgiskjals',
+  SHEET: 'BÃ³kaÃ°ar sÃ¶lureikningslÃ­nur',
   
   COLUMNS: {
-    DOCUMENT_NO:    'Númer fylgiskjals',
-    COMPANY_ID:     'Selt-til - Viðskm.nr.',
+    DOCUMENT_NO:    'NÃºmer fylgiskjals',
+    COMPANY_ID:     'Selt-til - ViÃ°skm.nr.',
     TYPE:           'Tegund',
     SKU:            'Nr.',
-    PRODUCT_NAME:   'Lýsing',
+    PRODUCT_NAME:   'LÃ½sing',
     QTY:            'Magn',
-    UOM:            'Mælieiningarkóði',
-    UNIT_PRICE_EXCL:'Ein.verð án VSK',
-    AMOUNT_EXCL:    'Upphæð',
-    DISCOUNT:       'Línuafsl.%'
+    UOM:            'MÃ¦lieiningarkÃ³Ã°i',
+    UNIT_PRICE_EXCL:'Ein.verÃ° Ã¡n VSK',
+    AMOUNT_EXCL:    'UpphÃ¦Ã°',
+    DISCOUNT:       'LÃ­nuafsl.%'
   }
 },
 
@@ -223,7 +223,7 @@ CUSTOMER_ANALYSIS: {
     WEBSHOP_SALES: 'Webshop Sales',
     WEBSHOP_AOV: 'Webshop AOV',
     WEBSHOP_LAST_ORDER: 'Webshop Last Order',
-    WEBSHOP_SHARE_LIFETIME: 'Webshop Share — Lifetime (%)',
+    WEBSHOP_SHARE_LIFETIME: 'Webshop Share â€” Lifetime (%)',
     TOTAL_VALUE: 'Total Value',
     TOTAL_ORDERS: 'Total Orders',
     FREQUENCY_SCORE: 'Frequency Score',
@@ -237,11 +237,11 @@ CUSTOMER_ANALYSIS: {
     RECOMMENDED_ACTION: 'Recommended Action',
     TOTAL_SKU_COUNT: 'Total SKU Count',
     TOP_PRODUCTS: 'Top 15 Products',
-    CAT_REKSTRARVORUR: 'Category % Rekstrarvörur',
-    CAT_HEILBRIGDISVORUR: 'Category % Heilbrigðisvörur',
-    CAT_MATVORUR: 'Category % Matvörur',
-    CAT_VELAR_TAEKI: 'Category % Vélar og tæki',
-    CAT_AFENGI: 'Category % Áfengi',
+    CAT_REKSTRARVORUR: 'Category % RekstrarvÃ¶rur',
+    CAT_HEILBRIGDISVORUR: 'Category % HeilbrigÃ°isvÃ¶rur',
+    CAT_MATVORUR: 'Category % MatvÃ¶rur',
+    CAT_VELAR_TAEKI: 'Category % VÃ©lar og tÃ¦ki',
+    CAT_AFENGI: 'Category % Ãfengi',
     PRIMARY_CATEGORY: 'Primary Category'
   }
 },

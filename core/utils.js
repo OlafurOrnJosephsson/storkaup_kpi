@@ -11,6 +11,15 @@
  * - OLDWEB Company ID normalizer
  ************************************************************/
 
+function normalizeHeaderKeyLocal_(s) {
+  return String(s || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '');
+}
+
 
 /************************************************************
  * 🧩 loadTableBySchema_(schemaKey)
@@ -37,7 +46,13 @@ function loadTableBySchema_(schemaKey) {
 
   // Sum schema þurfa sér flipaname (t.d. "Bókaðar sölureikningslínur"), annars notum við FILE
   const sheetName = schema.SHEET || binding.NAME || fileKey;
-  const sh = ss.getSheetByName(sheetName);
+  let sh = ss.getSheetByName(sheetName);
+  if (!sh) {
+    const wanted = normalizeHeaderKeyLocal_(sheetName);
+    sh = (ss.getSheets() || []).find(function(s) {
+      return normalizeHeaderKeyLocal_(s.getName()) === wanted;
+    }) || null;
+  }
   if (!sh) {
     throw new Error('Sheet not found: ' + sheetName + ' (service ' + fileKey + ')');
   }
@@ -47,7 +62,19 @@ function loadTableBySchema_(schemaKey) {
 
   const header = values[0].map(String);
   const colIndex = {};
+  const colIndexNorm = {};
   header.forEach((name, i) => { colIndex[name] = i; });
+  header.forEach((name, i) => {
+    const n = normalizeHeaderKeyLocal_(name);
+    if (n && !(n in colIndexNorm)) colIndexNorm[n] = i;
+  });
+
+  function resolveColIndex_(colName) {
+    if (colName in colIndex) return colIndex[colName];
+    const n = normalizeHeaderKeyLocal_(colName);
+    if (n && n in colIndexNorm) return colIndexNorm[n];
+    return -1;
+  }
 
   const rows = [];
 
@@ -63,14 +90,14 @@ function loadTableBySchema_(schemaKey) {
       if (key === 'COLUMNS' && schema.COLUMNS && typeof schema.COLUMNS === 'object') {
         Object.keys(schema.COLUMNS).forEach(subKey => {
           const colName = schema.COLUMNS[subKey];
-          const idx = colIndex[colName];
+          const idx = resolveColIndex_(colName);
           obj[subKey] = (idx != null && idx >= 0) ? rowVals[idx] : '';
         });
         return;
       }
 
       const colName = schema[key];
-      const idx = colIndex[colName];
+      const idx = resolveColIndex_(colName);
 
       obj[key] = (idx != null && idx >= 0) ? rowVals[idx] : '';
     });
@@ -104,7 +131,13 @@ function loadTableBySchemaFull_(schemaKey) {
 
   const ss = SpreadsheetApp.openById(binding.ID);
   const sheetName = schema.SHEET || binding.NAME || fileKey;
-  const sh = ss.getSheetByName(sheetName);
+  let sh = ss.getSheetByName(sheetName);
+  if (!sh) {
+    const wanted = normalizeHeaderKeyLocal_(sheetName);
+    sh = (ss.getSheets() || []).find(function(s) {
+      return normalizeHeaderKeyLocal_(s.getName()) === wanted;
+    }) || null;
+  }
   if (!sh) {
     throw new Error('Sheet not found: ' + sheetName + ' (service ' + fileKey + ')');
   }
