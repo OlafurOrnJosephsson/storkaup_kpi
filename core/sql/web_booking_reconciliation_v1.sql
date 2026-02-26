@@ -4,6 +4,10 @@
 -- 1) Track how many Magento web orders are actually booked in BC.
 -- 2) Show booking lag and gap (not yet booked / canceled / unmatched).
 -- 3) Provide row-level diagnostics to tune matching rules over time.
+--
+-- NOTE:
+-- NEWWEB is considered reliable from 2025-08-18 onward.
+-- Reconciliation is intentionally scoped to that window.
 
 create schema if not exists mart;
 
@@ -17,6 +21,7 @@ with newweb as (
   from raw.newweb_orders_raw n
   where n.order_id is not null
     and n.purchase_date is not null
+    and n.purchase_date >= timestamptz '2025-08-18 00:00:00+00'
   group by n.order_id
 ),
 bc_web as (
@@ -31,6 +36,8 @@ bc_web as (
     coalesce(i.corrective::text, '') as corrective_raw
   from raw.bc_invoices_raw i
   where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+    and i.order_date is not null
+    and i.order_date >= timestamptz '2025-08-18 00:00:00+00'
     and not (
       lower(trim(coalesce(i.canceled::text, ''))) in ('1','true','t','yes','y','ja','já')
       or lower(trim(coalesce(i.corrective::text, ''))) in ('1','true','t','yes','y','ja','já')
@@ -134,6 +141,3 @@ select
   round(avg(o.booking_lag_days) filter (where o.is_booked_match), 2) as avg_booking_lag_days
 from mart.v_web_booking_reconciliation_orders o
 group by 1;
-
-create index if not exists idx_v_web_booking_reconciliation_daily_day
-  on mart.v_web_booking_reconciliation_daily (day desc);
