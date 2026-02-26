@@ -60,6 +60,18 @@ Notes:
   - `[KLAVIYO][INFO] Started scheduledKlaviyoSync_v1 ...`
   - `[KLAVIYO][INFO] Completed scheduledKlaviyoSync_v1: {"fetched":...,"uploaded":...}`
 
+### 5) Daily sanity checks
+- Function: `runDailySanityChecks_v1`
+- Purpose: Validate KPI trust with alert-on-fail checks.
+- Current checks:
+  - Dashboard share metrics are within valid bounds
+  - Key ingestion jobs have no recent errors and are not stale
+  - `klaviyo_attributed_orders_30d <= web_orders_30d`
+  - Warning if last BC sync processed zero rows
+- Expected logs:
+  - `[SANITY][INFO] runDailySanityChecks_v1 result: ...`
+  - Alert only if one or more `FAIL` checks occur
+
 ## Manual Recovery / Backfill
 
 Use only when incremental sync is clearly behind or data was re-exported.
@@ -118,4 +130,5 @@ Expected active trigger functions:
 - `scheduledCludoSync_v1`
 - `scheduledCustomerAnalysisSync_v1`
 - `scheduledKlaviyoSync_v1`
+- `runDailySanityChecks_v1`
 - `onOpen`

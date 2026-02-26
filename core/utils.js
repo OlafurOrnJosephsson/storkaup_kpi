@@ -2168,6 +2168,343 @@ function callSupabaseRpc_(rpcName, payloadObj) {
   return body;
 }
 
+function supabaseRestGetJson_(pathWithQuery, profile) {
+  var conf = getSupabaseRestConfig_();
+  var path = String(pathWithQuery || '').replace(/^\/+/, '');
+  var endpoint = conf.baseUrl + '/' + path;
+  var headers = {
+    apikey: conf.serviceRole,
+    Authorization: 'Bearer ' + conf.serviceRole,
+    accept: 'application/json'
+  };
+  if (profile) {
+    headers['Accept-Profile'] = String(profile);
+  }
+
+  var res = UrlFetchApp.fetch(endpoint, {
+    method: 'get',
+    headers: headers,
+    muteHttpExceptions: true
+  });
+
+  var code = res.getResponseCode();
+  var body = res.getContentText() || '';
+  if (code < 200 || code >= 300) {
+    throw new Error('REST GET failed (' + path + '): ' + code + ' ' + body);
+  }
+
+  var parsed = safeJsonParse_(body);
+  if (parsed == null) {
+    throw new Error('REST GET invalid JSON (' + path + '): ' + body);
+  }
+  return parsed;
+}
+
+function isoDateUtcDaysAgo_(days) {
+  var d = new Date(Date.now() - (Number(days || 0) * 24 * 60 * 60 * 1000));
+  return Utilities.formatDate(d, 'GMT', 'yyyy-MM-dd');
+}
+
+function parseDashboardCompatPayload_(rawText) {
+  var data = safeJsonParse_(rawText || '');
+  if (Array.isArray(data)) data = data[0];
+  if (data && data.dashboard_compat) data = data.dashboard_compat;
+  return data || null;
+}
+
+function runDailySanityChecks_v1() {
+  var lock = null;
+  var runId = null;
+  var startedAt = new Date();
+  var nowMs = startedAt.getTime();
+  var result = {
+    startedAt: startedAt.toISOString(),
+    checks: [],
+    failedCount: 0,
+    warningCount: 0,
+    passed: true,
+    finishedAt: null
+  };
+
+  function addCheck_(name, passed, details, severity) {
+    var level = severity || 'error';
+    result.checks.push({
+      name: String(name || 'unknown'),
+      passed: !!passed,
+      severity: level,
+      details: details || ''
+    });
+    if (!passed) {
+      if (level === 'warning') result.warningCount += 1;
+      else result.failedCount += 1;
+    }
+  }
+
+  function checkDashboardShares_() {
+    try {
+      var raw = callSupabaseRpc_('dashboard_compat', { p_month: null });
+      var data = parseDashboardCompatPayload_(raw);
+      if (!data || !data.month) {
+        addCheck_('dashboard_compat_payload', false, 'Missing month payload from dashboard_compat RPC');
+        return;
+      }
+
+      var month = data.month || {};
+      var fields = ['webOrdersPct', 'webRevenuePct', 'salesRepPct', 'selfServePct'];
+      var outOfRange = [];
+
+      fields.forEach(function(k) {
+        var v = Number(month[k]);
+        if (!isFinite(v) || v < 0 || v > 1) {
+          outOfRange.push(k + '=' + month[k]);
+        }
+      });
+
+      addCheck_(
+        'dashboard_share_bounds',
+        outOfRange.length === 0,
+        outOfRange.length ? ('Out of bounds: ' + outOfRange.join(', ')) : 'All dashboard share metrics in [0..1]'
+      );
+    } catch (e) {
+      addCheck_('dashboard_share_bounds', false, String(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkIngestionRuns_() {
+    var jobs = [
+      'safePoll_v2',
+      'scheduledMagentoSync_v1',
+      'scheduledBcSync_v1',
+      'scheduledCludoSync_v1',
+      'scheduledCustomerAnalysisSync_v1',
+      'scheduledKlaviyoSync_v1'
+    ];
+    var since24Iso = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
+    var path = 'ingestion_runs?select=job_name,status,started_at,rows_processed'
+      + '&job_name=in.(' + jobs.join(',') + ')'
+      + '&started_at=gte.' + encodeURIComponent(since24Iso)
+      + '&order=started_at.desc'
+      + '&limit=500';
+
+    try {
+      var rows = supabaseRestGetJson_(path, 'raw');
+      var list = Array.isArray(rows) ? rows : [];
+
+      var errorRows = list.filter(function(r) { return String(r && r.status || '') === 'error'; });
+      addCheck_(
+        'ingestion_errors_24h',
+        errorRows.length === 0,
+        errorRows.length
+          ? ('Error runs: ' + errorRows.slice(0, 8).map(function(r) { return r.job_name + '@' + r.started_at; }).join(', '))
+          : 'No ingestion run errors in last 24h'
+      );
+
+      var expectedWindowsHours = {
+        safePoll_v2: 4,
+        scheduledMagentoSync_v1: 6,
+        scheduledBcSync_v1: 36,
+        scheduledCludoSync_v1: 24,
+        scheduledCustomerAnalysisSync_v1: 36,
+        scheduledKlaviyoSync_v1: 4
+      };
+      var stale = [];
+      Object.keys(expectedWindowsHours).forEach(function(job) {
+        var windowMs = expectedWindowsHours[job] * 60 * 60 * 1000;
+        var cutoff = nowMs - windowMs;
+        var hasRecentSuccess = list.some(function(r) {
+          if (String(r && r.job_name || '') !== job) return false;
+          if (String(r && r.status || '') !== 'success') return false;
+          var t = Date.parse(String(r && r.started_at || ''));
+          return isFinite(t) && t >= cutoff;
+        });
+        if (!hasRecentSuccess) stale.push(job + ' (> ' + expectedWindowsHours[job] + 'h)');
+      });
+
+      addCheck_(
+        'ingestion_freshness',
+        stale.length === 0,
+        stale.length ? ('Missing recent success: ' + stale.join(', ')) : 'All key jobs have recent success'
+      );
+    } catch (e) {
+      addCheck_('ingestion_checks', false, String(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkKlaviyoAttributionBound_() {
+    var fromIso = isoDateUtcDaysAgo_(29);
+    var toIso = isoDateUtcDaysAgo_(0);
+    try {
+      var klRows = supabaseRestGetJson_(
+        'mv_klaviyo_attribution_daily_nobot?select=order_date,attributed_orders'
+        + '&order_date=gte.' + fromIso
+        + '&order_date=lte.' + toIso
+        + '&limit=5000',
+        'mart'
+      );
+      var webRows = supabaseRestGetJson_(
+        'v_web_daily_unified?select=day,orders'
+        + '&day=gte.' + fromIso
+        + '&day=lte.' + toIso
+        + '&limit=5000',
+        'mart'
+      );
+
+      var klSum = (Array.isArray(klRows) ? klRows : []).reduce(function(sum, r) {
+        return sum + toNum_(r && r.attributed_orders);
+      }, 0);
+      var webSum = (Array.isArray(webRows) ? webRows : []).reduce(function(sum, r) {
+        return sum + toNum_(r && r.orders);
+      }, 0);
+
+      var ok = klSum <= webSum;
+      addCheck_(
+        'klaviyo_orders_le_web_orders_30d',
+        ok,
+        'klaviyo_orders_30d=' + klSum + ', web_orders_30d=' + webSum
+      );
+    } catch (e) {
+      addCheck_('klaviyo_orders_le_web_orders_30d', false, String(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkBcSyncRowsWarning_() {
+    var since48Iso = new Date(nowMs - 48 * 60 * 60 * 1000).toISOString();
+    var path = 'ingestion_runs?select=job_name,status,started_at,rows_processed'
+      + '&job_name=eq.scheduledBcSync_v1'
+      + '&status=eq.success'
+      + '&started_at=gte.' + encodeURIComponent(since48Iso)
+      + '&order=started_at.desc'
+      + '&limit=1';
+    try {
+      var rows = supabaseRestGetJson_(path, 'raw');
+      var last = Array.isArray(rows) && rows.length ? rows[0] : null;
+      if (!last) {
+        addCheck_('bc_rows_processed_recent', false, 'No successful scheduledBcSync_v1 in last 48h', 'warning');
+        return;
+      }
+      var rp = toNum_(last.rows_processed);
+      addCheck_(
+        'bc_rows_processed_recent',
+        rp > 0,
+        'last_rows_processed=' + rp + ', started_at=' + last.started_at,
+        'warning'
+      );
+    } catch (e) {
+      addCheck_('bc_rows_processed_recent', false, String(e && e.message ? e.message : e), 'warning');
+    }
+  }
+
+  try {
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(15000)) {
+      Logger.log('[SANITY][WARN] Skipping runDailySanityChecks_v1: another run is in progress.');
+      return { skipped: true, reason: 'lock_not_acquired', startedAt: startedAt.toISOString() };
+    }
+
+    try {
+      runId = startIngestionRun_('runDailySanityChecks_v1', 'sanity_checks', {
+        trigger_type: 'time_based'
+      });
+      result.runId = runId;
+    } catch (logErr) {
+      Logger.log('[SANITY][WARN] Could not start ingestion run log: ' + logErr);
+    }
+
+    checkDashboardShares_();
+    checkIngestionRuns_();
+    checkKlaviyoAttributionBound_();
+    checkBcSyncRowsWarning_();
+
+    result.passed = result.failedCount === 0;
+    result.finishedAt = new Date().toISOString();
+
+    if (!result.passed) {
+      var body =
+        'Daily KPI sanity checks failed.\n\n' +
+        'Started: ' + result.startedAt + '\n' +
+        'Finished: ' + result.finishedAt + '\n' +
+        'Failed checks: ' + result.failedCount + '\n' +
+        'Warning checks: ' + result.warningCount + '\n\n' +
+        result.checks.map(function(c) {
+          return '[' + (c.passed ? 'PASS' : (c.severity === 'warning' ? 'WARN' : 'FAIL')) + '] ' + c.name + ' - ' + c.details;
+        }).join('\n');
+
+      sendOpsAlert_(
+        '[KPI ALERT] Daily sanity checks failed',
+        body,
+        'runDailySanityChecks_v1',
+        getAlertThrottleMinutes_('runDailySanityChecks_v1', 720)
+      );
+    }
+
+    if (runId) {
+      try {
+        finishIngestionRun_(
+          runId,
+          result.passed ? 'success' : 'error',
+          result.checks.length,
+          result,
+          result.passed ? null : 'One or more sanity checks failed'
+        );
+      } catch (logErr2) {
+        Logger.log('[SANITY][WARN] Could not finish ingestion run log: ' + logErr2);
+      }
+    }
+
+    Logger.log('[SANITY][INFO] runDailySanityChecks_v1 result: ' + JSON.stringify(result));
+    return result;
+  } catch (e) {
+    result.finishedAt = new Date().toISOString();
+    result.passed = false;
+    result.error = {
+      name: e && e.name ? e.name : '',
+      message: e && e.message ? e.message : String(e),
+      stack: e && e.stack ? e.stack : ''
+    };
+
+    if (runId) {
+      try {
+        finishIngestionRun_(runId, 'error', result.checks.length, result, result.error.message);
+      } catch (logErr3) {
+        Logger.log('[SANITY][WARN] Could not finish ingestion run log (error): ' + logErr3);
+      }
+    }
+
+    try {
+      notifyTriggerFailure_('runDailySanityChecks_v1', result.error, result);
+    } catch (alertErr) {
+      Logger.log('[SANITY][WARN] Failure alert failed: ' + alertErr);
+    }
+
+    Logger.log('[SANITY][ERROR] runDailySanityChecks_v1 failed: ' + JSON.stringify(result));
+    throw e;
+  } finally {
+    if (lock) {
+      try { lock.releaseLock(); } catch (_) {}
+    }
+  }
+}
+
+function installDailySanityChecksTrigger_v1() {
+  var fn = 'runDailySanityChecks_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[SANITY][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .everyDays(1)
+    .atHour(7)
+    .create();
+
+  Logger.log('[SANITY][INFO] Created trigger for ' + fn + ' (every 1 day at ~07:00)');
+  return { created: true, schedule: 'everyDays(1).atHour(7)' };
+}
+
 /**
  * Refreshes materialized marts used by Webflow product widgets.
  * Expected RPCs in Supabase:

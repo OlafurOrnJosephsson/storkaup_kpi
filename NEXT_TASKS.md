@@ -15,7 +15,7 @@
 |---|---|---|---|---|
 | P2-1 | Move parent/child customer ID logic into Supabase SQL layer (not just frontend) | Olafur | Todo | Same customer totals regardless of child vs parent ID lookup |
 | P2-2 | Update `api.get_customer_last_orders` to support family IDs directly | Olafur | Todo | "Last web orders" and "Last BC orders" populate correctly for child IDs |
-| P2-3 | Add daily data sanity check query (BC vs web share, ingestion row counts) | Olafur | Todo | Daily check result stored/logged with pass/fail |
+| P2-3 | Add daily data sanity check query (BC vs web share, ingestion row counts) | Olafur | In progress | `runDailySanityChecks_v1` implemented in GAS; add trigger + observe alerts/logs for 7 days |
 
 ## Priority 3 - Performance
 
@@ -41,7 +41,7 @@
 | P5-2 | Add GAS incremental sync (`scheduledKlaviyoSync_v1`) for campaign + event ingest | Olafur | In progress | `scheduledKlaviyoSync_v1` implemented; requires Supabase table + trigger install |
 | P5-3 | Implement v1 attribution mart (`last_click`, 7-day window) | Olafur | Todo | Daily campaign-attributed orders and revenue query returns non-empty on active days |
 | P5-4 | Add KPI widgets (campaign revenue, conversions, conv %) to Webflow dashboard | Olafur | Todo | Dashboard shows campaign KPIs with same-day refresh |
-| P5-5 | Add validation check (Klaviyo-attributed orders <= total web orders) | Olafur | Todo | Daily sanity check logs pass/fail without manual intervention |
+| P5-5 | Add validation check (Klaviyo-attributed orders <= total web orders) | Olafur | In progress | Check added in `runDailySanityChecks_v1`; confirm daily runs + alert behavior |
 
 ## Current Production Pins
 
