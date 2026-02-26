@@ -641,12 +641,20 @@
 
     var today = getTodayIso();
     var from30d = shiftIsoDays(today, -29);
-    var endpoint = (cfg.supabaseUrl || "") + "/rest/v1/mv_klaviyo_attribution_daily";
+    var cardsHost = document.querySelector("[data-klaviyo-campaign-cards]");
+    var includeBotClicks = false;
+    if (cardsHost) includeBotClicks = String(cardsHost.getAttribute("data-klaviyo-include-bot-clicks") || "").toLowerCase() === "true";
+    if (!includeBotClicks && document.body) {
+      includeBotClicks = String(document.body.getAttribute("data-klaviyo-include-bot-clicks") || "").toLowerCase() === "true";
+    }
+    var attributionMvName = includeBotClicks ? "mv_klaviyo_attribution_daily" : "mv_klaviyo_attribution_daily_nobot";
+    var campaignCardsViewName = includeBotClicks ? "v_klaviyo_campaign_cards_30d" : "v_klaviyo_campaign_cards_30d_nobot";
+
+    var endpoint = (cfg.supabaseUrl || "") + "/rest/v1/" + attributionMvName;
     var query =
       "?select=order_date,campaign_id,attributed_orders,attributed_revenue_excl,attributed_revenue_incl" +
       "&limit=5000";
-    var cardsHost = document.querySelector("[data-klaviyo-campaign-cards]");
-    var campaignCardsEndpoint = (cfg.supabaseUrl || "") + "/rest/v1/v_klaviyo_campaign_cards_30d";
+    var campaignCardsEndpoint = (cfg.supabaseUrl || "") + "/rest/v1/" + campaignCardsViewName;
     var campaignCardsQuery =
       "?select=campaign_id,campaign_name,attributed_orders_30d,attributed_revenue_excl_30d,attributed_revenue_incl_30d" +
       "&limit=50";
