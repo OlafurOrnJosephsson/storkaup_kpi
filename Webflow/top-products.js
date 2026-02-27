@@ -139,30 +139,21 @@
     var keys = Object.keys(uniq);
     if (!keys.length) return {};
 
-    var escaped = keys.map(function (k) { return '"' + String(k).replace(/"/g, '""') + '"'; }).join(",");
     var map = {};
-
-    // Preferred source: API view (if it has product_name exposed).
     try {
-      var vpath = "/rest/v1/v_sku_category?select=sku,product_name&sku=in.(" + escaped + ")";
-      var vrows = await fetchJson(vpath, { headers: headers("api"), cache: "no-store" });
-      (vrows || []).forEach(function (r) {
-        var k = String(r && r.sku || "").trim();
-        var n = String(r && r.product_name || "").trim();
-        if (k && n) map[k] = n;
+      var rpcRows = await fetchJson("/rest/v1/rpc/get_product_names_by_skus", {
+        method: "POST",
+        headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+        body: JSON.stringify({ p_skus: keys }),
+        cache: "no-store"
       });
-    } catch (_) {}
-
-    if (Object.keys(map).length) return map;
-
-    // Fallback source: raw products table (may be blocked by RLS in some envs).
-    try {
-      var rpath = "/rest/v1/products_raw?select=sku,product_name&sku=in.(" + escaped + ")";
-      var rrows = await fetchJson(rpath, { headers: headers("raw"), cache: "no-store" });
-      (rrows || []).forEach(function (r) {
-        var k = String(r && r.sku || "").trim();
-        var n = String(r && r.product_name || "").trim();
-        if (k && n) map[k] = n;
+      (rpcRows || []).forEach(function (r) {
+        var inSku = String(r && r.input_sku || "").trim();
+        var canonSku = String(r && r.canonical_sku || "").trim();
+        var name = String(r && r.product_name || "").trim();
+        if (!name) return;
+        if (inSku) map[inSku] = name;
+        if (canonSku) map[canonSku] = name;
       });
     } catch (_) {}
 
