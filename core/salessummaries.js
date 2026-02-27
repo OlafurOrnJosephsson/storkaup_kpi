@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /***********************
  * Entry point - UNIVERSAL
@@ -27,7 +27,7 @@ function buildAll_v6() {
 }
 
 /************************************************************
- * SALES REPS (Onboarding) - Web orders by "Sölumaður" users
+ * SALES REPS (Onboarding) - Web orders by "SÃ¶lumaÃ°ur" users
  ************************************************************/
 function buildSalesRepOnboarding_v1_(cfg) {
   const ss = SpreadsheetApp.openById(cfg.SHEETS.SALES_SUMMARIES.ID);
@@ -313,6 +313,7 @@ function buildOrderContext_(cfg) {
   const resolver = buildCompanyResolver_(cfg);
   const lines = [];
   const orders = [];
+  let oldwebFallbackLines = 0;
 
   // -----------------------
   // NEWWEB
@@ -419,13 +420,33 @@ function buildOrderContext_(cfg) {
 
     const parsed = items
       .map(it => {
-        // 9000874×3 — Coca Cola Zero... (allow × or x, and em/en dash or hyphen)
-        const m = it.match(/^(\d+)[×x](\d+)\s*[—–-]\s*(.+)$/);
+        // 9000874x3 - Name (accept unicode + mojibake variants from legacy exports)
+        const m = it.match(/^(\d+)(?:×|x|Ã—)(\d+)\s*(?:—|–|-|â€”|â€“)\s*(.+)$/);
         return m ? { sku: m[1], qty: Number(m[2]), name: m[3] } : null;
       })
       .filter(Boolean);
 
-    if (!parsed.length) return;
+    // If item parsing fails, keep one fallback line so monthly totals/history are not lost.
+    if (!parsed.length) {
+      oldwebFallbackLines += 1;
+      lines.push({
+        source: 'OLDWEB',
+        orderId: row.ID,
+        date: d,
+        customer: row.CUSTOMER_NAME,
+        companyId: comp.companyId,
+        companyName: comp.companyName,
+        region: comp.region,
+        skuRaw: '',
+        skuNorm: '',
+        name: String(row.ITEMS_BLOCK || '').slice(0, 120),
+        qty: Math.max(1, Number(row.QTY || 0) || 1),
+        rowExcl: subtotalExcl,
+        rowIncl: subtotalIncl,
+        tax: 0
+      });
+      return;
+    }
 
     const totalQty = parsed.reduce((sum, p) => sum + (p.qty || 0), 0) || 1;
 
@@ -450,12 +471,12 @@ function buildOrderContext_(cfg) {
     });
   });
 
-  Logger.log(`buildOrderContext_ complete: ${orders.length} orders, ${lines.length} lines`);
+  Logger.log(`buildOrderContext_ complete: ${orders.length} orders, ${lines.length} lines (oldwebFallbackLines=${oldwebFallbackLines})`);
   return { orders, lines };
 }
 
 /************************************************************
- * BC monthly totals: sum "Upphæð með VSK" by "Pöntunardags."
+ * BC monthly totals: sum "UpphÃ¦Ã° meÃ° VSK" by "PÃ¶ntunardags."
  ************************************************************/
 function normalizeHeaderKey_(s) {
   const str = String(s || '').trim().toLowerCase()
@@ -463,7 +484,11 @@ function normalizeHeaderKey_(s) {
     .replace(/ð/g, 'd')
     .replace(/þ/g, 'th')
     .replace(/æ/g, 'ae')
-    .replace(/ö/g, 'o');
+    .replace(/ö/g, 'o')
+    .replace(/Ã°/g, 'd')
+    .replace(/Ã¾/g, 'th')
+    .replace(/Ã¦/g, 'ae')
+    .replace(/Ã¶/g, 'o');
 
   return str
     .normalize('NFD')
@@ -478,129 +503,58 @@ function parseBcInvoiceDateFromRowByIndex_(row, iBookingDate, iOrderDate) {
   return parseOldwebDate_(bookingVal) || new Date(bookingVal) || parseOldwebDate_(orderVal) || new Date(orderVal);
 }
 
-function parseBcInvoiceDateFromObject_(row) {
-  return parseOldwebDate_(row.BOOKING_DATE) || new Date(row.BOOKING_DATE) || parseOldwebDate_(row.ORDER_DATE) || new Date(row.ORDER_DATE);
+function parseBcInvoiceDateFromObjectBySchema_(row) {
+  return parseOldwebDate_(row.BOOKING_DATE) || new Date(row.BOOKING_DATE) ||
+    parseOldwebDate_(row.ORDER_DATE) || new Date(row.ORDER_DATE) ||
+    parseOldwebDate_(row.DOCUMENT_DATE) || new Date(row.DOCUMENT_DATE);
 }
 
-function loadBCMonthlyTotals_() {
-  try {
-    const full = loadTableBySchemaFull_('BC_INVOICES'); // {header, rows}
-    const headerKeys = (full.header || []).map(normalizeHeaderKey_);
-
-    const findCol = (cands) => {
-      const targets = cands.map(normalizeHeaderKey_);
-      for (let i = 0; i < headerKeys.length; i++) {
-        const h = headerKeys[i];
-        if (targets.some(t => h === t || h.includes(t))) return i;
-      }
-      return -1;
-    };
-
-    const iBookingDate = findCol(['bokunardags', 'bokunardag', 'posting date', 'booking date', 'booked date']);
-    const iOrderDate = findCol(['pontunardags', 'pontunardag', 'order date', 'orderdate']);
-    const inclKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
-      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.AMOUNT_INCL
-      : '';
-    let iIncl = findCol([inclKey, 'upphaed med vsk', 'amount including vat', 'amount incl', 'amountincl', 'medvsk', 'withvat', 'vsk']);
-    if (iIncl < 0) {
-      // Last-resort fallback for locale-specific headers where accented letters are dropped during normalization.
-      for (let i = 0; i < headerKeys.length; i++) {
-        const h = headerKeys[i];
-        if (h.includes('vsk') && (h.includes('upph') || h.includes('amount'))) {
-          iIncl = i;
-          break;
-        }
-      }
-    }
-
-    const map = {};
-    if ((iBookingDate < 0 && iOrderDate < 0) || iIncl < 0) {
-      Logger.log('[BCMT] Missing columns: iBookingDate=' + iBookingDate + ' iOrderDate=' + iOrderDate + ' iIncl=' + iIncl);
-      Logger.log('[BCMT] Header: ' + JSON.stringify(full.header || []));
-      return map;
-    }
-
-    (full.rows || []).forEach(r => {
-      const d = parseBcInvoiceDateFromRowByIndex_(r, iBookingDate, iOrderDate);
-      if (!(d instanceof Date) || isNaN(d.getTime())) return;
-
-      const key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
-      if (!map[key]) map[key] = 0;
-      map[key] += toNum_(r[iIncl]);
-    });
-
-    return map;
-  } catch (e) {
-    Logger.log('loadBCMonthlyTotals_ failed: ' + e);
-    return {};
-  }
+function mergeMonthlyMap_(target, source, sign) {
+  const out = target || {};
+  const src = source || {};
+  const mul = sign == null ? 1 : sign;
+  Object.keys(src).forEach(k => {
+    if (!out[k]) out[k] = 0;
+    out[k] += (toNum_(src[k]) * mul);
+  });
+  return out;
 }
 
-function loadBCMonthlyTotalsExcl_() {
-  try {
-    const full = loadTableBySchemaFull_('BC_INVOICES'); // {header, rows}
-    const headerKeys = (full.header || []).map(normalizeHeaderKey_);
-
-    const findCol = (cands, excludes) => {
-      const targets = cands.map(normalizeHeaderKey_);
-      const blocked = (excludes || []).map(normalizeHeaderKey_);
-      for (let i = 0; i < headerKeys.length; i++) {
-        const h = headerKeys[i];
-        if (blocked.some(b => h.includes(b))) continue;
-        if (targets.some(t => h === t || h.includes(t))) return i;
-      }
-      return -1;
-    };
-
-    const bookingDateKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
-      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.BOOKING_DATE
-      : '';
-    const orderDateKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
-      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.ORDER_DATE
-      : '';
-    const exclKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
-      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.AMOUNT_EXCL
-      : '';
-    const inclKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
-      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.AMOUNT_INCL
-      : '';
-
-    const iBookingDate = findCol([bookingDateKey, 'bokunardags', 'bokunardag', 'posting date', 'booking date', 'booked date']);
-    const iOrderDate = findCol([orderDateKey, 'pontunardags', 'pontunardag', 'order date', 'orderdate']);
-    const iExcl = findCol(
-      [exclKey, 'upphaed', 'amount excl', 'amount excluding vat', 'amount excluding tax', 'amountexcl'],
-      [inclKey, 'medvsk', 'incl', 'withvat']
-    );
-
-    const map = {};
-    if ((iBookingDate < 0 && iOrderDate < 0) || iExcl < 0) {
-      Logger.log('[BCMT-EXCL] Missing columns: iBookingDate=' + iBookingDate + ' iOrderDate=' + iOrderDate + ' iExcl=' + iExcl);
-      Logger.log('[BCMT-EXCL] Header: ' + JSON.stringify(full.header || []));
-      return map;
-    }
-
-    (full.rows || []).forEach(r => {
-      const d = parseBcInvoiceDateFromRowByIndex_(r, iBookingDate, iOrderDate);
-      if (!(d instanceof Date) || isNaN(d.getTime())) return;
-
-      const key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
-      if (!map[key]) map[key] = 0;
-      map[key] += toNum_(r[iExcl]);
-    });
-
-    return map;
-  } catch (e) {
-    Logger.log('loadBCMonthlyTotalsExcl_ failed: ' + e);
-    return {};
-  }
+function mergeMonthlyWebStats_(target, source, sign) {
+  const out = target || { orders: {}, revenueExcl: {} };
+  const src = source || { orders: {}, revenueExcl: {} };
+  mergeMonthlyMap_(out.orders, src.orders, sign);
+  mergeMonthlyMap_(out.revenueExcl, src.revenueExcl, sign);
+  return out;
 }
 
-function loadBCMonthlyOrderCounts_() {
+function loadBCMonthlyAmountBySchema_(schemaKey, amountField, logTag) {
   try {
-    const rows = loadTableBySchema_('BC_INVOICES') || [];
+    const rows = loadTableBySchema_(schemaKey) || [];
     const map = {};
     rows.forEach(r => {
-      const d = parseBcInvoiceDateFromObject_(r);
+      const d = parseBcInvoiceDateFromObjectBySchema_(r);
+      if (!(d instanceof Date) || isNaN(d.getTime())) return;
+
+      const key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+      if (!map[key]) map[key] = 0;
+      map[key] += toNum_(r[amountField]);
+    });
+
+    Logger.log('[' + logTag + '] schema=' + schemaKey + ' rows=' + rows.length + ' months=' + Object.keys(map).length);
+    return map;
+  } catch (e) {
+    Logger.log('loadBCMonthlyAmountBySchema_ failed (' + schemaKey + '/' + amountField + '): ' + e);
+    return {};
+  }
+}
+
+function loadBCMonthlyOrderCountBySchema_(schemaKey, logTag) {
+  try {
+    const rows = loadTableBySchema_(schemaKey) || [];
+    const map = {};
+    rows.forEach(r => {
+      const d = parseBcInvoiceDateFromObjectBySchema_(r);
       if (!(d instanceof Date) || isNaN(d.getTime())) return;
 
       const key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
@@ -608,81 +562,98 @@ function loadBCMonthlyOrderCounts_() {
       map[key] += 1;
     });
 
+    Logger.log('[' + logTag + '] schema=' + schemaKey + ' rows=' + rows.length + ' months=' + Object.keys(map).length);
     return map;
   } catch (e) {
-    Logger.log('loadBCMonthlyOrderCounts_ failed: ' + e);
+    Logger.log('loadBCMonthlyOrderCountBySchema_ failed (' + schemaKey + '): ' + e);
     return {};
   }
 }
 
-function loadBCMonthlyWebStats_() {
+function loadBCMonthlyWebStatsBySchema_(schemaKey, logTag) {
   try {
-    const full = loadTableBySchemaFull_('BC_INVOICES'); // {header, rows}
-    const headerKeys = (full.header || []).map(normalizeHeaderKey_);
-
-    const findCol = (cands) => {
-      const targets = cands.map(normalizeHeaderKey_);
-      for (let i = 0; i < headerKeys.length; i++) {
-        const h = headerKeys[i];
-        if (targets.some(t => h === t || h.includes(t))) return i;
-      }
-      return -1;
-    };
-
-    const bookingDateKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
-      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.BOOKING_DATE
-      : '';
-    const orderDateKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
-      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.ORDER_DATE
-      : '';
-    const exclKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
-      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.AMOUNT_EXCL
-      : '';
-
-    const iBookingDate = findCol([bookingDateKey, 'bokunardags', 'bokunardag', 'posting date', 'booking date', 'booked date']);
-    const iOrderDate = findCol([orderDateKey, 'pontunardags', 'pontunardag', 'order date', 'orderdate']);
-    const iExcl = findCol([exclKey, 'upphaed', 'amount excl', 'amount excluding vat', 'amount excluding tax', 'amountexcl']);
-    const spKey = STORKAUP_SCHEMA.BC_INVOICES && STORKAUP_SCHEMA.BC_INVOICES.COLUMNS
-      ? STORKAUP_SCHEMA.BC_INVOICES.COLUMNS.SALESPERSON_CODE
-      : '';
-    const iSalesperson = findCol([spKey, 'koti solumanns', 'solumanns', 'salesperson', 'sales person', 'salesperson code', 'salespersoncode']);
-    const iWebFlag = findCol(['weborder', 'web order', 'web_order', 'vefpontun', 'vefpontun?', 'webshop', 'netverslun', 'isweb']);
-
+    const rows = loadTableBySchema_(schemaKey) || [];
     const webCodes = ['VEFUR'];
     const orderMap = {};
     const revMap = {};
 
-    if ((iBookingDate < 0 && iOrderDate < 0) || iExcl < 0) {
-      Logger.log('[BC-WEB] Missing columns: iBookingDate=' + iBookingDate + ' iOrderDate=' + iOrderDate + ' iExcl=' + iExcl);
-      Logger.log('[BC-WEB] Header: ' + JSON.stringify(full.header || []));
-      return { orders: orderMap, revenueExcl: revMap };
-    }
-
-    (full.rows || []).forEach(r => {
-      const d = parseBcInvoiceDateFromRowByIndex_(r, iBookingDate, iOrderDate);
+    rows.forEach(r => {
+      const d = parseBcInvoiceDateFromObjectBySchema_(r);
       if (!(d instanceof Date) || isNaN(d.getTime())) return;
 
-      let isWeb = false;
-      if (iWebFlag >= 0) {
-        isWeb = isWebFlagTruthy_(r[iWebFlag]);
-      } else if (iSalesperson >= 0) {
-        const code = String(r[iSalesperson] || '').trim().toUpperCase();
-        isWeb = webCodes.indexOf(code) !== -1;
-      }
+      const code = String(r.SALESPERSON_CODE || '').trim().toUpperCase();
+      const extDocNo = String(r.EXTERNAL_DOC_NO || '').trim().toUpperCase();
+      const cutover = new Date('2025-08-18T00:00:00Z');
+      const isBeforeCutover = d < cutover;
+      const isLegacyWebExternal = isBeforeCutover && extDocNo.indexOf('CO22-') === 0;
+      const isWeb = webCodes.indexOf(code) !== -1 || isLegacyWebExternal;
       if (!isWeb) return;
 
       const key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
       if (!orderMap[key]) orderMap[key] = 0;
       if (!revMap[key]) revMap[key] = 0;
       orderMap[key] += 1;
-      revMap[key] += toNum_(r[iExcl]);
+      revMap[key] += toNum_(r.AMOUNT_EXCL);
     });
 
+    Logger.log('[' + logTag + '] schema=' + schemaKey + ' rows=' + rows.length + ' webMonths=' + Object.keys(orderMap).length);
     return { orders: orderMap, revenueExcl: revMap };
   } catch (e) {
-    Logger.log('loadBCMonthlyWebStats_ failed: ' + e);
+    Logger.log('loadBCMonthlyWebStatsBySchema_ failed (' + schemaKey + '): ' + e);
     return { orders: {}, revenueExcl: {} };
   }
+}
+
+function loadBCMonthlyTotals_() {
+  const invoices = loadBCMonthlyAmountBySchema_('BC_INVOICES', 'AMOUNT_INCL', 'BCMT');
+  const credits = loadBCMonthlyAmountBySchema_('BC_CREDIT_INVOICES', 'AMOUNT_INCL', 'BCMT-CR');
+  return mergeMonthlyMap_(mergeMonthlyMap_({}, invoices, 1), credits, -1);
+}
+
+function loadBCMonthlyTotalsComponents_() {
+  const invoices = loadBCMonthlyAmountBySchema_('BC_INVOICES', 'AMOUNT_INCL', 'BCMT');
+  const credits = loadBCMonthlyAmountBySchema_('BC_CREDIT_INVOICES', 'AMOUNT_INCL', 'BCMT-CR');
+  const net = mergeMonthlyMap_(mergeMonthlyMap_({}, invoices, 1), credits, -1);
+  return { invoices, credits, net };
+}
+
+function loadBCMonthlyTotalsExcl_() {
+  const invoices = loadBCMonthlyAmountBySchema_('BC_INVOICES', 'AMOUNT_EXCL', 'BCMT-EXCL');
+  const credits = loadBCMonthlyAmountBySchema_('BC_CREDIT_INVOICES', 'AMOUNT_EXCL', 'BCMT-EXCL-CR');
+  return mergeMonthlyMap_(mergeMonthlyMap_({}, invoices, 1), credits, -1);
+}
+
+function loadBCMonthlyTotalsExclComponents_() {
+  const invoices = loadBCMonthlyAmountBySchema_('BC_INVOICES', 'AMOUNT_EXCL', 'BCMT-EXCL');
+  const credits = loadBCMonthlyAmountBySchema_('BC_CREDIT_INVOICES', 'AMOUNT_EXCL', 'BCMT-EXCL-CR');
+  const net = mergeMonthlyMap_(mergeMonthlyMap_({}, invoices, 1), credits, -1);
+  return { invoices, credits, net };
+}
+
+function loadBCMonthlyOrderCounts_() {
+  const invoices = loadBCMonthlyOrderCountBySchema_('BC_INVOICES', 'BC-ORDERS');
+  const credits = loadBCMonthlyOrderCountBySchema_('BC_CREDIT_INVOICES', 'BC-ORDERS-CR');
+  return mergeMonthlyMap_(mergeMonthlyMap_({}, invoices, 1), credits, -1);
+}
+
+function loadBCMonthlyOrderCountsComponents_() {
+  const invoices = loadBCMonthlyOrderCountBySchema_('BC_INVOICES', 'BC-ORDERS');
+  const credits = loadBCMonthlyOrderCountBySchema_('BC_CREDIT_INVOICES', 'BC-ORDERS-CR');
+  const net = mergeMonthlyMap_(mergeMonthlyMap_({}, invoices, 1), credits, -1);
+  return { invoices, credits, net };
+}
+
+function loadBCMonthlyWebStats_() {
+  const invoices = loadBCMonthlyWebStatsBySchema_('BC_INVOICES', 'BC-WEB');
+  const credits = loadBCMonthlyWebStatsBySchema_('BC_CREDIT_INVOICES', 'BC-WEB-CR');
+  return mergeMonthlyWebStats_(mergeMonthlyWebStats_({ orders: {}, revenueExcl: {} }, invoices, 1), credits, -1);
+}
+
+function loadBCMonthlyWebStatsComponents_() {
+  const invoices = loadBCMonthlyWebStatsBySchema_('BC_INVOICES', 'BC-WEB');
+  const credits = loadBCMonthlyWebStatsBySchema_('BC_CREDIT_INVOICES', 'BC-WEB-CR');
+  const net = mergeMonthlyWebStats_(mergeMonthlyWebStats_({ orders: {}, revenueExcl: {} }, invoices, 1), credits, -1);
+  return { invoices, credits, net };
 }
 function isWebFlagTruthy_(v) {
   const s = String(v || '').trim().toLowerCase();
@@ -695,7 +666,7 @@ function isWebFlagTruthy_(v) {
  ************************************************************/
 function buildDaily_v6_(cfg, ctx) {
   const ss = SpreadsheetApp.openById(cfg.SHEETS.SALES_SUMMARIES.ID);
-  const sh = getOrCreateSheet_(ss, 'Sales - Daily', ['Sales — Daily', 'Sales – Daily']);
+  const sh = getOrCreateSheet_(ss, 'Sales - Daily', ['Sales â€” Daily', 'Sales â€“ Daily']);
   sh.clear();
 
   const header = ['Date', 'Total Qty', 'Total Revenue Incl', 'Total Revenue Excl', 'Orders'];
@@ -740,7 +711,7 @@ function buildDaily_v6_(cfg, ctx) {
  ************************************************************/
 function buildWeekly_v6_(cfg, ctx) {
   const ss = SpreadsheetApp.openById(cfg.SHEETS.SALES_SUMMARIES.ID);
-  const sh = getOrCreateSheet_(ss, 'Sales - Weekly', ['Sales ƒ?" Weekly', 'Sales ƒ?" Weekly']);
+  const sh = getOrCreateSheet_(ss, 'Sales - Weekly', ['Sales Æ’?" Weekly', 'Sales Æ’?" Weekly']);
   sh.clear();
 
   const products = loadProductsLookup_(cfg) || {};
@@ -862,7 +833,7 @@ function buildWeekly_v6_(cfg, ctx) {
  ************************************************************/
 function buildMonthly_v6_(cfg, ctx) {
   const ss = SpreadsheetApp.openById(cfg.SHEETS.SALES_SUMMARIES.ID);
-  const sh = getOrCreateSheet_(ss, 'Sales - Monthly', ['Sales — Monthly', 'Sales – Monthly']);
+  const sh = getOrCreateSheet_(ss, 'Sales - Monthly', ['Sales â€” Monthly', 'Sales â€“ Monthly']);
   sh.clear();
 
   const header = [
@@ -886,14 +857,20 @@ function buildMonthly_v6_(cfg, ctx) {
     'New Web Customers',
     'New Web Customers % of Web Orders',
     'YoY % (Web Incl)',
-    'YoY % (Orders)'
+    'YoY % (Orders)',
+    'All Web Orders % of BC',
+    'All Web % of BC'
   ];
   sh.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
 
-  const bcMonthly = loadBCMonthlyTotals_();
-  const bcMonthlyExcl = loadBCMonthlyTotalsExcl_();
-  const bcOrdersMonthly = loadBCMonthlyOrderCounts_();
-  const bcWeb = loadBCMonthlyWebStats_();
+  const bcMonthlyComp = loadBCMonthlyTotalsComponents_();
+  const bcMonthlyExclComp = loadBCMonthlyTotalsExclComponents_();
+  const bcOrdersComp = loadBCMonthlyOrderCountsComponents_();
+  const bcWebComp = loadBCMonthlyWebStatsComponents_();
+  const bcMonthly = bcMonthlyComp.net;
+  const bcMonthlyExcl = bcMonthlyExclComp.net;
+  const bcOrdersMonthly = bcOrdersComp.net;
+  const bcWeb = bcWebComp.net;
   const monthly = {};
   const salesRepKeys = buildSalesRepNameSet_();
   const repMonthly = {};
@@ -979,11 +956,15 @@ function buildMonthly_v6_(cfg, ctx) {
       const bc = bcMonthly[b.month] || 0;
       const bcExcl = bcMonthlyExcl[b.month] || 0;
       const bcOrders = bcOrdersMonthly[b.month] || 0;
+      const orders = b.orders.size;
       const bcWebExcl = bcWeb && bcWeb.revenueExcl ? (bcWeb.revenueExcl[b.month] || 0) : 0;
       const bcWebOrders = bcWeb && bcWeb.orders ? (bcWeb.orders[b.month] || 0) : 0;
-      const orders = b.orders.size;
+      // Canonical Power BI-parity web share: BC-booked web docs only (VEFUR or CO22-*).
       const webPct = bcExcl > 0 ? (bcWebExcl / bcExcl) : 0;
       const webOrdersPct = bcOrders > 0 ? (bcWebOrders / bcOrders) : 0;
+      // Operational comparison: all web (OLDWEB+NEWWEB) against BC totals.
+      const allWebPct = bcExcl > 0 ? (b.excl / bcExcl) : 0;
+      const allWebOrdersPct = bcOrders > 0 ? (orders / bcOrders) : 0;
       const aov = orders ? b.incl / orders : 0;
       const aovExcl = orders ? b.excl / orders : 0;
       const bcAovExcl = bcOrders ? bcExcl / bcOrders : 0;
@@ -1030,9 +1011,28 @@ function buildMonthly_v6_(cfg, ctx) {
         newWebCustomers,
         newWebCustomersPct,
         yoy,
-        yoyOrders
+        yoyOrders,
+        allWebOrdersPct,
+        allWebPct
       ];
     });
+
+  const sampleMonths = Object.values(monthly)
+    .map(b => b.month)
+    .sort()
+    .slice(-3)
+    .reverse();
+  sampleMonths.forEach(m => {
+    Logger.log(
+      '[BC-NET-CHECK] ' + m +
+      ' incl(inv=' + (bcMonthlyComp.invoices[m] || 0) + ',cr=' + (bcMonthlyComp.credits[m] || 0) + ',net=' + (bcMonthly[m] || 0) + ')' +
+      ' excl(inv=' + (bcMonthlyExclComp.invoices[m] || 0) + ',cr=' + (bcMonthlyExclComp.credits[m] || 0) + ',net=' + (bcMonthlyExcl[m] || 0) + ')' +
+      ' orders(inv=' + (bcOrdersComp.invoices[m] || 0) + ',cr=' + (bcOrdersComp.credits[m] || 0) + ',net=' + (bcOrdersMonthly[m] || 0) + ')' +
+      ' webExcl(inv=' + ((bcWebComp.invoices.revenueExcl && bcWebComp.invoices.revenueExcl[m]) || 0) +
+      ',cr=' + ((bcWebComp.credits.revenueExcl && bcWebComp.credits.revenueExcl[m]) || 0) +
+      ',net=' + ((bcWeb.revenueExcl && bcWeb.revenueExcl[m]) || 0) + ')'
+    );
+  });
 
   if (body.length) sh.getRange(2, 1, body.length, header.length).setValues(body);
 
@@ -1055,6 +1055,7 @@ function buildMonthly_v6_(cfg, ctx) {
   sh.getRange(2, 18, rows, 1).setNumberFormat('0');
   sh.getRange(2, 19, rows, 1).setNumberFormat('0.0%');
   sh.getRange(2, 20, rows, 2).setNumberFormat('0.0%');
+  sh.getRange(2, 22, rows, 2).setNumberFormat('0.0%');
 
   sh.setFrozenRows(1);
   sh.autoResizeColumns(1, header.length);
@@ -1121,8 +1122,8 @@ function buildSalesRepNameSet_() {
 function buildTopProductsAllTime_v6_(cfg, ctx) {
   const ss = SpreadsheetApp.openById(cfg.SHEETS.SALES_SUMMARIES.ID);
   const sh = getOrCreateSheet_(ss, 'Sales - Top Products (All Time)', [
-    'Sales — Top Products (All Time)',
-    'Sales – Top Products (All Time)'
+    'Sales â€” Top Products (All Time)',
+    'Sales â€“ Top Products (All Time)'
   ]);
   sh.clear();
 
@@ -1218,8 +1219,8 @@ function buildTopProductsAllTime_v6_(cfg, ctx) {
 function buildTopProductsPeriod_(cfg, ctx, days, sheetName) {
   const ss = SpreadsheetApp.openById(cfg.SHEETS.SALES_SUMMARIES.ID);
   const sh = getOrCreateSheet_(ss, sheetName, [
-    sheetName.replace(' - ', ' — '),
-    sheetName.replace(' - ', ' – ')
+    sheetName.replace(' - ', ' â€” '),
+    sheetName.replace(' - ', ' â€“ ')
   ]);
   sh.clear();
 
@@ -1323,8 +1324,8 @@ function buildTopProducts_90d_(cfg, ctx) { buildTopProductsPeriod_(cfg, ctx, 90,
 function buildCategorySummary_v6_(cfg, ctx) {
   const ss = SpreadsheetApp.openById(cfg.SHEETS.SALES_SUMMARIES.ID);
   const sh = getOrCreateSheet_(ss, 'Sales - Category (All Time)', [
-    'Sales — Category (All Time)',
-    'Sales – Category (All Time)'
+    'Sales â€” Category (All Time)',
+    'Sales â€“ Category (All Time)'
   ]);
   sh.clear();
 
@@ -1427,7 +1428,7 @@ function buildCategorySummary_v6_(cfg, ctx) {
  ************************************************************/
 function buildUomAnalysis_v7_(cfg, ctx) {
   const ss = SpreadsheetApp.openById(cfg.SHEETS.SALES_SUMMARIES.ID);
-  const sh = getOrCreateSheet_(ss, 'Sales - UOM Analysis', ['Sales — UOM Analysis', 'Sales – UOM Analysis']);
+  const sh = getOrCreateSheet_(ss, 'Sales - UOM Analysis', ['Sales â€” UOM Analysis', 'Sales â€“ UOM Analysis']);
   sh.clear();
 
   const products = loadProductsLookup_(cfg) || {};
@@ -1594,4 +1595,5 @@ function loadProductsLookup_(cfg) {
     return {};
   }
 }
+
 

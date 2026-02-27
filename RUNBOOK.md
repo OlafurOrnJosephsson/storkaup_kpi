@@ -48,10 +48,10 @@ Notes:
 
 ### 3) BC sync (important for web vs BC share)
 - Function: `scheduledBcSync_v1`
-- Purpose: Incremental BC invoices + lines + BC customers upsert to Supabase.
+- Purpose: Incremental BC invoices + credit invoices + lines + BC customers upsert to Supabase.
 - Expected logs:
   - `[BCSYNC][INFO] Completed scheduledBcSync_v1 ...`
-  - result includes uploaded counters for invoices/lines/customers.
+  - result includes uploaded counters for invoices/creditInvoices/lines/customers.
 
 ### 4) Klaviyo campaign events (v1)
 - Function: `scheduledKlaviyoSync_v1`
@@ -79,6 +79,7 @@ Use only when incremental sync is clearly behind or data was re-exported.
 - Full invoices backfill: `runBcInvoicesFullBackfill_v1`
 - Full lines backfill (chunked safer): `runBcLinesFullBackfillChunk_v1`
 - Incremental BC wrapper: `runBcIncrementalSync_v1`
+- Sales reps reference sync: `syncSalesRepsRefToSupabase_v1`
 - Optional marts refresh: `refreshSupabaseMarts_v1`
 - NEWWEB missing-field repair (recent rows): `reconcileNewwebMissingData_v2`
 
@@ -91,7 +92,50 @@ Note: `refresh_mv_top_products_all` may timeout (statement timeout) during busy 
    - no recurring failures
 2. `scheduledMagentoSync_v1` recent run has `magentoSync":"ok"`
 3. `scheduledBcSync_v1` recent run completed
-4. Spot-check one fresh order in `NEWWEB` sheet + frontend
+4. Confirm `[SALES_REPS_REF][INFO] Sync completed. Uploaded: N` in Magento/ref sync logs
+5. Spot-check one fresh order in `NEWWEB` sheet + frontend
+
+## Metric Contract
+
+Monthly sheet (`Sales - Monthly`) has two web-share metric families:
+
+- `Web Orders % of BC` and `Web % of BC`:
+  - Canonical BC-booked web share (Power BI parity)
+  - Numerator: BC docs tagged as web (`VEFUR`, and historical `CO22-%` only before `2025-08-18`)
+  - Denominator: net BC (`BC_INVOICES - BC_CREDIT_INVOICES`)
+
+- `All Web Orders % of BC` and `All Web % of BC`:
+  - Operational comparison (`OLDWEB + NEWWEB`) versus the same net BC denominator
+  - Expected to differ from canonical BC-booked share
+
+Dashboard cards should use canonical values (`Web Orders % of BC`, `Web % of BC` logic).
+
+## SQL Verification (Supabase)
+
+Use when dashboard and sheet differ.
+
+1. Dashboard month values:
+```sql
+select
+  api.dashboard_compat('2026-02')->'month'->>'webOrdersPct' as web_orders_pct,
+  api.dashboard_compat('2026-02')->'month'->>'webRevenuePct' as web_revenue_pct,
+  api.dashboard_compat('2026-02')->'month'->>'salesRepPct' as sales_rep_pct,
+  api.dashboard_compat('2026-02')->'month'->>'selfServePct' as self_serve_pct;
+```
+
+2. Sales reps reference exists:
+```sql
+select count(*) from raw.sales_reps_ref where active = true;
+```
+
+3. Function overload check:
+```sql
+select n.nspname as schema, p.proname, pg_get_function_identity_arguments(p.oid) as args
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where p.proname = 'dashboard_compat'
+order by 1,3;
+```
 
 ## Common Issues
 

@@ -1,5 +1,5 @@
-/************************************************************
- * 📦 Stórkaup KPI CORE — utils.gs (V6 Enterprise)
+﻿/************************************************************
+ * ðŸ“¦ StÃ³rkaup KPI CORE â€” utils.gs (V6 Enterprise)
  * ----------------------------------------------------------
  * - Universal loader (Schema + Config Driven)
  * - SKU + Category helpers
@@ -17,7 +17,11 @@ function normalizeHeaderKeyLocal_(s) {
     .replace(/ð/g, 'd')
     .replace(/þ/g, 'th')
     .replace(/æ/g, 'ae')
-    .replace(/ö/g, 'o');
+    .replace(/ö/g, 'o')
+    .replace(/Ã°/g, 'd')
+    .replace(/Ã¾/g, 'th')
+    .replace(/Ã¦/g, 'ae')
+    .replace(/Ã¶/g, 'o');
 
   return str
     .normalize('NFD')
@@ -27,10 +31,10 @@ function normalizeHeaderKeyLocal_(s) {
 
 
 /************************************************************
- * 🧩 loadTableBySchema_(schemaKey)
- * - Les gögn út frá STORKAUP_SCHEMA
+ * ðŸ§© loadTableBySchema_(schemaKey)
+ * - Les gÃ¶gn Ãºt frÃ¡ STORKAUP_SCHEMA
  * - Skilar ALWAYS Array<Object> (lyklar = schema fields)
- * - Notað af Sales Summaries + fleiri módúlum
+ * - NotaÃ° af Sales Summaries + fleiri mÃ³dÃºlum
  ************************************************************/
 function loadTableBySchema_(schemaKey) {
   const schema = STORKAUP_SCHEMA[schemaKey];
@@ -38,9 +42,9 @@ function loadTableBySchema_(schemaKey) {
     throw new Error('Schema not found: ' + schemaKey);
   }
 
-  // FILE = service key í CONFIG.SHEETS (t.d. "WEBSALES", "OLDWEB", "PRODUCTS")
+  // FILE = service key Ã­ CONFIG.SHEETS (t.d. "WEBSALES", "OLDWEB", "PRODUCTS")
   const cfg = loadConfig_();
-  const fileKey = schema.FILE;          // t.d. 'WEBSALES' eða 'BC_SALES'
+  const fileKey = schema.FILE;          // t.d. 'WEBSALES' eÃ°a 'BC_SALES'
   const binding = cfg.SHEETS[fileKey];
 
   if (!binding) {
@@ -49,7 +53,7 @@ function loadTableBySchema_(schemaKey) {
 
   const ss = SpreadsheetApp.openById(binding.ID);
 
-  // Sum schema þurfa sér flipaname (t.d. "Bókaðar sölureikningslínur"), annars notum við FILE
+  // Sum schema Ã¾urfa sÃ©r flipaname (t.d. "BÃ³kaÃ°ar sÃ¶lureikningslÃ­nur"), annars notum viÃ° FILE
   const sheetName = schema.SHEET || binding.NAME || fileKey;
   let sh = ss.getSheetByName(sheetName);
   if (!sh) {
@@ -87,11 +91,11 @@ function loadTableBySchema_(schemaKey) {
     const rowVals = values[r];
     const obj = {};
 
-    // Fyrir hvert field í schema (nema FILE, PK, SHEET) náum við viðeigandi dálk
+    // Fyrir hvert field Ã­ schema (nema FILE, PK, SHEET) nÃ¡um viÃ° viÃ°eigandi dÃ¡lk
     Object.keys(schema).forEach(key => {
       if (key === 'FILE' || key === 'PK' || key === 'SHEET') return;
 
-      // Sérmeðferð fyrir nested COLUMNS object (t.d. BC_LINES.COLUMNS)
+      // SÃ©rmeÃ°ferÃ° fyrir nested COLUMNS object (t.d. BC_LINES.COLUMNS)
       if (key === 'COLUMNS' && schema.COLUMNS && typeof schema.COLUMNS === 'object') {
         Object.keys(schema.COLUMNS).forEach(subKey => {
           const colName = schema.COLUMNS[subKey];
@@ -115,10 +119,10 @@ function loadTableBySchema_(schemaKey) {
 
 
 /************************************************************
- * 🧩 loadTableBySchemaFull_(schemaKey)
+ * ðŸ§© loadTableBySchemaFull_(schemaKey)
  * - Skilar { sheet, header, rows }
- * - rows = 2D array (án header)
- * - Notað fyrir normalization / batch-writing
+ * - rows = 2D array (Ã¡n header)
+ * - NotaÃ° fyrir normalization / batch-writing
  ************************************************************/
 function loadTableBySchemaFull_(schemaKey) {
   const schema = STORKAUP_SCHEMA[schemaKey];
@@ -158,8 +162,8 @@ function loadTableBySchemaFull_(schemaKey) {
   return { sheet: sh, header, rows };
 }
 /************************************************************
- * 🧩 Compatibility wrappers (legacy support)
- * - Eldri modules kalla loadTableBySchema() → vísað yfir í loadTableBySchema_()
+ * ðŸ§© Compatibility wrappers (legacy support)
+ * - Eldri modules kalla loadTableBySchema() â†’ vÃ­saÃ° yfir Ã­ loadTableBySchema_()
  ************************************************************/
 function loadTableBySchema(schemaKey) {
   return loadTableBySchema_(schemaKey);
@@ -181,7 +185,7 @@ function loadTableCached_(schemaKey) {
 }
 
 /************************************************************
- * 🎨 applySheetStyling_(sh, options)
+ * ðŸŽ¨ applySheetStyling_(sh, options)
  ************************************************************/
 function applySheetStyling_(sh, options) {
   if (!sh) return;
@@ -233,7 +237,7 @@ function applySheetStyling_(sh, options) {
 
 
 /************************************************************
- * 🔗 applyStylingTo(serviceKey)
+ * ðŸ”— applyStylingTo(serviceKey)
  ************************************************************/
 function applyStylingTo(serviceKey, options) {
   const cfg = loadConfig_();
@@ -249,7 +253,7 @@ function applyStylingTo(serviceKey, options) {
 
 
 /************************************************************
- * 📚 makeColumnMap_
+ * ðŸ“š makeColumnMap_
  ************************************************************/
 function makeColumnMap_(headers) {
   const map = {};
@@ -259,7 +263,7 @@ function makeColumnMap_(headers) {
 
 
 /************************************************************
- * 📅 DATE HELPERS
+ * ðŸ“… DATE HELPERS
  ************************************************************/
 function toDate_(v) {
   if (!v) return null;
@@ -287,13 +291,13 @@ function formatDateDMY_(d) {
 
 
 /************************************************************
- * 🔤 STRING HELPERS
+ * ðŸ”¤ STRING HELPERS
  ************************************************************/
 function cleanString_(s) {
   return String(s || '').replace(/\s+/g, ' ').trim();
 }
 
-// Small alias til að vera backwards compatible (ef eitthvað kallar á cleanString())
+// Small alias til aÃ° vera backwards compatible (ef eitthvaÃ° kallar Ã¡ cleanString())
 function cleanString(s) {
   return cleanString_(s);
 }
@@ -307,7 +311,7 @@ function safeJsonParse_(str) {
 }
 
 /************************************************************
- * 🧠 NAME NORMALIZATION + FUZZY HELPERS
+ * ðŸ§  NAME NORMALIZATION + FUZZY HELPERS
  ************************************************************/
 
 function normalizeNameAdvanced_(s) {
@@ -346,7 +350,7 @@ function tokenizeCompanyName_(s) {
   return base.split(' ').filter(function(t){ return t && t.length > 1; });
 }
 
-// Létt kennitöluték – leyfir líka “undirkennitölur”
+// LÃ©tt kennitÃ¶lutÃ©k â€“ leyfir lÃ­ka â€œundirkennitÃ¶lurâ€
 function isLikelyKennitala_(v) {
   if (!v) return false;
   var s = String(v).replace(/\D/g, '');
@@ -354,7 +358,7 @@ function isLikelyKennitala_(v) {
 }
 
 /************************************************************
- * 🧮 LEVENSHTEIN + STRING SIMILARITY
+ * ðŸ§® LEVENSHTEIN + STRING SIMILARITY
  ************************************************************/
 function levenshteinDistance_(a, b) {
   if (a === b) return 0;
@@ -395,11 +399,11 @@ function stringSimilarity_(a, b) {
   var maxLen = Math.max(a.length, b.length);
   if (!maxLen) return 0;
   var dist = levenshteinDistance_(a, b);
-  return 1 - dist / maxLen; // 0–1
+  return 1 - dist / maxLen; // 0â€“1
 }
 
 /************************************************************
- * 🔢 NUMBERS
+ * ðŸ”¢ NUMBERS
  ************************************************************/
 function toNum_(v) {
   if (!v && v !== 0) return 0;
@@ -408,14 +412,14 @@ function toNum_(v) {
   return isNaN(n) ? 0 : n;
 }
 
-// Alias (ef eitthvað kallar á toNum())
+// Alias (ef eitthvaÃ° kallar Ã¡ toNum())
 function toNum(v) {
   return toNum_(v);
 }
 
 
 /************************************************************
- * 🔐 SKU HELPERS
+ * ðŸ” SKU HELPERS
  ************************************************************/
 function normalizeSkuGlobal_(sku) {
   if (!sku) return '';
@@ -450,7 +454,7 @@ function extractUom_(rawSku) {
 
 
 /************************************************************
- * 🗂 RANGE HELPERS
+ * ðŸ—‚ RANGE HELPERS
  ************************************************************/
 function clearSheetKeepHeader_(sh) {
   const last = sh.getLastRow();
@@ -464,7 +468,7 @@ function writeRows_(sh, rows, row, col) {
 
 
 /************************************************************
- * 📝 LOG HELPERS
+ * ðŸ“ LOG HELPERS
  ************************************************************/
 function log_(msg, obj) {
   if (obj !== undefined) Logger.log(msg + ' ' + JSON.stringify(obj, null, 2));
@@ -473,7 +477,7 @@ function log_(msg, obj) {
 
 
 /************************************************************
- * ⚡ RUNTIME CACHE
+ * âš¡ RUNTIME CACHE
  ************************************************************/
 var RUNTIME_CACHE = {};
 
@@ -488,8 +492,8 @@ function cacheSet_(key, value) {
 
 
 /************************************************************
- * 🧰 loadSheetObjects_
- * - Les heilt sheet og skilar Array<Object> með raw header labels
+ * ðŸ§° loadSheetObjects_
+ * - Les heilt sheet og skilar Array<Object> meÃ° raw header labels
  ************************************************************/
 function loadSheetObjects_(ssId, sheetName) {
   if (!ssId) throw new Error("loadSheetObjects_: Missing ssId");
@@ -515,14 +519,14 @@ function loadSheetObjects_(ssId, sheetName) {
 
 
 /************************************************************
- * (Legacy helper – ef þú vilt enn nota þetta annars staðar)
+ * (Legacy helper â€“ ef Ã¾Ãº vilt enn nota Ã¾etta annars staÃ°ar)
  ************************************************************/
 function loadBcSalesCustomers_(cfg) {
   const binding = cfg.SHEETS['BC_SALES'];
   if (!binding) return [];
 
   const ss = SpreadsheetApp.openById(binding.ID);
-  const sh = ss.getSheetByName('Viðskiptamenn');
+  const sh = ss.getSheetByName('ViÃ°skiptamenn');
   if (!sh) return [];
 
   const values = sh.getDataRange().getValues();
@@ -543,9 +547,9 @@ function loadBcSalesCustomers_(cfg) {
     out.push({
       id,
       name,
-      phone: row[map['Sími']] || '',
+      phone: row[map['SÃ­mi']] || '',
       balance: row[map['Hreyfing (SGM)']] || '',
-      lastModified: row[map['Síðast breytt, dags.']] || ''
+      lastModified: row[map['SÃ­Ã°ast breytt, dags.']] || ''
     });
   }
   return out;
@@ -553,11 +557,11 @@ function loadBcSalesCustomers_(cfg) {
 
 
 /************************************************************
- * 🧩 COMPANY RESOLVER (v9)
+ * ðŸ§© COMPANY RESOLVER (v9)
  * - Sameinar BC_CUSTOMERS + MAGENTO_CUSTOMERS
  * - Primary key: Company ID (kennitala / nr.)
  * - Alias: normalizeNameAdvanced_(Company Name)
- * - Bætir við tokenIndex fyrir fuzzy leit
+ * - BÃ¦tir viÃ° tokenIndex fyrir fuzzy leit
  ************************************************************/
 function buildCompanyResolver_(cfg) {
   const cached = cacheGet_('RESOLVER_V1');
@@ -599,7 +603,7 @@ function buildCompanyResolver_(cfg) {
         if (!bcMapByName[norm]) {
           bcMapByName[norm] = existing;
         } else {
-          // BC fær forgang ef conflict
+          // BC fÃ¦r forgang ef conflict
           if (source === 'BC' && bcMapByName[norm].source !== 'BC') {
             bcMapByName[norm] = existing;
           }
@@ -607,7 +611,7 @@ function buildCompanyResolver_(cfg) {
       }
       indexTokens_(existing);
     } else {
-      // Merge inn í tilverandi entry
+      // Merge inn Ã­ tilverandi entry
       if (name && !existing.companyName) existing.companyName = name;
       if (norm && !existing.normName)    existing.normName    = norm;
       if (region && !existing.region)    existing.region      = region;
@@ -624,16 +628,16 @@ function buildCompanyResolver_(cfg) {
   try {
     var svcBC = cfg.SHEETS.BC_CUSTOMERS;
     if (svcBC) {
-      var bcRows = loadSheetObjects_(svcBC.ID, svcBC.NAME); // 'Viðskiptamenn'
+      var bcRows = loadSheetObjects_(svcBC.ID, svcBC.NAME); // 'ViÃ°skiptamenn'
       bcRows.forEach(function(r) {
         var id   = r['Nr.'];
         var name = r['Heiti'];
         registerCompany_('BC', id, name, '', '');
       });
-      log_('🏢 buildCompanyResolver_: BC_CUSTOMERS loaded: ' + bcRows.length + ' rows');
+      log_('ðŸ¢ buildCompanyResolver_: BC_CUSTOMERS loaded: ' + bcRows.length + ' rows');
     }
   } catch (e) {
-    log_('⚠️ buildCompanyResolver_: Gat ekki hlaðið BC_CUSTOMERS: ' + e);
+    log_('âš ï¸ buildCompanyResolver_: Gat ekki hlaÃ°iÃ° BC_CUSTOMERS: ' + e);
   }
 
   /***********************
@@ -642,16 +646,16 @@ function buildCompanyResolver_(cfg) {
   try {
     var svcBCSales = cfg.SHEETS.BC_SALES;
     if (svcBCSales) {
-      var bcSalesRows = loadSheetObjects_(svcBCSales.ID, svcBCSales.NAME); // 'Viðskiptamenn'
+      var bcSalesRows = loadSheetObjects_(svcBCSales.ID, svcBCSales.NAME); // 'ViÃ°skiptamenn'
       bcSalesRows.forEach(function(r) {
         var id   = r['Nr.'];
         var name = r['Heiti'];
         registerCompany_('BC_SALES', id, name, '', '');
       });
-      log_('🏢 buildCompanyResolver_: BC_SALES loaded: ' + bcSalesRows.length + ' rows');
+      log_('ðŸ¢ buildCompanyResolver_: BC_SALES loaded: ' + bcSalesRows.length + ' rows');
     }
   } catch (e) {
-    log_('⚠️ buildCompanyResolver_: Gat ekki hlaðið BC_SALES: ' + e);
+    log_('âš ï¸ buildCompanyResolver_: Gat ekki hlaÃ°iÃ° BC_SALES: ' + e);
   }
 
   /***********************
@@ -668,10 +672,10 @@ function buildCompanyResolver_(cfg) {
         var realEmail = r['Real Email'] || r['Email'] || '';
         registerCompany_('MAGENTO', id, name, region, realEmail);
       });
-      log_('🛒 buildCompanyResolver_: MAGENTO_CUSTOMERS loaded: ' + mcRows.length + ' rows');
+      log_('ðŸ›’ buildCompanyResolver_: MAGENTO_CUSTOMERS loaded: ' + mcRows.length + ' rows');
     }
   } catch (e) {
-    log_('⚠️ buildCompanyResolver_: Gat ekki hlaðið CUSTOMERS (MAGENTO_CUSTOMERS): ' + e);
+    log_('âš ï¸ buildCompanyResolver_: Gat ekki hlaÃ°iÃ° CUSTOMERS (MAGENTO_CUSTOMERS): ' + e);
   }
 
   return cacheSet_('RESOLVER_V1', {
@@ -682,7 +686,7 @@ function buildCompanyResolver_(cfg) {
 }
 
 /************************************************************
- * 🔍 fuzzy helper: leita að besta company út frá nafni
+ * ðŸ” fuzzy helper: leita aÃ° besta company Ãºt frÃ¡ nafni
  ************************************************************/
 function fuzzyCompanyLookupByName_(resolver, rawName, threshold) {
   threshold = threshold || 0.88;
@@ -698,7 +702,7 @@ function fuzzyCompanyLookupByName_(resolver, rawName, threshold) {
   var candidatesMap = {};
   var key;
 
-  // Safna mögulegum candidates út frá tokenum
+  // Safna mÃ¶gulegum candidates Ãºt frÃ¡ tokenum
   tokens.forEach(function(t) {
     var list = tokenIndex[t];
     if (!list) return;
@@ -729,8 +733,8 @@ function fuzzyCompanyLookupByName_(resolver, rawName, threshold) {
 }
 
 /************************************************************
- * 🔍 resolveCompanyInfo_ (v9)
- * - Same regla og áður + fuzzy name match
+ * ðŸ” resolveCompanyInfo_ (v9)
+ * - Same regla og Ã¡Ã°ur + fuzzy name match
  ************************************************************/
 function resolveCompanyInfo_(resolver, rawId, rawName, rawGroup, customerName, allowFuzzy) {
   resolver = resolver || {};
@@ -746,18 +750,18 @@ function resolveCompanyInfo_(resolver, rawId, rawName, rawGroup, customerName, a
 
   var best = null;
 
-  // RULE 1 — Company ID (NEWWEB) ef til í master
+  // RULE 1 â€” Company ID (NEWWEB) ef til Ã­ master
   if (idRaw && bcMapById[idRaw]) {
     best = bcMapById[idRaw];
   }
 
-  // RULE 2 — Customer Group (OLDWEB) ef lítur út eins og kennitala
+  // RULE 2 â€” Customer Group (OLDWEB) ef lÃ­tur Ãºt eins og kennitala
   if (!best && group && isLikelyKennitala_(group) && bcMapById[group]) {
     best = bcMapById[group];
     if (!idRaw) idRaw = group;
   }
 
-  // RULE 3 — Exact match á Company Name
+  // RULE 3 â€” Exact match Ã¡ Company Name
   if (!best && name) {
     var normName = normalizeNameAdvanced_(name);
     if (bcMapByName[normName]) {
@@ -765,7 +769,7 @@ function resolveCompanyInfo_(resolver, rawId, rawName, rawGroup, customerName, a
     }
   }
 
-  // RULE 4 — Exact match á Customer Name
+  // RULE 4 â€” Exact match Ã¡ Customer Name
   if (!best && cust) {
     var normCust = normalizeNameAdvanced_(cust);
     if (bcMapByName[normCust]) {
@@ -773,7 +777,7 @@ function resolveCompanyInfo_(resolver, rawId, rawName, rawGroup, customerName, a
     }
   }
 
-  // RULE 5 — Fuzzy match (Company Name fyrst, svo Customer Name)
+  // RULE 5 â€” Fuzzy match (Company Name fyrst, svo Customer Name)
   if (allowFuzzy) {
     if (!best && name) {
       best = fuzzyCompanyLookupByName_(resolver, name, 0.88);
@@ -783,7 +787,7 @@ function resolveCompanyInfo_(resolver, rawId, rawName, rawGroup, customerName, a
     }
   }
 
-  // RULE 6 — Fallback: notum bara order-gögn (og mögulegt group sem kt)
+  // RULE 6 â€” Fallback: notum bara order-gÃ¶gn (og mÃ¶gulegt group sem kt)
   if (!best) {
     // If we have a valid ID, keep it and don't override with fuzzy matches.
     var fallbackId = idRaw;
@@ -809,12 +813,12 @@ function resolveCompanyInfo_(resolver, rawId, rawName, rawGroup, customerName, a
 
 
 /************************************************************
- * 🧮 ID HELPERS
+ * ðŸ§® ID HELPERS
  ************************************************************/
 function looksLikeKennitala_(v) {
   if (!v) return false;
-  const s = String(v).replace(/\D/g, '');  // tökum bara tölur
-  // Leyfum 7–12 stafi: 10 fyrir venjulega kt, 11–12 fyrir undirkennitölur o.fl.
+  const s = String(v).replace(/\D/g, '');  // tÃ¶kum bara tÃ¶lur
+  // Leyfum 7â€“12 stafi: 10 fyrir venjulega kt, 11â€“12 fyrir undirkennitÃ¶lur o.fl.
   return s.length >= 7 && s.length <= 12;
 }
 
@@ -835,12 +839,12 @@ function similarity_(a, b) {
 
 
 /************************************************************
- * 🔧 normalizeOldwebCompanyIds_
- * - Fyllir út/leiðréttir Company ID dálk í OLDWEB
- * - Notar NÝJA buildCompanyResolver_ + resolveCompanyInfo_
+ * ðŸ”§ normalizeOldwebCompanyIds_
+ * - Fyllir Ãºt/leiÃ°rÃ©ttir Company ID dÃ¡lk Ã­ OLDWEB
+ * - Notar NÃJA buildCompanyResolver_ + resolveCompanyInfo_
  ************************************************************/
 function normalizeOldwebCompanyIds() {
-  Logger.log('🔧 normalizeOldwebCompanyIds_: starting…');
+  Logger.log('ðŸ”§ normalizeOldwebCompanyIds_: startingâ€¦');
 
   var cfg = loadConfig_();
   var resolver = buildCompanyResolver_(cfg);
@@ -859,7 +863,7 @@ function normalizeOldwebCompanyIds() {
   var range = sh.getDataRange();
   var values = range.getValues();
   if (values.length < 2) {
-    Logger.log('⚠️ OLDWEB hefur engar raðir');
+    Logger.log('âš ï¸ OLDWEB hefur engar raÃ°ir');
     return { updated: 0, unresolvedCount: 0, unresolved: [] };
   }
 
@@ -871,9 +875,9 @@ function normalizeOldwebCompanyIds() {
   var idxShip  = header.indexOf('Ship-to Name');
   var idxGroup = header.indexOf('Customer Group');
 
-  if (idxCID === -1) throw new Error("❌ OLDWEB vantar 'Company ID' dálk!");
-  if (idxCust === -1) throw new Error("❌ OLDWEB vantar 'Customer Name' dálk!");
-  if (idxComp === -1) throw new Error("❌ OLDWEB vantar 'Company Name' dálk!");
+  if (idxCID === -1) throw new Error("âŒ OLDWEB vantar 'Company ID' dÃ¡lk!");
+  if (idxCust === -1) throw new Error("âŒ OLDWEB vantar 'Customer Name' dÃ¡lk!");
+  if (idxComp === -1) throw new Error("âŒ OLDWEB vantar 'Company Name' dÃ¡lk!");
 
   var updated = 0;
   var unresolved = [];
@@ -886,7 +890,7 @@ function normalizeOldwebCompanyIds() {
     var compName  = row[idxComp] || '';
     var groupVal  = idxGroup !== -1 ? (row[idxGroup] || '') : '';
 
-    // Gild Company ID (kennitala) → sleppum
+    // Gild Company ID (kennitala) â†’ sleppum
     if (oldVal && isLikelyKennitala_(oldVal)) {
       outCol.push([oldVal]);
       continue;
@@ -894,7 +898,7 @@ function normalizeOldwebCompanyIds() {
 
     var info = resolveCompanyInfo_(
       resolver,
-      null,          // OLDWEB hefur ekki companyId í sér dálki (fyrir normalization)
+      null,          // OLDWEB hefur ekki companyId Ã­ sÃ©r dÃ¡lki (fyrir normalization)
       compName,
       groupVal,
       custName
@@ -904,9 +908,9 @@ function normalizeOldwebCompanyIds() {
       outCol.push([info.companyId]);
       updated++;
     } else {
-      outCol.push([oldVal]); // viðheldum gömlu gildi
+      outCol.push([oldVal]); // viÃ°heldum gÃ¶mlu gildi
       unresolved.push({
-        row: r + 1, // 1-based í Sheet
+        row: r + 1, // 1-based Ã­ Sheet
         companyName: compName,
         customerName: custName,
         oldValue: oldVal
@@ -914,13 +918,13 @@ function normalizeOldwebCompanyIds() {
     }
   }
 
-  // Skrifum bara Company ID dálkinn aftur (hraðvirkt & safe)
+  // Skrifum bara Company ID dÃ¡lkinn aftur (hraÃ°virkt & safe)
   if (outCol.length) {
     sh.getRange(2, idxCID + 1, outCol.length, 1).setValues(outCol);
   }
 
-  Logger.log('✅ normalizeOldwebCompanyIds_: updated ' + updated + ' rows.');
-  Logger.log('⚠️ unresolved: ' + unresolved.length);
+  Logger.log('âœ… normalizeOldwebCompanyIds_: updated ' + updated + ' rows.');
+  Logger.log('âš ï¸ unresolved: ' + unresolved.length);
   Logger.log(JSON.stringify(unresolved.slice(0, 50), null, 2));
 
   return {
@@ -936,13 +940,13 @@ function testNormalizeOldweb() {
 }
 
 /************************************************************
- * 🔧 normalizeOldwebCompanyIdsAndNames_
+ * ðŸ”§ normalizeOldwebCompanyIdsAndNames_
  * - Overwrites OLDWEB Company ID + Company Name when matched
  * - Uses BC_CUSTOMERS + BC_SALES + MAGENTO_CUSTOMERS resolver
  * - Matches by exact name or strong fuzzy; keeps original if no match
  ************************************************************/
 function normalizeOldwebCompanyIdsAndNames() {
-  Logger.log('🔧 normalizeOldwebCompanyIdsAndNames_: starting…');
+  Logger.log('ðŸ”§ normalizeOldwebCompanyIdsAndNames_: startingâ€¦');
 
   var cfg = loadConfig_();
   var resolver = buildCompanyResolver_(cfg);
@@ -957,7 +961,7 @@ function normalizeOldwebCompanyIdsAndNames() {
   var range = sh.getDataRange();
   var values = range.getValues();
   if (values.length < 2) {
-    Logger.log('⚠️ OLDWEB hefur engar raðir');
+    Logger.log('âš ï¸ OLDWEB hefur engar raÃ°ir');
     return { updated: 0, unresolvedCount: 0, unresolved: [] };
   }
 
@@ -969,9 +973,9 @@ function normalizeOldwebCompanyIdsAndNames() {
   var idxShip  = header.indexOf('Ship-to Name');
   var idxGroup = header.indexOf('Customer Group');
 
-  if (idxCID === -1) throw new Error("❌ OLDWEB vantar 'Company ID' dálk!");
-  if (idxCust === -1) throw new Error("❌ OLDWEB vantar 'Customer Name' dálk!");
-  if (idxComp === -1) throw new Error("❌ OLDWEB vantar 'Company Name' dálk!");
+  if (idxCID === -1) throw new Error("âŒ OLDWEB vantar 'Company ID' dÃ¡lk!");
+  if (idxCust === -1) throw new Error("âŒ OLDWEB vantar 'Customer Name' dÃ¡lk!");
+  if (idxComp === -1) throw new Error("âŒ OLDWEB vantar 'Company Name' dÃ¡lk!");
 
   var bcById = resolver.bcMapById || {};
   var bcByName = resolver.bcMapByName || {};
@@ -1090,8 +1094,8 @@ function normalizeOldwebCompanyIdsAndNames() {
   repUn.setFrozenRows(1);
   repUn.autoResizeColumns(1, unresolvedReport[0].length);
 
-  Logger.log('✅ normalizeOldwebCompanyIdsAndNames_: updated ' + updated + ' rows.');
-  Logger.log('⚠️ unresolved: ' + unresolved.length);
+  Logger.log('âœ… normalizeOldwebCompanyIdsAndNames_: updated ' + updated + ' rows.');
+  Logger.log('âš ï¸ unresolved: ' + unresolved.length);
 
   return {
     updated: updated,
@@ -1260,6 +1264,7 @@ function getBcSyncState_() {
   var props = getScriptProperties_();
   return {
     invoicesWatermarkIso: props.getProperty('BC_INVOICES_LAST_SYNC_ISO') || '',
+    creditInvoicesWatermarkIso: props.getProperty('BC_CREDIT_INVOICES_LAST_SYNC_ISO') || '',
     linesWatermarkIso: props.getProperty('BC_LINES_LAST_SYNC_ISO') || '',
     linesFullCursor: Number(props.getProperty('BC_LINES_FULL_CURSOR') || 0) || 0
   };
@@ -1269,6 +1274,9 @@ function setBcSyncState_(next) {
   var props = getScriptProperties_();
   if (next && Object.prototype.hasOwnProperty.call(next, 'invoicesWatermarkIso')) {
     props.setProperty('BC_INVOICES_LAST_SYNC_ISO', String(next.invoicesWatermarkIso || ''));
+  }
+  if (next && Object.prototype.hasOwnProperty.call(next, 'creditInvoicesWatermarkIso')) {
+    props.setProperty('BC_CREDIT_INVOICES_LAST_SYNC_ISO', String(next.creditInvoicesWatermarkIso || ''));
   }
   if (next && Object.prototype.hasOwnProperty.call(next, 'linesWatermarkIso')) {
     props.setProperty('BC_LINES_LAST_SYNC_ISO', String(next.linesWatermarkIso || ''));
@@ -1399,6 +1407,122 @@ function backfillBcInvoicesToSupabase_v1(options) {
 
   setBcSyncState_({ invoicesWatermarkIso: runStartedIso });
   Logger.log('[BC_INVOICES][INFO] Backfill completed. Uploaded: ' + uploaded);
+  return {
+    totalRows: rows.length,
+    selectedRows: selected.length,
+    uploaded: uploaded,
+    mode: full ? 'full' : 'incremental',
+    previousIso: previousIso || '',
+    nextIso: runStartedIso
+  };
+}
+
+function upsertBcCreditInvoicesToSupabase_(rows) {
+  if (!rows || !rows.length) return { uploaded: 0 };
+
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/bc_credit_invoices_raw?on_conflict=document_no';
+  var payload = rows.map(function(r) {
+    var documentNo = String(r.DOCUMENT_NO || '').trim();
+    return {
+      document_no: documentNo,
+      company_id: r.COMPANY_ID || null,
+      external_doc_no: null,
+      company_name: r.COMPANY_NAME || null,
+      currency: r.CURRENCY || null,
+      due_date: parseBcDateForSupabase_(r.DUE_DATE),
+      order_date: parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.DOCUMENT_DATE),
+      email: null,
+      amount_excl: toNum_(r.AMOUNT_EXCL),
+      amount_incl: toNum_(r.AMOUNT_INCL),
+      salesperson_code: r.SALESPERSON_CODE || null,
+      remaining_amount: toNum_(r.REMAINING),
+      location_code: r.LOCATION_CODE || null,
+      printed: r.PRINTED || null,
+      closed: null,
+      canceled: r.CANCELED || null,
+      corrective: r.CORRECTIVE || null,
+      rsm_provider: r.RSM_PROVIDER || null,
+      rsm_date: parseBcDateForSupabase_(r.RSM_DATE),
+      source: 'bc_credit_invoices_backfill'
+    };
+  }).filter(function(x) { return x.document_no; });
+
+  if (!payload.length) return { uploaded: 0 };
+
+  var chunkSize = 500;
+  var uploaded = 0;
+
+  for (var i = 0; i < payload.length; i += chunkSize) {
+    var chunk = payload.slice(i, i + chunkSize);
+    var res = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw',
+        'Accept-Profile': 'raw',
+        Prefer: 'resolution=merge-duplicates,return=minimal'
+      },
+      payload: JSON.stringify(chunk),
+      muteHttpExceptions: true
+    });
+
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error('BC_CREDIT_INVOICES Supabase upsert failed: ' + code + ' ' + res.getContentText());
+    }
+    uploaded += chunk.length;
+  }
+
+  return { uploaded: uploaded };
+}
+
+function backfillBcCreditInvoicesToSupabase_v1(options) {
+  var opts = options || {};
+  var full = !!opts.full;
+  var lookbackDays = Number(opts.lookbackDays != null ? opts.lookbackDays : 2);
+  var state = getBcSyncState_();
+  var previousIso = full ? '' : (state.creditInvoicesWatermarkIso || state.invoicesWatermarkIso || '');
+  var runStartedIso = toIsoNow_();
+
+  var rows = loadTableBySchema_('BC_CREDIT_INVOICES') || [];
+  if (!rows.length) {
+    Logger.log('[BC_CREDIT_INVOICES][INFO] No rows found for backfill.');
+    return { totalRows: 0, selectedRows: 0, uploaded: 0, mode: full ? 'full' : 'incremental' };
+  }
+
+  var selected = full ? rows : rows.filter(function(r) {
+    var rowIso = parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.DOCUMENT_DATE);
+    return shouldIncludeByWatermark_(rowIso, previousIso, lookbackDays);
+  });
+
+  if (!selected.length) {
+    Logger.log('[BC_CREDIT_INVOICES][INFO] No incremental rows to upload.');
+    setBcSyncState_({ creditInvoicesWatermarkIso: runStartedIso });
+    return {
+      totalRows: rows.length,
+      selectedRows: 0,
+      uploaded: 0,
+      mode: full ? 'full' : 'incremental',
+      previousIso: previousIso || '',
+      nextIso: runStartedIso
+    };
+  }
+
+  var batchSize = 2000;
+  var uploaded = 0;
+
+  for (var i = 0; i < selected.length; i += batchSize) {
+    var batch = selected.slice(i, i + batchSize);
+    var out = upsertBcCreditInvoicesToSupabase_(batch);
+    uploaded += out.uploaded || 0;
+    Logger.log('[BC_CREDIT_INVOICES][INFO] Backfill batch uploaded: ' + uploaded + '/' + selected.length);
+  }
+
+  setBcSyncState_({ creditInvoicesWatermarkIso: runStartedIso });
+  Logger.log('[BC_CREDIT_INVOICES][INFO] Backfill completed. Uploaded: ' + uploaded);
   return {
     totalRows: rows.length,
     selectedRows: selected.length,
@@ -1585,6 +1709,10 @@ function syncBcToSupabaseIncremental_v1(options) {
     full: !!opts.full,
     lookbackDays: opts.lookbackDays
   });
+  var creditInvoices = backfillBcCreditInvoicesToSupabase_v1({
+    full: !!opts.full,
+    lookbackDays: opts.lookbackDays
+  });
   var lines = backfillBcLinesToSupabase_v1({
     full: !!opts.full,
     lookbackDays: opts.lookbackDays
@@ -1592,6 +1720,7 @@ function syncBcToSupabaseIncremental_v1(options) {
   var customers = backfillBcCustomersToSupabase_v1();
   return {
     invoices: invoices,
+    creditInvoices: creditInvoices,
     lines: lines,
     customers: customers
   };
@@ -1600,6 +1729,7 @@ function syncBcToSupabaseIncremental_v1(options) {
 function resetBcSupabaseSyncState_v1() {
   setBcSyncState_({
     invoicesWatermarkIso: '',
+    creditInvoicesWatermarkIso: '',
     linesWatermarkIso: '',
     linesFullCursor: 0
   });
@@ -1613,6 +1743,10 @@ function runBcLinesFullBackfill_v1() {
 
 function runBcInvoicesFullBackfill_v1() {
   return backfillBcInvoicesToSupabase_v1({ full: true, lookbackDays: 0 });
+}
+
+function runBcCreditInvoicesFullBackfill_v1() {
+  return backfillBcCreditInvoicesToSupabase_v1({ full: true, lookbackDays: 0 });
 }
 
 function runBcIncrementalSync_v1() {
@@ -1793,6 +1927,178 @@ function backfillMagentoCustomersToSupabaseIncremental_v1(sinceIso) {
     uploaded: out.uploaded || 0,
     mode: 'incremental'
   };
+}
+
+function normalizeSalesRepRefName_(value) {
+  var base = normalizeNameAdvanced_(value || '');
+  if (!base) return '';
+  return String(base).replace(/[^a-z0-9]+/g, '');
+}
+
+function normalizeSalesRepRefEmail_(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function looksLikeSalesRepLabelForRef_(value) {
+  var norm = normalizeSalesRepRefName_(value || '');
+  if (!norm) return false;
+  if (norm.indexOf('veftest') !== -1 || norm.indexOf('test') !== -1) return false;
+  return (
+    norm.indexOf('solumadur') !== -1 ||
+    norm.indexOf('salesman') !== -1 ||
+    norm.indexOf('storkaup') !== -1
+  );
+}
+
+function collectSalesRepsRefRows_() {
+  var byName = {};
+  var byEmail = {};
+  var dropped = 0;
+
+  function mergeNotes_(target, sourceTag, noteRaw) {
+    var parts = [];
+    if (target.notes) parts = String(target.notes).split(' | ').filter(function(x) { return x; });
+    if (sourceTag) parts.push(String(sourceTag));
+    if (noteRaw) {
+      var note = String(noteRaw).trim();
+      if (note) parts.push(note);
+    }
+    var seen = {};
+    var unique = [];
+    parts.forEach(function(p) {
+      if (seen[p]) return;
+      seen[p] = true;
+      unique.push(p);
+    });
+    target.notes = unique.join(' | ');
+  }
+
+  function addRef_(nameRaw, emailRaw, sourceTag, noteRaw) {
+    var nameNorm = normalizeSalesRepRefName_(nameRaw || '');
+    var emailNorm = normalizeSalesRepRefEmail_(emailRaw || '');
+    if (!nameNorm && !emailNorm) return;
+
+    var rec = null;
+    if (nameNorm && byName[nameNorm]) rec = byName[nameNorm];
+    if (!rec && emailNorm && byEmail[emailNorm]) rec = byEmail[emailNorm];
+
+    if (!rec) {
+      rec = {
+        name_norm: nameNorm,
+        email_norm: emailNorm,
+        active: true,
+        notes: ''
+      };
+    } else {
+      if (!rec.name_norm && nameNorm) rec.name_norm = nameNorm;
+      if (!rec.email_norm && emailNorm) rec.email_norm = emailNorm;
+      if (rec.name_norm && nameNorm && rec.name_norm !== nameNorm) dropped += 1;
+      if (rec.email_norm && emailNorm && rec.email_norm !== emailNorm) dropped += 1;
+    }
+
+    mergeNotes_(rec, sourceTag, noteRaw);
+
+    if (rec.name_norm) byName[rec.name_norm] = rec;
+    if (rec.email_norm) byEmail[rec.email_norm] = rec;
+  }
+
+  var customerRows = loadTableBySchema_('CUSTOMERS') || [];
+  customerRows.forEach(function(r) {
+    if (!(looksLikeSalesRepLabelForRef_(r.ROLE) || looksLikeSalesRepLabelForRef_(r.NAME))) return;
+    addRef_(r.NAME || '', r.REAL_EMAIL || r.EMAIL || '', 'CUSTOMERS', r.ROLE || '');
+  });
+
+  var webRows = loadTableBySchema_('NEWWEB') || [];
+  webRows.forEach(function(r) {
+    if (!looksLikeSalesRepLabelForRef_(r.CUSTOMER_NAME)) return;
+    addRef_(r.CUSTOMER_NAME || '', r.REAL_EMAIL || '', 'NEWWEB', '');
+  });
+
+  var out = [];
+  var seen = {};
+  Object.keys(byName).forEach(function(k) {
+    var rec = byName[k];
+    if (!rec) return;
+    var key = (rec.name_norm || '') + '|' + (rec.email_norm || '');
+    if (seen[key]) return;
+    seen[key] = true;
+    out.push(rec);
+  });
+  Object.keys(byEmail).forEach(function(k) {
+    var rec = byEmail[k];
+    if (!rec) return;
+    var key = (rec.name_norm || '') + '|' + (rec.email_norm || '');
+    if (seen[key]) return;
+    seen[key] = true;
+    out.push(rec);
+  });
+
+  Logger.log('[SALES_REPS_REF][INFO] Candidates=' + out.length + ' dropped_conflicts=' + dropped);
+  return out;
+}
+
+function replaceSalesRepsRefInSupabase_(rows) {
+  var conf = getSupabaseRestConfig_();
+  var endpointBase = conf.baseUrl + '/sales_reps_ref';
+
+  var delRes = UrlFetchApp.fetch(endpointBase + '?id=gt.0', {
+    method: 'delete',
+    headers: {
+      apikey: conf.serviceRole,
+      Authorization: 'Bearer ' + conf.serviceRole,
+      'Content-Profile': 'raw',
+      'Accept-Profile': 'raw',
+      Prefer: 'return=minimal'
+    },
+    muteHttpExceptions: true
+  });
+  var delCode = delRes.getResponseCode();
+  if (delCode < 200 || delCode >= 300) {
+    throw new Error('sales_reps_ref delete failed: ' + delCode + ' ' + delRes.getContentText());
+  }
+
+  if (!rows || !rows.length) return { uploaded: 0, replaced: true };
+
+  var uploaded = 0;
+  var chunkSize = 500;
+  for (var i = 0; i < rows.length; i += chunkSize) {
+    var chunk = rows.slice(i, i + chunkSize);
+    var insRes = UrlFetchApp.fetch(endpointBase, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw',
+        'Accept-Profile': 'raw',
+        Prefer: 'return=minimal'
+      },
+      payload: JSON.stringify(chunk),
+      muteHttpExceptions: true
+    });
+    var insCode = insRes.getResponseCode();
+    if (insCode < 200 || insCode >= 300) {
+      throw new Error('sales_reps_ref insert failed: ' + insCode + ' ' + insRes.getContentText());
+    }
+    uploaded += chunk.length;
+  }
+
+  return { uploaded: uploaded, replaced: true };
+}
+
+function syncSalesRepsRefToSupabase_v1() {
+  var refs = collectSalesRepsRefRows_();
+  var out = replaceSalesRepsRefInSupabase_(refs);
+  Logger.log('[SALES_REPS_REF][INFO] Sync completed. Uploaded: ' + out.uploaded);
+  return {
+    totalCandidates: refs.length,
+    uploaded: out.uploaded || 0,
+    replaced: !!out.replaced
+  };
+}
+
+function backfillSalesRepsRefToSupabase_v1() {
+  return syncSalesRepsRefToSupabase_v1();
 }
 
 /************************************************************
@@ -2604,6 +2910,7 @@ function scheduledReferenceSync_v1() {
     previousMagentoSyncIso: previousMagentoSyncIso || '',
     magentoSync: 'skipped',
     magentoBackfill: null,
+    salesRepsSync: null,
     cludoSync: 'skipped',
     productsBackfill: null,
     customerAnalysisBackfill: null,
@@ -2642,6 +2949,14 @@ function scheduledReferenceSync_v1() {
       );
     }
 
+    if (typeof syncSalesRepsRefToSupabase_v1 === 'function') {
+      result.salesRepsSync = runWithRetries_(
+        'syncSalesRepsRefToSupabase_v1',
+        function() { return syncSalesRepsRefToSupabase_v1(); },
+        { attempts: 2, delayMs: 7000 }
+      );
+    }
+
     if (typeof runCludoFullSync === 'function') {
       runWithRetries_('runCludoFullSync', function() { runCludoFullSync(); }, { attempts: 2, delayMs: 7000 });
       result.cludoSync = 'ok';
@@ -2672,6 +2987,7 @@ function scheduledReferenceSync_v1() {
 
     var rowsProcessed =
       toNum_(result.magentoBackfill && result.magentoBackfill.uploaded) +
+      toNum_(result.salesRepsSync && result.salesRepsSync.uploaded) +
       toNum_(result.productsBackfill && result.productsBackfill.uploaded) +
       toNum_(result.customerAnalysisBackfill && result.customerAnalysisBackfill.uploaded);
 
@@ -2695,6 +3011,7 @@ function scheduledReferenceSync_v1() {
 
     var rowsProcessedErr =
       toNum_(result.magentoBackfill && result.magentoBackfill.uploaded) +
+      toNum_(result.salesRepsSync && result.salesRepsSync.uploaded) +
       toNum_(result.productsBackfill && result.productsBackfill.uploaded) +
       toNum_(result.customerAnalysisBackfill && result.customerAnalysisBackfill.uploaded);
 
@@ -2752,6 +3069,7 @@ function scheduledMagentoSync_v1() {
     previousMagentoSyncIso: previousMagentoSyncIso || '',
     magentoSync: 'skipped',
     magentoBackfill: null,
+    salesRepsSync: null,
     finishedAt: null
   };
 
@@ -2784,6 +3102,10 @@ function scheduledMagentoSync_v1() {
       result.magentoBackfill = backfillMagentoCustomersToSupabase_v1();
     }
 
+    if (typeof syncSalesRepsRefToSupabase_v1 === 'function') {
+      result.salesRepsSync = syncSalesRepsRefToSupabase_v1();
+    }
+
     result.finishedAt = new Date().toISOString();
 
     if (runId) {
@@ -2791,7 +3113,8 @@ function scheduledMagentoSync_v1() {
         finishIngestionRun_(
           runId,
           'success',
-          toNum_(result.magentoBackfill && result.magentoBackfill.uploaded),
+          toNum_(result.magentoBackfill && result.magentoBackfill.uploaded) +
+            toNum_(result.salesRepsSync && result.salesRepsSync.uploaded),
           result,
           null
         );
@@ -2815,7 +3138,8 @@ function scheduledMagentoSync_v1() {
         finishIngestionRun_(
           runId,
           'error',
-          toNum_(result.magentoBackfill && result.magentoBackfill.uploaded),
+          toNum_(result.magentoBackfill && result.magentoBackfill.uploaded) +
+            toNum_(result.salesRepsSync && result.salesRepsSync.uploaded),
           result,
           result.error.message
         );
@@ -3532,6 +3856,7 @@ function scheduledBcSync_v1() {
 
     var rowsProcessed =
       toNum_(result.bcSync && result.bcSync.invoices && result.bcSync.invoices.uploaded) +
+      toNum_(result.bcSync && result.bcSync.creditInvoices && result.bcSync.creditInvoices.uploaded) +
       toNum_(result.bcSync && result.bcSync.lines && result.bcSync.lines.uploaded) +
       toNum_(result.bcSync && result.bcSync.customers && result.bcSync.customers.uploaded);
 
@@ -3555,6 +3880,7 @@ function scheduledBcSync_v1() {
 
     var rowsProcessedErr =
       toNum_(result.bcSync && result.bcSync.invoices && result.bcSync.invoices.uploaded) +
+      toNum_(result.bcSync && result.bcSync.creditInvoices && result.bcSync.creditInvoices.uploaded) +
       toNum_(result.bcSync && result.bcSync.lines && result.bcSync.lines.uploaded) +
       toNum_(result.bcSync && result.bcSync.customers && result.bcSync.customers.uploaded);
 
@@ -3613,3 +3939,4 @@ function removeScheduledBcSyncTrigger_v1() {
   Logger.log('[BCSYNC][INFO] Removed ' + triggers.length + ' trigger(s) for ' + fn);
   return { removed: triggers.length };
 }
+
