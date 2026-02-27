@@ -13,8 +13,8 @@
 
 | ID | Task | Owner | Status | Acceptance Check |
 |---|---|---|---|---|
-| P2-1 | Move parent/child customer ID logic into Supabase SQL layer (not just frontend) | Olafur | Todo | Same customer totals regardless of child vs parent ID lookup |
-| P2-2 | Update `api.get_customer_last_orders` to support family IDs directly | Olafur | Todo | "Last web orders" and "Last BC orders" populate correctly for child IDs |
+| P2-1 | Move parent/child customer ID logic into Supabase SQL layer (not just frontend) | Olafur | In progress | `api.resolve_customer_family_ids` added and reused by profile RPCs; extend to profile totals endpoints |
+| P2-2 | Update `api.get_customer_last_orders` to support family IDs directly | Olafur | Done | `api.get_customer_last_orders` now resolves family IDs in SQL; child/parent parity verified in Supabase and Webflow |
 | P2-3 | Add daily data sanity check query (BC vs web share, ingestion row counts) | Olafur | In progress | `runDailySanityChecks_v1` implemented in GAS; add trigger + observe alerts/logs for 7 days |
 
 ## Priority 3 - Performance
