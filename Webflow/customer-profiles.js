@@ -526,6 +526,20 @@
         return res.json();
     }
 
+    async function fetchFamilyProfileSummary(customerId) {
+        var res = await fetch(URL + "/rest/v1/rpc/get_customer_profile_family_summary", {
+            method: "POST",
+            headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+            body: JSON.stringify({
+                p_customer_id: String(customerId || "").trim()
+            })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        var rows = await res.json();
+        if (!Array.isArray(rows) || !rows.length) return null;
+        return rows[0] || null;
+    }
+
     function renderLastOrderRows(list, proto, rows) {
         if (!list || !proto) return;
         list.innerHTML = "";
@@ -783,6 +797,22 @@
                 var id = open.getAttribute("data-customer-id");
                 var selectedRaw = state.customers.find(function(c) { return String(c.customer_id) === String(id); }) || null;
                 state.selected = buildSelectedProfile(selectedRaw, state.customers);
+
+                try {
+                    var familySummary = await fetchFamilyProfileSummary(selectedRaw && selectedRaw.customer_id);
+                    if (familySummary) {
+                        state.selected = Object.assign({}, state.selected || {}, familySummary, {
+                            _queryCustomerId: String(
+                                (state.selected && state.selected._queryCustomerId) ||
+                                (selectedRaw && selectedRaw.customer_id) ||
+                                (familySummary && familySummary.customer_id) ||
+                                ""
+                            ).trim()
+                        });
+                    }
+                } catch (familyErr) {
+                    console.error(familyErr);
+                }
 
                 bindSelected(root);
                 setProfileVisible(root, !!state.selected);
