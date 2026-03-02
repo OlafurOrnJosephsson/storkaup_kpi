@@ -5,6 +5,7 @@ create schema if not exists api;
 create schema if not exists raw;
 
 create table if not exists raw.customer_priority_flags_raw (
+  -- Legacy column name kept for compatibility; value stores normalized exact customer key.
   customer_family_id text primary key,
   customer_id text null,
   customer_name text null,
@@ -61,7 +62,7 @@ as $function$
 declare
   v_raw text := trim(coalesce(p_customer_id, ''));
   v_norm text := regexp_replace(v_raw, '\D', '', 'g');
-  v_family text;
+  v_key text;
   v_status text := lower(trim(coalesce(p_status, '')));
 begin
   if v_raw = '' then
@@ -69,15 +70,15 @@ begin
   end if;
 
   if v_norm <> '' then
-    v_family := case when length(v_norm) > 10 then left(v_norm, 10) else v_norm end;
+    v_key := v_norm;
   else
-    v_family := v_raw;
+    v_key := lower(v_raw);
   end if;
 
   if v_status = '' then
     delete from raw.customer_priority_flags_raw
-    where customer_family_id = v_family;
-    return jsonb_build_object('ok', true, 'deleted', true, 'customer_family_id', v_family);
+    where customer_family_id = v_key;
+    return jsonb_build_object('ok', true, 'deleted', true, 'customer_family_id', v_key);
   end if;
 
   if v_status not in ('priority', 'nonpriority') then
@@ -94,7 +95,7 @@ begin
     note,
     updated_at
   ) values (
-    v_family,
+    v_key,
     nullif(v_raw, ''),
     nullif(trim(coalesce(p_customer_name, '')), ''),
     v_status,
@@ -114,12 +115,12 @@ begin
 
   return jsonb_build_object(
     'ok', true,
-    'customer_family_id', v_family,
+    'customer_family_id', v_key,
     'status', v_status,
     'assigned_rep_name_norm', (
       select f.assigned_rep_name_norm
       from raw.customer_priority_flags_raw f
-      where f.customer_family_id = v_family
+      where f.customer_family_id = v_key
       limit 1
     )
   );
@@ -138,7 +139,7 @@ as $function$
 declare
   v_raw text := trim(coalesce(p_customer_id, ''));
   v_norm text := regexp_replace(v_raw, '\D', '', 'g');
-  v_family text;
+  v_key text;
   v_rep text := lower(trim(coalesce(p_assigned_rep_name_norm, '')));
 begin
   if v_raw = '' then
@@ -146,13 +147,13 @@ begin
   end if;
 
   if v_norm <> '' then
-    v_family := case when length(v_norm) > 10 then left(v_norm, 10) else v_norm end;
+    v_key := v_norm;
   else
-    v_family := v_raw;
+    v_key := lower(v_raw);
   end if;
 
-  if not exists (select 1 from raw.customer_priority_flags_raw f where f.customer_family_id = v_family) then
-    raise exception 'customer flag row not found for customer_family_id=%', v_family;
+  if not exists (select 1 from raw.customer_priority_flags_raw f where f.customer_family_id = v_key) then
+    raise exception 'customer flag row not found for customer_family_id=%', v_key;
   end if;
 
   if v_rep <> '' and not exists (
@@ -169,11 +170,11 @@ begin
     assigned_rep_name_norm = nullif(v_rep, ''),
     assigned_rep_updated_at = now(),
     updated_at = now()
-  where f.customer_family_id = v_family;
+  where f.customer_family_id = v_key;
 
   return jsonb_build_object(
     'ok', true,
-    'customer_family_id', v_family,
+    'customer_family_id', v_key,
     'assigned_rep_name_norm', nullif(v_rep, '')
   );
 end;
@@ -198,6 +199,84 @@ as $function$
   order by 1;
 $function$;
 
+create or replace function api.bulk_set_customer_priority_flags(
+  p_customer_ids text[],
+  p_status text default 'priority',
+  p_note text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'api', 'raw', 'public'
+as $function$
+declare
+  v_status text := lower(trim(coalesce(p_status, 'priority')));
+  v_note text := nullif(trim(coalesce(p_note, '')), '');
+  v_raw text;
+  v_norm text;
+  v_key text;
+  v_total integer := 0;
+  v_inserted integer := 0;
+begin
+  if p_customer_ids is null or array_length(p_customer_ids, 1) is null then
+    return jsonb_build_object('ok', true, 'total', 0, 'upserted', 0, 'status', v_status);
+  end if;
+
+  if v_status not in ('priority', 'nonpriority') then
+    raise exception 'p_status must be priority or nonpriority';
+  end if;
+
+  foreach v_raw in array p_customer_ids loop
+    v_raw := trim(coalesce(v_raw, ''));
+    if v_raw = '' then
+      continue;
+    end if;
+
+    v_norm := regexp_replace(v_raw, '\D', '', 'g');
+    if v_norm <> '' then
+      v_key := v_norm;
+    else
+      v_key := lower(v_raw);
+    end if;
+
+    insert into raw.customer_priority_flags_raw (
+      customer_family_id,
+      customer_id,
+      customer_name,
+      status,
+      assigned_rep_name_norm,
+      assigned_rep_updated_at,
+      note,
+      updated_at
+    ) values (
+      v_key,
+      nullif(v_raw, ''),
+      null,
+      v_status,
+      null,
+      null,
+      v_note,
+      now()
+    )
+    on conflict (customer_family_id) do update set
+      customer_id = excluded.customer_id,
+      status = excluded.status,
+      note = coalesce(excluded.note, raw.customer_priority_flags_raw.note),
+      updated_at = now();
+
+    v_total := v_total + 1;
+    v_inserted := v_inserted + 1;
+  end loop;
+
+  return jsonb_build_object(
+    'ok', true,
+    'total', v_total,
+    'upserted', v_inserted,
+    'status', v_status
+  );
+end;
+$function$;
+
 grant select on table raw.customer_priority_flags_raw to authenticated, anon;
 grant all privileges on table raw.customer_priority_flags_raw to service_role;
 
@@ -205,3 +284,4 @@ grant execute on function api.get_customer_priority_flags() to authenticated, an
 grant execute on function api.set_customer_priority_flag(text, text, text, text) to authenticated, anon, service_role;
 grant execute on function api.assign_customer_priority_rep(text, text) to authenticated, anon, service_role;
 grant execute on function api.get_active_sales_reps() to authenticated, anon, service_role;
+grant execute on function api.bulk_set_customer_priority_flags(text[], text, text) to authenticated, anon, service_role;

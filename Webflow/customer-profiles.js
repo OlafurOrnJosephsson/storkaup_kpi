@@ -93,6 +93,13 @@
         return n.length > 10 ? n.slice(0, 10) : n;
     }
 
+    function priorityKeyFromCustomerId(value) {
+        var raw = String(value || "").trim();
+        if (!raw) return "";
+        var norm = raw.replace(/\D/g, "");
+        return norm || raw.toLowerCase();
+    }
+
     function avgPositive(rows, field) {
         var sum = 0;
         var count = 0;
@@ -111,12 +118,14 @@
         var out = Object.assign({}, selected);
         var fam = customerFamilyId(selected.customer_id);
         var scope = String(profileScope || "family").toLowerCase();
+        out._priorityTargetCustomerId = String(selected.customer_id || "").trim();
 
         if (scope === "child") {
             out._queryCustomerId = String(selected.customer_id || "").trim();
             out.customer_family_id = fam;
             if (!out.manual_priority_status) {
-                var fchild = fam ? state.priorityFlagsByFamily[fam] : null;
+                var keyChild = priorityKeyFromCustomerId(selected.customer_id);
+                var fchild = keyChild ? state.priorityFlagsByFamily[keyChild] : null;
                 if (fchild) {
                     out.manual_priority_status = fchild.status || "";
                     out.assigned_rep_name_norm = fchild.assigned_rep_name_norm || "";
@@ -164,7 +173,8 @@
         out._queryCustomerId = String((parent && parent.customer_id) || selected.customer_id || "").trim();
         out.customer_family_id = fam;
         if (!out.manual_priority_status) {
-            var f = state.priorityFlagsByFamily[fam];
+            var keySel = priorityKeyFromCustomerId(selected.customer_id);
+            var f = keySel ? state.priorityFlagsByFamily[keySel] : null;
             if (f) {
                 out.manual_priority_status = f.status || "";
                 out.assigned_rep_name_norm = f.assigned_rep_name_norm || "";
@@ -178,6 +188,11 @@
     function getSelectedQueryCustomerId() {
         if (!state.selected) return "";
         return String(state.selected._queryCustomerId || state.selected.customer_id || "").trim();
+    }
+
+    function getSelectedPriorityTargetCustomerId() {
+        if (!state.selected) return "";
+        return String(state.selected._priorityTargetCustomerId || state.selected.customer_id || "").trim();
     }
 
     function setProfileVisible(root, visible) {
@@ -299,7 +314,8 @@
     function applyPriorityFlagsToCustomers_() {
         (state.customers || []).forEach(function(c) {
             var fam = customerFamilyId(c && c.customer_id);
-            var f = fam ? state.priorityFlagsByFamily[fam] : null;
+            var key = priorityKeyFromCustomerId(c && c.customer_id);
+            var f = key ? state.priorityFlagsByFamily[key] : null;
             c.customer_family_id = fam;
             c.manual_priority_status = f ? (f.status || "") : "";
             c.assigned_rep_name_norm = f ? (f.assigned_rep_name_norm || "") : "";
@@ -308,7 +324,8 @@
         });
         if (state.selected && state.selected.customer_id) {
             var sf = customerFamilyId(state.selected.customer_id);
-            var flag = sf ? state.priorityFlagsByFamily[sf] : null;
+            var skey = priorityKeyFromCustomerId(getSelectedPriorityTargetCustomerId());
+            var flag = skey ? state.priorityFlagsByFamily[skey] : null;
             state.selected.customer_family_id = sf;
             state.selected.manual_priority_status = flag ? (flag.status || "") : "";
             state.selected.assigned_rep_name_norm = flag ? (flag.assigned_rep_name_norm || "") : "";
@@ -327,9 +344,9 @@
         var rows = await res.json();
         var map = {};
         (rows || []).forEach(function(r) {
-            var fam = customerFamilyId(r && r.customer_family_id);
-            if (!fam) return;
-            map[fam] = {
+            var key = priorityKeyFromCustomerId((r && r.customer_id) || (r && r.customer_family_id));
+            if (!key) return;
+            map[key] = {
                 status: String(r && r.status || "").toLowerCase(),
                 assigned_rep_name_norm: String(r && r.assigned_rep_name_norm || "").toLowerCase(),
                 updated_at: r && r.updated_at ? r.updated_at : "",
@@ -441,7 +458,7 @@
     async function setSelectedPriorityStatus_(root, status) {
         if (!state.selected) return;
         var payload = {
-            p_customer_id: String(state.selected.customer_id || "").trim(),
+            p_customer_id: getSelectedPriorityTargetCustomerId(),
             p_status: String(status || "").trim().toLowerCase(),
             p_customer_name: state.selected.customer_name || null,
             p_note: null
@@ -465,7 +482,7 @@
     async function assignSelectedRep_(root, repNameNorm) {
         if (!state.selected) return;
         var payload = {
-            p_customer_id: String(state.selected.customer_id || "").trim(),
+            p_customer_id: getSelectedPriorityTargetCustomerId(),
             p_assigned_rep_name_norm: String(repNameNorm || "").trim().toLowerCase()
         };
         var res = await fetch(URL + "/rest/v1/rpc/assign_customer_priority_rep", {

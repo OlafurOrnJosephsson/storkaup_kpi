@@ -2512,6 +2512,31 @@ function callSupabaseRpc_(rpcName, payloadObj) {
   return body;
 }
 
+function bulkSetCustomerPriorityFlagsInSupabase_v1(customerIds, status, note) {
+  var ids = [];
+  if (Array.isArray(customerIds)) {
+    ids = customerIds;
+  } else if (customerIds !== null && customerIds !== undefined) {
+    ids = String(customerIds).split(/[\s,;\n\r\t]+/);
+  }
+
+  var clean = ids.map(function(x) {
+    return String(x || '').trim();
+  }).filter(function(x) { return !!x; });
+
+  var payload = {
+    p_customer_ids: clean,
+    p_status: String(status || 'priority').trim().toLowerCase(),
+    p_note: note == null ? null : String(note)
+  };
+
+  var raw = callSupabaseRpc_('bulk_set_customer_priority_flags', payload);
+  var parsed = safeJsonParse_(raw);
+  var out = (parsed && typeof parsed === 'object') ? parsed : { ok: true };
+  Logger.log('[PRIORITY_FLAGS][INFO] bulkSetCustomerPriorityFlagsInSupabase_v1 result: ' + JSON.stringify(out));
+  return out;
+}
+
 function supabaseRestGetJson_(pathWithQuery, profile) {
   var conf = getSupabaseRestConfig_();
   var path = String(pathWithQuery || '').replace(/^\/+/, '');
