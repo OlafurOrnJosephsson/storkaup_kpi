@@ -2530,11 +2530,138 @@ function bulkSetCustomerPriorityFlagsInSupabase_v1(customerIds, status, note) {
     p_note: note == null ? null : String(note)
   };
 
-  var raw = callSupabaseRpc_('bulk_set_customer_priority_flags', payload);
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/rpc/bulk_set_customer_priority_flags';
+  var res = UrlFetchApp.fetch(endpoint, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      apikey: conf.serviceRole,
+      Authorization: 'Bearer ' + conf.serviceRole,
+      'Content-Profile': 'api',
+      'Accept-Profile': 'api'
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  var code = res.getResponseCode();
+  var raw = res.getContentText();
+  if (code < 200 || code >= 300) {
+    throw new Error('RPC bulk_set_customer_priority_flags failed: ' + code + ' ' + raw);
+  }
+
   var parsed = safeJsonParse_(raw);
   var out = (parsed && typeof parsed === 'object') ? parsed : { ok: true };
   Logger.log('[PRIORITY_FLAGS][INFO] bulkSetCustomerPriorityFlagsInSupabase_v1 result: ' + JSON.stringify(out));
   return out;
+}
+
+function clearAllCustomerPriorityFlagsRawInSupabase_() {
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/customer_priority_flags_raw?customer_family_id=neq.__none__';
+  var res = UrlFetchApp.fetch(endpoint, {
+    method: 'delete',
+    headers: {
+      apikey: conf.serviceRole,
+      Authorization: 'Bearer ' + conf.serviceRole,
+      'Content-Profile': 'raw',
+      'Accept-Profile': 'raw',
+      Prefer: 'return=minimal'
+    },
+    muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error('clear customer_priority_flags_raw failed: ' + code + ' ' + res.getContentText());
+  }
+  return true;
+}
+
+function readPriorityImportSheetRows_(sheetName) {
+  var cfg = loadConfig_();
+  var bcBinding = cfg && cfg.SHEETS ? cfg.SHEETS.BC_INVOICES : null;
+  if (!bcBinding || !bcBinding.ID) {
+    throw new Error('CONFIG ERROR: missing SHEET_IDS.BC_INVOICES');
+  }
+
+  var ss = SpreadsheetApp.openById(bcBinding.ID);
+  var sh = ss.getSheetByName(String(sheetName || 'PRIORITY_IMPORT'));
+  if (!sh) {
+    throw new Error('Sheet not found: ' + String(sheetName || 'PRIORITY_IMPORT'));
+  }
+
+  var values = sh.getDataRange().getValues();
+  if (!values || values.length < 2) return [];
+
+  var header = values[0].map(function(h) { return String(h || '').trim(); });
+  var idxByNorm = {};
+  for (var i = 0; i < header.length; i++) {
+    var n = normalizeHeaderKeyLocal_(header[i]);
+    if (n && !(n in idxByNorm)) idxByNorm[n] = i;
+  }
+
+  function getIdx_(names) {
+    for (var k = 0; k < names.length; k++) {
+      var n = normalizeHeaderKeyLocal_(names[k]);
+      if (n in idxByNorm) return idxByNorm[n];
+    }
+    return -1;
+  }
+
+  var idIdx = getIdx_(['customer_id', 'customerid', 'kt', 'kennitala']);
+  var nameIdx = getIdx_(['customer_name', 'customername', 'name', 'nafn']);
+  if (idIdx < 0) {
+    throw new Error('PRIORITY_IMPORT requires customer_id (or kt/kennitala) column');
+  }
+
+  var out = [];
+  for (var r = 1; r < values.length; r++) {
+    var row = values[r];
+    var rawId = String(row[idIdx] || '').trim();
+    if (!rawId) continue;
+    var rawName = nameIdx >= 0 ? String(row[nameIdx] || '').trim() : '';
+    out.push({ customer_id: rawId, customer_name: rawName });
+  }
+  return out;
+}
+
+function importPriorityFlagsFromSheet_v1(options) {
+  var opts = options || {};
+  var sheetName = String(opts.sheetName || 'PRIORITY_IMPORT');
+  var status = String(opts.status || 'priority').trim().toLowerCase();
+  var replaceAll = opts.replaceAll !== false;
+  var note = opts.note == null ? null : String(opts.note);
+  var chunkSize = Math.max(100, Number(opts.chunkSize || 1000));
+
+  var rows = readPriorityImportSheetRows_(sheetName);
+  var ids = rows.map(function(r) { return String(r.customer_id || '').trim(); }).filter(function(x) { return !!x; });
+  if (!ids.length) {
+    Logger.log('[PRIORITY_FLAGS][INFO] importPriorityFlagsFromSheet_v1: no ids found.');
+    return { ok: true, sheetName: sheetName, replaceAll: replaceAll, totalRows: 0, upserted: 0 };
+  }
+
+  if (replaceAll) {
+    clearAllCustomerPriorityFlagsRawInSupabase_();
+  }
+
+  var upserted = 0;
+  for (var i = 0; i < ids.length; i += chunkSize) {
+    var chunk = ids.slice(i, i + chunkSize);
+    var out = bulkSetCustomerPriorityFlagsInSupabase_v1(chunk, status, note);
+    upserted += Number((out && out.upserted) || 0);
+  }
+
+  var result = {
+    ok: true,
+    sheetName: sheetName,
+    replaceAll: replaceAll,
+    status: status,
+    totalRows: ids.length,
+    upserted: upserted
+  };
+  Logger.log('[PRIORITY_FLAGS][INFO] importPriorityFlagsFromSheet_v1: ' + JSON.stringify(result));
+  return result;
 }
 
 function supabaseRestGetJson_(pathWithQuery, profile) {
