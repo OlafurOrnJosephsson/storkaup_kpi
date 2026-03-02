@@ -12,6 +12,8 @@
   }
 
   var PERIOD_TO_DAYS = { "7d": 7, "30d": 30, "90d": 90, "all": 3650 };
+  var CACHE_TTL_MS = 45000;
+  var RESPONSE_CACHE = new Map();
 
   function fmtInt(v) {
     return Number(v || 0).toLocaleString("is-IS", { maximumFractionDigits: 0 });
@@ -42,6 +44,21 @@
     var res = await fetch(URL + path, opts || {});
     if (!res.ok) throw new Error("HTTP " + res.status + " " + await res.text());
     return res.json();
+  }
+
+  function cacheGet(key) {
+    var hit = RESPONSE_CACHE.get(key);
+    if (!hit) return null;
+    if (Date.now() - hit.ts > CACHE_TTL_MS) {
+      RESPONSE_CACHE.delete(key);
+      return null;
+    }
+    return hit.value;
+  }
+
+  function cacheSet(key, value) {
+    RESPONSE_CACHE.set(key, { ts: Date.now(), value: value });
+    return value;
   }
 
   function setActive(groupRoot, selector, attrName, value) {
@@ -93,7 +110,7 @@
     return { product_name: row.product_name, sku: row.sku, orders: totalOrders, revenue_excl: totalRev };
   }
 
-  async function getTopProductsByPeriod(period, limit, source) {
+  async function getTopProductsByPeriod(period, limit, source, signal) {
     var orderCol = "total_revenue_excl";
     if (source === "web") orderCol = "web_revenue_excl";
     if (source === "bc") orderCol = "bc_revenue_excl";
@@ -105,7 +122,7 @@
       "&order=" + encodeURIComponent(orderCol) + ".desc&limit=" + Number(limit);
 
     try {
-      return await fetchJson(q, { headers: headers("api"), cache: "no-store" });
+      return await fetchJson(q, { headers: headers("api"), cache: "no-store", signal: signal });
     } catch (err) {
       // Backward-compatible fallback for older schema where "all" may only exist in v_top_products_all.
       if (period !== "all" || source !== "combined") throw err;
@@ -113,18 +130,19 @@
         "/rest/v1/v_top_products_all" +
         "?select=sku,product_name,total_orders,total_revenue_excl" +
         "&order=total_revenue_excl.desc&limit=" + Number(limit);
-      return fetchJson(qall, { headers: headers("api"), cache: "no-store" });
+      return fetchJson(qall, { headers: headers("api"), cache: "no-store", signal: signal });
     }
   }
 
-  async function getTopProductsByDays(daysBack, limit) {
+  async function getTopProductsByDays(daysBack, limit, signal) {
     return fetchJson("/rest/v1/rpc/top_products_by_days", {
       method: "POST",
       headers: Object.assign({ "Content-Type": "application/json" }, headers()),
       body: JSON.stringify({
         days_back: Number(daysBack),
         row_limit: Number(limit)
-      })
+      }),
+      signal: signal
     });
   }
 
@@ -160,33 +178,59 @@
     return map;
   }
 
+  function getModuleRuntime_(moduleEl) {
+    if (!moduleEl.__tpRuntime) {
+      moduleEl.__tpRuntime = {
+        productsSeq: 0,
+        categoriesSeq: 0,
+        productsAbort: null,
+        categoriesAbort: null
+      };
+    }
+    return moduleEl.__tpRuntime;
+  }
+
+  function setModuleError_(moduleEl, kind, msg) {
+    var el = moduleEl.querySelector('[data-bind="' + kind + '-error"]');
+    if (!el) return;
+    el.textContent = msg ? String(msg) : "";
+    el.style.display = msg ? "" : "none";
+  }
+
+  function clearModuleError_(moduleEl, kind) {
+    setModuleError_(moduleEl, kind, "");
+  }
+
+  function isAbortError_(err) {
+    if (!err) return false;
+    return err.name === "AbortError" || String(err.message || "").toLowerCase().indexOf("abort") !== -1;
+  }
+
   async function loadProducts(moduleEl, mode) {
+    var rt = getModuleRuntime_(moduleEl);
+    rt.productsSeq += 1;
+    var seq = rt.productsSeq;
+    if (rt.productsAbort) {
+      try { rt.productsAbort.abort(); } catch (_) {}
+    }
+    rt.productsAbort = new AbortController();
+    var signal = rt.productsAbort.signal;
+
     var limit = Number(moduleEl.getAttribute("data-limit") || 30);
     var source = moduleEl.getAttribute("data-source") || "combined";
     var rows = [];
+    clearModuleError_(moduleEl, "products");
 
-    if (mode && mode.kind === "days") {
-      rows = await getTopProductsByDays(mode.value, limit);
-      rows = rows.map(function (r) {
-        return {
-          product_name: r.product_name,
-          sku: r.sku,
-          orders: r.orders ?? r.total_orders ?? 0,
-          revenue_excl: r.revenue_excl ?? r.total_revenue_excl ?? 0
-        };
-      });
-    } else {
-      var period = (mode && mode.value) || (moduleEl.getAttribute("data-period") || "30d");
-
-      try {
-        rows = await getTopProductsByPeriod(period, limit, source);
-        rows = rows.map(function (r) {
-          return pickSourceRow(r, source);
-        });
-      } catch (err) {
-        // fallback for heavy view timeouts
-        var days = PERIOD_TO_DAYS[period] || 30;
-        rows = await getTopProductsByDays(days, limit);
+    try {
+      var cacheKey =
+        "products|" + source + "|" +
+        ((mode && mode.kind) || "period") + "|" +
+        ((mode && mode.value) || moduleEl.getAttribute("data-period") || "30d") + "|" + limit;
+      var cached = cacheGet(cacheKey);
+      if (cached) {
+        rows = cached;
+      } else if (mode && mode.kind === "days") {
+        rows = await getTopProductsByDays(mode.value, limit, signal);
         rows = rows.map(function (r) {
           return {
             product_name: r.product_name,
@@ -195,94 +239,155 @@
             revenue_excl: r.revenue_excl ?? r.total_revenue_excl ?? 0
           };
         });
+        cacheSet(cacheKey, rows);
+      } else {
+        var period = (mode && mode.value) || (moduleEl.getAttribute("data-period") || "30d");
+
+        try {
+          rows = await getTopProductsByPeriod(period, limit, source, signal);
+          rows = rows.map(function (r) {
+            return pickSourceRow(r, source);
+          });
+          cacheSet(cacheKey, rows);
+        } catch (err) {
+          if (isAbortError_(err)) return;
+          // fallback for heavy view timeouts
+          var days = PERIOD_TO_DAYS[period] || 30;
+          rows = await getTopProductsByDays(days, limit, signal);
+          rows = rows.map(function (r) {
+            return {
+              product_name: r.product_name,
+              sku: r.sku,
+              orders: r.orders ?? r.total_orders ?? 0,
+              revenue_excl: r.revenue_excl ?? r.total_revenue_excl ?? 0
+            };
+          });
+          cacheSet(cacheKey, rows);
+        }
       }
-    }
 
-    rows.sort(function (a, b) {
-      var ra = Number(a && a.revenue_excl || 0);
-      var rb = Number(b && b.revenue_excl || 0);
-      if (rb !== ra) return rb - ra;
-      var oa = Number(a && a.orders || 0);
-      var ob = Number(b && b.orders || 0);
-      return ob - oa;
-    });
+      if (seq !== rt.productsSeq) return;
 
-    try {
-      var skuNameMap = await fetchCanonicalProductNamesBySkus(rows.map(function (r) { return r && r.sku; }));
-      rows = rows.map(function (r) {
-        var sku = String(r && r.sku || "").trim();
-        var base = normalizeSkuForLookup(sku);
-        var canonical = skuNameMap[sku] || skuNameMap[base] || "";
-        if (!canonical) return r;
-        return Object.assign({}, r, { product_name: canonical });
+      rows.sort(function (a, b) {
+        var ra = Number(a && a.revenue_excl || 0);
+        var rb = Number(b && b.revenue_excl || 0);
+        if (rb !== ra) return rb - ra;
+        var oa = Number(a && a.orders || 0);
+        var ob = Number(b && b.orders || 0);
+        return ob - oa;
       });
-    } catch (_) {}
 
-    var protoInfo = resolvePrototype(moduleEl, "product-row", "product-row");
-    renderRows(moduleEl, "products", protoInfo, rows, function (n, row) {
-     var f1 = n.querySelector('[data-field="product_name"]');
-var f2 = n.querySelector('[data-field="sku"]');
-var f3 = n.querySelector('[data-field="orders"]') || n.querySelector('[data-field="total_orders"]');
-var f4 = n.querySelector('[data-field="revenue_excl"]') || n.querySelector('[data-field="total_revenue_excl"]');
+      try {
+        var skuNameMap = await fetchCanonicalProductNamesBySkus(rows.map(function (r) { return r && r.sku; }));
+        rows = rows.map(function (r) {
+          var sku = String(r && r.sku || "").trim();
+          var base = normalizeSkuForLookup(sku);
+          var canonical = skuNameMap[sku] || skuNameMap[base] || "";
+          if (!canonical) return r;
+          return Object.assign({}, r, { product_name: canonical });
+        });
+      } catch (_) {}
 
-if (f1) f1.textContent = row.product_name || "";
-if (f2) f2.textContent = row.sku || "";
-if (f3) f3.textContent = fmtInt(row.orders);
-if (f4) f4.textContent = fmtISK(row.revenue_excl);
+      if (seq !== rt.productsSeq) return;
 
-    });
+      var protoInfo = resolvePrototype(moduleEl, "product-row", "product-row");
+      renderRows(moduleEl, "products", protoInfo, rows, function (n, row) {
+        var f1 = n.querySelector('[data-field="product_name"]');
+        var f2 = n.querySelector('[data-field="sku"]');
+        var f3 = n.querySelector('[data-field="orders"]') || n.querySelector('[data-field="total_orders"]');
+        var f4 = n.querySelector('[data-field="revenue_excl"]') || n.querySelector('[data-field="total_revenue_excl"]');
+
+        if (f1) f1.textContent = row.product_name || "";
+        if (f2) f2.textContent = row.sku || "";
+        if (f3) f3.textContent = fmtInt(row.orders);
+        if (f4) f4.textContent = fmtISK(row.revenue_excl);
+      });
+    } catch (errTop) {
+      if (isAbortError_(errTop)) return;
+      setModuleError_(moduleEl, "products", "Gat ekki hlaðið vinsælustu vörum.");
+      console.error(errTop);
+    }
   }
 
-  async function getTopCategoriesByPeriod(period, limit) {
+  async function getTopCategoriesByPeriod(period, limit, signal) {
     var q =
       "/rest/v1/v_category_master" +
       "?select=category_path,total_orders,total_revenue_excl" +
       "&period=eq." + encodeURIComponent(period) +
       "&order=total_revenue_excl.desc&limit=" + Number(limit);
 
-    return fetchJson(q, { headers: headers("api"), cache: "no-store" });
+    return fetchJson(q, { headers: headers("api"), cache: "no-store", signal: signal });
   }
 
-  async function getTopCategoriesByDays(daysBack, limit) {
+  async function getTopCategoriesByDays(daysBack, limit, signal) {
     return fetchJson("/rest/v1/rpc/top_categories_by_days", {
       method: "POST",
       headers: Object.assign({ "Content-Type": "application/json" }, headers()),
       body: JSON.stringify({
         days_back: Number(daysBack),
         row_limit: Number(limit)
-      })
+      }),
+      signal: signal
     });
   }
 
   async function loadCategories(moduleEl, mode) {
+    var rt = getModuleRuntime_(moduleEl);
+    rt.categoriesSeq += 1;
+    var seq = rt.categoriesSeq;
+    if (rt.categoriesAbort) {
+      try { rt.categoriesAbort.abort(); } catch (_) {}
+    }
+    rt.categoriesAbort = new AbortController();
+    var signal = rt.categoriesAbort.signal;
+
     var limit = Number(moduleEl.getAttribute("data-limit") || 30);
     var rows = [];
+    clearModuleError_(moduleEl, "categories");
 
-    if (mode && mode.kind === "days") {
-      rows = await getTopCategoriesByDays(mode.value, limit);
-    } else {
-      var period = (mode && mode.value) || (moduleEl.getAttribute("data-period") || "30d");
-      try {
-        rows = await getTopCategoriesByPeriod(period, limit);
-      } catch (err) {
+    try {
+      var cacheKey =
+        "categories|" +
+        ((mode && mode.kind) || "period") + "|" +
+        ((mode && mode.value) || moduleEl.getAttribute("data-period") || "30d") + "|" + limit;
+      var cached = cacheGet(cacheKey);
+      if (cached) {
+        rows = cached;
+      } else if (mode && mode.kind === "days") {
+        rows = await getTopCategoriesByDays(mode.value, limit, signal);
+        cacheSet(cacheKey, rows);
+      } else {
+        var period = (mode && mode.value) || (moduleEl.getAttribute("data-period") || "30d");
         var days = PERIOD_TO_DAYS[period] || 30;
-        rows = await getTopCategoriesByDays(days, limit);
+        try {
+          rows = await getTopCategoriesByPeriod(period, limit, signal);
+          cacheSet(cacheKey, rows);
+        } catch (err) {
+          if (isAbortError_(err)) return;
+          rows = await getTopCategoriesByDays(days, limit, signal);
+          cacheSet(cacheKey, rows);
+        }
       }
+      if (seq !== rt.categoriesSeq) return;
+
+      var protoInfo = resolvePrototype(moduleEl, "category-row", "category-row");
+      renderRows(moduleEl, "categories", protoInfo, rows, function (n, row) {
+        var f1 = n.querySelector('[data-field="category_path"]');
+        var f2 = n.querySelector('[data-field="orders"]');
+        var f3 = n.querySelector('[data-field="revenue_excl"]');
+
+        var orders = row.orders ?? row.total_orders ?? 0;
+        var revenue = row.revenue_excl ?? row.total_revenue_excl ?? 0;
+
+        if (f1) f1.textContent = row.category_path || "Unmapped";
+        if (f2) f2.textContent = fmtInt(orders);
+        if (f3) f3.textContent = fmtISK(revenue);
+      });
+    } catch (errTop) {
+      if (isAbortError_(errTop)) return;
+      setModuleError_(moduleEl, "categories", "Gat ekki hlaðið vinsælustu flokkum.");
+      console.error(errTop);
     }
-
-    var protoInfo = resolvePrototype(moduleEl, "category-row", "category-row");
-    renderRows(moduleEl, "categories", protoInfo, rows, function (n, row) {
-      var f1 = n.querySelector('[data-field="category_path"]');
-      var f2 = n.querySelector('[data-field="orders"]');
-      var f3 = n.querySelector('[data-field="revenue_excl"]');
-
-      var orders = row.orders ?? row.total_orders ?? 0;
-      var revenue = row.revenue_excl ?? row.total_revenue_excl ?? 0;
-
-      if (f1) f1.textContent = row.category_path || "Unmapped";
-      if (f2) f2.textContent = fmtInt(orders);
-      if (f3) f3.textContent = fmtISK(revenue);
-    });
   }
 
   function wireProductsModule(moduleEl) {

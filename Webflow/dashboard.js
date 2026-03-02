@@ -118,6 +118,36 @@
     });
   }
 
+  function prettifyMonthLabel(month) {
+    var s = String(month || "").trim();
+    if (!/^\d{4}-\d{2}$/.test(s)) return s;
+    var parts = s.split("-");
+    var y = Number(parts[0]);
+    var m = Number(parts[1]);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return s;
+    var d = new Date(Date.UTC(y, m - 1, 1));
+    try {
+      var txt = new Intl.DateTimeFormat("is-IS", { month: "long", year: "numeric", timeZone: "UTC" }).format(d);
+      return txt.charAt(0).toUpperCase() + txt.slice(1);
+    } catch (_) {
+      return s;
+    }
+  }
+
+  function getMonthItemLabel(month) {
+    var item = document.querySelector('.dashboard-date-item[data-month="' + String(month || "") + '"]');
+    if (!item) return "";
+    var txt = (item.textContent || "").replace(/\s+/g, " ").trim();
+    return txt;
+  }
+
+  function setCurrentMonthLabel(month) {
+    var target = document.querySelector('[data-month="current"]');
+    if (!target) return;
+    var chosen = getMonthItemLabel(month) || prettifyMonthLabel(month) || target.textContent || "";
+    target.textContent = chosen;
+  }
+
   function normalizeRpcPayload(raw) {
     var data = raw;
     if (Array.isArray(data)) data = data[0];
@@ -1057,6 +1087,7 @@
       if (!el) return;
       var month = el.getAttribute("data-month");
       setActiveByMonth(month);
+      setCurrentMonthLabel(month);
       fetchMonth(month);
       if (selectedDay) fetchDay(selectedDay);
     });
@@ -1079,6 +1110,7 @@
     var active = document.querySelector(".dashboard-date-item.active[data-month]");
     var first = document.querySelector(".dashboard-date-item[data-month]");
     var initialMonth = active ? active.getAttribute("data-month") : (first ? first.getAttribute("data-month") : null);
+    setCurrentMonthLabel(initialMonth);
 
     fetchMonth(initialMonth);
     if (selectedDay) fetchDay(selectedDay);
@@ -1090,6 +1122,7 @@
     setInterval(function () {
       var activeNow = document.querySelector(".dashboard-date-item.active[data-month]");
       var month = activeNow ? activeNow.getAttribute("data-month") : initialMonth;
+      setCurrentMonthLabel(month);
       fetchMonth(month);
       if (selectedDay) fetchDay(selectedDay);
       fetchKlaviyoAttributionSummary();
