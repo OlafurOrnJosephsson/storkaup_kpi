@@ -9,6 +9,7 @@
         customers: [],
         filtered: [],
         selected: null,
+        priorityFlagsByFamily: {},
         shoppingRows: [],
         shoppingFiltered: [],
         sortKey: "total_revenue",
@@ -113,6 +114,15 @@
             return normalizeCustomerId(r && r.customer_id) === fam;
         });
         out._queryCustomerId = String((parent && parent.customer_id) || selected.customer_id || "").trim();
+        out.customer_family_id = fam;
+        if (!out.manual_priority_status) {
+            var f = state.priorityFlagsByFamily[fam];
+            if (f) {
+                out.manual_priority_status = f.status || "";
+                out.manual_priority_updated_at = f.updated_at || "";
+                out.manual_priority_note = f.note || "";
+            }
+        }
         return out;
     }
 
@@ -206,6 +216,7 @@
             if (!rows.length) break;
 
             state.customers = state.customers.concat(rows);
+            applyPriorityFlagsToCustomers_();
             sortProfilesByScore(state.customers);
             if (!state.searchTerm) {
                 applyFilters(root, "");
@@ -223,11 +234,82 @@
     function matchesChip(c, chip) {
         if (chip === "none") return false;
         if (chip === "all") return true;
+        if (chip === "priority") return String(c.manual_priority_status || "").toLowerCase() === "priority";
+        if (chip === "nonpriority") return String(c.manual_priority_status || "").toLowerCase() === "nonpriority";
         if (chip === "lhfs_very_high") return String(c.lhfs_label || "").toLowerCase() === "very high";
         if (chip === "no_web_30d") return numOrZero(c.web_orders_30d) === 0;
         if (chip === "revenue_down_30d") return numOrZero(c.bc_revenue_30d) < numOrZero(c.bc_revenue_prev_30d);
         if (chip === "webshop_inactive") return !c.webshop_active;
         return true;
+    }
+
+    function applyPriorityFlagsToCustomers_() {
+        (state.customers || []).forEach(function(c) {
+            var fam = customerFamilyId(c && c.customer_id);
+            var f = fam ? state.priorityFlagsByFamily[fam] : null;
+            c.customer_family_id = fam;
+            c.manual_priority_status = f ? (f.status || "") : "";
+            c.manual_priority_updated_at = f ? (f.updated_at || "") : "";
+            c.manual_priority_note = f ? (f.note || "") : "";
+        });
+        if (state.selected && state.selected.customer_id) {
+            var sf = customerFamilyId(state.selected.customer_id);
+            var flag = sf ? state.priorityFlagsByFamily[sf] : null;
+            state.selected.customer_family_id = sf;
+            state.selected.manual_priority_status = flag ? (flag.status || "") : "";
+            state.selected.manual_priority_updated_at = flag ? (flag.updated_at || "") : "";
+            state.selected.manual_priority_note = flag ? (flag.note || "") : "";
+        }
+    }
+
+    async function fetchPriorityFlags_() {
+        var res = await fetch(URL + "/rest/v1/rpc/get_customer_priority_flags", {
+            method: "POST",
+            headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+            body: JSON.stringify({})
+        });
+        if (!res.ok) throw new Error(await res.text());
+        var rows = await res.json();
+        var map = {};
+        (rows || []).forEach(function(r) {
+            var fam = customerFamilyId(r && r.customer_family_id);
+            if (!fam) return;
+            map[fam] = {
+                status: String(r && r.status || "").toLowerCase(),
+                updated_at: r && r.updated_at ? r.updated_at : "",
+                note: r && r.note ? r.note : ""
+            };
+        });
+        state.priorityFlagsByFamily = map;
+        applyPriorityFlagsToCustomers_();
+    }
+
+    function setPriorityFeedback_(root, msg) {
+        var el = root.querySelector('[data-bind="priority-feedback"]') || root.querySelector('[data-bind="task-feedback"]');
+        if (!el) return;
+        el.textContent = msg || "";
+    }
+
+    async function setSelectedPriorityStatus_(root, status) {
+        if (!state.selected) return;
+        var payload = {
+            p_customer_id: String(state.selected.customer_id || "").trim(),
+            p_status: String(status || "").trim().toLowerCase(),
+            p_customer_name: state.selected.customer_name || null,
+            p_note: null
+        };
+        var res = await fetch(URL + "/rest/v1/rpc/set_customer_priority_flag", {
+            method: "POST",
+            headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        await res.json();
+        await fetchPriorityFlags_();
+        bindSelected(root);
+        var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
+        await applyFilters(root, q);
+        setPriorityFeedback_(root, status === "priority" ? "Merkt sem forgangsviðskiptavinur." : "Merkt sem ekki forgangsviðskiptavinur.");
     }
 
     async function generateList(customerId) {
@@ -298,6 +380,7 @@
             var fgweb = n.querySelector('[data-field="avg_days_between_web_orders"]');
             var fp = n.querySelector('[data-field="lhfs_percentile"]');
             var fl = n.querySelector('[data-field="lhfs_label"]');
+            var fps = n.querySelector('[data-field="manual_priority_status"]');
             var open = n.querySelector('[data-action="open-profile"]') || n;
 
             if (fn) fn.textContent = c.customer_name || "";
@@ -309,6 +392,7 @@
             if (fgweb) fgweb.textContent = c.avg_days_between_web_orders ? fmtInt(c.avg_days_between_web_orders) : "-";
             if (fp) fp.textContent = c.lhfs_percentile != null ? c.lhfs_percentile : "-";
             if (fl) fl.textContent = c.lhfs_label || "-";
+            if (fps) fps.textContent = c.manual_priority_status || "-";
 
             open.setAttribute("data-customer-id", c.customer_id || "");
             frag.appendChild(n);
@@ -350,6 +434,7 @@
             selected_customer_name: p.customer_name || "",
             selected_customer_id: p.customer_id || "",
             selected_recommended_action: p.recommended_action || "",
+            selected_manual_priority_status: p.manual_priority_status || "-",
             selected_low_hanging_fruit_score: fmtInt(p.low_hanging_fruit_score),
             selected_lhfs_percentile: p.lhfs_percentile != null ? p.lhfs_percentile : "-",
             selected_lhfs_label: p.lhfs_label || "-",
@@ -682,6 +767,7 @@
                         seen[k] = true;
                     }
                 });
+                applyPriorityFlagsToCustomers_();
                 sortProfilesByScore(state.customers);
                 out = state.customers.filter(function(c) {
                     if (!matchesChip(c, state.activeChip)) return false;
@@ -718,6 +804,13 @@
             firstPage = await fetchProfilesPage(0, pageSize, useOrder);
         }
         state.customers = firstPage;
+        try {
+            await fetchPriorityFlags_();
+        } catch (flagErr) {
+            console.error("Priority flags fetch failed:", flagErr);
+            state.priorityFlagsByFamily = {};
+            applyPriorityFlagsToCustomers_();
+        }
         sortProfilesByScore(state.customers);
         root.querySelectorAll("[data-chip]").forEach(function(b) {
             var chip = b.getAttribute("data-chip") || "";
@@ -788,6 +881,30 @@
             if (createTask) {
                 e.preventDefault();
                 await createTaskForSelected(root);
+                return;
+            }
+
+            var setPriority = e.target.closest('[data-action="set-priority"]');
+            if (setPriority) {
+                e.preventDefault();
+                try {
+                    await setSelectedPriorityStatus_(root, "priority");
+                } catch (priorityErr) {
+                    console.error(priorityErr);
+                    setPriorityFeedback_(root, "Villa við að vista forgang.");
+                }
+                return;
+            }
+
+            var setNonPriority = e.target.closest('[data-action="set-nonpriority"]');
+            if (setNonPriority) {
+                e.preventDefault();
+                try {
+                    await setSelectedPriorityStatus_(root, "nonpriority");
+                } catch (nonPriorityErr) {
+                    console.error(nonPriorityErr);
+                    setPriorityFeedback_(root, "Villa við að vista stöðu.");
+                }
                 return;
             }
 
