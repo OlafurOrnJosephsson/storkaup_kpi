@@ -64,6 +64,22 @@
         return s;
     }
 
+    function repCanonicalKey_(nameNorm) {
+        var raw = String(nameNorm || "").trim().toLowerCase();
+        if (!raw) return "";
+        var compact = raw.replace(/[^a-z0-9]/g, "");
+        var stripped = compact.replace(/solumadur/g, "").replace(/storkaup/g, "");
+        return stripped || compact;
+    }
+
+    function repChoiceScore_(nameNorm) {
+        var n = String(nameNorm || "").trim().toLowerCase();
+        if (!n) return 99;
+        if (n.indexOf("solumadur") === 0) return 0;
+        if (n.indexOf("storkaup") === 0) return 1;
+        return 2;
+    }
+
     function normalizeCustomerId(value) {
         var raw = String(value || "").trim();
         if (!raw) return "";
@@ -249,6 +265,10 @@
     function matchesChip(c, chip) {
         if (chip === "none") return false;
         if (chip === "all") return true;
+        if (chip === "flagged") {
+            var st = String(c.manual_priority_status || "").toLowerCase();
+            return st === "priority" || st === "nonpriority";
+        }
         if (chip === "priority") return String(c.manual_priority_status || "").toLowerCase() === "priority";
         if (chip === "nonpriority") return String(c.manual_priority_status || "").toLowerCase() === "nonpriority";
         if (chip === "lhfs_very_high") return String(c.lhfs_label || "").toLowerCase() === "very high";
@@ -310,12 +330,32 @@
         });
         if (!res.ok) throw new Error(await res.text());
         var rows = await res.json();
-        state.reps = (rows || []).map(function(r) {
+        var normalized = (rows || []).map(function(r) {
             return {
                 name_norm: String(r && r.name_norm || "").toLowerCase(),
                 email_norm: String(r && r.email_norm || "").toLowerCase()
             };
         }).filter(function(r) { return !!r.name_norm; });
+
+        var byCanonical = {};
+        normalized.forEach(function(rep) {
+            var key = repCanonicalKey_(rep.name_norm);
+            if (!key) return;
+            var existing = byCanonical[key];
+            if (!existing) {
+                byCanonical[key] = rep;
+                return;
+            }
+            var oldScore = repChoiceScore_(existing.name_norm);
+            var newScore = repChoiceScore_(rep.name_norm);
+            if (newScore < oldScore || (newScore === oldScore && rep.name_norm < existing.name_norm)) {
+                byCanonical[key] = rep;
+            }
+        });
+
+        state.reps = Object.keys(byCanonical).map(function(k) { return byCanonical[k]; }).sort(function(a, b) {
+            return String(a.name_norm || "").localeCompare(String(b.name_norm || ""));
+        });
     }
 
     function setPriorityFeedback_(root, msg) {
@@ -952,6 +992,9 @@
     async function init() {
         var root = document.querySelector('[data-module="customer-profiles"]');
         if (!root) return;
+
+        var defaultChip = String(root.getAttribute("data-default-chip") || "").trim().toLowerCase();
+        if (defaultChip) state.activeChip = defaultChip;
 
         setProfileVisible(root, false);
         setCustomerListVisible(root, true);
