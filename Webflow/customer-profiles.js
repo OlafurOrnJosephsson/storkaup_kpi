@@ -50,6 +50,13 @@
         return sign + pct.toFixed(1).replace(".", ",") + "%";
     }
 
+    function formatPriorityStatusLabel_(status) {
+        var s = String(status || "").trim().toLowerCase();
+        if (s === "priority") return "Forgangur";
+        if (s === "nonpriority") return "Ekki forgangur";
+        return "-";
+    }
+
     function normalizeCustomerId(value) {
         var raw = String(value || "").trim();
         if (!raw) return "";
@@ -392,7 +399,7 @@
             if (fgweb) fgweb.textContent = c.avg_days_between_web_orders ? fmtInt(c.avg_days_between_web_orders) : "-";
             if (fp) fp.textContent = c.lhfs_percentile != null ? c.lhfs_percentile : "-";
             if (fl) fl.textContent = c.lhfs_label || "-";
-            if (fps) fps.textContent = c.manual_priority_status || "-";
+            if (fps) fps.textContent = formatPriorityStatusLabel_(c.manual_priority_status);
 
             open.setAttribute("data-customer-id", c.customer_id || "");
             frag.appendChild(n);
@@ -434,7 +441,7 @@
             selected_customer_name: p.customer_name || "",
             selected_customer_id: p.customer_id || "",
             selected_recommended_action: p.recommended_action || "",
-            selected_manual_priority_status: p.manual_priority_status || "-",
+            selected_manual_priority_status: formatPriorityStatusLabel_(p.manual_priority_status),
             selected_low_hanging_fruit_score: fmtInt(p.low_hanging_fruit_score),
             selected_lhfs_percentile: p.lhfs_percentile != null ? p.lhfs_percentile : "-",
             selected_lhfs_label: p.lhfs_label || "-",
