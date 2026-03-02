@@ -10,6 +10,7 @@
         filtered: [],
         selected: null,
         priorityFlagsByFamily: {},
+        reps: [],
         shoppingRows: [],
         shoppingFiltered: [],
         sortKey: "total_revenue",
@@ -55,6 +56,12 @@
         if (s === "priority") return "Forgangur";
         if (s === "nonpriority") return "Ekki forgangur";
         return "-";
+    }
+
+    function formatRepLabel_(nameNorm) {
+        var s = String(nameNorm || "").trim();
+        if (!s) return "-";
+        return s;
     }
 
     function normalizeCustomerId(value) {
@@ -126,6 +133,7 @@
             var f = state.priorityFlagsByFamily[fam];
             if (f) {
                 out.manual_priority_status = f.status || "";
+                out.assigned_rep_name_norm = f.assigned_rep_name_norm || "";
                 out.manual_priority_updated_at = f.updated_at || "";
                 out.manual_priority_note = f.note || "";
             }
@@ -256,6 +264,7 @@
             var f = fam ? state.priorityFlagsByFamily[fam] : null;
             c.customer_family_id = fam;
             c.manual_priority_status = f ? (f.status || "") : "";
+            c.assigned_rep_name_norm = f ? (f.assigned_rep_name_norm || "") : "";
             c.manual_priority_updated_at = f ? (f.updated_at || "") : "";
             c.manual_priority_note = f ? (f.note || "") : "";
         });
@@ -264,6 +273,7 @@
             var flag = sf ? state.priorityFlagsByFamily[sf] : null;
             state.selected.customer_family_id = sf;
             state.selected.manual_priority_status = flag ? (flag.status || "") : "";
+            state.selected.assigned_rep_name_norm = flag ? (flag.assigned_rep_name_norm || "") : "";
             state.selected.manual_priority_updated_at = flag ? (flag.updated_at || "") : "";
             state.selected.manual_priority_note = flag ? (flag.note || "") : "";
         }
@@ -283,12 +293,29 @@
             if (!fam) return;
             map[fam] = {
                 status: String(r && r.status || "").toLowerCase(),
+                assigned_rep_name_norm: String(r && r.assigned_rep_name_norm || "").toLowerCase(),
                 updated_at: r && r.updated_at ? r.updated_at : "",
                 note: r && r.note ? r.note : ""
             };
         });
         state.priorityFlagsByFamily = map;
         applyPriorityFlagsToCustomers_();
+    }
+
+    async function fetchActiveReps_() {
+        var res = await fetch(URL + "/rest/v1/rpc/get_active_sales_reps", {
+            method: "POST",
+            headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+            body: JSON.stringify({})
+        });
+        if (!res.ok) throw new Error(await res.text());
+        var rows = await res.json();
+        state.reps = (rows || []).map(function(r) {
+            return {
+                name_norm: String(r && r.name_norm || "").toLowerCase(),
+                email_norm: String(r && r.email_norm || "").toLowerCase()
+            };
+        }).filter(function(r) { return !!r.name_norm; });
     }
 
     function setPriorityFeedback_(root, msg) {
@@ -377,6 +404,28 @@
         showActionToast_(okMsg, "success");
     }
 
+    async function assignSelectedRep_(root, repNameNorm) {
+        if (!state.selected) return;
+        var payload = {
+            p_customer_id: String(state.selected.customer_id || "").trim(),
+            p_assigned_rep_name_norm: String(repNameNorm || "").trim().toLowerCase()
+        };
+        var res = await fetch(URL + "/rest/v1/rpc/assign_customer_priority_rep", {
+            method: "POST",
+            headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        await res.json();
+        await fetchPriorityFlags_();
+        bindSelected(root);
+        var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
+        await applyFilters(root, q);
+        var msg = repNameNorm ? ("Sölumaður tengdur: " + formatRepLabel_(repNameNorm)) : "Sölumaður aftengdur.";
+        setPriorityFeedback_(root, msg);
+        showActionToast_(msg, "success");
+    }
+
     async function generateList(customerId) {
         var res = await fetch(URL + "/rest/v1/rpc/generate_shopping_list_v2", {
             method: "POST",
@@ -458,6 +507,8 @@
             if (fp) fp.textContent = c.lhfs_percentile != null ? c.lhfs_percentile : "-";
             if (fl) fl.textContent = c.lhfs_label || "-";
             if (fps) fps.textContent = formatPriorityStatusLabel_(c.manual_priority_status);
+            var frep = n.querySelector('[data-field="assigned_rep_name_norm"]');
+            if (frep) frep.textContent = formatRepLabel_(c.assigned_rep_name_norm);
 
             open.setAttribute("data-customer-id", c.customer_id || "");
             frag.appendChild(n);
@@ -500,6 +551,7 @@
             selected_customer_id: p.customer_id || "",
             selected_recommended_action: p.recommended_action || "",
             selected_manual_priority_status: formatPriorityStatusLabel_(p.manual_priority_status),
+            selected_assigned_rep_name_norm: formatRepLabel_(p.assigned_rep_name_norm),
             selected_low_hanging_fruit_score: fmtInt(p.low_hanging_fruit_score),
             selected_lhfs_percentile: p.lhfs_percentile != null ? p.lhfs_percentile : "-",
             selected_lhfs_label: p.lhfs_label || "-",
@@ -737,6 +789,56 @@
         renderLastOrderRows(legacyList, legacyProto, all);
     }
 
+    function renderAssignRepControls_(root) {
+        if (!root) return;
+        var list = root.querySelector('[data-list="assign-reps"]');
+        if (list) {
+            var proto = resolveProto(root, "assign-rep-option");
+            list.innerHTML = "";
+            (state.reps || []).forEach(function(rep) {
+                var nameNorm = String(rep && rep.name_norm || "").trim().toLowerCase();
+                if (!nameNorm) return;
+                var node;
+                if (proto && proto.node) {
+                    node = proto.node.cloneNode(true);
+                    if (proto.type === "prototype") {
+                        node.removeAttribute("data-prototype");
+                        node.style.display = "";
+                    }
+                } else {
+                    node = document.createElement("a");
+                    node.href = "#";
+                    node.className = "cp-chip w-inline-block";
+                    node.innerHTML = "<div></div>";
+                }
+                node.setAttribute("data-action", "assign-rep");
+                node.setAttribute("data-rep", nameNorm);
+                var txt = node.querySelector("div");
+                if (txt) txt.textContent = nameNorm;
+                else node.textContent = nameNorm;
+                list.appendChild(node);
+            });
+        }
+
+        var select = root.querySelector('[data-input="assign-rep"]');
+        if (select && select.tagName && select.tagName.toLowerCase() === "select") {
+            var first = select.querySelector('option[value=""]');
+            select.innerHTML = "";
+            var placeholder = first || document.createElement("option");
+            placeholder.value = "";
+            placeholder.textContent = placeholder.textContent || "Velja sölumann";
+            select.appendChild(placeholder);
+            (state.reps || []).forEach(function(rep) {
+                var nameNorm = String(rep && rep.name_norm || "").trim().toLowerCase();
+                if (!nameNorm) return;
+                var opt = document.createElement("option");
+                opt.value = nameNorm;
+                opt.textContent = nameNorm;
+                select.appendChild(opt);
+            });
+        }
+    }
+
 
     function renderOpenTasks(root, tasks) {
         var list = root.querySelector('[data-list="open-tasks"]');
@@ -876,6 +978,13 @@
             state.priorityFlagsByFamily = {};
             applyPriorityFlagsToCustomers_();
         }
+        try {
+            await fetchActiveReps_();
+        } catch (repErr) {
+            console.error("Active reps fetch failed:", repErr);
+            state.reps = [];
+        }
+        renderAssignRepControls_(root);
         sortProfilesByScore(state.customers);
         root.querySelectorAll("[data-chip]").forEach(function(b) {
             var chip = b.getAttribute("data-chip") || "";
@@ -973,6 +1082,37 @@
                     console.error(nonPriorityErr);
                     setPriorityFeedback_(root, "Villa við að vista stöðu.");
                     showActionToast_("Villa við að vista stöðu.", "error");
+                }
+                return;
+            }
+
+            var assignRep = e.target.closest('[data-action="assign-rep"]');
+            if (assignRep) {
+                e.preventDefault();
+                var rep = String(assignRep.getAttribute("data-rep") || "").trim().toLowerCase();
+                if (!rep) {
+                    var sel = root.querySelector('[data-input="assign-rep"]');
+                    rep = String(sel && sel.value || "").trim().toLowerCase();
+                }
+                try {
+                    await assignSelectedRep_(root, rep);
+                } catch (assignErr) {
+                    console.error(assignErr);
+                    setPriorityFeedback_(root, "Villa við að tengja sölumann.");
+                    showActionToast_("Villa við að tengja sölumann.", "error");
+                }
+                return;
+            }
+
+            var clearRep = e.target.closest('[data-action="clear-assigned-rep"]');
+            if (clearRep) {
+                e.preventDefault();
+                try {
+                    await assignSelectedRep_(root, "");
+                } catch (clearErr) {
+                    console.error(clearErr);
+                    setPriorityFeedback_(root, "Villa við að aftengja sölumann.");
+                    showActionToast_("Villa við að aftengja sölumann.", "error");
                 }
                 return;
             }
