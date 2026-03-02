@@ -2,7 +2,7 @@
   if (typeof window === "undefined" || typeof document === "undefined") return;
   if (window.__STORKAUP_DASHBOARD_INIT__) return;
   window.__STORKAUP_DASHBOARD_INIT__ = true;
-  var selectedDay = null;
+  var selectedDay = getTodayIso();
   var selectedWeekdayIso = null; // 1..7 (Mon..Sun) for separate weekday-average chart override
   var weekdayGridCacheDay = null;
   var weekdayGridCacheTs = 0;
@@ -12,6 +12,11 @@
 
   function log() { if (DEBUG && window.console) console.log.apply(console, arguments); }
   function getCfg() { return window.STORKAUP_CONFIG || {}; }
+  function getDayMode() {
+    var node = document.querySelector("[data-day-mode]");
+    var mode = node ? String(node.getAttribute("data-day-mode") || "").trim().toLowerCase() : "";
+    return mode || "picker";
+  }
   function getRpcUrl() {
     var cfg = getCfg();
     return (cfg.supabaseUrl || "") + "/rest/v1/rpc/dashboard_compat";
@@ -572,9 +577,7 @@
         if (err && /HTTP 401/.test(String(err.message || err))) {
           dayApiUnavailable = true;
         }
-        // Fall back to monthly payload day values if day endpoint is unauthorized/unavailable.
-        selectedDay = null;
-        fetchMonth(getActiveMonth());
+        // Keep last rendered day values; monthly cards refresh independently.
       });
   }
 
@@ -615,7 +618,7 @@
         setText("month-webrev-pct", pct(data.month.webRevenuePct));
         setText("month-salesrep-pct", pct(data.month.salesRepPct));
         setText("month-yoy-orders", pct(data.month.yoyOrdersPct));
-        if (!selectedDay) {
+        if (dayApiUnavailable) {
           var dayDate = (data.day && data.day.date) ? data.day.date : getTodayIso();
           var dayOrders = data.dayOrders != null ? data.dayOrders : (data.day ? data.day.orders : 0);
           var dayRevenueExcl = data.dayRevenueExcl != null ? data.dayRevenueExcl : (data.day ? data.day.revenueExcl : 0);
@@ -1062,24 +1065,23 @@
     var items = document.querySelectorAll(".dashboard-date-item[data-month]");
     var hasMetrics = !!document.querySelector("[data-metric]");
     var dayPicker = document.querySelector("input[data-day-picker], [data-day-picker] input[type='date'], input[type='date'][data-day-picker]");
+    var dayMode = getDayMode();
 
     if (!items.length && !hasMetrics && !dayPicker) return;
     log("Found month items:", items.length);
 
-    if (dayPicker) {
+    if (dayPicker && dayMode !== "live") {
       var initialDay = normalizeDay(dayPicker.value) || getTodayIso();
       dayPicker.value = initialDay;
       selectedDay = initialDay;
       initFlatpickrIfAvailable(dayPicker);
       dayPicker.addEventListener("change", function () {
         var next = normalizeDay(dayPicker.value);
-        selectedDay = next || null;
-        if (selectedDay) {
-          fetchDay(selectedDay);
-        } else {
-          fetchMonth(getActiveMonth());
-        }
+        selectedDay = next || getTodayIso();
+        fetchDay(selectedDay);
       });
+    } else if (dayMode === "live") {
+      selectedDay = getTodayIso();
     }
 
     document.addEventListener("click", function (ev) {
@@ -1089,7 +1091,7 @@
       setActiveByMonth(month);
       setCurrentMonthLabel(month);
       fetchMonth(month);
-      if (selectedDay) fetchDay(selectedDay);
+      fetchDay(selectedDay || getTodayIso());
     });
 
     document.addEventListener("click", function (ev) {
@@ -1101,7 +1103,7 @@
       selectedWeekdayIso = (selectedWeekdayIso === iso) ? null : iso;
       setWeekdayChipActive();
       if (selectedWeekdayIso == null) {
-        if (selectedDay) fetchDay(selectedDay);
+        fetchDay(selectedDay || getTodayIso());
         return;
       }
       fetchWeekdayAverage(selectedWeekdayIso);
@@ -1113,7 +1115,7 @@
     setCurrentMonthLabel(initialMonth);
 
     fetchMonth(initialMonth);
-    if (selectedDay) fetchDay(selectedDay);
+    fetchDay(selectedDay || getTodayIso());
     fetchWeekdayComparisonGrid(true);
     fetchKlaviyoAttributionSummary();
     fetchBcSyncStatus();
@@ -1124,7 +1126,7 @@
       var month = activeNow ? activeNow.getAttribute("data-month") : initialMonth;
       setCurrentMonthLabel(month);
       fetchMonth(month);
-      if (selectedDay) fetchDay(selectedDay);
+      fetchDay(selectedDay || getTodayIso());
       fetchKlaviyoAttributionSummary();
       fetchBcSyncStatus();
       fetchWebBookingReconciliationSummary();
