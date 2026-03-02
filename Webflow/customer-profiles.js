@@ -297,6 +297,62 @@
         el.textContent = msg || "";
     }
 
+    function ensureActionToast_() {
+        var id = "storkaup-action-toast";
+        var el = document.getElementById(id);
+        if (el) return el;
+
+        el = document.createElement("div");
+        el.id = id;
+        el.setAttribute("role", "status");
+        el.setAttribute("aria-live", "polite");
+        el.style.position = "fixed";
+        el.style.right = "20px";
+        el.style.bottom = "20px";
+        el.style.zIndex = "9999";
+        el.style.maxWidth = "360px";
+        el.style.padding = "10px 14px";
+        el.style.borderRadius = "10px";
+        el.style.fontSize = "14px";
+        el.style.fontWeight = "600";
+        el.style.boxShadow = "0 10px 24px rgba(0,0,0,0.18)";
+        el.style.opacity = "0";
+        el.style.transform = "translateY(8px)";
+        el.style.transition = "opacity 180ms ease, transform 180ms ease";
+        el.style.pointerEvents = "none";
+        el.style.display = "none";
+        document.body.appendChild(el);
+        return el;
+    }
+
+    var toastHideTimer_ = null;
+    function showActionToast_(message, kind) {
+        var el = ensureActionToast_();
+        var k = String(kind || "info").toLowerCase();
+        el.textContent = String(message || "");
+        if (k === "error") {
+            el.style.background = "#fee4e2";
+            el.style.color = "#b42318";
+            el.style.border = "1px solid #fecdca";
+        } else {
+            el.style.background = "#ecfdf3";
+            el.style.color = "#027a48";
+            el.style.border = "1px solid #abefc6";
+        }
+
+        if (toastHideTimer_) clearTimeout(toastHideTimer_);
+        el.style.display = "block";
+        requestAnimationFrame(function() {
+            el.style.opacity = "1";
+            el.style.transform = "translateY(0)";
+        });
+        toastHideTimer_ = setTimeout(function() {
+            el.style.opacity = "0";
+            el.style.transform = "translateY(8px)";
+            setTimeout(function() { el.style.display = "none"; }, 200);
+        }, 2600);
+    }
+
     async function setSelectedPriorityStatus_(root, status) {
         if (!state.selected) return;
         var payload = {
@@ -316,7 +372,9 @@
         bindSelected(root);
         var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
         await applyFilters(root, q);
-        setPriorityFeedback_(root, status === "priority" ? "Merkt sem forgangsviðskiptavinur." : "Merkt sem ekki forgangsviðskiptavinur.");
+        var okMsg = status === "priority" ? "Vistað: Forgangur." : "Vistað: Ekki forgangur.";
+        setPriorityFeedback_(root, okMsg);
+        showActionToast_(okMsg, "success");
     }
 
     async function generateList(customerId) {
@@ -876,6 +934,7 @@
 
                 var doneMsgEl = root.querySelector('[data-bind="task-feedback"]');
                 if (doneMsgEl) doneMsgEl.textContent = "Verkefni lokad.";
+                showActionToast_("Verkefni lokað.", "success");
 
                 if (state.selected && state.selected.customer_id) {
                     var tasksAfterDone = await fetchOpenTasks(state.selected.customer_id);
@@ -888,6 +947,7 @@
             if (createTask) {
                 e.preventDefault();
                 await createTaskForSelected(root);
+                showActionToast_("Verkefni stofnað.", "success");
                 return;
             }
 
@@ -899,6 +959,7 @@
                 } catch (priorityErr) {
                     console.error(priorityErr);
                     setPriorityFeedback_(root, "Villa við að vista forgang.");
+                    showActionToast_("Villa við að vista forgang.", "error");
                 }
                 return;
             }
@@ -911,6 +972,7 @@
                 } catch (nonPriorityErr) {
                     console.error(nonPriorityErr);
                     setPriorityFeedback_(root, "Villa við að vista stöðu.");
+                    showActionToast_("Villa við að vista stöðu.", "error");
                 }
                 return;
             }
