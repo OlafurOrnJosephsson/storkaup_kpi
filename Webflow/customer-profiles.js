@@ -18,7 +18,8 @@
         activeChip: "all",
         searchTerm: "",
         searchDebounceId: null,
-        searchSeq: 0
+        searchSeq: 0,
+        profileScope: "family"
     };
     var MAX_RENDERED_CUSTOMERS = 150;
 
@@ -105,10 +106,27 @@
         return count ? (sum / count) : 0;
     }
 
-    function buildSelectedProfile(selected, allRows) {
+    function buildSelectedProfile(selected, allRows, profileScope) {
         if (!selected) return null;
         var out = Object.assign({}, selected);
         var fam = customerFamilyId(selected.customer_id);
+        var scope = String(profileScope || "family").toLowerCase();
+
+        if (scope === "child") {
+            out._queryCustomerId = String(selected.customer_id || "").trim();
+            out.customer_family_id = fam;
+            if (!out.manual_priority_status) {
+                var fchild = fam ? state.priorityFlagsByFamily[fam] : null;
+                if (fchild) {
+                    out.manual_priority_status = fchild.status || "";
+                    out.assigned_rep_name_norm = fchild.assigned_rep_name_norm || "";
+                    out.manual_priority_updated_at = fchild.updated_at || "";
+                    out.manual_priority_note = fchild.note || "";
+                }
+            }
+            return out;
+        }
+
         if (!fam) {
             out._queryCustomerId = String(selected.customer_id || "").trim();
             return out;
@@ -993,6 +1011,9 @@
         var root = document.querySelector('[data-module="customer-profiles"]');
         if (!root) return;
 
+        var rawScope = String(root.getAttribute("data-profile-scope") || "").trim().toLowerCase();
+        state.profileScope = rawScope === "child" ? "child" : "family";
+
         var defaultChip = String(root.getAttribute("data-default-chip") || "").trim().toLowerCase();
         if (defaultChip) state.activeChip = defaultChip;
 
@@ -1165,22 +1186,24 @@
                 e.preventDefault();
                 var id = open.getAttribute("data-customer-id");
                 var selectedRaw = state.customers.find(function(c) { return String(c.customer_id) === String(id); }) || null;
-                state.selected = buildSelectedProfile(selectedRaw, state.customers);
+                state.selected = buildSelectedProfile(selectedRaw, state.customers, state.profileScope);
 
-                try {
-                    var familySummary = await fetchFamilyProfileSummary(selectedRaw && selectedRaw.customer_id);
-                    if (familySummary) {
-                        state.selected = Object.assign({}, state.selected || {}, familySummary, {
-                            _queryCustomerId: String(
-                                (state.selected && state.selected._queryCustomerId) ||
-                                (selectedRaw && selectedRaw.customer_id) ||
-                                (familySummary && familySummary.customer_id) ||
-                                ""
-                            ).trim()
-                        });
+                if (state.profileScope !== "child") {
+                    try {
+                        var familySummary = await fetchFamilyProfileSummary(selectedRaw && selectedRaw.customer_id);
+                        if (familySummary) {
+                            state.selected = Object.assign({}, state.selected || {}, familySummary, {
+                                _queryCustomerId: String(
+                                    (state.selected && state.selected._queryCustomerId) ||
+                                    (selectedRaw && selectedRaw.customer_id) ||
+                                    (familySummary && familySummary.customer_id) ||
+                                    ""
+                                ).trim()
+                            });
+                        }
+                    } catch (familyErr) {
+                        console.error(familyErr);
                     }
-                } catch (familyErr) {
-                    console.error(familyErr);
                 }
 
                 bindSelected(root);
