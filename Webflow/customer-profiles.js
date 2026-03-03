@@ -72,7 +72,7 @@
     }
 
     function formatWebshopStatusLabel_(isActive) {
-        return isActive ? "Virkur á vef" : "Óvirkur á vef";
+        return isActive ? "Virkur" : "Óvirkur";
     }
 
     function formatRepLabel_(nameNorm) {
