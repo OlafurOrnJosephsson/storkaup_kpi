@@ -903,7 +903,10 @@
         var webList = root.querySelector('[data-list="last-orders-web"]');
         var bcList = root.querySelector('[data-list="last-orders-bc"]');
         var webProto = resolveProto(root, "last-order-row-web") || resolveProto(root, "last-order-row");
-        var bcProto = resolveProto(root, "last-order-row-bc") || resolveProto(root, "last-order-row");
+        var bcProto =
+            resolveProto(root, "last-order-row-bc") ||
+            resolveProto(root, "last-order-row-web") ||
+            resolveProto(root, "last-order-row");
 
         if (webList && bcList) {
             renderLastOrderRows(webList, webProto, webRows);
