@@ -62,6 +62,15 @@
         return "-";
     }
 
+    function formatOnboardedStatusLabel_(status) {
+        var s = String(status || "").trim().toLowerCase();
+        if (s === "onboarded_selfserve") return "Onboarded (self-serve)";
+        if (s === "onboarded_rep_only") return "Rep only";
+        if (s === "priority_pending") return "Bíður onboarding";
+        if (s === "nonpriority") return "Ekki forgangur";
+        return "-";
+    }
+
     function formatRepLabel_(nameNorm) {
         var s = String(nameNorm || "").trim();
         if (!s) return "-";
@@ -126,15 +135,16 @@
         if (scope === "child") {
             out._queryCustomerId = String(selected.customer_id || "").trim();
             out.customer_family_id = fam;
-            if (!out.manual_priority_status) {
-                var keyChild = priorityKeyFromCustomerId(selected.customer_id);
-                var fchild = keyChild ? state.priorityFlagsByFamily[keyChild] : null;
-                if (fchild) {
-                    out.manual_priority_status = fchild.status || "";
-                    out.assigned_rep_name_norm = fchild.assigned_rep_name_norm || "";
-                    out.manual_priority_updated_at = fchild.updated_at || "";
-                    out.manual_priority_note = fchild.note || "";
-                }
+            var keyChild = priorityKeyFromCustomerId(selected.customer_id);
+            var fchild = keyChild ? state.priorityFlagsByFamily[keyChild] : null;
+            if (fchild) {
+                out.manual_priority_status = fchild.status || "";
+                out.onboarded_status = fchild.onboarded_status || "";
+                out.first_web_order_at = fchild.first_web_order_at || "";
+                out.first_selfserve_order_at = fchild.first_selfserve_order_at || "";
+                out.assigned_rep_name_norm = fchild.assigned_rep_name_norm || "";
+                out.manual_priority_updated_at = fchild.updated_at || "";
+                out.manual_priority_note = fchild.note || "";
             }
             return out;
         }
@@ -175,15 +185,16 @@
         });
         out._queryCustomerId = String((parent && parent.customer_id) || selected.customer_id || "").trim();
         out.customer_family_id = fam;
-        if (!out.manual_priority_status) {
-            var keySel = priorityKeyFromCustomerId(selected.customer_id);
-            var f = keySel ? state.priorityFlagsByFamily[keySel] : null;
-            if (f) {
-                out.manual_priority_status = f.status || "";
-                out.assigned_rep_name_norm = f.assigned_rep_name_norm || "";
-                out.manual_priority_updated_at = f.updated_at || "";
-                out.manual_priority_note = f.note || "";
-            }
+        var keySel = priorityKeyFromCustomerId(selected.customer_id);
+        var f = keySel ? state.priorityFlagsByFamily[keySel] : null;
+        if (f) {
+            out.manual_priority_status = f.status || "";
+            out.onboarded_status = f.onboarded_status || "";
+            out.first_web_order_at = f.first_web_order_at || "";
+            out.first_selfserve_order_at = f.first_selfserve_order_at || "";
+            out.assigned_rep_name_norm = f.assigned_rep_name_norm || "";
+            out.manual_priority_updated_at = f.updated_at || "";
+            out.manual_priority_note = f.note || "";
         }
         return out;
     }
@@ -308,6 +319,9 @@
         }
         if (chip === "priority") return String(c.manual_priority_status || "").toLowerCase() === "priority";
         if (chip === "nonpriority") return String(c.manual_priority_status || "").toLowerCase() === "nonpriority";
+        if (chip === "priority_onboarded_selfserve") return String(c.onboarded_status || "").toLowerCase() === "onboarded_selfserve";
+        if (chip === "priority_pending") return String(c.onboarded_status || "").toLowerCase() === "priority_pending";
+        if (chip === "priority_rep_only") return String(c.onboarded_status || "").toLowerCase() === "onboarded_rep_only";
         if (chip === "lhfs_very_high") return String(c.lhfs_label || "").toLowerCase() === "very high";
         if (chip === "no_web_30d") return numOrZero(c.web_orders_30d) === 0;
         if (chip === "revenue_down_30d") return numOrZero(c.bc_revenue_30d) < numOrZero(c.bc_revenue_prev_30d);
@@ -370,6 +384,9 @@
             var f = key ? state.priorityFlagsByFamily[key] : null;
             c.customer_family_id = fam;
             c.manual_priority_status = f ? (f.status || "") : "";
+            c.onboarded_status = f ? (f.onboarded_status || "") : "";
+            c.first_web_order_at = f ? (f.first_web_order_at || "") : "";
+            c.first_selfserve_order_at = f ? (f.first_selfserve_order_at || "") : "";
             c.assigned_rep_name_norm = f ? (f.assigned_rep_name_norm || "") : "";
             c.manual_priority_updated_at = f ? (f.updated_at || "") : "";
             c.manual_priority_note = f ? (f.note || "") : "";
@@ -380,6 +397,9 @@
             var flag = skey ? state.priorityFlagsByFamily[skey] : null;
             state.selected.customer_family_id = sf;
             state.selected.manual_priority_status = flag ? (flag.status || "") : "";
+            state.selected.onboarded_status = flag ? (flag.onboarded_status || "") : "";
+            state.selected.first_web_order_at = flag ? (flag.first_web_order_at || "") : "";
+            state.selected.first_selfserve_order_at = flag ? (flag.first_selfserve_order_at || "") : "";
             state.selected.assigned_rep_name_norm = flag ? (flag.assigned_rep_name_norm || "") : "";
             state.selected.manual_priority_updated_at = flag ? (flag.updated_at || "") : "";
             state.selected.manual_priority_note = flag ? (flag.note || "") : "";
@@ -400,6 +420,9 @@
             if (!key) return;
             map[key] = {
                 status: String(r && r.status || "").toLowerCase(),
+                onboarded_status: String(r && r.onboarded_status || "").toLowerCase(),
+                first_web_order_at: r && r.first_web_order_at ? r.first_web_order_at : "",
+                first_selfserve_order_at: r && r.first_selfserve_order_at ? r.first_selfserve_order_at : "",
                 assigned_rep_name_norm: String(r && r.assigned_rep_name_norm || "").toLowerCase(),
                 updated_at: r && r.updated_at ? r.updated_at : "",
                 note: r && r.note ? r.note : ""
@@ -634,6 +657,8 @@
             if (fp) fp.textContent = c.lhfs_percentile != null ? c.lhfs_percentile : "-";
             if (fl) fl.textContent = c.lhfs_label || "-";
             if (fps) fps.textContent = formatPriorityStatusLabel_(c.manual_priority_status);
+            var fos = n.querySelector('[data-field="onboarded_status"]');
+            if (fos) fos.textContent = formatOnboardedStatusLabel_(c.onboarded_status);
             var frep = n.querySelector('[data-field="assigned_rep_name_norm"]');
             if (frep) frep.textContent = formatRepLabel_(c.assigned_rep_name_norm);
 
@@ -678,6 +703,7 @@
             selected_customer_id: p.customer_id || "",
             selected_recommended_action: p.recommended_action || "",
             selected_manual_priority_status: formatPriorityStatusLabel_(p.manual_priority_status),
+            selected_onboarded_status: formatOnboardedStatusLabel_(p.onboarded_status),
             selected_assigned_rep_name_norm: formatRepLabel_(p.assigned_rep_name_norm),
             selected_low_hanging_fruit_score: fmtInt(p.low_hanging_fruit_score),
             selected_lhfs_percentile: p.lhfs_percentile != null ? p.lhfs_percentile : "-",
