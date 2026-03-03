@@ -64,11 +64,15 @@
 
     function formatOnboardedStatusLabel_(status) {
         var s = String(status || "").trim().toLowerCase();
-        if (s === "onboarded_selfserve") return "Onboarded (self-serve)";
-        if (s === "onboarded_rep_only") return "Rep only";
-        if (s === "priority_pending") return "Bíður onboarding";
+        if (s === "onboarded_selfserve") return "Sjálfsafgreiðsla";
+        if (s === "onboarded_rep_only") return "Í ferli";
+        if (s === "priority_pending") return "Ekki í ferli";
         if (s === "nonpriority") return "Ekki forgangur";
         return "-";
+    }
+
+    function formatWebshopStatusLabel_(isActive) {
+        return isActive ? "Virkur á vef" : "Óvirkur á vef";
     }
 
     function formatRepLabel_(nameNorm) {
@@ -649,7 +653,10 @@
 
             if (fn) fn.textContent = c.customer_name || "";
             if (fi) fi.textContent = c.customer_id || "";
-            if (fw) fw.textContent = c.webshop_active ? "Active" : "Inactive";
+            if (fw) {
+                fw.textContent = formatWebshopStatusLabel_(!!c.webshop_active);
+                fw.setAttribute("data-status", c.webshop_active ? "active" : "inactive");
+            }
             if (fobc) fobc.textContent = fmtInt(c.orders_bc_365d);
             if (fgbc) fgbc.textContent = c.avg_days_between_bc_orders ? fmtInt(c.avg_days_between_bc_orders) : "-";
             if (foweb) foweb.textContent = fmtInt(c.orders_web_365d);
@@ -658,7 +665,11 @@
             if (fl) fl.textContent = c.lhfs_label || "-";
             if (fps) fps.textContent = formatPriorityStatusLabel_(c.manual_priority_status);
             var fos = n.querySelector('[data-field="onboarded_status"]');
-            if (fos) fos.textContent = formatOnboardedStatusLabel_(c.onboarded_status);
+            if (fos) {
+                var onboardedNorm = String(c.onboarded_status || "").toLowerCase() || "unknown";
+                fos.textContent = formatOnboardedStatusLabel_(c.onboarded_status);
+                fos.setAttribute("data-status", onboardedNorm);
+            }
             var frep = n.querySelector('[data-field="assigned_rep_name_norm"]');
             if (frep) frep.textContent = formatRepLabel_(c.assigned_rep_name_norm);
 
@@ -704,6 +715,7 @@
             selected_recommended_action: p.recommended_action || "",
             selected_manual_priority_status: formatPriorityStatusLabel_(p.manual_priority_status),
             selected_onboarded_status: formatOnboardedStatusLabel_(p.onboarded_status),
+            selected_webshop_active: formatWebshopStatusLabel_(!!p.webshop_active),
             selected_assigned_rep_name_norm: formatRepLabel_(p.assigned_rep_name_norm),
             selected_low_hanging_fruit_score: fmtInt(p.low_hanging_fruit_score),
             selected_lhfs_percentile: p.lhfs_percentile != null ? p.lhfs_percentile : "-",

@@ -64,48 +64,80 @@ as $function$
       f.updated_at
     from raw.customer_priority_flags_raw f
   ),
-  web_after_flag as (
+  unified_web_orders as (
+    select
+      regexp_replace(coalesce(to_jsonb(n)->>'company_id', ''), '\D', '', 'g') as company_id_norm,
+      regexp_replace(coalesce(to_jsonb(n)->>'national_id', ''), '\D', '', 'g') as national_id_norm,
+      n.purchase_date::timestamptz as purchase_date,
+      regexp_replace(
+        lower(
+          translate(
+            coalesce(n.customer_name, ''),
+            'áðþæöéíóúýÁÐÞÆÖÉÍÓÚÝ',
+            'adthaeoeiouyadthaeoeiouy'
+          )
+        ),
+        '[^a-z0-9]+',
+        '',
+        'g'
+      ) as customer_name_norm,
+      lower(trim(coalesce(to_jsonb(n)->>'real_email', ''))) as customer_email_norm
+    from raw.newweb_orders_raw n
+    where n.purchase_date is not null
+      and n.purchase_date >= (current_date - interval '365 days')::timestamptz
+
+    union all
+
+    select
+      regexp_replace(coalesce(to_jsonb(o)->>'company_id', ''), '\D', '', 'g') as company_id_norm,
+      regexp_replace(coalesce(to_jsonb(o)->>'national_id', ''), '\D', '', 'g') as national_id_norm,
+      o.purchase_date::timestamptz as purchase_date,
+      regexp_replace(
+        lower(
+          translate(
+            coalesce(o.customer_name, ''),
+            'áðþæöéíóúýÁÐÞÆÖÉÍÓÚÝ',
+            'adthaeoeiouyadthaeoeiouy'
+          )
+        ),
+        '[^a-z0-9]+',
+        '',
+        'g'
+      ) as customer_name_norm,
+      lower(trim(coalesce(to_jsonb(o)->>'customer_email', ''))) as customer_email_norm
+    from raw.oldweb_orders_raw o
+    where o.purchase_date is not null
+      and o.purchase_date >= (current_date - interval '365 days')::timestamptz
+  ),
+  web_orders_for_customer as (
     select
       f.customer_family_id,
-      o.purchase_date::timestamptz as purchase_date,
+      o.purchase_date as purchase_date,
       (
         exists (
           select 1 from reps r
           where r.rep_name_norm <> ''
-            and r.rep_name_norm = regexp_replace(
-              lower(
-                translate(
-                  coalesce(o.customer_name, ''),
-                  'áðþæöéíóúýÁÐÞÆÖÉÍÓÚÝ',
-                  'adthaeoeiouyadthaeoeiouy'
-                )
-              ),
-              '[^a-z0-9]+',
-              '',
-              'g'
-            )
+            and r.rep_name_norm = o.customer_name_norm
         )
         or exists (
           select 1 from reps r
           where r.rep_email_norm <> ''
-            and r.rep_email_norm = lower(trim(coalesce(o.real_email, '')))
+            and r.rep_email_norm = o.customer_email_norm
         )
       ) as is_rep_order
     from flags f
-    join raw.newweb_orders_raw o
+    join unified_web_orders o
       on (
-        regexp_replace(coalesce(o.company_id, ''), '\D', '', 'g') = f.customer_family_id
-        or regexp_replace(coalesce(o.national_id, ''), '\D', '', 'g') = f.customer_family_id
+        o.company_id_norm = f.customer_family_id
+        or o.national_id_norm = f.customer_family_id
       )
-    where o.purchase_date is not null
-      and o.purchase_date >= f.updated_at
   ),
   agg as (
     select
       w.customer_family_id,
       min(w.purchase_date) as first_web_order_at,
       min(w.purchase_date) filter (where w.is_rep_order = false) as first_selfserve_order_at
-    from web_after_flag w
+    from web_orders_for_customer w
     group by w.customer_family_id
   )
   select
