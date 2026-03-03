@@ -1243,6 +1243,7 @@
             }
         }
         state.customers = firstPage;
+        applyPriorityFlagsToCustomers_();
         try {
             await fetchActiveReps_();
         } catch (repErr) {
