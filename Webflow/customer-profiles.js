@@ -843,16 +843,37 @@
 }
 
     async function fetchLastOrders(customerId, limit) {
-        var res = await fetch(URL + "/rest/v1/rpc/get_customer_last_orders", {
-            method: "POST",
-            headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
-            body: JSON.stringify({
-                p_customer_id: String(customerId || "").trim(),
-                p_limit: Number(limit || 5)
-            })
+        var cid = String(customerId || "").trim();
+        var baseLimit = Number(limit || 5);
+        var tried = {};
+        var attempts = [baseLimit, 3, 1].filter(function(v) {
+            var n = Number(v || 0);
+            if (n <= 0) return false;
+            var k = String(n);
+            if (tried[k]) return false;
+            tried[k] = true;
+            return true;
         });
-        if (!res.ok) throw new Error(await res.text());
-        return res.json();
+
+        var lastErr = null;
+        for (var i = 0; i < attempts.length; i++) {
+            var lim = attempts[i];
+            var res = await fetch(URL + "/rest/v1/rpc/get_customer_last_orders", {
+                method: "POST",
+                headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+                body: JSON.stringify({
+                    p_customer_id: cid,
+                    p_limit: lim
+                })
+            });
+            if (res.ok) return res.json();
+
+            var errText = await res.text();
+            var isRetryable = Number(res.status || 0) >= 500 || isTimeoutErrorText(errText);
+            lastErr = new Error(errText);
+            if (!isRetryable || i === attempts.length - 1) break;
+        }
+        throw lastErr || new Error("Failed to fetch last orders");
     }
 
     async function fetchFamilyProfileSummary(customerId) {
