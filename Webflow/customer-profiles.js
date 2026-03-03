@@ -11,6 +11,8 @@
         selected: null,
         priorityFlagsByFamily: {},
         reps: [],
+        customerSortKey: "low_hanging_fruit_score",
+        customerSortDir: "desc",
         shoppingRows: [],
         shoppingFiltered: [],
         sortKey: "total_revenue",
@@ -241,11 +243,12 @@
             (useOrder === false ? "" : "&order=customer_id.asc.nullslast") +
             "&limit=" + pageSize +
             "&offset=" + offset;
-        var res = await fetch(URL + path, { headers: headers("api") });
+        var res = await fetch(URL + path, { headers: headers("api"), cache: "no-store" });
         if (!res.ok) {
             var errText = await res.text();
             var e = new Error(errText);
             e.__isTimeout = isTimeoutErrorText(errText);
+            e.__status = Number(res.status || 0);
             throw e;
         }
         var rows = await res.json();
@@ -307,8 +310,41 @@
         if (chip === "lhfs_very_high") return String(c.lhfs_label || "").toLowerCase() === "very high";
         if (chip === "no_web_30d") return numOrZero(c.web_orders_30d) === 0;
         if (chip === "revenue_down_30d") return numOrZero(c.bc_revenue_30d) < numOrZero(c.bc_revenue_prev_30d);
+        if (chip === "webshop_active") return !!c.webshop_active;
         if (chip === "webshop_inactive") return !c.webshop_active;
         return true;
+    }
+
+    function sortCustomers_(rows) {
+        var key = String(state.customerSortKey || "low_hanging_fruit_score");
+        var dir = String(state.customerSortDir || "desc");
+        var mul = dir === "asc" ? 1 : -1;
+        rows.sort(function(a, b) {
+            if (key === "customer_name") {
+                var an = String(a.customer_name || "").toLowerCase();
+                var bn = String(b.customer_name || "").toLowerCase();
+                return an.localeCompare(bn) * mul;
+            }
+            if (key === "webshop_active") {
+                var av = a.webshop_active ? 1 : 0;
+                var bv = b.webshop_active ? 1 : 0;
+                if (av !== bv) return (av - bv) * mul;
+                var an2 = String(a.customer_name || "").toLowerCase();
+                var bn2 = String(b.customer_name || "").toLowerCase();
+                return an2.localeCompare(bn2);
+            }
+            if (key === "customer_id") {
+                var ai = String(a.customer_id || "");
+                var bi = String(b.customer_id || "");
+                return ai.localeCompare(bi) * mul;
+            }
+            var avn = numOrZero(a[key]);
+            var bvn = numOrZero(b[key]);
+            if (avn !== bvn) return (avn - bvn) * mul;
+            var an3 = String(a.customer_name || "").toLowerCase();
+            var bn3 = String(b.customer_name || "").toLowerCase();
+            return an3.localeCompare(bn3);
+        });
     }
 
     function applyPriorityFlagsToCustomers_() {
@@ -1020,6 +1056,7 @@
             }
         }
 
+        sortCustomers_(out);
         state.filtered = out;
         renderCustomers(root);
     }
@@ -1044,7 +1081,8 @@
         try {
             firstPage = await fetchProfilesPage(0, pageSize, useOrder);
         } catch (err) {
-            if (!err || !err.__isTimeout) throw err;
+            var shouldFallback = !!(err && (err.__isTimeout || Number(err.__status || 0) >= 500));
+            if (!shouldFallback) throw err;
             // Timeout-safe fallback for heavy view scans on some environments.
             useOrder = false;
             pageSize = 100;
@@ -1098,6 +1136,28 @@
                 var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
                 applyFilters(root, q);
                 return;
+            }
+
+            var customerSortEl = e.target.closest("[data-sort-customer], [data-sort]");
+            if (customerSortEl) {
+                var ckey = String(
+                    customerSortEl.getAttribute("data-sort-customer") ||
+                    customerSortEl.getAttribute("data-sort") ||
+                    ""
+                ).trim();
+                var isCustomerSortKey = ckey === "customer_name" || ckey === "webshop_active" || ckey === "customer_id" || ckey === "low_hanging_fruit_score";
+                if (isCustomerSortKey) {
+                    e.preventDefault();
+                    if (state.customerSortKey === ckey) {
+                        state.customerSortDir = state.customerSortDir === "asc" ? "desc" : "asc";
+                    } else {
+                        state.customerSortKey = ckey;
+                        state.customerSortDir = (ckey === "customer_name" || ckey === "customer_id") ? "asc" : "desc";
+                    }
+                    var qsort = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
+                    applyFilters(root, qsort);
+                    return;
+                }
             }
 
             var sortEl = e.target.closest("[data-sort]");
