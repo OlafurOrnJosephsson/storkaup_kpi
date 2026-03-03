@@ -293,6 +293,38 @@
         return Array.isArray(rows) ? rows : [];
     }
 
+    async function fetchProfilesByCustomerIds(ids, maxRows) {
+        var clean = (ids || []).map(function(x) { return String(x || "").trim(); }).filter(function(x) { return !!x; });
+        if (!clean.length) return [];
+        var limitMax = Math.max(1, Number(maxRows || 2000));
+        var out = [];
+        var seen = {};
+        var chunkSize = 70;
+
+        for (var i = 0; i < clean.length; i += chunkSize) {
+            var chunk = clean.slice(i, i + chunkSize);
+            var inList = chunk.map(function(v) {
+                return '"' + v.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+            }).join(",");
+            var path =
+                "/rest/v1/v_customer_profiles_labeled_trends?select=" + encodeURIComponent(PROFILE_FIELDS) +
+                "&customer_id=in.(" + inList + ")" +
+                "&limit=" + Math.min(1000, chunk.length);
+            var res = await fetch(URL + path, { headers: headers("api"), cache: "no-store" });
+            if (!res.ok) throw new Error(await res.text());
+            var rows = await res.json();
+            (rows || []).forEach(function(r) {
+                var key = String(r && r.customer_id || "");
+                if (!key || seen[key]) return;
+                seen[key] = true;
+                out.push(r);
+            });
+            if (out.length >= limitMax) break;
+        }
+
+        return out.slice(0, limitMax);
+    }
+
     async function hydrateProfilesInBackground(root, startOffset, pageSize, maxRows, useOrder) {
         for (var offset = startOffset; offset < maxRows; offset += pageSize) {
             var rows = await fetchProfilesPage(offset, pageSize, useOrder);
@@ -1157,19 +1189,6 @@
         var pageSize = 300;
         var maxRows = 6000;
         var useOrder = true;
-        var firstPage;
-        try {
-            firstPage = await fetchProfilesPage(0, pageSize, useOrder);
-        } catch (err) {
-            var shouldFallback = !!(err && (err.__isTimeout || Number(err.__status || 0) >= 500));
-            if (!shouldFallback) throw err;
-            // Timeout-safe fallback for heavy view scans on some environments.
-            useOrder = false;
-            pageSize = 100;
-            maxRows = 3000;
-            firstPage = await fetchProfilesPage(0, pageSize, useOrder);
-        }
-        state.customers = firstPage;
         try {
             await fetchPriorityFlags_();
         } catch (flagErr) {
@@ -1177,6 +1196,29 @@
             state.priorityFlagsByFamily = {};
             applyPriorityFlagsToCustomers_();
         }
+        var firstPage = [];
+        var flaggedBootstrap = state.activeChip === "flagged" && Object.keys(state.priorityFlagsByFamily || {}).length > 0;
+        if (flaggedBootstrap) {
+            try {
+                firstPage = await fetchProfilesByCustomerIds(Object.keys(state.priorityFlagsByFamily || {}), maxRows);
+            } catch (flaggedErr) {
+                console.error("Flagged bootstrap fetch failed:", flaggedErr);
+                firstPage = [];
+            }
+        } else {
+            try {
+                firstPage = await fetchProfilesPage(0, pageSize, useOrder);
+            } catch (err) {
+                var shouldFallback = !!(err && (err.__isTimeout || Number(err.__status || 0) >= 500));
+                if (!shouldFallback) throw err;
+                // Timeout-safe fallback for heavy view scans on some environments.
+                useOrder = false;
+                pageSize = 100;
+                maxRows = 3000;
+                firstPage = await fetchProfilesPage(0, pageSize, useOrder);
+            }
+        }
+        state.customers = firstPage;
         try {
             await fetchActiveReps_();
         } catch (repErr) {
@@ -1192,9 +1234,11 @@
         updateCustomerSortIndicators(root);
         applyFilters(root, "");
 
-        hydrateProfilesInBackground(root, pageSize, pageSize, maxRows, useOrder).catch(function(err) {
-            console.error("Background profile hydration failed:", err);
-        });
+        if (!flaggedBootstrap) {
+            hydrateProfilesInBackground(root, pageSize, pageSize, maxRows, useOrder).catch(function(err) {
+                console.error("Background profile hydration failed:", err);
+            });
+        }
 
         var searchInput = root.querySelector('[data-input="customer-search"]');
         if (searchInput) {
