@@ -844,9 +844,9 @@
 
     async function fetchLastOrders(customerId, limit) {
         var cid = String(customerId || "").trim();
-        var baseLimit = Number(limit || 5);
+        var baseLimit = Math.max(10, Number(limit || 5));
         var tried = {};
-        var attempts = [baseLimit, 3, 1].filter(function(v) {
+        var attempts = [baseLimit, 12, 10, 8, 6].filter(function(v) {
             var n = Number(v || 0);
             if (n <= 0) return false;
             var k = String(n);
