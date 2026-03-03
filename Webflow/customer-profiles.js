@@ -18,6 +18,7 @@
         sortKey: "total_revenue",
         sortDir: "desc",
         activeChip: "all",
+        defaultChip: "all",
         searchTerm: "",
         searchDebounceId: null,
         searchSeq: 0,
@@ -1069,7 +1070,8 @@
         state.profileScope = rawScope === "child" ? "child" : "family";
 
         var defaultChip = String(root.getAttribute("data-default-chip") || "").trim().toLowerCase();
-        if (defaultChip) state.activeChip = defaultChip;
+        state.defaultChip = defaultChip || "all";
+        state.activeChip = state.defaultChip;
 
         setProfileVisible(root, false);
         setCustomerListVisible(root, true);
@@ -1129,9 +1131,15 @@
             var chipBtn = e.target.closest("[data-chip]");
             if (chipBtn) {
                 e.preventDefault();
-                state.activeChip = chipBtn.getAttribute("data-chip") || "all";
+                var clickedChip = String(chipBtn.getAttribute("data-chip") || "all");
+                if (clickedChip === state.activeChip) {
+                    state.activeChip = state.defaultChip || "all";
+                } else {
+                    state.activeChip = clickedChip;
+                }
                 root.querySelectorAll("[data-chip]").forEach(function(b) {
-                    b.classList.toggle("is-active", b === chipBtn);
+                    var chip = String(b.getAttribute("data-chip") || "");
+                    b.classList.toggle("is-active", chip === state.activeChip);
                 });
                 var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
                 applyFilters(root, q);
