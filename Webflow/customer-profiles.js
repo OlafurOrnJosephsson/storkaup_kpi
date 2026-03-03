@@ -299,10 +299,10 @@
         var limitMax = Math.max(1, Number(maxRows || 2000));
         var out = [];
         var seen = {};
-        var chunkSize = 70;
+        var chunkSize = 24;
 
-        for (var i = 0; i < clean.length; i += chunkSize) {
-            var chunk = clean.slice(i, i + chunkSize);
+        async function fetchChunk_(chunk) {
+            if (!chunk || !chunk.length) return [];
             var inList = chunk.map(function(v) {
                 return '"' + v.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
             }).join(",");
@@ -311,8 +311,22 @@
                 "&customer_id=in.(" + inList + ")" +
                 "&limit=" + Math.min(1000, chunk.length);
             var res = await fetch(URL + path, { headers: headers("api"), cache: "no-store" });
-            if (!res.ok) throw new Error(await res.text());
-            var rows = await res.json();
+            if (res.ok) return res.json();
+
+            var errText = await res.text();
+            var retryable = Number(res.status || 0) >= 500 || isTimeoutErrorText(errText);
+            if (!retryable) return [];
+
+            if (chunk.length <= 1) return [];
+            var mid = Math.floor(chunk.length / 2);
+            var left = await fetchChunk_(chunk.slice(0, mid));
+            var right = await fetchChunk_(chunk.slice(mid));
+            return (left || []).concat(right || []);
+        }
+
+        for (var i = 0; i < clean.length; i += chunkSize) {
+            var chunk = clean.slice(i, i + chunkSize);
+            var rows = await fetchChunk_(chunk);
             (rows || []).forEach(function(r) {
                 var key = String(r && r.customer_id || "");
                 if (!key || seen[key]) return;
@@ -1204,6 +1218,16 @@
             } catch (flaggedErr) {
                 console.error("Flagged bootstrap fetch failed:", flaggedErr);
                 firstPage = [];
+            }
+            if (!firstPage.length) {
+                try {
+                    useOrder = false;
+                    pageSize = 100;
+                    maxRows = 3000;
+                    firstPage = await fetchProfilesPage(0, pageSize, useOrder);
+                } catch (_) {
+                    firstPage = [];
+                }
             }
         } else {
             try {
