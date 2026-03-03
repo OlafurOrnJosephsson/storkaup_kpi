@@ -55,6 +55,55 @@
         return sign + pct.toFixed(1).replace(".", ",") + "%";
     }
 
+    function normalizeChip_(chip) {
+        var raw = String(chip || "").trim().toLowerCase();
+        if (!raw) return "all";
+        var compact = raw
+            .replace(/[\s_\-]+/g, "")
+            .replace(/á/g, "a")
+            .replace(/í/g, "i")
+            .replace(/é/g, "e")
+            .replace(/ó/g, "o")
+            .replace(/ú/g, "u")
+            .replace(/ý/g, "y")
+            .replace(/ö/g, "o")
+            .replace(/ð/g, "d")
+            .replace(/þ/g, "th")
+            .replace(/æ/g, "ae");
+
+        if (compact === "all" || compact === "allir") return "all";
+        if (compact === "flagged" || compact === "forgangslisti") return "flagged";
+        if (compact === "priority" || compact === "forgangur") return "priority";
+        if (compact === "nonpriority" || compact === "ekkiforgangur") return "nonpriority";
+
+        if (compact === "webshopactive" || compact === "active" || compact === "virkaravef" || compact === "virkuravef") return "webshop_active";
+        if (compact === "webshopinactive" || compact === "inactive" || compact === "ovirkiravef" || compact === "ovirkuravef") return "webshop_inactive";
+
+        if (
+            compact === "priorityonboardedselfserve" ||
+            compact === "onboardedselfserve" ||
+            compact === "selfserve" ||
+            compact === "sjalfsafgreidsla"
+        ) return "priority_onboarded_selfserve";
+
+        if (
+            compact === "priorityreponly" ||
+            compact === "onboardedreponly" ||
+            compact === "reponly" ||
+            compact === "iferli"
+        ) return "priority_rep_only";
+
+        if (
+            compact === "prioritypending" ||
+            compact === "pending" ||
+            compact === "ekkiferli" ||
+            compact === "biouronboarding" ||
+            compact === "biduronboarding"
+        ) return "priority_pending";
+
+        return raw;
+    }
+
     function formatPriorityStatusLabel_(status) {
         var s = String(status || "").trim().toLowerCase();
         if (s === "priority") return "Forgangur";
@@ -361,6 +410,7 @@
     }
 
     function matchesChip(c, chip) {
+        chip = normalizeChip_(chip);
         if (chip === "none") return false;
         if (chip === "all") return true;
         if (chip === "flagged") {
@@ -1193,7 +1243,7 @@
         var rawScope = String(root.getAttribute("data-profile-scope") || "").trim().toLowerCase();
         state.profileScope = rawScope === "child" ? "child" : "family";
 
-        var defaultChip = String(root.getAttribute("data-default-chip") || "").trim().toLowerCase();
+        var defaultChip = normalizeChip_(root.getAttribute("data-default-chip") || "all");
         state.defaultChip = defaultChip || "all";
         state.activeChip = state.defaultChip;
 
@@ -1253,7 +1303,7 @@
         renderAssignRepControls_(root);
         sortProfilesByScore(state.customers);
         root.querySelectorAll("[data-chip]").forEach(function(b) {
-            var chip = b.getAttribute("data-chip") || "";
+            var chip = normalizeChip_(b.getAttribute("data-chip") || "");
             b.classList.toggle("is-active", chip === state.activeChip);
         });
         updateCustomerSortIndicators(root);
@@ -1279,14 +1329,14 @@
             var chipBtn = e.target.closest("[data-chip]");
             if (chipBtn) {
                 e.preventDefault();
-                var clickedChip = String(chipBtn.getAttribute("data-chip") || "all");
+                var clickedChip = normalizeChip_(chipBtn.getAttribute("data-chip") || "all");
                 if (clickedChip === state.activeChip) {
                     state.activeChip = state.defaultChip || "all";
                 } else {
                     state.activeChip = clickedChip;
                 }
                 root.querySelectorAll("[data-chip]").forEach(function(b) {
-                    var chip = String(b.getAttribute("data-chip") || "");
+                    var chip = normalizeChip_(b.getAttribute("data-chip") || "");
                     b.classList.toggle("is-active", chip === state.activeChip);
                 });
                 var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
