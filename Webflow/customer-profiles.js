@@ -348,6 +348,21 @@
         });
     }
 
+    function updateCustomerSortIndicators(root) {
+        var heads = root.querySelectorAll("[data-sort-customer], [data-sort]");
+        if (!heads || !heads.length) return;
+        heads.forEach(function(h) {
+            var key = String(h.getAttribute("data-sort-customer") || h.getAttribute("data-sort") || "").trim();
+            var isCustomerSortKey = key === "customer_name" || key === "webshop_active" || key === "customer_id" || key === "low_hanging_fruit_score";
+            if (!isCustomerSortKey) return;
+            h.classList.remove("is-sort-active", "is-asc", "is-desc");
+            if (key === state.customerSortKey) {
+                h.classList.add("is-sort-active");
+                h.classList.add(state.customerSortDir === "asc" ? "is-asc" : "is-desc");
+            }
+        });
+    }
+
     function applyPriorityFlagsToCustomers_() {
         (state.customers || []).forEach(function(c) {
             var fam = customerFamilyId(c && c.customer_id);
@@ -1060,6 +1075,7 @@
         sortCustomers_(out);
         state.filtered = out;
         renderCustomers(root);
+        updateCustomerSortIndicators(root);
     }
 
     async function init() {
@@ -1111,6 +1127,7 @@
             var chip = b.getAttribute("data-chip") || "";
             b.classList.toggle("is-active", chip === state.activeChip);
         });
+        updateCustomerSortIndicators(root);
         applyFilters(root, "");
 
         hydrateProfilesInBackground(root, pageSize, pageSize, maxRows, useOrder).catch(function(err) {
