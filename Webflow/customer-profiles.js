@@ -178,6 +178,38 @@
         return count ? (sum / count) : 0;
     }
 
+    function emptyPriorityFlag_() {
+        return {
+            status: "",
+            onboarded_status: "",
+            first_web_order_at: "",
+            first_selfserve_order_at: "",
+            assigned_rep_name_norm: "",
+            updated_at: "",
+            note: ""
+        };
+    }
+
+    function applyPriorityFlagToTarget_(target, flag) {
+        if (!target) return;
+        var f = flag || emptyPriorityFlag_();
+        target.manual_priority_status = f.status || "";
+        target.onboarded_status = f.onboarded_status || "";
+        target.first_web_order_at = f.first_web_order_at || "";
+        target.first_selfserve_order_at = f.first_selfserve_order_at || "";
+        target.assigned_rep_name_norm = f.assigned_rep_name_norm || "";
+        target.manual_priority_updated_at = f.updated_at || "";
+        target.manual_priority_note = f.note || "";
+    }
+
+    function syncChipButtons_(root) {
+        if (!root) return;
+        root.querySelectorAll("[data-chip]").forEach(function(b) {
+            var chip = normalizeChip_(b.getAttribute("data-chip") || "");
+            b.classList.toggle("is-active", chip === state.activeChip);
+        });
+    }
+
     function buildSelectedProfile(selected, allRows, profileScope) {
         if (!selected) return null;
         var out = Object.assign({}, selected);
@@ -485,26 +517,14 @@
             var key = priorityKeyFromCustomerId(c && c.customer_id);
             var f = key ? state.priorityFlagsByFamily[key] : null;
             c.customer_family_id = fam;
-            c.manual_priority_status = f ? (f.status || "") : "";
-            c.onboarded_status = f ? (f.onboarded_status || "") : "";
-            c.first_web_order_at = f ? (f.first_web_order_at || "") : "";
-            c.first_selfserve_order_at = f ? (f.first_selfserve_order_at || "") : "";
-            c.assigned_rep_name_norm = f ? (f.assigned_rep_name_norm || "") : "";
-            c.manual_priority_updated_at = f ? (f.updated_at || "") : "";
-            c.manual_priority_note = f ? (f.note || "") : "";
+            applyPriorityFlagToTarget_(c, f);
         });
         if (state.selected && state.selected.customer_id) {
             var sf = customerFamilyId(state.selected.customer_id);
             var skey = priorityKeyFromCustomerId(getSelectedPriorityTargetCustomerId());
             var flag = skey ? state.priorityFlagsByFamily[skey] : null;
             state.selected.customer_family_id = sf;
-            state.selected.manual_priority_status = flag ? (flag.status || "") : "";
-            state.selected.onboarded_status = flag ? (flag.onboarded_status || "") : "";
-            state.selected.first_web_order_at = flag ? (flag.first_web_order_at || "") : "";
-            state.selected.first_selfserve_order_at = flag ? (flag.first_selfserve_order_at || "") : "";
-            state.selected.assigned_rep_name_norm = flag ? (flag.assigned_rep_name_norm || "") : "";
-            state.selected.manual_priority_updated_at = flag ? (flag.updated_at || "") : "";
-            state.selected.manual_priority_note = flag ? (flag.note || "") : "";
+            applyPriorityFlagToTarget_(state.selected, flag);
         }
     }
 
@@ -1304,10 +1324,7 @@
         }
         renderAssignRepControls_(root);
         sortProfilesByScore(state.customers);
-        root.querySelectorAll("[data-chip]").forEach(function(b) {
-            var chip = normalizeChip_(b.getAttribute("data-chip") || "");
-            b.classList.toggle("is-active", chip === state.activeChip);
-        });
+        syncChipButtons_(root);
         updateCustomerSortIndicators(root);
         applyFilters(root, "");
 
@@ -1337,10 +1354,7 @@
                 } else {
                     state.activeChip = clickedChip;
                 }
-                root.querySelectorAll("[data-chip]").forEach(function(b) {
-                    var chip = normalizeChip_(b.getAttribute("data-chip") || "");
-                    b.classList.toggle("is-active", chip === state.activeChip);
-                });
+                syncChipButtons_(root);
                 var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
                 applyFilters(root, q);
                 return;
