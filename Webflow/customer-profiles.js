@@ -49,7 +49,7 @@
     function fmtPctChange(curr, prev) {
         var c = numOrZero(curr);
         var p = numOrZero(prev);
-        if (p === 0) return c === 0 ? "0%" : "Nytt";
+        if (p === 0) return c === 0 ? "0%" : "Nýtt";
         var pct = ((c - p) / p) * 100;
         var sign = pct > 0 ? "+" : "";
         return sign + pct.toFixed(1).replace(".", ",") + "%";
@@ -1391,7 +1391,7 @@
                 await markTaskDone(taskId);
 
                 var doneMsgEl = root.querySelector('[data-bind="task-feedback"]');
-                if (doneMsgEl) doneMsgEl.textContent = "Verkefni lokad.";
+                if (doneMsgEl) doneMsgEl.textContent = "Verkefni lokað.";
                 showActionToast_("Verkefni lokað.", "success");
 
                 if (state.selected && state.selected.customer_id) {

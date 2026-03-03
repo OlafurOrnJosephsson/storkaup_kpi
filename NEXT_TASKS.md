@@ -1,5 +1,15 @@
 # KPI Project Next Tasks
 
+## Recent Release Notes
+
+- Priority list frontend stabilized:
+  - fixed initial load mapping so `Forgangslisti` + `Onboarding status` render immediately (no chip click needed)
+  - added chip alias normalization (`data-chip`) for Icelandic/canonical values
+  - reduced flagged bootstrap chunk size to prevent intermittent initial `500` timeouts
+- Customer profile text cleanup:
+  - `Nýtt` label fix in trend percentage output
+  - `Verkefni lokað` label fix in task status feedback
+
 ## Priority 1 - Stabilize Operations
 
 | ID | Task | Owner | Status | Acceptance Check |
