@@ -348,7 +348,9 @@
         var limitMax = Math.max(1, Number(maxRows || 2000));
         var out = [];
         var seen = {};
-        var chunkSize = 24;
+        // Keep chunk size conservative to avoid intermittent 500/timeout spikes
+        // from heavy view evaluation during initial flagged bootstrap.
+        var chunkSize = 8;
 
         async function fetchChunk_(chunk) {
             if (!chunk || !chunk.length) return [];
