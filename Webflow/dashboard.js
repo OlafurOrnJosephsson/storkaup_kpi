@@ -419,7 +419,8 @@
       headers: {
         "Content-Type": "application/json",
         "apikey": apiKey,
-        "Authorization": "Bearer " + apiKey
+        "Authorization": "Bearer " + apiKey,
+        "Content-Profile": "public"
       },
       body: JSON.stringify({ p_day: anchorDay })
     })
@@ -462,7 +463,8 @@
         headers: {
           "Content-Type": "application/json",
           "apikey": apiKey,
-          "Authorization": "Bearer " + apiKey
+          "Authorization": "Bearer " + apiKey,
+          "Content-Profile": "public"
         },
         body: JSON.stringify({ p_day: anchorDay })
       })
@@ -557,7 +559,8 @@
       headers: {
         "Content-Type": "application/json",
         "apikey": apiKey,
-        "Authorization": "Bearer " + apiKey
+        "Authorization": "Bearer " + apiKey,
+        "Content-Profile": "public"
       },
       body: JSON.stringify({ p_day: day })
     })
