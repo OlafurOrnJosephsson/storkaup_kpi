@@ -529,12 +529,12 @@ select
   case
     when coalesce((select n.orders from bc_net_day n), 0) > 0
       then d0.orders::numeric / nullif((select n.orders from bc_net_day n), 0)
-    else 0
+    else null
   end as web_orders_pct_of_bc_day,
   case
     when coalesce((select n.revenue_excl from bc_net_day n), 0) > 0
       then d0.revenue_excl / nullif((select n.revenue_excl from bc_net_day n), 0)
-    else 0
+    else null
   end as web_revenue_pct_of_bc_day
 from d0
 cross join d1
