@@ -46,7 +46,9 @@ returns table (
   weekday_hourly_avg_series jsonb,
   weekday_hourly_avg_days int,
   weekday_avg_orders_per_day numeric,
-  weekday_avg_revenue_excl_per_day numeric
+  weekday_avg_revenue_excl_per_day numeric,
+  web_orders_pct_of_bc_day numeric,
+  web_revenue_pct_of_bc_day numeric
 )
 language sql
 stable
@@ -403,6 +405,61 @@ weekday_hourly_json as (
 weekday_days_count as (
   select count(*)::int as n
   from weekday_days
+),
+bc_invoices_day as (
+  select
+    count(*)::numeric as orders,
+    coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
+    count(*) filter (
+      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+         or (
+           i.order_date < timestamp '2025-08-18'
+           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
+         )
+    )::numeric as web_orders,
+    coalesce(sum(i.amount_excl) filter (
+      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+         or (
+           i.order_date < timestamp '2025-08-18'
+           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
+         )
+    ), 0)::numeric as web_revenue_excl
+  from raw.bc_invoices_raw i
+  join params p on true
+  where i.order_date >= p.day::timestamp
+    and i.order_date < (p.day::timestamp + interval '1 day')
+),
+bc_credits_day as (
+  select
+    count(*)::numeric as orders,
+    coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
+    count(*) filter (
+      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+         or (
+           i.order_date < timestamp '2025-08-18'
+           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
+         )
+    )::numeric as web_orders,
+    coalesce(sum(i.amount_excl) filter (
+      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+         or (
+           i.order_date < timestamp '2025-08-18'
+           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
+         )
+    ), 0)::numeric as web_revenue_excl
+  from raw.bc_credit_invoices_raw i
+  join params p on true
+  where i.order_date >= p.day::timestamp
+    and i.order_date < (p.day::timestamp + interval '1 day')
+),
+bc_net_day as (
+  select
+    (inv.orders - cr.orders)::numeric as orders,
+    (inv.revenue_excl - cr.revenue_excl)::numeric as revenue_excl,
+    (inv.web_orders - cr.web_orders)::numeric as web_orders,
+    (inv.web_revenue_excl - cr.web_revenue_excl)::numeric as web_revenue_excl
+  from bc_invoices_day inv
+  cross join bc_credits_day cr
 )
 select
   d0.day,
@@ -468,7 +525,17 @@ select
   coalesce((select whj.series from weekday_hourly_json whj), '[]'::jsonb) as weekday_hourly_avg_series,
   coalesce((select wdc.n from weekday_days_count wdc), 0) as weekday_hourly_avg_days,
   coalesce((select wat.avg_orders_per_day from weekday_avg_totals wat), 0) as weekday_avg_orders_per_day,
-  coalesce((select wat.avg_revenue_excl_per_day from weekday_avg_totals wat), 0) as weekday_avg_revenue_excl_per_day
+  coalesce((select wat.avg_revenue_excl_per_day from weekday_avg_totals wat), 0) as weekday_avg_revenue_excl_per_day,
+  case
+    when coalesce((select n.orders from bc_net_day n), 0) > 0
+      then d0.orders::numeric / nullif((select n.orders from bc_net_day n), 0)
+    else 0
+  end as web_orders_pct_of_bc_day,
+  case
+    when coalesce((select n.revenue_excl from bc_net_day n), 0) > 0
+      then d0.revenue_excl / nullif((select n.revenue_excl from bc_net_day n), 0)
+    else 0
+  end as web_revenue_pct_of_bc_day
 from d0
 cross join d1
 cross join d7

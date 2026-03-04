@@ -242,6 +242,8 @@
     setText("day-avg-revenue-excl-weekday-12w", formatNumber(avgRevenueExclWeekday12w));
     setText("day-vs-avg-orders-weekday-12w-pct", pct(paceOrdersWeekday12w));
     setText("day-vs-avg-revenue-excl-weekday-12w-pct", pct(paceRevenueExclWeekday12w));
+    setText("day-web-orders-pct-of-bc", pct(row.web_orders_pct_of_bc_day));
+    setText("day-web-revenue-pct-of-bc", pct(row.web_revenue_pct_of_bc_day));
     setSignedMetric("day-vs-yesterday-orders-pct", row.vs_yesterday_orders_pct);
     setSignedMetric("day-vs-yesterday-revenue-pct", row.vs_yesterday_revenue_excl_pct);
     setSignedMetric("day-vs-yesterday-aov-pct", row.vs_yesterday_aov_excl_pct);
