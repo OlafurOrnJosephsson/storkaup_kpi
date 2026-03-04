@@ -262,6 +262,50 @@ day_web as (
   from unified_web_orders o
   cross join selected_day d
   where date(o.purchase_date) = d.day
+),
+day_avg_365 as (
+  with daily as (
+    select
+      date(o.purchase_date) as day,
+      count(distinct o.order_id)::numeric as orders,
+      coalesce(sum(o.subtotal_excl), 0)::numeric as revenue_excl,
+      coalesce(sum(o.subtotal_incl), 0)::numeric as revenue_incl
+    from unified_web_orders o
+    cross join selected_day d
+    where o.purchase_date >= (d.day::timestamp - interval '365 day')
+      and o.purchase_date < d.day::timestamp
+    group by 1
+  )
+  select
+    coalesce(avg(daily.orders), 0)::numeric as avg_orders,
+    coalesce(avg(daily.revenue_excl), 0)::numeric as avg_revenue_excl,
+    coalesce(avg(daily.revenue_incl), 0)::numeric as avg_revenue_incl
+  from daily
+),
+day_avg_weekday_12w as (
+  with day_ref as (
+    select d.day as day, extract(isodow from d.day)::int as iso_dow
+    from selected_day d
+  ),
+  daily as (
+    select
+      date(o.purchase_date) as day,
+      count(distinct o.order_id)::numeric as orders,
+      coalesce(sum(o.subtotal_excl), 0)::numeric as revenue_excl,
+      coalesce(sum(o.subtotal_incl), 0)::numeric as revenue_incl
+    from unified_web_orders o
+    cross join day_ref r
+    where o.purchase_date >= (r.day::timestamp - interval '84 day')
+      and o.purchase_date < r.day::timestamp
+      and extract(isodow from o.purchase_date) = r.iso_dow
+    group by 1
+  )
+  select
+    coalesce(avg(daily.orders), 0)::numeric as avg_orders,
+    coalesce(avg(daily.revenue_excl), 0)::numeric as avg_revenue_excl,
+    coalesce(avg(daily.revenue_incl), 0)::numeric as avg_revenue_incl,
+    coalesce(count(*), 0)::int as sample_days
+  from daily
 )
 select jsonb_build_object(
   'month',
@@ -377,6 +421,32 @@ select jsonb_build_object(
     'orders', coalesce((select orders from day_web), 0),
     'revenueExcl', coalesce((select revenue_excl from day_web), 0),
     'revenueIncl', coalesce((select revenue_incl from day_web), 0)
+  ),
+  'dayBenchmark',
+  jsonb_build_object(
+    'avgOrders365', coalesce((select avg_orders from day_avg_365), 0),
+    'avgRevenueExcl365', coalesce((select avg_revenue_excl from day_avg_365), 0),
+    'avgRevenueIncl365', coalesce((select avg_revenue_incl from day_avg_365), 0),
+    'paceOrdersPct365',
+      case when coalesce((select avg_orders from day_avg_365), 0) > 0
+        then coalesce((select orders from day_web), 0) / nullif((select avg_orders from day_avg_365), 0)
+        else 0 end,
+    'paceRevenueExclPct365',
+      case when coalesce((select avg_revenue_excl from day_avg_365), 0) > 0
+        then coalesce((select revenue_excl from day_web), 0) / nullif((select avg_revenue_excl from day_avg_365), 0)
+        else 0 end,
+    'avgOrdersWeekday12w', coalesce((select avg_orders from day_avg_weekday_12w), 0),
+    'avgRevenueExclWeekday12w', coalesce((select avg_revenue_excl from day_avg_weekday_12w), 0),
+    'avgRevenueInclWeekday12w', coalesce((select avg_revenue_incl from day_avg_weekday_12w), 0),
+    'sampleDaysWeekday12w', coalesce((select sample_days from day_avg_weekday_12w), 0),
+    'paceOrdersPctWeekday12w',
+      case when coalesce((select avg_orders from day_avg_weekday_12w), 0) > 0
+        then coalesce((select orders from day_web), 0) / nullif((select avg_orders from day_avg_weekday_12w), 0)
+        else 0 end,
+    'paceRevenueExclPctWeekday12w',
+      case when coalesce((select avg_revenue_excl from day_avg_weekday_12w), 0) > 0
+        then coalesce((select revenue_excl from day_web), 0) / nullif((select avg_revenue_excl from day_avg_weekday_12w), 0)
+        else 0 end
   ),
   'dayOrders', coalesce((select orders from day_web), 0),
   'dayRevenueExcl', coalesce((select revenue_excl from day_web), 0)

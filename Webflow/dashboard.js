@@ -210,6 +210,22 @@
     setText("day-revenue-incl", formatNumber(revenueIncl));
   }
 
+  function applyDayBenchmarkMetrics(bench) {
+    var b = bench || {};
+    setText("day-avg-orders-365", toNumberSafe(b.avgOrders365));
+    setText("day-avg-revenue-excl-365", formatNumber(b.avgRevenueExcl365));
+    setText("day-avg-revenue-incl-365", formatNumber(b.avgRevenueIncl365));
+    setText("day-vs-avg-orders-365-pct", pct(b.paceOrdersPct365));
+    setText("day-vs-avg-revenue-excl-365-pct", pct(b.paceRevenueExclPct365));
+
+    setText("day-avg-orders-weekday-12w", toNumberSafe(b.avgOrdersWeekday12w));
+    setText("day-avg-revenue-excl-weekday-12w", formatNumber(b.avgRevenueExclWeekday12w));
+    setText("day-avg-revenue-incl-weekday-12w", formatNumber(b.avgRevenueInclWeekday12w));
+    setText("day-avg-weekday-12w-sample-days", toNumberSafe(b.sampleDaysWeekday12w));
+    setText("day-vs-avg-orders-weekday-12w-pct", pct(b.paceOrdersPctWeekday12w));
+    setText("day-vs-avg-revenue-excl-weekday-12w-pct", pct(b.paceRevenueExclPctWeekday12w));
+  }
+
   function applyDayAdvancedMetrics(row) {
     if (!row) return;
     setText("day-aov-excl", formatNumber(row.aov_excl));
@@ -625,6 +641,7 @@
           var dayRevenueIncl = data.day && data.day.revenueIncl != null ? data.day.revenueIncl : 0;
           applyDayMetrics(dayDate, dayOrders, dayRevenueExcl, dayRevenueIncl);
         }
+        applyDayBenchmarkMetrics(data.dayBenchmark || {});
         setText("month-selfserve-pct", pct(data.month.selfServePct));
         setText("month-aov-excl", formatNumber(data.month.aovExcl));
         setText("month-bc-aov-excl", formatNumber(data.month.bcAovExcl));
