@@ -171,6 +171,10 @@
     return new Date().toISOString().slice(0, 10);
   }
 
+  function getCurrentMonthKey() {
+    return getTodayIso().slice(0, 7);
+  }
+
   function normalizeDay(day) {
     var s = String(day || "").trim();
     return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
@@ -623,6 +627,7 @@
   }
 
   function fetchMonth(month) {
+    var targetMonth = month || getCurrentMonthKey();
     var cfg = getCfg();
     var apiKey = cfg.publishableKey || "";
     var rpcUrl = getRpcUrl();
@@ -631,7 +636,7 @@
       return Promise.resolve();
     }
 
-    log("Fetching month:", month, rpcUrl);
+    log("Fetching month:", targetMonth, rpcUrl);
 
     return fetch(rpcUrl, {
       method: "POST",
@@ -641,7 +646,7 @@
         "apikey": apiKey,
         "Authorization": "Bearer " + apiKey
       },
-      body: JSON.stringify({ p_month: month || null })
+      body: JSON.stringify({ p_month: targetMonth })
     })
       .then(function (r) { return r.json(); })
       .then(function (raw) {
@@ -1153,7 +1158,7 @@
 
     var active = document.querySelector(".dashboard-date-item.active[data-month]");
     var first = document.querySelector(".dashboard-date-item[data-month]");
-    var initialMonth = active ? active.getAttribute("data-month") : (first ? first.getAttribute("data-month") : null);
+    var initialMonth = active ? active.getAttribute("data-month") : (first ? first.getAttribute("data-month") : getCurrentMonthKey());
     setCurrentMonthLabel(initialMonth);
 
     fetchMonth(initialMonth);
@@ -1165,7 +1170,7 @@
 
     setInterval(function () {
       var activeNow = document.querySelector(".dashboard-date-item.active[data-month]");
-      var month = activeNow ? activeNow.getAttribute("data-month") : initialMonth;
+      var month = activeNow ? activeNow.getAttribute("data-month") : (initialMonth || getCurrentMonthKey());
       setCurrentMonthLabel(month);
       fetchMonth(month);
       fetchDay(selectedDay || getTodayIso());
