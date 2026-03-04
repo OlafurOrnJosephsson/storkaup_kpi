@@ -25,6 +25,8 @@
         profileScope: "family"
     };
     var MAX_RENDERED_CUSTOMERS = 150;
+    var CUSTOMER_CACHE_KEY = "storkaup:customer_profiles_labeled_trends:v1";
+    var CUSTOMER_CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutes
 
     function headers(profile) {
         var h = { apikey: KEY, Authorization: "Bearer " + KEY };
@@ -36,6 +38,43 @@
         if (v === null || v === undefined || v === "") return 0;
         var n = Number(v);
         return isNaN(n) ? 0 : n;
+    }
+
+    function canUseLocalStorage_() {
+        try {
+            return typeof window !== "undefined" && !!window.localStorage;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function loadCustomerCache_() {
+        if (!canUseLocalStorage_()) return [];
+        try {
+            var raw = window.localStorage.getItem(CUSTOMER_CACHE_KEY);
+            if (!raw) return [];
+            var parsed = JSON.parse(raw);
+            if (!parsed || !Array.isArray(parsed.rows)) return [];
+            var ts = Number(parsed.ts || 0);
+            if (!Number.isFinite(ts) || ts <= 0) return [];
+            if ((Date.now() - ts) > CUSTOMER_CACHE_TTL_MS) return [];
+            return parsed.rows;
+        } catch (_) {
+            return [];
+        }
+    }
+
+    function saveCustomerCache_(rows) {
+        if (!canUseLocalStorage_()) return;
+        try {
+            var data = {
+                ts: Date.now(),
+                rows: Array.isArray(rows) ? rows : []
+            };
+            window.localStorage.setItem(CUSTOMER_CACHE_KEY, JSON.stringify(data));
+        } catch (_) {
+            // Ignore quota/storage errors silently.
+        }
     }
 
     function fmtInt(v) {
@@ -437,6 +476,7 @@
             if (rows.length < pageSize) break;
             await new Promise(function(resolve) { setTimeout(resolve, 0); });
         }
+        saveCustomerCache_(state.customers);
         if (state.searchTerm) {
             var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
             applyFilters(root, q);
@@ -1272,6 +1312,11 @@
         setProfileVisible(root, false);
         setCustomerListVisible(root, true);
 
+        var cachedRows = loadCustomerCache_();
+        if (cachedRows.length) {
+            state.customers = cachedRows;
+        }
+
         var pageSize = 300;
         var maxRows = 6000;
         var useOrder = true;
@@ -1281,6 +1326,12 @@
             console.error("Priority flags fetch failed:", flagErr);
             state.priorityFlagsByFamily = {};
             applyPriorityFlagsToCustomers_();
+        }
+        if (cachedRows.length) {
+            sortProfilesByScore(state.customers);
+            syncChipButtons_(root);
+            updateCustomerSortIndicators(root);
+            applyFilters(root, "");
         }
         var firstPage = [];
         var flaggedBootstrap = state.activeChip === "flagged" && Object.keys(state.priorityFlagsByFamily || {}).length > 0;
@@ -1314,8 +1365,11 @@
                 firstPage = await fetchProfilesPage(0, pageSize, useOrder);
             }
         }
-        state.customers = firstPage;
+        if (firstPage.length) {
+            state.customers = firstPage;
+        }
         applyPriorityFlagsToCustomers_();
+        if (state.customers.length) saveCustomerCache_(state.customers);
         try {
             await fetchActiveReps_();
         } catch (repErr) {
