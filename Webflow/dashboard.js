@@ -228,7 +228,20 @@
 
   function applyDayAdvancedMetrics(row) {
     if (!row) return;
+    var avgOrdersWeekday12w = toNumberSafe(row.weekday_avg_orders_per_day);
+    var avgRevenueExclWeekday12w = toNumberSafe(row.weekday_avg_revenue_excl_per_day);
+    var paceOrdersWeekday12w = avgOrdersWeekday12w > 0
+      ? (toNumberSafe(row.orders) / avgOrdersWeekday12w)
+      : 0;
+    var paceRevenueExclWeekday12w = avgRevenueExclWeekday12w > 0
+      ? (toNumberSafe(row.revenue_excl) / avgRevenueExclWeekday12w)
+      : 0;
+
     setText("day-aov-excl", formatNumber(row.aov_excl));
+    setText("day-avg-orders-weekday-12w", toNumberSafe(avgOrdersWeekday12w));
+    setText("day-avg-revenue-excl-weekday-12w", formatNumber(avgRevenueExclWeekday12w));
+    setText("day-vs-avg-orders-weekday-12w-pct", pct(paceOrdersWeekday12w));
+    setText("day-vs-avg-revenue-excl-weekday-12w-pct", pct(paceRevenueExclWeekday12w));
     setSignedMetric("day-vs-yesterday-orders-pct", row.vs_yesterday_orders_pct);
     setSignedMetric("day-vs-yesterday-revenue-pct", row.vs_yesterday_revenue_excl_pct);
     setSignedMetric("day-vs-yesterday-aov-pct", row.vs_yesterday_aov_excl_pct);
