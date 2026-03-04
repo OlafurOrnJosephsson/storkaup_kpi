@@ -81,7 +81,7 @@
 
   function buildMetricMap() {
     var values = {};
-    document.querySelectorAll(".webapp-data[data-metric]").forEach(function (el) {
+    document.querySelectorAll(".webapp-data[data-metric], .webapp-data [data-metric]").forEach(function (el) {
       var key = el.getAttribute("data-metric");
       var p = parsePercent(el.textContent);
       if (key && p !== null) values[key] = p;
