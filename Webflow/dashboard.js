@@ -70,15 +70,6 @@
 
   function setDigitalAdoptionVisualState(score100) {
     var band = digitalScoreBand(score100);
-    var color = (band === "good")
-      ? "#257b17"
-      : (band === "warn" ? "#f0a000" : "#c23340");
-
-    var scoreEl = document.querySelector('[data-metric="digital-adoption-score"]');
-    var pctEl = document.querySelector('[data-metric="digital-adoption-score-pct"]');
-    if (scoreEl) scoreEl.style.color = color;
-    if (pctEl) pctEl.style.color = color;
-
     var card = document.querySelector('[data-kpi="digital-adoption"]');
     if (card) card.setAttribute("data-score-band", band);
   }

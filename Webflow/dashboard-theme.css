@@ -279,3 +279,19 @@ input[type="radio"]:disabled {
 .w-slider-dot.w-active {
   background-color: var(--blue);
 }
+
+/* Digital Adoption Score */
+[data-kpi="digital-adoption"][data-score-band="good"] [data-metric="digital-adoption-score"],
+[data-kpi="digital-adoption"][data-score-band="good"] [data-metric="digital-adoption-score-pct"] {
+  color: var(--success-dark, #257b17);
+}
+
+[data-kpi="digital-adoption"][data-score-band="warn"] [data-metric="digital-adoption-score"],
+[data-kpi="digital-adoption"][data-score-band="warn"] [data-metric="digital-adoption-score-pct"] {
+  color: var(--warning-dark, #ba7f1f);
+}
+
+[data-kpi="digital-adoption"][data-score-band="bad"] [data-metric="digital-adoption-score"],
+[data-kpi="digital-adoption"][data-score-band="bad"] [data-metric="digital-adoption-score-pct"] {
+  color: var(--error-dark, #c23340);
+}
