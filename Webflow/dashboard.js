@@ -47,6 +47,63 @@
     return (Math.round(value * 1000) / 10) + "%";
   }
 
+  function clamp01(n) {
+    var v = Number(n);
+    if (!Number.isFinite(v)) return 0;
+    return Math.max(0, Math.min(1, v));
+  }
+
+  function digitalScoreBand(score100) {
+    var s = toNumberSafe(score100);
+    if (s > 80) return "good";
+    if (s >= 60) return "warn";
+    return "bad";
+  }
+
+  function getDigitalAdoptionTargetPct() {
+    var fromBody = document.body
+      ? Number(document.body.getAttribute("data-digital-adoption-target-pct"))
+      : NaN;
+    if (Number.isFinite(fromBody) && fromBody > 0) return fromBody;
+    return 0.10; // 10% new web customer rate == full score contribution
+  }
+
+  function setDigitalAdoptionVisualState(score100) {
+    var band = digitalScoreBand(score100);
+    var color = (band === "good")
+      ? "#257b17"
+      : (band === "warn" ? "#f0a000" : "#c23340");
+
+    var scoreEl = document.querySelector('[data-metric="digital-adoption-score"]');
+    var pctEl = document.querySelector('[data-metric="digital-adoption-score-pct"]');
+    if (scoreEl) scoreEl.style.color = color;
+    if (pctEl) pctEl.style.color = color;
+
+    var card = document.querySelector('[data-kpi="digital-adoption"]');
+    if (card) card.setAttribute("data-score-band", band);
+  }
+
+  function applyDigitalAdoptionMetrics(month, firstTimeWebBuyersPct) {
+    if (!month) return;
+
+    var webShare = clamp01(month.webRevenuePct);
+    var selfServe = clamp01(month.selfServePct);
+    var targetPct = getDigitalAdoptionTargetPct();
+    var newWebPct = clamp01(firstTimeWebBuyersPct);
+    var normalizedNewWeb = clamp01(targetPct > 0 ? (newWebPct / targetPct) : 0);
+
+    var score01 = (webShare * 0.5) + (selfServe * 0.3) + (normalizedNewWeb * 0.2);
+    var score100 = Math.round(clamp01(score01) * 100);
+
+    setText("digital-adoption-score", score100 + " / 100");
+    setText("digital-adoption-score-pct", score100 + "%");
+    setText("digital-adoption-webshare-pct", pct(webShare));
+    setText("digital-adoption-selfserve-pct", pct(selfServe));
+    setText("digital-adoption-newcustomers-norm-pct", pct(normalizedNewWeb));
+
+    setDigitalAdoptionVisualState(score100);
+  }
+
   function parsePercent(text) {
     if (!text) return null;
     var cleaned = text.toString().trim().replace("%", "").replace(",", ".");
@@ -689,6 +746,7 @@
         setText("month-new-web-customers-pct", pct(firstTimeWebBuyersPct));
         setText("month-first-time-web-buyers", toNumberSafe(firstTimeWebBuyers));
         setText("month-first-time-web-buyers-pct", pct(firstTimeWebBuyersPct));
+        applyDigitalAdoptionMetrics(data.month, firstTimeWebBuyersPct);
 
         var values = buildMetricMap();
         updateMeters(values);
