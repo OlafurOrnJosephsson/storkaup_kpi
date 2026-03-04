@@ -27,6 +27,8 @@
     var MAX_RENDERED_CUSTOMERS = 150;
     var CUSTOMER_CACHE_KEY = "storkaup:customer_profiles_labeled_trends:v1";
     var CUSTOMER_CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutes
+    var PRIORITY_FLAGS_CACHE_KEY = "storkaup:customer_priority_flags:v1";
+    var PRIORITY_FLAGS_CACHE_TTL_MS = 1000 * 60 * 10; // 10 minutes
 
     function headers(profile) {
         var h = { apikey: KEY, Authorization: "Bearer " + KEY };
@@ -72,6 +74,34 @@
                 rows: Array.isArray(rows) ? rows : []
             };
             window.localStorage.setItem(CUSTOMER_CACHE_KEY, JSON.stringify(data));
+        } catch (_) {
+            // Ignore quota/storage errors silently.
+        }
+    }
+
+    function loadPriorityFlagsCache_() {
+        if (!canUseLocalStorage_()) return null;
+        try {
+            var raw = window.localStorage.getItem(PRIORITY_FLAGS_CACHE_KEY);
+            if (!raw) return null;
+            var parsed = JSON.parse(raw);
+            if (!parsed || !Array.isArray(parsed.rows)) return null;
+            var ts = Number(parsed.ts || 0);
+            if (!Number.isFinite(ts) || ts <= 0) return null;
+            if ((Date.now() - ts) > PRIORITY_FLAGS_CACHE_TTL_MS) return null;
+            return parsed.rows;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function savePriorityFlagsCache_(rows) {
+        if (!canUseLocalStorage_()) return;
+        try {
+            window.localStorage.setItem(PRIORITY_FLAGS_CACHE_KEY, JSON.stringify({
+                ts: Date.now(),
+                rows: Array.isArray(rows) ? rows : []
+            }));
         } catch (_) {
             // Ignore quota/storage errors silently.
         }
@@ -527,6 +557,16 @@
                 var bi = String(b.customer_id || "");
                 return ai.localeCompare(bi) * mul;
             }
+            if (key === "assigned_rep_name_norm") {
+                var ar = String(a.assigned_rep_name_norm || "").toLowerCase();
+                var br = String(b.assigned_rep_name_norm || "").toLowerCase();
+                if (!ar && br) return 1;
+                if (ar && !br) return -1;
+                if (ar !== br) return ar.localeCompare(br) * mul;
+                var an4 = String(a.customer_name || "").toLowerCase();
+                var bn4 = String(b.customer_name || "").toLowerCase();
+                return an4.localeCompare(bn4);
+            }
             var avn = numOrZero(a[key]);
             var bvn = numOrZero(b[key]);
             if (avn !== bvn) return (avn - bvn) * mul;
@@ -541,7 +581,12 @@
         if (!heads || !heads.length) return;
         heads.forEach(function(h) {
             var key = String(h.getAttribute("data-sort-customer") || h.getAttribute("data-sort") || "").trim();
-            var isCustomerSortKey = key === "customer_name" || key === "webshop_active" || key === "customer_id" || key === "low_hanging_fruit_score";
+            var isCustomerSortKey =
+                key === "customer_name" ||
+                key === "webshop_active" ||
+                key === "customer_id" ||
+                key === "low_hanging_fruit_score" ||
+                key === "assigned_rep_name_norm";
             if (!isCustomerSortKey) return;
             h.classList.remove("is-sort-active", "is-asc", "is-desc");
             if (key === state.customerSortKey) {
@@ -590,6 +635,7 @@
                 note: r && r.note ? r.note : ""
             };
         });
+        savePriorityFlagsCache_(rows || []);
         state.priorityFlagsByFamily = map;
         applyPriorityFlagsToCustomers_();
     }
@@ -1316,16 +1362,42 @@
         if (cachedRows.length) {
             state.customers = cachedRows;
         }
+        var cachedPriorityRows = loadPriorityFlagsCache_();
+        if (cachedPriorityRows && cachedPriorityRows.length) {
+            var cachedMap = {};
+            cachedPriorityRows.forEach(function(r) {
+                var key = priorityKeyFromCustomerId((r && r.customer_id) || (r && r.customer_family_id));
+                if (!key) return;
+                cachedMap[key] = {
+                    status: String(r && r.status || "").toLowerCase(),
+                    onboarded_status: String(r && r.onboarded_status || "").toLowerCase(),
+                    first_web_order_at: r && r.first_web_order_at ? r.first_web_order_at : "",
+                    first_selfserve_order_at: r && r.first_selfserve_order_at ? r.first_selfserve_order_at : "",
+                    assigned_rep_name_norm: String(r && r.assigned_rep_name_norm || "").toLowerCase(),
+                    updated_at: r && r.updated_at ? r.updated_at : "",
+                    note: r && r.note ? r.note : ""
+                };
+            });
+            state.priorityFlagsByFamily = cachedMap;
+            applyPriorityFlagsToCustomers_();
+        }
 
         var pageSize = 300;
         var maxRows = 6000;
         var useOrder = true;
-        try {
-            await fetchPriorityFlags_();
-        } catch (flagErr) {
-            console.error("Priority flags fetch failed:", flagErr);
-            state.priorityFlagsByFamily = {};
-            applyPriorityFlagsToCustomers_();
+        var hasCachedPriority = !!(cachedPriorityRows && cachedPriorityRows.length);
+        if (hasCachedPriority) {
+            fetchPriorityFlags_().catch(function(flagErrBg) {
+                console.error("Priority flags background refresh failed:", flagErrBg);
+            });
+        } else {
+            try {
+                await fetchPriorityFlags_();
+            } catch (flagErr) {
+                console.error("Priority flags fetch failed:", flagErr);
+                state.priorityFlagsByFamily = {};
+                applyPriorityFlagsToCustomers_();
+            }
         }
         if (cachedRows.length) {
             sortProfilesByScore(state.customers);
@@ -1421,14 +1493,19 @@
                     customerSortEl.getAttribute("data-sort") ||
                     ""
                 ).trim();
-                var isCustomerSortKey = ckey === "customer_name" || ckey === "webshop_active" || ckey === "customer_id" || ckey === "low_hanging_fruit_score";
+                var isCustomerSortKey =
+                    ckey === "customer_name" ||
+                    ckey === "webshop_active" ||
+                    ckey === "customer_id" ||
+                    ckey === "low_hanging_fruit_score" ||
+                    ckey === "assigned_rep_name_norm";
                 if (isCustomerSortKey) {
                     e.preventDefault();
                     if (state.customerSortKey === ckey) {
                         state.customerSortDir = state.customerSortDir === "asc" ? "desc" : "asc";
                     } else {
                         state.customerSortKey = ckey;
-                        state.customerSortDir = (ckey === "customer_name" || ckey === "customer_id") ? "asc" : "desc";
+                        state.customerSortDir = (ckey === "customer_name" || ckey === "customer_id" || ckey === "assigned_rep_name_norm") ? "asc" : "desc";
                     }
                     var qsort = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
                     applyFilters(root, qsort);
