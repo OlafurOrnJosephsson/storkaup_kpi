@@ -413,21 +413,37 @@ bc_invoices_day as (
     count(*) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.order_date < timestamp '2025-08-18'
+           coalesce(
+             nullif(to_jsonb(i)->>'booking_date', '')::timestamptz,
+             nullif(to_jsonb(i)->>'posting_date', '')::timestamptz,
+             i.order_date
+           ) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     )::numeric as web_orders,
     coalesce(sum(i.amount_excl) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.order_date < timestamp '2025-08-18'
+           coalesce(
+             nullif(to_jsonb(i)->>'booking_date', '')::timestamptz,
+             nullif(to_jsonb(i)->>'posting_date', '')::timestamptz,
+             i.order_date
+           ) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     ), 0)::numeric as web_revenue_excl
   from raw.bc_invoices_raw i
   join params p on true
-  where i.order_date >= p.day::timestamp
-    and i.order_date < (p.day::timestamp + interval '1 day')
+  where coalesce(
+          nullif(to_jsonb(i)->>'booking_date', '')::timestamptz,
+          nullif(to_jsonb(i)->>'posting_date', '')::timestamptz,
+          i.order_date
+        ) >= p.day::timestamp
+    and coalesce(
+          nullif(to_jsonb(i)->>'booking_date', '')::timestamptz,
+          nullif(to_jsonb(i)->>'posting_date', '')::timestamptz,
+          i.order_date
+        ) < (p.day::timestamp + interval '1 day')
 ),
 bc_credits_day as (
   select
@@ -436,21 +452,37 @@ bc_credits_day as (
     count(*) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.order_date < timestamp '2025-08-18'
+           coalesce(
+             nullif(to_jsonb(i)->>'booking_date', '')::timestamptz,
+             nullif(to_jsonb(i)->>'posting_date', '')::timestamptz,
+             i.order_date
+           ) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     )::numeric as web_orders,
     coalesce(sum(i.amount_excl) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.order_date < timestamp '2025-08-18'
+           coalesce(
+             nullif(to_jsonb(i)->>'booking_date', '')::timestamptz,
+             nullif(to_jsonb(i)->>'posting_date', '')::timestamptz,
+             i.order_date
+           ) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     ), 0)::numeric as web_revenue_excl
   from raw.bc_credit_invoices_raw i
   join params p on true
-  where i.order_date >= p.day::timestamp
-    and i.order_date < (p.day::timestamp + interval '1 day')
+  where coalesce(
+          nullif(to_jsonb(i)->>'booking_date', '')::timestamptz,
+          nullif(to_jsonb(i)->>'posting_date', '')::timestamptz,
+          i.order_date
+        ) >= p.day::timestamp
+    and coalesce(
+          nullif(to_jsonb(i)->>'booking_date', '')::timestamptz,
+          nullif(to_jsonb(i)->>'posting_date', '')::timestamptz,
+          i.order_date
+        ) < (p.day::timestamp + interval '1 day')
 ),
 bc_net_day as (
   select
