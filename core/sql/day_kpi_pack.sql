@@ -406,32 +406,6 @@ weekday_days_count as (
   select count(*)::int as n
   from weekday_days
 ),
-bc_invoices_base as (
-  select
-    i.*,
-    coalesce(
-      case
-        when nullif(to_jsonb(i)->>'booking_date', '') ~ '^\d{4}-\d{2}-\d{2}'
-          then (nullif(to_jsonb(i)->>'booking_date', '')::timestamptz)::date
-        when nullif(to_jsonb(i)->>'booking_date', '') ~ '^\d{1,2}\.\d{1,2}\.\d{4}$'
-          then to_date(nullif(to_jsonb(i)->>'booking_date', ''), 'DD.MM.YYYY')
-        when nullif(to_jsonb(i)->>'booking_date', '') ~ '^\d{1,2}/\d{1,2}/\d{4}$'
-          then to_date(nullif(to_jsonb(i)->>'booking_date', ''), 'DD/MM/YYYY')
-        else null
-      end,
-      case
-        when nullif(to_jsonb(i)->>'posting_date', '') ~ '^\d{4}-\d{2}-\d{2}'
-          then (nullif(to_jsonb(i)->>'posting_date', '')::timestamptz)::date
-        when nullif(to_jsonb(i)->>'posting_date', '') ~ '^\d{1,2}\.\d{1,2}\.\d{4}$'
-          then to_date(nullif(to_jsonb(i)->>'posting_date', ''), 'DD.MM.YYYY')
-        when nullif(to_jsonb(i)->>'posting_date', '') ~ '^\d{1,2}/\d{1,2}/\d{4}$'
-          then to_date(nullif(to_jsonb(i)->>'posting_date', ''), 'DD/MM/YYYY')
-        else null
-      end,
-      i.order_date::date
-    ) as effective_bc_day
-  from raw.bc_invoices_raw i
-),
 bc_invoices_day as (
   select
     count(*)::numeric as orders,
@@ -439,46 +413,21 @@ bc_invoices_day as (
     count(*) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.effective_bc_day < date '2025-08-18'
+           i.order_date < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     )::numeric as web_orders,
     coalesce(sum(i.amount_excl) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.effective_bc_day < date '2025-08-18'
+           i.order_date < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     ), 0)::numeric as web_revenue_excl
-  from bc_invoices_base i
+  from raw.bc_invoices_raw i
   join params p on true
-  where i.effective_bc_day = p.day
-),
-bc_credits_base as (
-  select
-    i.*,
-    coalesce(
-      case
-        when nullif(to_jsonb(i)->>'booking_date', '') ~ '^\d{4}-\d{2}-\d{2}'
-          then (nullif(to_jsonb(i)->>'booking_date', '')::timestamptz)::date
-        when nullif(to_jsonb(i)->>'booking_date', '') ~ '^\d{1,2}\.\d{1,2}\.\d{4}$'
-          then to_date(nullif(to_jsonb(i)->>'booking_date', ''), 'DD.MM.YYYY')
-        when nullif(to_jsonb(i)->>'booking_date', '') ~ '^\d{1,2}/\d{1,2}/\d{4}$'
-          then to_date(nullif(to_jsonb(i)->>'booking_date', ''), 'DD/MM/YYYY')
-        else null
-      end,
-      case
-        when nullif(to_jsonb(i)->>'posting_date', '') ~ '^\d{4}-\d{2}-\d{2}'
-          then (nullif(to_jsonb(i)->>'posting_date', '')::timestamptz)::date
-        when nullif(to_jsonb(i)->>'posting_date', '') ~ '^\d{1,2}\.\d{1,2}\.\d{4}$'
-          then to_date(nullif(to_jsonb(i)->>'posting_date', ''), 'DD.MM.YYYY')
-        when nullif(to_jsonb(i)->>'posting_date', '') ~ '^\d{1,2}/\d{1,2}/\d{4}$'
-          then to_date(nullif(to_jsonb(i)->>'posting_date', ''), 'DD/MM/YYYY')
-        else null
-      end,
-      i.order_date::date
-    ) as effective_bc_day
-  from raw.bc_credit_invoices_raw i
+  where i.order_date >= p.day::timestamp
+    and i.order_date < (p.day::timestamp + interval '1 day')
 ),
 bc_credits_day as (
   select
@@ -487,20 +436,21 @@ bc_credits_day as (
     count(*) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.effective_bc_day < date '2025-08-18'
+           i.order_date < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     )::numeric as web_orders,
     coalesce(sum(i.amount_excl) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.effective_bc_day < date '2025-08-18'
+           i.order_date < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     ), 0)::numeric as web_revenue_excl
-  from bc_credits_base i
+  from raw.bc_credit_invoices_raw i
   join params p on true
-  where i.effective_bc_day = p.day
+  where i.order_date >= p.day::timestamp
+    and i.order_date < (p.day::timestamp + interval '1 day')
 ),
 bc_net_day as (
   select
