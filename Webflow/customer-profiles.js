@@ -451,7 +451,7 @@
             reasonTxt = "";
             el.setAttribute("data-status", "loading");
         } else {
-            label = "Ný gögnum hlaðið";
+            label = "Ný gögn hlaðin";
             el.setAttribute("data-status", "ok");
         }
         el.innerHTML = ''
