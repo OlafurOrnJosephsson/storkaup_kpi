@@ -420,18 +420,26 @@
         var m = String(mode || "ok");
         var rel = formatRelativeMinutes_(tsMs);
         var why = String(reason || "").trim();
+        var label = "";
+        var meta = rel ? ("(" + rel + ")") : "";
+        var reasonTxt = why || "";
         if (m === "stale") {
-            el.textContent = "Mogulega urelt: birti cache" + (rel ? " (" + rel + ")" : "") + (why ? " - " + why : "");
+            label = "Mogulega urelt: birti cache";
+            reasonTxt = reasonTxt || "beid eftir nyjum gognunum";
             el.setAttribute("data-status", "stale");
-            return;
-        }
-        if (m === "loading") {
-            el.textContent = "Augnablik! Hled gognum";
+        } else if (m === "loading") {
+            label = "Augnablik! Hled gognum";
+            meta = "";
+            reasonTxt = "";
             el.setAttribute("data-status", "loading");
-            return;
+        } else {
+            label = "Ny gognum hladid";
+            el.setAttribute("data-status", "ok");
         }
-        el.textContent = "Ny gognum hladid" + (rel ? " (" + rel + ")" : "");
-        el.setAttribute("data-status", "ok");
+        el.innerHTML = ''
+            + '<span class="cp-data-status__label">' + label + '</span>'
+            + (meta ? '<span class="cp-data-status__meta"> ' + meta + '</span>' : '')
+            + (reasonTxt && m !== "loading" ? '<span class="cp-data-status__reason"> - ' + reasonTxt + '</span>' : '');
     }
 
     function ensureModuleLoader_(root) {
@@ -453,7 +461,7 @@
 
         var label = document.createElement("div");
         label.className = "cp-loading-label";
-        label.textContent = "Augnablik! HleÃ° gÃ¶gnum";
+        label.textContent = "Augnablik! Hled gognum";
 
         overlay.appendChild(spinner);
         overlay.appendChild(label);
@@ -1425,7 +1433,7 @@
 
         // Fallback: query server when local cache misses the term.
         if (s && out.length === 0 && s.length >= 3) {
-            setModuleLoading_(root, true, "Augnablik! HleÃ° gÃ¶gnum");
+            setModuleLoading_(root, true, "Augnablik! Hled gognum");
             try {
                 var remote = await fetchProfilesByQuery(s, 80);
                 if (seq !== state.searchSeq) return; // stale async response
@@ -1462,7 +1470,7 @@
     async function init() {
         var root = document.querySelector('[data-module="customer-profiles"]');
         if (!root) return;
-        setModuleLoading_(root, true, "Augnablik! HleÃ° gÃ¶gnum");
+        setModuleLoading_(root, true, "Augnablik! Hled gognum");
         setDataFreshnessStatus_(root, "loading");
 
         try {
@@ -1837,4 +1845,5 @@
         init().catch(console.error);
     }
 })();
+
 

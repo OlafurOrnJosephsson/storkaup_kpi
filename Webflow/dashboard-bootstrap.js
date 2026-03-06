@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   if (typeof window === "undefined" || typeof document === "undefined") return;
 
   function ensureGlobalLoader() {
@@ -14,7 +14,7 @@
     host.innerHTML = ''
       + '<div class="storkaup-global-loader__card">'
       +   '<div class="storkaup-global-loader__spinner"></div>'
-      +   '<div class="storkaup-global-loader__text">Augnablik! Hleð gögnum</div>'
+      +   '<div class="storkaup-global-loader__text">Augnablik! Hled gognum</div>'
       + '</div>';
 
     document.body.appendChild(host);
@@ -127,3 +127,4 @@
     });
   });
 })();
+

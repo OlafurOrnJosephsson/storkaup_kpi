@@ -303,12 +303,28 @@ span.flatpickr-weekday {
   color: #475467;
 }
 
+[data-module="customer-profiles"] .cp-data-status__label {
+  font-weight: 700;
+}
+
+[data-module="customer-profiles"] .cp-data-status__meta {
+  opacity: 0.85;
+}
+
+[data-module="customer-profiles"] .cp-data-status__reason {
+  opacity: 0.95;
+}
+
 [data-module="customer-profiles"] .cp-data-status[data-status="ok"] {
   color: #027a48;
 }
 
 [data-module="customer-profiles"] .cp-data-status[data-status="stale"] {
   color: #b54708;
+}
+
+[data-module="customer-profiles"] .cp-data-status[data-status="loading"] {
+  color: #155eef;
 }
 
 /* =========================================================
