@@ -76,6 +76,35 @@ input[data-day-picker] {
   -webkit-appearance: none;
   margin: 0;
 }
+.flatpickr-current-month .numInputWrapper {
+  width: 3.8em;
+}
+.flatpickr-current-month .numInputWrapper span {
+  border: 0;
+  width: 16px;
+  right: 0;
+}
+.flatpickr-current-month .numInputWrapper span:hover {
+  background: transparent;
+}
+.flatpickr-current-month .numInputWrapper span::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 12px;
+  height: 12px;
+  border: 0 !important;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px 12px;
+}
+.flatpickr-current-month .numInputWrapper span.arrowUp::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23282828' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m18 15-6-6-6 6'/%3E%3C/svg%3E");
+}
+.flatpickr-current-month .numInputWrapper span.arrowDown::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23282828' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
 .flatpickr-current-month .flatpickr-monthDropdown-months:hover {
     background: var(--blue-background);
 }
