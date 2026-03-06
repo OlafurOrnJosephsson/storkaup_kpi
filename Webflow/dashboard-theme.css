@@ -54,9 +54,23 @@ input[data-day-picker] {
 .flatpickr-current-month,
 .flatpickr-current-month .flatpickr-monthDropdown-months,
 .flatpickr-current-month input.cur-year {
-  color: var(--blue, #10069f);
+  color: var(--black);
   font-weight: 700;
   font-size:.875rem;
+      background: transparent;
+    height: 100%;
+    display: flex;
+    justify-content: space-between;
+    padding:0;
+}
+.flatpickr-current-month .flatpickr-monthDropdown-months:hover {
+    background: var(--blue-background);
+}
+.flatpickr-next-month, .flatpicker-prev-month{
+  display: flex;
+    justify-content: space-between;
+    
+
 }
 
 /* Weekdays */
