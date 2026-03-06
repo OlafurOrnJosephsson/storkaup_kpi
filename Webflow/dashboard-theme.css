@@ -481,3 +481,58 @@ input[type="radio"]:disabled {
 [data-kpi="digital-adoption"][data-score-band="bad"] [data-metric="digital-adoption-score-pct"] {
   color: var(--error-dark, #c23340);
 }
+
+/* Customer profiles status pills */
+[data-field="webshop_active"] {
+  display: flex;
+  align-items: center;
+  color: var(--black);
+  border-radius: 8px;
+  padding: 4px;
+  border: 1px solid;
+  font-weight: 600;
+}
+
+[data-field="webshop_active"][data-status="active"] {
+  border-color: var(--success-dark);
+  background-color: var(--_colors---green50);
+}
+
+[data-field="webshop_active"][data-status="inactive"] {
+  border-color: var(--error-dark);
+  background-color: var(--_colors---red50);
+}
+
+[data-field="onboarded_status"] {
+  padding: 0.25rem 1rem;
+  font-weight: 600;
+  border: 1px solid;
+  color: var(--black);
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: row;
+  text-align: center;
+  min-width: 8rem;
+}
+
+[data-field="onboarded_status"][data-status="onboarded_selfserve"] {
+  border-color: var(--green);
+  background-color: var(--_colors---green100);
+}
+
+[data-field="onboarded_status"][data-status="onboarded_rep_only"] {
+  border-color: var(--light-blue);
+  background-color: var(--_colors---light-blue100);
+}
+
+[data-field="onboarded_status"][data-status="priority_pending"] {
+  border-color: var(--orange);
+  background-color: var(--_colors---orange100);
+}
+
+[data-field="onboarded_status"][data-status="nonpriority"] {
+  border-color: var(--red);
+  background-color: var(--_colors---red100);
+}
