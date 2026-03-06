@@ -8,9 +8,15 @@
   var weekdayGridCacheTs = 0;
   var dayApiUnavailable = false;
   var DEBUG = true;
+  var pageReadySent = false;
   var WEEKDAY_SHORT_IS = { 1: "Mán", 2: "Þri", 3: "Mið", 4: "Fim", 5: "Fös", 6: "Lau", 7: "Sun" };
 
   function log() { if (DEBUG && window.console) console.log.apply(console, arguments); }
+  function emitPageReady() {
+    if (pageReadySent) return;
+    pageReadySent = true;
+    document.dispatchEvent(new CustomEvent("storkaup:page-ready"));
+  }
   function getCfg() { return window.STORKAUP_CONFIG || {}; }
   function getBcDayMinOrders() {
     var fromBody = document.body ? Number(document.body.getAttribute("data-bc-day-min-orders")) : NaN;
@@ -1292,12 +1298,16 @@
     var initialMonth = active ? active.getAttribute("data-month") : (first ? first.getAttribute("data-month") : getCurrentMonthKey());
     setCurrentMonthLabel(initialMonth);
 
-    fetchMonth(initialMonth);
-    fetchDay(selectedDay || getTodayIso());
-    fetchWeekdayComparisonGrid(true);
-    fetchKlaviyoAttributionSummary();
-    fetchBcSyncStatus();
-    fetchWebBookingReconciliationSummary();
+    Promise.allSettled([
+      fetchMonth(initialMonth),
+      fetchDay(selectedDay || getTodayIso()),
+      fetchWeekdayComparisonGrid(true),
+      fetchKlaviyoAttributionSummary(),
+      fetchBcSyncStatus(),
+      fetchWebBookingReconciliationSummary()
+    ]).then(function () {
+      emitPageReady();
+    });
 
     setInterval(function () {
       var activeNow = document.querySelector(".dashboard-date-item.active[data-month]");

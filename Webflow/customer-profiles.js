@@ -376,6 +376,58 @@
         listWrap.hidden = !visible;
     }
 
+    function ensureModuleLoader_(root) {
+        if (!root) return null;
+        var existing = root.querySelector('[data-role="cp-loading-overlay"]');
+        if (existing) return existing;
+
+        if (window.getComputedStyle(root).position === "static") {
+            root.style.position = "relative";
+        }
+
+        var overlay = document.createElement("div");
+        overlay.setAttribute("data-role", "cp-loading-overlay");
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.className = "cp-loading-overlay";
+
+        var spinner = document.createElement("div");
+        spinner.className = "cp-loading-spinner";
+
+        var label = document.createElement("div");
+        label.className = "cp-loading-label";
+        label.textContent = "Augnablik! Hleð gögnum";
+
+        overlay.appendChild(spinner);
+        overlay.appendChild(label);
+        root.appendChild(overlay);
+        return overlay;
+    }
+
+    function setModuleLoading_(root, on, message) {
+        if (!root) return;
+        var n = Number(root.getAttribute("data-loading-count") || 0) || 0;
+        var overlay = ensureModuleLoader_(root);
+        if (!overlay) return;
+
+        if (on) {
+            n += 1;
+            root.setAttribute("data-loading-count", String(n));
+            root.setAttribute("data-loading", "true");
+            root.setAttribute("aria-busy", "true");
+            var label = overlay.querySelector(".cp-loading-label");
+            if (label && message) label.textContent = String(message);
+            overlay.style.display = "flex";
+            return;
+        }
+
+        n = Math.max(0, n - 1);
+        root.setAttribute("data-loading-count", String(n));
+        if (n > 0) return;
+        root.removeAttribute("data-loading");
+        root.setAttribute("aria-busy", "false");
+        overlay.style.display = "none";
+    }
+
     var PROFILE_FIELDS = [
         "customer_id",
         "customer_name",
@@ -1315,26 +1367,31 @@
 
         // Fallback: query server when local cache misses the term.
         if (s && out.length === 0 && s.length >= 3) {
-            var remote = await fetchProfilesByQuery(s, 80);
-            if (seq !== state.searchSeq) return; // stale async response
-            if (remote.length) {
-                var seen = {};
-                state.customers.forEach(function(r) { seen[String(r.customer_id || "")] = true; });
-                remote.forEach(function(r) {
-                    var k = String(r.customer_id || "");
-                    if (!seen[k]) {
-                        state.customers.push(r);
-                        seen[k] = true;
-                    }
-                });
-                applyPriorityFlagsToCustomers_();
-                sortProfilesByScore(state.customers);
-                out = state.customers.filter(function(c) {
-                    if (!matchesChip(c, state.activeChip)) return false;
-                    var name = String(c.customer_name || "").toLowerCase();
-                    var id = String(c.customer_id || "").toLowerCase();
-                    return name.indexOf(s) !== -1 || id.indexOf(s) !== -1;
-                });
+            setModuleLoading_(root, true, "Augnablik! Hleð gögnum");
+            try {
+                var remote = await fetchProfilesByQuery(s, 80);
+                if (seq !== state.searchSeq) return; // stale async response
+                if (remote.length) {
+                    var seen = {};
+                    state.customers.forEach(function(r) { seen[String(r.customer_id || "")] = true; });
+                    remote.forEach(function(r) {
+                        var k = String(r.customer_id || "");
+                        if (!seen[k]) {
+                            state.customers.push(r);
+                            seen[k] = true;
+                        }
+                    });
+                    applyPriorityFlagsToCustomers_();
+                    sortProfilesByScore(state.customers);
+                    out = state.customers.filter(function(c) {
+                        if (!matchesChip(c, state.activeChip)) return false;
+                        var name = String(c.customer_name || "").toLowerCase();
+                        var id = String(c.customer_id || "").toLowerCase();
+                        return name.indexOf(s) !== -1 || id.indexOf(s) !== -1;
+                    });
+                }
+            } finally {
+                setModuleLoading_(root, false);
             }
         }
 
@@ -1347,130 +1404,132 @@
     async function init() {
         var root = document.querySelector('[data-module="customer-profiles"]');
         if (!root) return;
+        setModuleLoading_(root, true, "Augnablik! Hleð gögnum");
 
-        var rawScope = String(root.getAttribute("data-profile-scope") || "").trim().toLowerCase();
-        state.profileScope = rawScope === "child" ? "child" : "family";
+        try {
+            var rawScope = String(root.getAttribute("data-profile-scope") || "").trim().toLowerCase();
+            state.profileScope = rawScope === "child" ? "child" : "family";
 
-        var defaultChip = normalizeChip_(root.getAttribute("data-default-chip") || "all");
-        state.defaultChip = defaultChip || "all";
-        state.activeChip = state.defaultChip;
+            var defaultChip = normalizeChip_(root.getAttribute("data-default-chip") || "all");
+            state.defaultChip = defaultChip || "all";
+            state.activeChip = state.defaultChip;
 
-        setProfileVisible(root, false);
-        setCustomerListVisible(root, true);
+            setProfileVisible(root, false);
+            setCustomerListVisible(root, true);
 
-        var cachedRows = loadCustomerCache_();
-        if (cachedRows.length) {
-            state.customers = cachedRows;
-        }
-        var cachedPriorityRows = loadPriorityFlagsCache_();
-        if (cachedPriorityRows && cachedPriorityRows.length) {
-            var cachedMap = {};
-            cachedPriorityRows.forEach(function(r) {
-                var key = priorityKeyFromCustomerId((r && r.customer_id) || (r && r.customer_family_id));
-                if (!key) return;
-                cachedMap[key] = {
-                    status: String(r && r.status || "").toLowerCase(),
-                    onboarded_status: String(r && r.onboarded_status || "").toLowerCase(),
-                    first_web_order_at: r && r.first_web_order_at ? r.first_web_order_at : "",
-                    first_selfserve_order_at: r && r.first_selfserve_order_at ? r.first_selfserve_order_at : "",
-                    assigned_rep_name_norm: String(r && r.assigned_rep_name_norm || "").toLowerCase(),
-                    updated_at: r && r.updated_at ? r.updated_at : "",
-                    note: r && r.note ? r.note : ""
-                };
-            });
-            state.priorityFlagsByFamily = cachedMap;
-            applyPriorityFlagsToCustomers_();
-        }
-
-        var pageSize = 300;
-        var maxRows = 6000;
-        var useOrder = true;
-        var hasCachedPriority = !!(cachedPriorityRows && cachedPriorityRows.length);
-        if (hasCachedPriority) {
-            fetchPriorityFlags_().catch(function(flagErrBg) {
-                console.error("Priority flags background refresh failed:", flagErrBg);
-            });
-        } else {
-            try {
-                await fetchPriorityFlags_();
-            } catch (flagErr) {
-                console.error("Priority flags fetch failed:", flagErr);
-                state.priorityFlagsByFamily = {};
+            var cachedRows = loadCustomerCache_();
+            if (cachedRows.length) {
+                state.customers = cachedRows;
+            }
+            var cachedPriorityRows = loadPriorityFlagsCache_();
+            if (cachedPriorityRows && cachedPriorityRows.length) {
+                var cachedMap = {};
+                cachedPriorityRows.forEach(function(r) {
+                    var key = priorityKeyFromCustomerId((r && r.customer_id) || (r && r.customer_family_id));
+                    if (!key) return;
+                    cachedMap[key] = {
+                        status: String(r && r.status || "").toLowerCase(),
+                        onboarded_status: String(r && r.onboarded_status || "").toLowerCase(),
+                        first_web_order_at: r && r.first_web_order_at ? r.first_web_order_at : "",
+                        first_selfserve_order_at: r && r.first_selfserve_order_at ? r.first_selfserve_order_at : "",
+                        assigned_rep_name_norm: String(r && r.assigned_rep_name_norm || "").toLowerCase(),
+                        updated_at: r && r.updated_at ? r.updated_at : "",
+                        note: r && r.note ? r.note : ""
+                    };
+                });
+                state.priorityFlagsByFamily = cachedMap;
                 applyPriorityFlagsToCustomers_();
             }
-        }
-        if (cachedRows.length) {
-            sortProfilesByScore(state.customers);
-            syncChipButtons_(root);
-            updateCustomerSortIndicators(root);
-            applyFilters(root, "");
-        }
-        var firstPage = [];
-        var flaggedBootstrap = state.activeChip === "flagged" && Object.keys(state.priorityFlagsByFamily || {}).length > 0;
-        if (flaggedBootstrap) {
-            try {
-                firstPage = await fetchProfilesByCustomerIds(Object.keys(state.priorityFlagsByFamily || {}), maxRows);
-            } catch (flaggedErr) {
-                console.error("Flagged bootstrap fetch failed:", flaggedErr);
-                firstPage = [];
-            }
-            if (!firstPage.length) {
+
+            var pageSize = 300;
+            var maxRows = 6000;
+            var useOrder = true;
+            var hasCachedPriority = !!(cachedPriorityRows && cachedPriorityRows.length);
+            if (hasCachedPriority) {
+                fetchPriorityFlags_().catch(function(flagErrBg) {
+                    console.error("Priority flags background refresh failed:", flagErrBg);
+                });
+            } else {
                 try {
+                    await fetchPriorityFlags_();
+                } catch (flagErr) {
+                    console.error("Priority flags fetch failed:", flagErr);
+                    state.priorityFlagsByFamily = {};
+                    applyPriorityFlagsToCustomers_();
+                }
+            }
+            if (cachedRows.length) {
+                sortProfilesByScore(state.customers);
+                syncChipButtons_(root);
+                updateCustomerSortIndicators(root);
+                applyFilters(root, "");
+            }
+            var firstPage = [];
+            var flaggedBootstrap = state.activeChip === "flagged" && Object.keys(state.priorityFlagsByFamily || {}).length > 0;
+            if (flaggedBootstrap) {
+                try {
+                    firstPage = await fetchProfilesByCustomerIds(Object.keys(state.priorityFlagsByFamily || {}), maxRows);
+                } catch (flaggedErr) {
+                    console.error("Flagged bootstrap fetch failed:", flaggedErr);
+                    firstPage = [];
+                }
+                if (!firstPage.length) {
+                    try {
+                        useOrder = false;
+                        pageSize = 100;
+                        maxRows = 3000;
+                        firstPage = await fetchProfilesPage(0, pageSize, useOrder);
+                    } catch (_) {
+                        firstPage = [];
+                    }
+                }
+            } else {
+                try {
+                    firstPage = await fetchProfilesPage(0, pageSize, useOrder);
+                } catch (err) {
+                    var shouldFallback = !!(err && (err.__isTimeout || Number(err.__status || 0) >= 500));
+                    if (!shouldFallback) throw err;
+                    // Timeout-safe fallback for heavy view scans on some environments.
                     useOrder = false;
                     pageSize = 100;
                     maxRows = 3000;
                     firstPage = await fetchProfilesPage(0, pageSize, useOrder);
-                } catch (_) {
-                    firstPage = [];
                 }
             }
-        } else {
-            try {
-                firstPage = await fetchProfilesPage(0, pageSize, useOrder);
-            } catch (err) {
-                var shouldFallback = !!(err && (err.__isTimeout || Number(err.__status || 0) >= 500));
-                if (!shouldFallback) throw err;
-                // Timeout-safe fallback for heavy view scans on some environments.
-                useOrder = false;
-                pageSize = 100;
-                maxRows = 3000;
-                firstPage = await fetchProfilesPage(0, pageSize, useOrder);
+            if (firstPage.length) {
+                state.customers = firstPage;
             }
-        }
-        if (firstPage.length) {
-            state.customers = firstPage;
-        }
-        applyPriorityFlagsToCustomers_();
-        if (state.customers.length) saveCustomerCache_(state.customers);
-        try {
-            await fetchActiveReps_();
-        } catch (repErr) {
-            console.error("Active reps fetch failed:", repErr);
-            state.reps = [];
-        }
-        renderAssignRepControls_(root);
-        sortProfilesByScore(state.customers);
-        syncChipButtons_(root);
-        updateCustomerSortIndicators(root);
-        applyFilters(root, "");
+            applyPriorityFlagsToCustomers_();
+            if (state.customers.length) saveCustomerCache_(state.customers);
+            try {
+                await fetchActiveReps_();
+            } catch (repErr) {
+                console.error("Active reps fetch failed:", repErr);
+                state.reps = [];
+            }
+            renderAssignRepControls_(root);
+            sortProfilesByScore(state.customers);
+            syncChipButtons_(root);
+            updateCustomerSortIndicators(root);
+            applyFilters(root, "");
 
-        if (!flaggedBootstrap) {
-            hydrateProfilesInBackground(root, pageSize, pageSize, maxRows, useOrder).catch(function(err) {
-                console.error("Background profile hydration failed:", err);
-            });
-        }
+            if (!flaggedBootstrap) {
+                hydrateProfilesInBackground(root, pageSize, pageSize, maxRows, useOrder).catch(function(err) {
+                    console.error("Background profile hydration failed:", err);
+                });
+            }
 
-        var searchInput = root.querySelector('[data-input="customer-search"]');
-        if (searchInput) {
-            searchInput.addEventListener("input", function() {
-                if (state.searchDebounceId) clearTimeout(state.searchDebounceId);
-                state.searchDebounceId = setTimeout(function() {
-                    applyFilters(root, searchInput.value);
-                }, 120);
-            });
-        }
+            var searchInput = root.querySelector('[data-input="customer-search"]');
+            if (searchInput) {
+                searchInput.addEventListener("input", function() {
+                    if (state.searchDebounceId) clearTimeout(state.searchDebounceId);
+                    state.searchDebounceId = setTimeout(function() {
+                        applyFilters(root, searchInput.value);
+                    }, 120);
+                });
+            }
 
-        root.addEventListener("click", async function(e) {
+            root.addEventListener("click", async function(e) {
             var chipBtn = e.target.closest("[data-chip]");
             if (chipBtn) {
                 e.preventDefault();
@@ -1699,7 +1758,11 @@
                 e.preventDefault();
                 exportPdf();
             }
-        });
+            });
+        } finally {
+            setModuleLoading_(root, false);
+            document.dispatchEvent(new CustomEvent("storkaup:page-ready"));
+        }
     }
 
     if (document.readyState === "loading") {

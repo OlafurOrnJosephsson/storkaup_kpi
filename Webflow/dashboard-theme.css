@@ -1,5 +1,63 @@
 /* Storkaup dashboard theme overrides (including Flatpickr). */
 
+.storkaup-global-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.storkaup-global-loader.is-visible {
+  display: flex;
+  opacity: 1;
+}
+
+.storkaup-global-loader__card {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--light-gray-border, #e9e9e9);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(16, 6, 159, 0.12);
+  color: var(--black, #282828);
+  font-family: var(--primary-font, "Sf Pro Text", Arial, sans-serif);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.storkaup-global-loader__spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #d7dafb;
+  border-top-color: var(--blue, #10069f);
+  border-radius: 999px;
+  animation: storkaupSpin 0.9s linear infinite;
+}
+
+@keyframes storkaupSpin {
+  to { transform: rotate(360deg); }
+}
+
+html.storkaup-loading {
+  cursor: progress;
+}
+
+html.storkaup-loading body {
+  pointer-events: none;
+}
+
+html.storkaup-loading #storkaup-global-loader {
+  pointer-events: all;
+}
+
 /* Keep native input in DOM for JS, but render Flatpickr alt input visually */
 input[data-day-picker] {
   position: absolute !important;
@@ -206,6 +264,35 @@ span.flatpickr-weekday {
 .alert-off {
   color: var(--success-dark, #257b17);
   font-weight: 600;
+}
+
+[data-module="customer-profiles"] .cp-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(1px);
+}
+
+[data-module="customer-profiles"] .cp-loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #d7dafb;
+  border-top-color: var(--blue, #10069f);
+  border-radius: 999px;
+  animation: storkaupSpin 0.9s linear infinite;
+}
+
+[data-module="customer-profiles"] .cp-loading-label {
+  font-family: var(--primary-font, "Sf Pro Text", Arial, sans-serif);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--black, #282828);
 }
 
 /* =========================================================
