@@ -667,6 +667,8 @@
         altInput: true,
         altFormat: "d.m.Y",
         locale: localeOpt,
+        monthSelectorType: "static",
+        disableMobile: true,
         allowInput: true,
         defaultDate: normalizeDay(dayPicker.value) || getTodayIso(),
         onChange: function (_selectedDates, dateStr) {
