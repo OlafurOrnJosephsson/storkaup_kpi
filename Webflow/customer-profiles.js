@@ -134,7 +134,7 @@
     function fmtPctChange(curr, prev) {
         var c = numOrZero(curr);
         var p = numOrZero(prev);
-        if (p === 0) return c === 0 ? "0%" : "NÃ½tt";
+        if (p === 0) return c === 0 ? "0%" : "Nýtt";
         var pct = ((c - p) / p) * 100;
         var sign = pct > 0 ? "+" : "";
         return sign + pct.toFixed(1).replace(".", ",") + "%";
@@ -145,16 +145,16 @@
         if (!raw) return "all";
         var compact = raw
             .replace(/[\s_\-]+/g, "")
-            .replace(/Ã¡/g, "a")
-            .replace(/Ã­/g, "i")
-            .replace(/Ã©/g, "e")
-            .replace(/Ã³/g, "o")
-            .replace(/Ãº/g, "u")
-            .replace(/Ã½/g, "y")
-            .replace(/Ã¶/g, "o")
-            .replace(/Ã°/g, "d")
-            .replace(/Ã¾/g, "th")
-            .replace(/Ã¦/g, "ae");
+            .replace(/á/g, "a")
+            .replace(/í/g, "i")
+            .replace(/é/g, "e")
+            .replace(/ó/g, "o")
+            .replace(/ú/g, "u")
+            .replace(/ý/g, "y")
+            .replace(/ö/g, "o")
+            .replace(/ð/g, "d")
+            .replace(/þ/g, "th")
+            .replace(/æ/g, "ae");
 
         if (compact === "all" || compact === "allir") return "all";
         if (compact === "flagged" || compact === "forgangslisti") return "flagged";
@@ -198,15 +198,15 @@
 
     function formatOnboardedStatusLabel_(status) {
         var s = String(status || "").trim().toLowerCase();
-        if (s === "onboarded_selfserve") return "SjÃ¡lfsafgreiÃ°sla";
-        if (s === "onboarded_rep_only") return "Ã ferli";
-        if (s === "priority_pending") return "Ekki Ã­ ferli";
+        if (s === "onboarded_selfserve") return "Sjálfsafgreiðsla";
+        if (s === "onboarded_rep_only") return "Í ferli";
+        if (s === "priority_pending") return "Ekki í ferli";
         if (s === "nonpriority") return "Ekki forgangur";
         return "-";
     }
 
     function formatWebshopStatusLabel_(isActive) {
-        return isActive ? "Virkur" : "Ã“virkur";
+        return isActive ? "Virkur" : "Óvirkur";
     }
 
     function formatRepLabel_(nameNorm) {
@@ -442,16 +442,16 @@
         var meta = rel ? ("(" + rel + ")") : "";
         var reasonTxt = why || "";
         if (m === "stale") {
-            label = "Mogulega urelt: birti cache";
-            reasonTxt = reasonTxt || "beid eftir nyjum gognunum";
+            label = "Mögulega úrelt: birti cache";
+            reasonTxt = reasonTxt || "beið eftir nýjum gögnunum";
             el.setAttribute("data-status", "stale");
         } else if (m === "loading") {
-            label = "Augnablik! Hled gognum";
+            label = "Augnablik! Hleð gögnum";
             meta = "";
             reasonTxt = "";
             el.setAttribute("data-status", "loading");
         } else {
-            label = "Ny gognum hladid";
+            label = "Ný gögnum hlaðið";
             el.setAttribute("data-status", "ok");
         }
         el.innerHTML = ''
@@ -484,7 +484,7 @@
 
         var label = document.createElement("div");
         label.className = "cp-loading-label";
-        label.textContent = "Augnablik! Hled gognum";
+        label.textContent = "Augnablik! Hleð gögnum";
 
         overlay.appendChild(spinner);
         overlay.appendChild(label);
@@ -898,7 +898,7 @@
         bindSelected(root);
         var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
         await applyFilters(root, q);
-        var okMsg = status === "priority" ? "VistaÃ°: Forgangur." : "VistaÃ°: Ekki forgangur.";
+        var okMsg = status === "priority" ? "Vistað: Forgangur." : "Vistað: Ekki forgangur.";
         setPriorityFeedback_(root, okMsg);
         showActionToast_(okMsg, "success");
     }
@@ -920,7 +920,7 @@
         bindSelected(root);
         var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
         await applyFilters(root, q);
-        var msg = repNameNorm ? ("SÃ¶lumaÃ°ur tengdur: " + formatRepLabel_(repNameNorm)) : "SÃ¶lumaÃ°ur aftengdur.";
+        var msg = repNameNorm ? ("Sölumaður tengdur: " + formatRepLabel_(repNameNorm)) : "Sölumaður aftengdur.";
         setPriorityFeedback_(root, msg);
         showActionToast_(msg, "success");
     }
@@ -955,7 +955,7 @@
             if (!res.ok) throw new Error(await res.text());
             var rows = await res.json();
             rows.forEach(function(r) {
-                out[String(r.sku || "").trim()] = r.category || "Ã“flokkaÃ°";
+                out[String(r.sku || "").trim()] = r.category || "Óflokkað";
             });
         }
         return out;
@@ -1037,13 +1037,13 @@
         var webGap = Number(p.avg_days_between_web_orders || 0);
         var lhfs = Number(p.low_hanging_fruit_score || 0);
 
-        if (bc365 >= 6 && web365 === 0) drivers.push("Kaupir reglulega Ã­ BC en ekkert Ã¡ vef sÃ­Ã°ustu 365 daga.");
-        if (bcGap > 0 && bcGap <= 30) drivers.push("Stutt bil milli BC pantana bendir til gÃ³Ã°rar endurpÃ¶ntunartÃ­Ã°ni.");
-        if (web365 > 0 && webGap > 45) drivers.push("Vefpantanir eru til staÃ°ar en meÃ° lÃ¶ngu bili, hÃ¦gt aÃ° virkja betur.");
+        if (bc365 >= 6 && web365 === 0) drivers.push("Kaupir reglulega í BC en ekkert á vef síðustu 365 daga.");
+        if (bcGap > 0 && bcGap <= 30) drivers.push("Stutt bil milli BC pantana bendir til góðrar endurpöntunartíðni.");
+        if (web365 > 0 && webGap > 45) drivers.push("Vefpantanir eru til staðar en með löngu bili, hægt að virkja betur.");
 
-        if (lhfs >= 70) drivers.push("HÃ¡tt LHFS: sterkt skammtÃ­matÃ¦kifÃ¦ri.");
-        else if (lhfs >= 40) drivers.push("MiÃ°lungs LHFS: tÃ¦kifÃ¦ri meÃ° markvissri eftirfylgni.");
-        else drivers.push("LÃ¡gt LHFS: lÃ¦gri forgangur Ã­ bili.");
+        if (lhfs >= 70) drivers.push("Hátt LHFS: sterkt skammtímatækifæri.");
+        else if (lhfs >= 40) drivers.push("Miðlungs LHFS: tækifæri með markvissri eftirfylgni.");
+        else drivers.push("Lágt LHFS: lægri forgangur í bili.");
 
         while (drivers.length < 3) drivers.push("-");
         return drivers.slice(0, 3);
@@ -1206,11 +1206,11 @@
 
         if (!res.ok) {
             var t = await res.text();
-            if (msgEl) msgEl.textContent = "Villa viÃ° vistun verkefnis.";
+            if (msgEl) msgEl.textContent = "Villa við vistun verkefnis.";
             throw new Error(t);
         }
 
-        if (msgEl) msgEl.textContent = "Verkefni stofnaÃ°.";
+        if (msgEl) msgEl.textContent = "Verkefni stofnað.";
         var tasks = await fetchOpenTasks(state.selected.customer_id);
         renderOpenTasks(root, tasks);
 
@@ -1360,7 +1360,7 @@
             select.innerHTML = "";
             var placeholder = first || document.createElement("option");
             placeholder.value = "";
-            placeholder.textContent = placeholder.textContent || "Velja sÃ¶lumann";
+            placeholder.textContent = placeholder.textContent || "Velja sölumann";
             select.appendChild(placeholder);
             (state.reps || []).forEach(function(rep) {
                 var nameNorm = String(rep && rep.name_norm || "").trim().toLowerCase();
@@ -1400,7 +1400,7 @@
             if (p) p.textContent = t.priority || "-";
             if (s) s.textContent = t.status || "-";
             if (d) d.textContent = t.created_at ? new Date(t.created_at).toLocaleDateString("is-IS") : "-";
-            if (s) s.textContent = (String(t.status || "").toLowerCase() === "open") ? "OpiÃ°" : "LokiÃ°";
+            if (s) s.textContent = (String(t.status || "").toLowerCase() === "open") ? "Opið" : "Lokið";
             if (doneBtn) {
                 doneBtn.setAttribute("data-task-id", String(t.id || ""));
                 doneBtn.style.display = String(t.status || "").toLowerCase() === "open" ? "" : "none";
@@ -1456,7 +1456,7 @@
 
         // Fallback: query server when local cache misses the term.
         if (s && out.length === 0 && s.length >= 3) {
-            setModuleLoading_(root, true, "Augnablik! Hled gognum");
+            setModuleLoading_(root, true, "Augnablik! Hleð gögnum");
             try {
                 var remote = await fetchProfilesByQuery(s, 80);
                 if (seq !== state.searchSeq) return; // stale async response
@@ -1493,7 +1493,7 @@
     async function init() {
         var root = document.querySelector('[data-module="customer-profiles"]');
         if (!root) return;
-        setModuleLoading_(root, true, "Augnablik! Hled gognum");
+        setModuleLoading_(root, true, "Augnablik! Hleð gögnum");
         setDataFreshnessStatus_(root, "loading");
 
         try {
@@ -1554,7 +1554,7 @@
                 syncChipButtons_(root);
                 updateCustomerSortIndicators(root);
                 applyFilters(root, "");
-                setDataFreshnessStatus_(root, "stale", cacheMeta.ts, "beid eftir nyjum gognunum");
+                setDataFreshnessStatus_(root, "stale", cacheMeta.ts, "beið eftir nýjum gögnunum");
             }
             var firstPage = [];
             var flaggedBootstrap = state.activeChip === "flagged" && Object.keys(state.priorityFlagsByFamily || {}).length > 0;
@@ -1689,8 +1689,8 @@
                 await markTaskDone(taskId);
 
                 var doneMsgEl = root.querySelector('[data-bind="task-feedback"]');
-                if (doneMsgEl) doneMsgEl.textContent = "Verkefni lokaÃ°.";
-                showActionToast_("Verkefni lokaÃ°.", "success");
+                if (doneMsgEl) doneMsgEl.textContent = "Verkefni lokað.";
+                showActionToast_("Verkefni lokað.", "success");
 
                 if (state.selected && state.selected.customer_id) {
                     var tasksAfterDone = await fetchOpenTasks(state.selected.customer_id);
@@ -1703,7 +1703,7 @@
             if (createTask) {
                 e.preventDefault();
                 await createTaskForSelected(root);
-                showActionToast_("Verkefni stofnaÃ°.", "success");
+                showActionToast_("Verkefni stofnað.", "success");
                 return;
             }
 
@@ -1714,8 +1714,8 @@
                     await setSelectedPriorityStatus_(root, "priority");
                 } catch (priorityErr) {
                     console.error(priorityErr);
-                    setPriorityFeedback_(root, "Villa viÃ° aÃ° vista forgang.");
-                    showActionToast_("Villa viÃ° aÃ° vista forgang.", "error");
+                    setPriorityFeedback_(root, "Villa við að vista forgang.");
+                    showActionToast_("Villa við að vista forgang.", "error");
                 }
                 return;
             }
@@ -1727,8 +1727,8 @@
                     await setSelectedPriorityStatus_(root, "nonpriority");
                 } catch (nonPriorityErr) {
                     console.error(nonPriorityErr);
-                    setPriorityFeedback_(root, "Villa viÃ° aÃ° vista stÃ¶Ã°u.");
-                    showActionToast_("Villa viÃ° aÃ° vista stÃ¶Ã°u.", "error");
+                    setPriorityFeedback_(root, "Villa við að vista stöðu.");
+                    showActionToast_("Villa við að vista stöðu.", "error");
                 }
                 return;
             }
@@ -1745,8 +1745,8 @@
                     await assignSelectedRep_(root, rep);
                 } catch (assignErr) {
                     console.error(assignErr);
-                    setPriorityFeedback_(root, "Villa viÃ° aÃ° tengja sÃ¶lumann.");
-                    showActionToast_("Villa viÃ° aÃ° tengja sÃ¶lumann.", "error");
+                    setPriorityFeedback_(root, "Villa við að tengja sölumann.");
+                    showActionToast_("Villa við að tengja sölumann.", "error");
                 }
                 return;
             }
@@ -1758,8 +1758,8 @@
                     await assignSelectedRep_(root, "");
                 } catch (clearErr) {
                     console.error(clearErr);
-                    setPriorityFeedback_(root, "Villa viÃ° aÃ° aftengja sÃ¶lumann.");
-                    showActionToast_("Villa viÃ° aÃ° aftengja sÃ¶lumann.", "error");
+                    setPriorityFeedback_(root, "Villa við að aftengja sölumann.");
+                    showActionToast_("Villa við að aftengja sölumann.", "error");
                 }
                 return;
             }
@@ -1835,7 +1835,7 @@
                 var rows = await generateList(getSelectedQueryCustomerId());
                 var skuMap = await fetchCategoriesForSkus(rows.map(function(r) { return r.sku; }));
                 state.shoppingRows = rows.map(function(r) {
-                    return Object.assign({}, r, { category: skuMap[String(r.sku || "").trim()] || "Ã“flokkaÃ°" });
+                    return Object.assign({}, r, { category: skuMap[String(r.sku || "").trim()] || "Óflokkað" });
                 });
 
                 applyShoppingFilters(root);

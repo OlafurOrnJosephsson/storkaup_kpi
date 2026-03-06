@@ -14,7 +14,7 @@
     host.innerHTML = ''
       + '<div class="storkaup-global-loader__card">'
       +   '<div class="storkaup-global-loader__spinner"></div>'
-      +   '<div class="storkaup-global-loader__text">Augnablik! Hled gognum</div>'
+      +   '<div class="storkaup-global-loader__text">Augnablik! <br>Hleð gögnum...</div>'
       + '</div>';
 
     document.body.appendChild(host);

@@ -360,25 +360,25 @@
     setMetricHint(
       "day-web-orders-pct-of-bc",
       missingBcOrdersBase
-        ? "Engin BC bokud sala fyrir valinn dag."
+        ? "Engin BC bókuð sala fyrir valinn dag."
         : weakBcOrdersBase
-          ? ("BC grunnur of litill fyrir stodugt hlutfall (min pantanir: " + minOrders + ").")
+          ? ("BC grunnur of lítill fyrir stöðugt hlutfall (min pantanir: " + minOrders + ").")
         : "Web pantanir / BC invoices pantanir (valinn dagur)."
     );
     setMetricHint(
       "day-web-revenue-pct-of-bc",
       missingBcRevenueBase
-        ? "Engin BC bokud sala fyrir valinn dag."
+        ? "Engin BC bókuð sala fyrir valinn dag."
         : weakBcRevenueBase
-          ? ("BC grunnur of litill fyrir stodugt hlutfall (min velta: " + formatNumber(minRevenueExcl) + ").")
+          ? ("BC grunnur of lítill fyrir stöðugt hlutfall (min velta: " + formatNumber(minRevenueExcl) + ").")
         : "Web sala / BC invoices sala (valinn dagur)."
     );
 
     var note = "";
     if (missingBcOrdersBase || missingBcRevenueBase) {
-      note = "Engin BC bokud sala fyrir valinn dag";
+      note = "Engin BC bókuð sala fyrir valinn dag";
     } else if (weakBcOrdersBase || weakBcRevenueBase) {
-      note = "BC grunnur of litill fyrir stodugt % af BC";
+      note = "BC grunnur of lítill fyrir stöðugt % af BC";
     }
     setText("day-web-pct-of-bc-note", note);
     setText("day-bc-invoices-orders", toNumberSafe(bcOrdersBase));
