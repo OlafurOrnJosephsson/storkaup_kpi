@@ -1160,6 +1160,54 @@
             setNonPriorityBtn.classList.toggle("is-disabled", isNonPriority);
             setNonPriorityBtn.classList.toggle("is-current", isNonPriority);
         }
+
+        syncAssignRepCtaState_(root);
+    }
+
+    function syncAssignRepCtaState_(root) {
+        if (!root || !state.selected) return;
+
+        var assignBtn = root.querySelector('[data-action="assign-rep"]');
+        var clearBtn = root.querySelector('[data-action="clear-assigned-rep"]');
+        var select = root.querySelector('[data-input="assign-rep"]');
+        var assigned = String(state.selected.assigned_rep_name_norm || "").trim().toLowerCase();
+
+        if (select && select.tagName && select.tagName.toLowerCase() === "select") {
+            if (assigned) {
+                var opt = Array.prototype.find.call(select.options || [], function(o) {
+                    return String(o && o.value || "").trim().toLowerCase() === assigned;
+                });
+                if (opt) select.value = opt.value;
+            }
+        }
+
+        var chosen = String(select && select.value || "").trim().toLowerCase();
+        var hasAssigned = !!assigned;
+        var isSameAsAssigned = !!chosen && chosen === assigned;
+        var canAssign = !!chosen && !isSameAsAssigned;
+
+        if (assignBtn) {
+            var defaultLabel = assignBtn.getAttribute("data-label-default");
+            if (!defaultLabel) {
+                defaultLabel = String(assignBtn.textContent || "").trim() || "Tengja";
+                assignBtn.setAttribute("data-label-default", defaultLabel);
+            }
+            var connectedLabel = assignBtn.getAttribute("data-label-connected") || "Sölumaður tengdur";
+            assignBtn.textContent = (hasAssigned && !canAssign) ? connectedLabel : defaultLabel;
+            if ("disabled" in assignBtn) assignBtn.disabled = !canAssign;
+            assignBtn.setAttribute("aria-disabled", canAssign ? "false" : "true");
+            assignBtn.setAttribute("data-disabled", canAssign ? "false" : "true");
+            assignBtn.classList.toggle("is-disabled", !canAssign);
+            assignBtn.classList.toggle("is-current", hasAssigned && !canAssign);
+        }
+
+        if (clearBtn) {
+            if ("disabled" in clearBtn) clearBtn.disabled = !hasAssigned;
+            clearBtn.setAttribute("aria-disabled", hasAssigned ? "false" : "true");
+            clearBtn.setAttribute("data-disabled", hasAssigned ? "false" : "true");
+            clearBtn.classList.toggle("is-disabled", !hasAssigned);
+            clearBtn.classList.toggle("is-current", false);
+        }
     }
 
     function renderShoppingList(root, rows) {
@@ -1803,6 +1851,9 @@
             var assignRep = e.target.closest('[data-action="assign-rep"]');
             if (assignRep) {
                 e.preventDefault();
+                if (assignRep.getAttribute("data-disabled") === "true" || assignRep.getAttribute("aria-disabled") === "true") {
+                    return;
+                }
                 var rep = String(assignRep.getAttribute("data-rep") || "").trim().toLowerCase();
                 if (!rep) {
                     var sel = root.querySelector('[data-input="assign-rep"]');
@@ -1821,6 +1872,9 @@
             var clearRep = e.target.closest('[data-action="clear-assigned-rep"]');
             if (clearRep) {
                 e.preventDefault();
+                if (clearRep.getAttribute("data-disabled") === "true" || clearRep.getAttribute("aria-disabled") === "true") {
+                    return;
+                }
                 try {
                     await assignSelectedRep_(root, "");
                 } catch (clearErr) {
@@ -1919,6 +1973,12 @@
                 e.preventDefault();
                 exportPdf();
             }
+            });
+
+            root.addEventListener("change", function(e) {
+                if (e.target && e.target.matches && e.target.matches('[data-input="assign-rep"]')) {
+                    syncAssignRepCtaState_(root);
+                }
             });
         } finally {
             setModuleLoading_(root, false);
