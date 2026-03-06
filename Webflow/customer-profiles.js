@@ -1099,6 +1099,28 @@
                 else el.classList.add("pct-flat");
             });
         });
+
+        var priorityStatus = String(p.manual_priority_status || "").trim().toLowerCase();
+        var setPriorityBtn = root.querySelector('[data-action="set-priority"]');
+        var setNonPriorityBtn = root.querySelector('[data-action="set-nonpriority"]');
+        var isPriority = priorityStatus === "priority";
+        var isNonPriority = priorityStatus === "nonpriority";
+
+        if (setPriorityBtn) {
+            if ("disabled" in setPriorityBtn) setPriorityBtn.disabled = isPriority;
+            setPriorityBtn.setAttribute("aria-disabled", isPriority ? "true" : "false");
+            setPriorityBtn.setAttribute("data-disabled", isPriority ? "true" : "false");
+            setPriorityBtn.classList.toggle("is-disabled", isPriority);
+            setPriorityBtn.classList.toggle("is-current", isPriority);
+        }
+
+        if (setNonPriorityBtn) {
+            if ("disabled" in setNonPriorityBtn) setNonPriorityBtn.disabled = isNonPriority;
+            setNonPriorityBtn.setAttribute("aria-disabled", isNonPriority ? "true" : "false");
+            setNonPriorityBtn.setAttribute("data-disabled", isNonPriority ? "true" : "false");
+            setNonPriorityBtn.classList.toggle("is-disabled", isNonPriority);
+            setNonPriorityBtn.classList.toggle("is-current", isNonPriority);
+        }
     }
 
     function renderShoppingList(root, rows) {
@@ -1710,6 +1732,9 @@
             var setPriority = e.target.closest('[data-action="set-priority"]');
             if (setPriority) {
                 e.preventDefault();
+                if (setPriority.getAttribute("data-disabled") === "true" || setPriority.getAttribute("aria-disabled") === "true") {
+                    return;
+                }
                 try {
                     await setSelectedPriorityStatus_(root, "priority");
                 } catch (priorityErr) {
@@ -1723,6 +1748,9 @@
             var setNonPriority = e.target.closest('[data-action="set-nonpriority"]');
             if (setNonPriority) {
                 e.preventDefault();
+                if (setNonPriority.getAttribute("data-disabled") === "true" || setNonPriority.getAttribute("aria-disabled") === "true") {
+                    return;
+                }
                 try {
                     await setSelectedPriorityStatus_(root, "nonpriority");
                 } catch (nonPriorityErr) {

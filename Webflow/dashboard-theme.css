@@ -356,6 +356,32 @@ span.flatpickr-weekday {
   display: none !important;
 }
 
+[data-panel="customer-profile"] [data-action="set-priority"],
+[data-panel="customer-profile"] [data-action="set-nonpriority"] {
+  transition: opacity 120ms ease, transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+[data-panel="customer-profile"] [data-action="set-priority"].is-current {
+  border-color: var(--success-dark) !important;
+  background-color: var(--_colors---green50) !important;
+}
+
+[data-panel="customer-profile"] [data-action="set-nonpriority"].is-current {
+  border-color: var(--error-dark) !important;
+  background-color: var(--_colors---red50) !important;
+}
+
+[data-panel="customer-profile"] [data-action="set-priority"].is-disabled,
+[data-panel="customer-profile"] [data-action="set-priority"][aria-disabled="true"],
+[data-panel="customer-profile"] [data-action="set-nonpriority"].is-disabled,
+[data-panel="customer-profile"] [data-action="set-nonpriority"][aria-disabled="true"] {
+  opacity: 0.48 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  box-shadow: none !important;
+  filter: saturate(0.7);
+}
+
 /* Sort affordance (shared for customer + shopping headers) */
 [data-sort],
 [data-sort-customer] {
