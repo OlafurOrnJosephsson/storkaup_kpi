@@ -404,6 +404,23 @@
         return el;
     }
 
+    function findAlertBannerTextNode_() {
+        var host = document.querySelector(".alertbanner");
+        if (!host) return null;
+        var explicit = host.querySelector("[data-storkaup-alert-text]");
+        if (explicit) return { host: host, textEl: explicit };
+
+        var nodes = host.querySelectorAll("div");
+        for (var i = 0; i < nodes.length; i += 1) {
+            var n = nodes[i];
+            if (n.closest(".icon1x1")) continue;
+            if (n.children && n.children.length) continue;
+            var txt = String(n.textContent || "").trim();
+            if (txt) return { host: host, textEl: n };
+        }
+        return null;
+    }
+
     function formatRelativeMinutes_(tsMs) {
         var ts = Number(tsMs || 0);
         if (!Number.isFinite(ts) || ts <= 0) return "";
@@ -415,7 +432,8 @@
     }
 
     function setDataFreshnessStatus_(root, mode, tsMs, reason) {
-        var el = ensureDataStatusEl_(root);
+        var pair = findAlertBannerTextNode_();
+        var el = pair && pair.textEl ? pair.textEl : ensureDataStatusEl_(root);
         if (!el) return;
         var m = String(mode || "ok");
         var rel = formatRelativeMinutes_(tsMs);
@@ -440,6 +458,11 @@
             + '<span class="cp-data-status__label">' + label + '</span>'
             + (meta ? '<span class="cp-data-status__meta"> ' + meta + '</span>' : '')
             + (reasonTxt && m !== "loading" ? '<span class="cp-data-status__reason"> - ' + reasonTxt + '</span>' : '');
+        if (pair && pair.host) {
+            pair.host.setAttribute("data-storkaup-message", "1");
+            pair.host.setAttribute("data-status", m);
+            pair.host.style.display = "";
+        }
     }
 
     function ensureModuleLoader_(root) {
