@@ -12,6 +12,14 @@
 
   function log() { if (DEBUG && window.console) console.log.apply(console, arguments); }
   function getCfg() { return window.STORKAUP_CONFIG || {}; }
+  function getBcDayMinOrders() {
+    var fromBody = document.body ? Number(document.body.getAttribute("data-bc-day-min-orders")) : NaN;
+    return Number.isFinite(fromBody) && fromBody > 0 ? fromBody : 20;
+  }
+  function getBcDayMinRevenueExcl() {
+    var fromBody = document.body ? Number(document.body.getAttribute("data-bc-day-min-revenue-excl")) : NaN;
+    return Number.isFinite(fromBody) && fromBody > 0 ? fromBody : 500000;
+  }
   function getDayMode() {
     var node = document.querySelector("[data-day-mode]");
     var mode = node ? String(node.getAttribute("data-day-mode") || "").trim().toLowerCase() : "";
@@ -277,10 +285,18 @@
   }
 
   function applyDayMetrics(dayKey, orders, revenueExcl, revenueIncl) {
+    var revExcl = toNumberSafe(revenueExcl);
+    var revIncl = toNumberSafe(revenueIncl);
+    if (revIncl > 0 && revExcl > revIncl) {
+      // Defensive: if payload fields are accidentally flipped, keep labels coherent.
+      var tmp = revExcl;
+      revExcl = revIncl;
+      revIncl = tmp;
+    }
     setText("day-date", formatDayLabel(dayKey || ""));
     setText("day-orders", toNumberSafe(orders));
-    setText("day-revenue-excl", formatNumber(revenueExcl));
-    setText("day-revenue-incl", formatNumber(revenueIncl));
+    setText("day-revenue-excl", formatNumber(revExcl));
+    setText("day-revenue-incl", formatNumber(revIncl));
   }
 
   function applyDayBenchmarkMetrics(bench) {
@@ -315,34 +331,50 @@
     setText("day-avg-revenue-excl-weekday-12w", formatNumber(avgRevenueExclWeekday12w));
     setText("day-vs-avg-orders-weekday-12w-pct", pct(paceOrdersWeekday12w));
     setText("day-vs-avg-revenue-excl-weekday-12w-pct", pct(paceRevenueExclWeekday12w));
-    setText("day-web-orders-pct-of-bc", pctOrDash(row.web_orders_pct_of_bc_day));
-    setText("day-web-revenue-pct-of-bc", pctOrDash(row.web_revenue_pct_of_bc_day));
     var bcOrdersBase = toNumberSafe(row.bc_invoices_day_orders);
     var bcRevenueBase = toNumberSafe(row.bc_invoices_day_revenue_excl);
     var bcCreditsOrders = toNumberSafe(row.bc_credits_day_orders);
     var bcCreditsRevenue = toNumberSafe(row.bc_credits_day_revenue_excl);
     var missingBcOrdersBase = !(bcOrdersBase > 0);
     var missingBcRevenueBase = !(bcRevenueBase > 0);
+    var minOrders = getBcDayMinOrders();
+    var minRevenueExcl = getBcDayMinRevenueExcl();
+    var weakBcOrdersBase = !missingBcOrdersBase && bcOrdersBase < minOrders;
+    var weakBcRevenueBase = !missingBcRevenueBase && bcRevenueBase < minRevenueExcl;
 
-    setMetricNAState("day-web-orders-pct-of-bc", missingBcOrdersBase);
-    setMetricNAState("day-web-revenue-pct-of-bc", missingBcRevenueBase);
+    var showOrdersPct = !(missingBcOrdersBase || weakBcOrdersBase);
+    var showRevenuePct = !(missingBcRevenueBase || weakBcRevenueBase);
+
+    setText("day-web-orders-pct-of-bc", showOrdersPct ? pctOrDash(row.web_orders_pct_of_bc_day) : "-");
+    setText("day-web-revenue-pct-of-bc", showRevenuePct ? pctOrDash(row.web_revenue_pct_of_bc_day) : "-");
+
+    setMetricNAState("day-web-orders-pct-of-bc", !showOrdersPct);
+    setMetricNAState("day-web-revenue-pct-of-bc", !showRevenuePct);
 
     setMetricHint(
       "day-web-orders-pct-of-bc",
       missingBcOrdersBase
         ? "Engin BC bokud sala fyrir valinn dag."
+        : weakBcOrdersBase
+          ? ("BC grunnur of litill fyrir stodugt hlutfall (min pantanir: " + minOrders + ").")
         : "Web pantanir / BC invoices pantanir (valinn dagur)."
     );
     setMetricHint(
       "day-web-revenue-pct-of-bc",
       missingBcRevenueBase
         ? "Engin BC bokud sala fyrir valinn dag."
+        : weakBcRevenueBase
+          ? ("BC grunnur of litill fyrir stodugt hlutfall (min velta: " + formatNumber(minRevenueExcl) + ").")
         : "Web sala / BC invoices sala (valinn dagur)."
     );
 
-    setText("day-web-pct-of-bc-note", missingBcOrdersBase || missingBcRevenueBase
-      ? "Engin BC bokud sala fyrir valinn dag"
-      : "");
+    var note = "";
+    if (missingBcOrdersBase || missingBcRevenueBase) {
+      note = "Engin BC bokud sala fyrir valinn dag";
+    } else if (weakBcOrdersBase || weakBcRevenueBase) {
+      note = "BC grunnur of litill fyrir stodugt % af BC";
+    }
+    setText("day-web-pct-of-bc-note", note);
     setText("day-bc-invoices-orders", toNumberSafe(bcOrdersBase));
     setText("day-bc-credits-orders", toNumberSafe(bcCreditsOrders));
     setText("day-bc-invoices-revenue-excl", formatNumber(bcRevenueBase));
@@ -629,10 +661,12 @@
     if (dayPicker._flatpickr) return;
 
     try {
+      var localeOpt = (window.flatpickr && window.flatpickr.l10ns && window.flatpickr.l10ns.is) ? "is" : "default";
       window.flatpickr(dayPicker, {
         dateFormat: "Y-m-d",
         altInput: true,
-        altFormat: "d/m/Y",
+        altFormat: "d.m.Y",
+        locale: localeOpt,
         allowInput: true,
         defaultDate: normalizeDay(dayPicker.value) || getTodayIso(),
         onChange: function (_selectedDates, dateStr) {
@@ -1211,6 +1245,7 @@
     log("Found month items:", items.length);
 
     if (dayPicker && dayMode !== "live") {
+      dayPicker.setAttribute("lang", "is-IS");
       var initialDay = normalizeDay(dayPicker.value) || getTodayIso();
       dayPicker.value = initialDay;
       selectedDay = initialDay;
