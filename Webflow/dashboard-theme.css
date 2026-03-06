@@ -375,11 +375,12 @@ span.flatpickr-weekday {
 [data-panel="customer-profile"] [data-action="set-priority"][aria-disabled="true"],
 [data-panel="customer-profile"] [data-action="set-nonpriority"].is-disabled,
 [data-panel="customer-profile"] [data-action="set-nonpriority"][aria-disabled="true"] {
-  opacity: 0.48 !important;
+  opacity: 0.4 !important;
   cursor: not-allowed !important;
   pointer-events: none !important;
   box-shadow: none !important;
   filter: saturate(0.7);
+  color:var(--black)
 }
 
 /* Sort affordance (shared for customer + shopping headers) */
