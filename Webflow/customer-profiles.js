@@ -1523,9 +1523,6 @@
                 syncChipButtons_(root);
                 updateCustomerSortIndicators(root);
                 applyFilters(root, "");
-                // Show cached list immediately; refresh network data in background.
-                setModuleLoading_(root, false);
-                document.dispatchEvent(new CustomEvent("storkaup:page-ready"));
                 setDataFreshnessStatus_(root, "stale", cacheMeta.ts, "beid eftir nyjum gognunum");
             }
             var firstPage = [];
