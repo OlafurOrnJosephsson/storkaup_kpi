@@ -10,6 +10,7 @@ create table if not exists raw.bc_credit_invoices_raw (
   company_name text null,
   currency text null,
   due_date timestamptz null,
+  booking_date timestamptz null,
   order_date timestamptz null,
   email text null,
   amount_excl numeric(18, 2) null,
@@ -29,6 +30,9 @@ create table if not exists raw.bc_credit_invoices_raw (
 
 create index if not exists idx_bc_credit_invoices_raw_order_date
   on raw.bc_credit_invoices_raw (order_date);
+
+create index if not exists idx_bc_credit_invoices_raw_booking_date
+  on raw.bc_credit_invoices_raw (booking_date);
 
 create index if not exists idx_bc_credit_invoices_raw_company_id
   on raw.bc_credit_invoices_raw (company_id);

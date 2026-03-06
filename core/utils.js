@@ -1229,20 +1229,65 @@ function backfillOldwebToSupabase_v1() {
  * SUPABASE MIGRATION: BC_INVOICES (one-time + repeatable)
  ************************************************************/
 function parseBcDateForSupabase_(raw) {
-  var d = null;
+  if (raw == null || raw === '') return null;
 
-  if (typeof parseOldwebDate_ === 'function') {
-    d = parseOldwebDate_(raw);
-    if (d && !isNaN(d.getTime())) return d.toISOString();
+  if (raw instanceof Date) {
+    return isNaN(raw.getTime()) ? null : raw.toISOString();
   }
 
-  d = parseDateSafe_(raw);
-  if (d && !isNaN(d.getTime())) return d.toISOString();
+  if (typeof raw === 'number') {
+    var epoch = new Date(Date.UTC(1899, 11, 30));
+    var excelDate = new Date(epoch.getTime() + raw * 24 * 60 * 60 * 1000);
+    return isNaN(excelDate.getTime()) ? null : excelDate.toISOString();
+  }
 
-  d = new Date(raw);
-  if (d && !isNaN(d.getTime())) return d.toISOString();
+  var s = String(raw || '').trim();
+  if (!s) return null;
 
-  return null;
+  // ISO-like first (safe and unambiguous)
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    var isoDate = new Date(s);
+    return isNaN(isoDate.getTime()) ? null : isoDate.toISOString();
+  }
+
+  // dd.mm.yyyy or dd-mm-yyyy (optionally with time)
+  var mDot = s.match(/^(\d{1,2})[.\-](\d{1,2})[.\-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (mDot) {
+    var dd = Number(mDot[1]);
+    var mm = Number(mDot[2]);
+    var yyyy = Number(mDot[3]);
+    var hh = Number(mDot[4] || 0);
+    var mi = Number(mDot[5] || 0);
+    var ss = Number(mDot[6] || 0);
+    var dDot = new Date(Date.UTC(yyyy, mm - 1, dd, hh, mi, ss));
+    return isNaN(dDot.getTime()) ? null : dDot.toISOString();
+  }
+
+  // Slash format: prefer Icelandic/European dd/mm/yyyy.
+  var mSlash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (mSlash) {
+    var a = Number(mSlash[1]);
+    var b = Number(mSlash[2]);
+    var y = Number(mSlash[3]);
+    var h = Number(mSlash[4] || 0);
+    var m = Number(mSlash[5] || 0);
+    var sec = Number(mSlash[6] || 0);
+
+    var day = a;
+    var month = b;
+    if (a <= 12 && b > 12) {
+      // Clearly mm/dd/yyyy
+      day = b;
+      month = a;
+    }
+    // If both <= 12, keep dd/mm (intentional).
+
+    var dSlash = new Date(Date.UTC(y, month - 1, day, h, m, sec));
+    return isNaN(dSlash.getTime()) ? null : dSlash.toISOString();
+  }
+
+  var fallback = new Date(s);
+  return isNaN(fallback.getTime()) ? null : fallback.toISOString();
 }
 
 function getScriptProperties_() {
@@ -1315,7 +1360,8 @@ function upsertBcInvoicesToSupabase_(rows) {
       company_name: r.COMPANY_NAME || null,
       currency: r.CURRENCY || null,
       due_date: parseBcDateForSupabase_(r.DUE_DATE),
-      order_date: parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE),
+      booking_date: parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE),
+      order_date: parseBcDateForSupabase_(r.ORDER_DATE) || parseBcDateForSupabase_(r.BOOKING_DATE),
       email: r.EMAIL || null,
       amount_excl: toNum_(r.AMOUNT_EXCL),
       amount_incl: toNum_(r.AMOUNT_INCL),
@@ -1431,7 +1477,8 @@ function upsertBcCreditInvoicesToSupabase_(rows) {
       company_name: r.COMPANY_NAME || null,
       currency: r.CURRENCY || null,
       due_date: parseBcDateForSupabase_(r.DUE_DATE),
-      order_date: parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.DOCUMENT_DATE),
+      booking_date: parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.DOCUMENT_DATE),
+      order_date: parseBcDateForSupabase_(r.DOCUMENT_DATE) || parseBcDateForSupabase_(r.BOOKING_DATE),
       email: null,
       amount_excl: toNum_(r.AMOUNT_EXCL),
       amount_incl: toNum_(r.AMOUNT_INCL),

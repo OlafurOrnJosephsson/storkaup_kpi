@@ -228,6 +228,10 @@ span.flatpickr-weekday {
   color: var(--black-700, #5b5b5b);
 }
 
+[data-metric].is-na {
+  opacity: 0.6;
+}
+
 /* Sales rep select */
 select[data-input="assign-rep"] {
   width: 100%;

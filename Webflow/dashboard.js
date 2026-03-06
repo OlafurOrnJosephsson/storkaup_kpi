@@ -107,6 +107,20 @@
     if (el) el.textContent = valueText;
   }
 
+  function setMetricHint(metric, hintText) {
+    var el = document.querySelector('[data-metric="' + metric + '"]');
+    if (!el) return;
+    var txt = String(hintText || "").trim();
+    if (txt) el.setAttribute("title", txt);
+    else el.removeAttribute("title");
+  }
+
+  function setMetricNAState(metric, isNA) {
+    var el = document.querySelector('[data-metric="' + metric + '"]');
+    if (!el) return;
+    el.classList.toggle("is-na", !!isNA);
+  }
+
   function setSignedMetric(metric, rawValue) {
     var el = document.querySelector('[data-metric="' + metric + '"]');
     if (!el) return;
@@ -303,6 +317,36 @@
     setText("day-vs-avg-revenue-excl-weekday-12w-pct", pct(paceRevenueExclWeekday12w));
     setText("day-web-orders-pct-of-bc", pctOrDash(row.web_orders_pct_of_bc_day));
     setText("day-web-revenue-pct-of-bc", pctOrDash(row.web_revenue_pct_of_bc_day));
+    var bcOrdersBase = toNumberSafe(row.bc_invoices_day_orders);
+    var bcRevenueBase = toNumberSafe(row.bc_invoices_day_revenue_excl);
+    var bcCreditsOrders = toNumberSafe(row.bc_credits_day_orders);
+    var bcCreditsRevenue = toNumberSafe(row.bc_credits_day_revenue_excl);
+    var missingBcOrdersBase = !(bcOrdersBase > 0);
+    var missingBcRevenueBase = !(bcRevenueBase > 0);
+
+    setMetricNAState("day-web-orders-pct-of-bc", missingBcOrdersBase);
+    setMetricNAState("day-web-revenue-pct-of-bc", missingBcRevenueBase);
+
+    setMetricHint(
+      "day-web-orders-pct-of-bc",
+      missingBcOrdersBase
+        ? "Engin BC bokud sala fyrir valinn dag."
+        : "Web pantanir / BC invoices pantanir (valinn dagur)."
+    );
+    setMetricHint(
+      "day-web-revenue-pct-of-bc",
+      missingBcRevenueBase
+        ? "Engin BC bokud sala fyrir valinn dag."
+        : "Web sala / BC invoices sala (valinn dagur)."
+    );
+
+    setText("day-web-pct-of-bc-note", missingBcOrdersBase || missingBcRevenueBase
+      ? "Engin BC bokud sala fyrir valinn dag"
+      : "");
+    setText("day-bc-invoices-orders", toNumberSafe(bcOrdersBase));
+    setText("day-bc-credits-orders", toNumberSafe(bcCreditsOrders));
+    setText("day-bc-invoices-revenue-excl", formatNumber(bcRevenueBase));
+    setText("day-bc-credits-revenue-excl", formatNumber(bcCreditsRevenue));
     setSignedMetric("day-vs-yesterday-orders-pct", row.vs_yesterday_orders_pct);
     setSignedMetric("day-vs-yesterday-revenue-pct", row.vs_yesterday_revenue_excl_pct);
     setSignedMetric("day-vs-yesterday-aov-pct", row.vs_yesterday_aov_excl_pct);
