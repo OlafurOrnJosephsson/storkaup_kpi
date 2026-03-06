@@ -315,15 +315,18 @@ span.flatpickr-weekday {
   opacity: 0.95;
 }
 
-[data-module="customer-profiles"] .cp-data-status[data-status="ok"] {
+[data-module="customer-profiles"] .cp-data-status[data-status="ok"],
+.alertbanner[data-storkaup-message="1"][data-status="ok"] {
   color:var(--black)!important;background-color: var(--_colors---green50)!important;border-color:var(--success-dark)!important;
 }
 
-[data-module="customer-profiles"] .cp-data-status[data-status="stale"] {
+[data-module="customer-profiles"] .cp-data-status[data-status="stale"],
+.alertbanner[data-storkaup-message="1"][data-status="stale"] {
   color:var(--black)!important;background-color: var(--_colors---orange50)!important;border-color:var(--orange)!important;
 }
 
-[data-module="customer-profiles"] .cp-data-status[data-status="loading"] {
+[data-module="customer-profiles"] .cp-data-status[data-status="loading"],
+.alertbanner[data-storkaup-message="1"][data-status="loading"] {
   color:var(--black)!important;background-color: var(--_colors---light-blue50)!important;border-color:var(--light-blue)!important;
 }
 
