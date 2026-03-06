@@ -1441,8 +1441,8 @@
                 applyPriorityFlagsToCustomers_();
             }
 
-            var pageSize = 300;
-            var maxRows = 6000;
+            var pageSize = 120;
+            var maxRows = 4000;
             var useOrder = true;
             var hasCachedPriority = !!(cachedPriorityRows && cachedPriorityRows.length);
             if (hasCachedPriority) {
@@ -1463,6 +1463,9 @@
                 syncChipButtons_(root);
                 updateCustomerSortIndicators(root);
                 applyFilters(root, "");
+                // Show cached list immediately; refresh network data in background.
+                setModuleLoading_(root, false);
+                document.dispatchEvent(new CustomEvent("storkaup:page-ready"));
             }
             var firstPage = [];
             var flaggedBootstrap = state.activeChip === "flagged" && Object.keys(state.priorityFlagsByFamily || {}).length > 0;
@@ -1501,13 +1504,14 @@
             }
             applyPriorityFlagsToCustomers_();
             if (state.customers.length) saveCustomerCache_(state.customers);
-            try {
-                await fetchActiveReps_();
-            } catch (repErr) {
+            renderAssignRepControls_(root);
+            fetchActiveReps_().then(function() {
+                renderAssignRepControls_(root);
+            }).catch(function(repErr) {
                 console.error("Active reps fetch failed:", repErr);
                 state.reps = [];
-            }
-            renderAssignRepControls_(root);
+                renderAssignRepControls_(root);
+            });
             sortProfilesByScore(state.customers);
             syncChipButtons_(root);
             updateCustomerSortIndicators(root);
