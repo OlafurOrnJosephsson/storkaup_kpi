@@ -451,7 +451,7 @@
             reasonTxt = "";
             el.setAttribute("data-status", "loading");
         } else {
-            label = "Ný gögn hlaðin";
+            label = "Ný gögn uppfærð";
             el.setAttribute("data-status", "ok");
         }
         el.innerHTML = ''
@@ -903,6 +903,32 @@
         showActionToast_(okMsg, "success");
     }
 
+    function isMissingPriorityFlagError_(rawText) {
+        var txt = String(rawText || "").toLowerCase();
+        return txt.indexOf("customer flag row not found") !== -1;
+    }
+
+    async function ensurePriorityFlagRowForSelected_(root) {
+        if (!state.selected) return;
+        var current = String(state.selected.manual_priority_status || "").trim().toLowerCase();
+        var bootstrapStatus = current === "nonpriority" ? "nonpriority" : "priority";
+        var payload = {
+            p_customer_id: getSelectedPriorityTargetCustomerId(),
+            p_status: bootstrapStatus,
+            p_customer_name: state.selected.customer_name || null,
+            p_note: null
+        };
+        var res = await fetch(URL + "/rest/v1/rpc/set_customer_priority_flag", {
+            method: "POST",
+            headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        await res.json();
+        await fetchPriorityFlags_();
+        bindSelected(root);
+    }
+
     async function assignSelectedRep_(root, repNameNorm) {
         if (!state.selected) return;
         var payload = {
@@ -914,7 +940,20 @@
             headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
             body: JSON.stringify(payload)
         });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+            var firstErr = await res.text();
+            if (res.status === 400 && isMissingPriorityFlagError_(firstErr)) {
+                await ensurePriorityFlagRowForSelected_(root);
+                res = await fetch(URL + "/rest/v1/rpc/assign_customer_priority_rep", {
+                    method: "POST",
+                    headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) throw new Error(await res.text());
+            } else {
+                throw new Error(firstErr);
+            }
+        }
         await res.json();
         await fetchPriorityFlags_();
         bindSelected(root);
