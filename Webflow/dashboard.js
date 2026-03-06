@@ -1186,6 +1186,7 @@
       var month = el.getAttribute("data-month");
       setActiveByMonth(month);
       setCurrentMonthLabel(month);
+      if (dayMode === "live") selectedDay = getTodayIso();
       fetchMonth(month);
       fetchDay(selectedDay || getTodayIso());
     });
@@ -1220,6 +1221,7 @@
     setInterval(function () {
       var activeNow = document.querySelector(".dashboard-date-item.active[data-month]");
       var month = activeNow ? activeNow.getAttribute("data-month") : (initialMonth || getCurrentMonthKey());
+      if (dayMode === "live") selectedDay = getTodayIso();
       setCurrentMonthLabel(month);
       fetchMonth(month);
       fetchDay(selectedDay || getTodayIso());
