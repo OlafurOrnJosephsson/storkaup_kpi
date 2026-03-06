@@ -62,6 +62,19 @@ input[data-day-picker] {
     display: flex;
     justify-content: space-between;
     padding:0;
+    align-items: center;
+}
+.flatpickr-current-month input.cur-year {
+  -moz-appearance: textfield;
+  appearance: textfield;
+  text-align: right;
+  min-width: 3.5ch;
+  padding-right: 0;
+}
+.flatpickr-current-month input.cur-year::-webkit-outer-spin-button,
+.flatpickr-current-month input.cur-year::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 .flatpickr-current-month .flatpickr-monthDropdown-months:hover {
     background: var(--blue-background);
@@ -102,6 +115,7 @@ span.flatpickr-weekday {
   background: var(--blue, #10069f);
   border-color: var(--blue, #10069f);
   color: var(--white, #fff);
+  font-weight: 700;
 }
 
 /* Disabled / outside */
