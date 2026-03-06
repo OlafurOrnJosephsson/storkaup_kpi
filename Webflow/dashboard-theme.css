@@ -269,14 +269,14 @@ span.flatpickr-weekday {
 [data-module="customer-profiles"] .cp-loading-overlay {
   position: absolute;
   inset: 0;
-  z-index: 30;
+  z-index: 99999;
   display: none;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   gap: 0.5rem;
   background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(1px);
+  backdrop-filter: blur(10px);
 }
 
 [data-module="customer-profiles"] .cp-loading-spinner {
@@ -316,15 +316,15 @@ span.flatpickr-weekday {
 }
 
 [data-module="customer-profiles"] .cp-data-status[data-status="ok"] {
-  color: #027a48;
+  color:var(--black)!important;background-color: var(--_colors---green50)!important;border-color:var(--success-dark)!important;
 }
 
 [data-module="customer-profiles"] .cp-data-status[data-status="stale"] {
-  color: #b54708;
+  color:var(--black)!important;background-color: var(--_colors---orange50)!important;border-color:var(--orange)!important;
 }
 
 [data-module="customer-profiles"] .cp-data-status[data-status="loading"] {
-  color: #155eef;
+  color:var(--black)!important;background-color: var(--_colors---light-blue50)!important;border-color:var(--light-blue)!important;
 }
 
 /* =========================================================
