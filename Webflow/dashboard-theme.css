@@ -295,6 +295,22 @@ span.flatpickr-weekday {
   color: var(--black, #282828);
 }
 
+[data-module="customer-profiles"] .cp-data-status {
+  margin: 0 0 0.75rem;
+  font-family: var(--primary-font, "Sf Pro Text", Arial, sans-serif);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475467;
+}
+
+[data-module="customer-profiles"] .cp-data-status[data-status="ok"] {
+  color: #027a48;
+}
+
+[data-module="customer-profiles"] .cp-data-status[data-status="stale"] {
+  color: #b54708;
+}
+
 /* =========================================================
    Customer Profiles + Shared UI Helpers
    ========================================================= */
