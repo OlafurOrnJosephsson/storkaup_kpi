@@ -67,7 +67,7 @@ input[data-day-picker] {
 .flatpickr-current-month input.cur-year {
   -moz-appearance: textfield;
   appearance: textfield;
-  text-align: right;
+  text-align: left;
   min-width: 3.5ch;
   padding-right: 0;
 }
@@ -77,7 +77,10 @@ input[data-day-picker] {
   margin: 0;
 }
 .flatpickr-current-month .numInputWrapper {
-  width: 3.8em;
+    width: 3.8em;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 .flatpickr-current-month .numInputWrapper span {
   border: 0;
