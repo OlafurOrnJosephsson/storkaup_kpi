@@ -528,7 +528,6 @@ input[type="radio"] {
   border: 5px solid #b8b8b8;
   border-radius: 4px;
 }
-
 input[type="radio"]:checked {
   border: 2px solid #257b17;
   background-color: #257b1717;
@@ -536,6 +535,75 @@ input[type="radio"]:checked {
 
 input[type="radio"]:disabled {
   opacity: 0.4;
+}
+
+/* Text inputs */
+.st-input-text,
+input[type="text"] {
+  width: 100%;
+  min-height: 58px;
+  padding: 1rem;
+  border: 1px solid var(--light-gray-border, #d0d5dd);
+  border-radius: 1rem;
+  background: var(--white, #fff);
+  color: var(--black, #282828);
+  font-family: var(--primary-font, "Sf Pro Text", Arial, sans-serif);
+  font-size: 1rem;
+  line-height: 1.3;
+  box-shadow: none;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.st-input-text::placeholder,
+input[type="text"]::placeholder {
+  color: var(--black-600, #757575);
+  opacity: 1;
+}
+
+.st-input-text:hover,
+input[type="text"]:hover {
+  border-color: var(--gray, #dedfdc);
+}
+
+.st-input-text:focus,
+.st-input-text:focus-visible,
+.st-input-text.active,
+.st-input-text[data-wf-focus-visible],
+input[type="text"]:focus,
+input[type="text"]:focus-visible,
+input[type="text"].active,
+input[type="text"][data-wf-focus-visible] {
+  border-color: var(--blue, #10069f) !important;
+  box-shadow: 0 0 0 3px rgba(16, 6, 159, 0.12) !important;
+  outline: none !important;
+}
+
+.st-input-text:read-only,
+.st-input-text[readonly],
+input[type="text"]:read-only,
+input[type="text"][readonly] {
+  background: var(--_colors---gray50, #f7f7f7);
+  color: var(--black-700, #5b5b5b);
+}
+
+.st-input-text:disabled,
+.st-input-text[disabled],
+input[type="text"]:disabled,
+input[type="text"][disabled] {
+  background: var(--_colors---gray100, #f1f2f4);
+  border-color: var(--light-gray-border, #d0d5dd);
+  color: var(--black-600, #757575);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.st-input-text[aria-invalid="true"],
+.st-input-text.is-invalid,
+input[type="text"][aria-invalid="true"],
+input[type="text"].is-invalid {
+  border-color: var(--error-dark, #c23340) !important;
+  box-shadow: 0 0 0 3px rgba(194, 51, 64, 0.12) !important;
 }
 
 /* Slider dots */
