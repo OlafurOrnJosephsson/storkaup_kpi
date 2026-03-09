@@ -68,6 +68,7 @@ input[data-day-picker] {
 }
 
 /* Visible date field (compact to fit top nav controls) */
+.flatpickr-input,
 .flatpickr-input[readonly] {
   min-width: 9.5rem;
   height: 2.125rem;
@@ -83,14 +84,25 @@ input[data-day-picker] {
   box-shadow: none;
 }
 
+.flatpickr-input:hover,
 .flatpickr-input[readonly]:hover {
   border-color: var(--gray, #dedfdc);
 }
 
-.flatpickr-input[readonly]:focus {
+.flatpickr-input:focus,
+.flatpickr-input:focus-visible,
+.flatpickr-input[readonly]:focus,
+.flatpickr-input[readonly]:focus-visible,
+input[data-day-picker]:focus + .flatpickr-input,
+input[data-day-picker]:focus-visible + .flatpickr-input {
   outline: none;
   border-color: var(--blue, #10069f);
   box-shadow: 0 0 0 2px rgba(16, 6, 159, 0.18);
+}
+
+input[data-day-picker]:focus,
+input[data-day-picker]:focus-visible {
+  outline: none !important;
 }
 
 /* Calendar shell */
