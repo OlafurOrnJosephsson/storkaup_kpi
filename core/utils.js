@@ -4027,6 +4027,25 @@ function installScheduledKlaviyoSyncTrigger_v1() {
   return { created: true, schedule: 'everyMinutes(15)' };
 }
 
+function installSafePollTrigger_v2() {
+  var fn = 'safePoll_v2';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[NEWWEB][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .everyMinutes(5)
+    .create();
+
+  Logger.log('[NEWWEB][INFO] Created trigger for ' + fn + ' (every 5 minutes)');
+  return { created: true, schedule: 'everyMinutes(5)' };
+}
+
 function removeTriggersByHandler_v1(handlerFn) {
   var fn = String(handlerFn || '').trim();
   if (!fn) return { removed: 0, handler: '' };
@@ -4164,6 +4183,7 @@ function removeScheduledBcSyncTrigger_v1() {
 
 function resetRecommendedTimeTriggers_v1() {
   var handlers = [
+    'safePoll_v2',
     'runDailySanityChecks_v1',
     'scheduledReferenceSync_v1',
     'scheduledMagentoSync_v1',
@@ -4178,6 +4198,7 @@ function resetRecommendedTimeTriggers_v1() {
   });
 
   var installed = [
+    installSafePollTrigger_v2(),
     installDailySanityChecksTrigger_v1(),
     installScheduledReferenceSyncTrigger_v1(),
     installScheduledMagentoSyncTrigger_v1(),
