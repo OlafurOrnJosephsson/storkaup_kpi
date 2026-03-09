@@ -575,7 +575,7 @@ input[type="text"]:focus-visible,
 input[type="text"].active,
 input[type="text"][data-wf-focus-visible] {
   border-color: var(--blue, #10069f) !important;
-  box-shadow: 0 0 0 3px rgba(16, 6, 159, 0.12) !important;
+  
   outline: none !important;
 }
 
