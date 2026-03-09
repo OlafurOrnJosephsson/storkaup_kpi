@@ -2,6 +2,16 @@
 
 Updated: 2026-03-09
 
+## North Star
+
+- Increase total sales, with a clear bias toward growing web-driven revenue.
+- Raise web share of BC sales over time:
+  - more orders placed through the web
+  - more revenue flowing through the web
+- Move as many customers as possible into self-service where it makes commercial sense.
+- Reduce avoidable manual order handling so sales reps spend more time on selling, onboarding, and account growth.
+- Use Forgangslisti and Customer Profiles to identify the best customers to migrate from manual ordering to repeat web ordering.
+
 ## Stable Now
 
 - Webflow dashboards load and read current Supabase RPC/view data.
