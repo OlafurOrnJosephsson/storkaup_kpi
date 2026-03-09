@@ -1614,6 +1614,7 @@
         if (!root) return;
         setModuleLoading_(root, true, "Augnablik! Hleð gögnum");
         setDataFreshnessStatus_(root, "loading");
+        var loaderReleasedEarly = false;
 
         try {
             var rawScope = String(root.getAttribute("data-profile-scope") || "").trim().toLowerCase();
@@ -1653,7 +1654,7 @@
 
             var pageSize = cachedRows.length ? 120 : 60;
             var maxRows = 4000;
-            var useOrder = true;
+            var useOrder = false;
             var hasCachedPriority = !!(cachedPriorityRows && cachedPriorityRows.length);
             var priorityFlagsPromise = null;
             var activeRepsPromise = fetchActiveReps_().catch(function(repErr) {
@@ -1679,6 +1680,8 @@
                 updateCustomerSortIndicators(root);
                 applyFilters(root, "");
                 setDataFreshnessStatus_(root, "stale", cacheMeta.ts, "beið eftir nýjum gögnunum");
+                setModuleLoading_(root, false);
+                loaderReleasedEarly = true;
             }
             if (state.activeChip === "flagged" && priorityFlagsPromise) {
                 await priorityFlagsPromise;
@@ -1694,7 +1697,6 @@
                 }
                 if (!firstPage.length) {
                     try {
-                        useOrder = false;
                         pageSize = 100;
                         maxRows = 3000;
                         firstPage = await fetchProfilesPage(0, pageSize, useOrder);
@@ -1709,7 +1711,6 @@
                     var shouldFallback = !!(err && (err.__isTimeout || Number(err.__status || 0) >= 500));
                     if (!shouldFallback) throw err;
                     // Timeout-safe fallback for heavy view scans on some environments.
-                    useOrder = false;
                     pageSize = 100;
                     maxRows = 3000;
                     firstPage = await fetchProfilesPage(0, pageSize, useOrder);
@@ -2004,7 +2005,7 @@
                 }
             });
         } finally {
-            setModuleLoading_(root, false);
+            if (!loaderReleasedEarly) setModuleLoading_(root, false);
             document.dispatchEvent(new CustomEvent("storkaup:page-ready"));
             if (!state.customers.length) {
                 setDataFreshnessStatus_(root, "stale", 0, "ekkert svar frá gagnagrunni");
