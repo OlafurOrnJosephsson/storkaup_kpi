@@ -648,14 +648,32 @@
     var yyyy = parts[0];
     var mm = parts[1];
     var dd = parts[2];
+    var monthNamesIs = {
+      "01": "janúar",
+      "02": "febrúar",
+      "03": "mars",
+      "04": "apríl",
+      "05": "maí",
+      "06": "júní",
+      "07": "júlí",
+      "08": "ágúst",
+      "09": "september",
+      "10": "október",
+      "11": "nóvember",
+      "12": "desember"
+    };
 
     if (mode === "iso") return s;
     if (mode === "slash") return dd + "/" + mm + "/" + yyyy;
     if (mode === "long-is") {
       var d = new Date(s + "T00:00:00");
       if (!isNaN(d.getTime()) && typeof Intl !== "undefined" && Intl.DateTimeFormat) {
-        return new Intl.DateTimeFormat("is-IS", { day: "numeric", month: "long", year: "numeric" }).format(d);
+        try {
+          var intlLabel = new Intl.DateTimeFormat("is-IS", { day: "numeric", month: "long", year: "numeric" }).format(d);
+          if (intlLabel && /[áðéíóúýþæö]/i.test(intlLabel)) return intlLabel;
+        } catch (_err) {}
       }
+      return String(Number(dd || 0)) + ". " + (monthNamesIs[mm] || mm) + " " + yyyy;
     }
 
     // Default: dd.mm.yyyy
