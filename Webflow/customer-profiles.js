@@ -421,14 +421,24 @@
         return null;
     }
 
+    function getPrimaryAssignRepButton_(root) {
+        if (!root) return null;
+        return root.querySelector('[data-action="assign-rep"]:not([data-rep])');
+    }
+
+    function getPrimaryClearRepButton_(root) {
+        if (!root) return null;
+        return root.querySelector('[data-action="clear-assigned-rep"]');
+    }
+
     function formatRelativeMinutes_(tsMs) {
         var ts = Number(tsMs || 0);
         if (!Number.isFinite(ts) || ts <= 0) return "";
         var diffMin = Math.max(0, Math.floor((Date.now() - ts) / 60000));
-        if (diffMin < 1) return "rett i adan";
-        if (diffMin < 60) return diffMin + " min sidan";
+        if (diffMin < 1) return "rétt áðan";
+        if (diffMin < 60) return diffMin + " mín síðan";
         var h = Math.floor(diffMin / 60);
-        return h + " klst sidan";
+        return h + " klst síðan";
     }
 
     function setDataFreshnessStatus_(root, mode, tsMs, reason) {
@@ -1167,8 +1177,8 @@
     function syncAssignRepCtaState_(root) {
         if (!root || !state.selected) return;
 
-        var assignBtn = root.querySelector('[data-action="assign-rep"]');
-        var clearBtn = root.querySelector('[data-action="clear-assigned-rep"]');
+        var assignBtn = getPrimaryAssignRepButton_(root);
+        var clearBtn = getPrimaryClearRepButton_(root);
         var select = root.querySelector('[data-input="assign-rep"]');
         var assigned = String(state.selected.assigned_rep_name_norm || "").trim().toLowerCase();
 
@@ -1984,7 +1994,7 @@
             setModuleLoading_(root, false);
             document.dispatchEvent(new CustomEvent("storkaup:page-ready"));
             if (!state.customers.length) {
-                setDataFreshnessStatus_(root, "stale", 0, "ekkert svar fra gagnagrunni");
+                setDataFreshnessStatus_(root, "stale", 0, "ekkert svar frá gagnagrunni");
             }
         }
     }
