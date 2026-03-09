@@ -3042,10 +3042,11 @@ function installDailySanityChecksTrigger_v1() {
     .timeBased()
     .everyDays(1)
     .atHour(7)
+    .nearMinute(40)
     .create();
 
-  Logger.log('[SANITY][INFO] Created trigger for ' + fn + ' (every 1 day at ~07:00)');
-  return { created: true, schedule: 'everyDays(1).atHour(7)' };
+  Logger.log('[SANITY][INFO] Created trigger for ' + fn + ' (every 1 day at ~07:40)');
+  return { created: true, schedule: 'everyDays(1).atHour(7).nearMinute(40)' };
 }
 
 /**
@@ -3247,10 +3248,11 @@ function installScheduledReferenceSyncTrigger_v1() {
   ScriptApp.newTrigger(fn)
     .timeBased()
     .everyHours(6)
+    .nearMinute(50)
     .create();
 
-  Logger.log('[REFSYNC][INFO] Created trigger for ' + fn + ' (every 6 hours)');
-  return { created: true, schedule: 'everyHours(6)' };
+  Logger.log('[REFSYNC][INFO] Created trigger for ' + fn + ' (every 6 hours, near :50)');
+  return { created: true, schedule: 'everyHours(6).nearMinute(50)' };
 }
 
 /************************************************************
@@ -3577,10 +3579,11 @@ function installScheduledMagentoSyncTrigger_v1() {
   ScriptApp.newTrigger(fn)
     .timeBased()
     .everyHours(1)
+    .nearMinute(20)
     .create();
 
-  Logger.log('[MAGSYNC][INFO] Created trigger for ' + fn + ' (every 1 hour)');
-  return { created: true, schedule: 'everyHours(1)' };
+  Logger.log('[MAGSYNC][INFO] Created trigger for ' + fn + ' (every 1 hour, near :20)');
+  return { created: true, schedule: 'everyHours(1).nearMinute(20)' };
 }
 
 function installScheduledCludoSyncTrigger_v1() {
@@ -3596,10 +3599,11 @@ function installScheduledCludoSyncTrigger_v1() {
   ScriptApp.newTrigger(fn)
     .timeBased()
     .everyHours(12)
+    .nearMinute(55)
     .create();
 
-  Logger.log('[CLUDOSYNC][INFO] Created trigger for ' + fn + ' (every 12 hours)');
-  return { created: true, schedule: 'everyHours(12)' };
+  Logger.log('[CLUDOSYNC][INFO] Created trigger for ' + fn + ' (every 12 hours, near :55)');
+  return { created: true, schedule: 'everyHours(12).nearMinute(55)' };
 }
 
 function installScheduledCustomerAnalysisSyncTrigger_v1() {
@@ -3614,11 +3618,13 @@ function installScheduledCustomerAnalysisSyncTrigger_v1() {
 
   ScriptApp.newTrigger(fn)
     .timeBased()
-    .everyHours(24)
+    .everyDays(1)
+    .atHour(5)
+    .nearMinute(25)
     .create();
 
-  Logger.log('[CASYNC][INFO] Created trigger for ' + fn + ' (every 24 hours)');
-  return { created: true, schedule: 'everyHours(24)' };
+  Logger.log('[CASYNC][INFO] Created trigger for ' + fn + ' (every 1 day at ~05:25)');
+  return { created: true, schedule: 'everyDays(1).atHour(5).nearMinute(25)' };
 }
 
 /************************************************************
@@ -4021,6 +4027,21 @@ function installScheduledKlaviyoSyncTrigger_v1() {
   return { created: true, schedule: 'everyMinutes(15)' };
 }
 
+function removeTriggersByHandler_v1(handlerFn) {
+  var fn = String(handlerFn || '').trim();
+  if (!fn) return { removed: 0, handler: '' };
+  var triggers = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+
+  triggers.forEach(function(t) {
+    ScriptApp.deleteTrigger(t);
+  });
+
+  Logger.log('[TRIGGERS][INFO] Removed ' + triggers.length + ' trigger(s) for ' + fn);
+  return { removed: triggers.length, handler: fn };
+}
+
 /************************************************************
  * BC incremental sync schedule
  ************************************************************/
@@ -4111,7 +4132,7 @@ function installScheduledBcSyncTrigger_v1() {
   var existing = ScriptApp.getProjectTriggers().filter(function(t) {
     return t.getHandlerFunction() === fn;
   });
-  if (existing.length) {
+  if (existing.length >= 2) {
     Logger.log('[BCSYNC][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
     return { created: false, existing: existing.length };
   }
@@ -4119,23 +4140,57 @@ function installScheduledBcSyncTrigger_v1() {
   ScriptApp.newTrigger(fn)
     .timeBased()
     .everyDays(1)
+    .atHour(6)
+    .nearMinute(10)
     .create();
 
-  Logger.log('[BCSYNC][INFO] Created trigger for ' + fn + ' (every 1 day)');
-  return { created: true, schedule: 'everyDays(1)' };
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .everyDays(1)
+    .atHour(13)
+    .nearMinute(10)
+    .create();
+
+  Logger.log('[BCSYNC][INFO] Created trigger for ' + fn + ' (every 1 day at ~06:10 and ~13:10)');
+  return { created: true, schedule: ['everyDays(1).atHour(6).nearMinute(10)', 'everyDays(1).atHour(13).nearMinute(10)'] };
 }
 
 function removeScheduledBcSyncTrigger_v1() {
   var fn = 'scheduledBcSync_v1';
-  var triggers = ScriptApp.getProjectTriggers().filter(function(t) {
-    return t.getHandlerFunction() === fn;
+  var out = removeTriggersByHandler_v1(fn);
+  Logger.log('[BCSYNC][INFO] Removed ' + out.removed + ' trigger(s) for ' + fn);
+  return { removed: out.removed };
+}
+
+function resetRecommendedTimeTriggers_v1() {
+  var handlers = [
+    'runDailySanityChecks_v1',
+    'scheduledReferenceSync_v1',
+    'scheduledMagentoSync_v1',
+    'scheduledCludoSync_v1',
+    'scheduledCustomerAnalysisSync_v1',
+    'scheduledKlaviyoSync_v1',
+    'scheduledBcSync_v1'
+  ];
+
+  handlers.forEach(function(fn) {
+    removeTriggersByHandler_v1(fn);
   });
 
-  triggers.forEach(function(t) {
-    ScriptApp.deleteTrigger(t);
-  });
+  var installed = [
+    installDailySanityChecksTrigger_v1(),
+    installScheduledReferenceSyncTrigger_v1(),
+    installScheduledMagentoSyncTrigger_v1(),
+    installScheduledCludoSyncTrigger_v1(),
+    installScheduledCustomerAnalysisSyncTrigger_v1(),
+    installScheduledKlaviyoSyncTrigger_v1(),
+    installScheduledBcSyncTrigger_v1()
+  ];
 
-  Logger.log('[BCSYNC][INFO] Removed ' + triggers.length + ' trigger(s) for ' + fn);
-  return { removed: triggers.length };
+  Logger.log('[TRIGGERS][INFO] Recommended trigger schedule reset completed.');
+  return {
+    removedHandlers: handlers,
+    installed: installed
+  };
 }
 
