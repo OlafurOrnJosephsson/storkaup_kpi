@@ -1651,22 +1651,27 @@
                 applyPriorityFlagsToCustomers_();
             }
 
-            var pageSize = 120;
+            var pageSize = cachedRows.length ? 120 : 60;
             var maxRows = 4000;
             var useOrder = true;
             var hasCachedPriority = !!(cachedPriorityRows && cachedPriorityRows.length);
+            var priorityFlagsPromise = null;
+            var activeRepsPromise = fetchActiveReps_().catch(function(repErr) {
+                console.error("Active reps fetch failed:", repErr);
+                state.reps = [];
+            });
             if (hasCachedPriority) {
-                fetchPriorityFlags_().catch(function(flagErrBg) {
+                priorityFlagsPromise = fetchPriorityFlags_().catch(function(flagErrBg) {
                     console.error("Priority flags background refresh failed:", flagErrBg);
+                    return null;
                 });
             } else {
-                try {
-                    await fetchPriorityFlags_();
-                } catch (flagErr) {
+                priorityFlagsPromise = fetchPriorityFlags_().catch(function(flagErr) {
                     console.error("Priority flags fetch failed:", flagErr);
                     state.priorityFlagsByFamily = {};
                     applyPriorityFlagsToCustomers_();
-                }
+                    return null;
+                });
             }
             if (cachedRows.length) {
                 sortProfilesByScore(state.customers);
@@ -1674,6 +1679,9 @@
                 updateCustomerSortIndicators(root);
                 applyFilters(root, "");
                 setDataFreshnessStatus_(root, "stale", cacheMeta.ts, "beið eftir nýjum gögnunum");
+            }
+            if (state.activeChip === "flagged" && priorityFlagsPromise) {
+                await priorityFlagsPromise;
             }
             var firstPage = [];
             var flaggedBootstrap = state.activeChip === "flagged" && Object.keys(state.priorityFlagsByFamily || {}).length > 0;
@@ -1714,17 +1722,22 @@
             if (state.customers.length) saveCustomerCache_(state.customers);
             setDataFreshnessStatus_(root, "ok", Date.now());
             renderAssignRepControls_(root);
-            fetchActiveReps_().then(function() {
-                renderAssignRepControls_(root);
-            }).catch(function(repErr) {
-                console.error("Active reps fetch failed:", repErr);
-                state.reps = [];
+            activeRepsPromise.then(function() {
                 renderAssignRepControls_(root);
             });
             sortProfilesByScore(state.customers);
             syncChipButtons_(root);
             updateCustomerSortIndicators(root);
             applyFilters(root, "");
+
+            if (priorityFlagsPromise) {
+                priorityFlagsPromise.then(function() {
+                    applyPriorityFlagsToCustomers_();
+                    sortProfilesByScore(state.customers);
+                    var q2 = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
+                    applyFilters(root, q2);
+                });
+            }
 
             if (!flaggedBootstrap) {
                 hydrateProfilesInBackground(root, pageSize, pageSize, maxRows, useOrder).catch(function(err) {
