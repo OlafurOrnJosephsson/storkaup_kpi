@@ -159,10 +159,18 @@ input.flatpickr-input.input.form-control.active {
   min-width: 3.5ch;
   padding-right: 0;
 }
+.flatpickr-current-month input.cur-year:hover {
+background: transparent;
+}
+.flatpickr-current-month span.cur-month {}
+.flatpickr-current-month span.cur-month:hover {background:transparent;}
 .flatpickr-current-month input.cur-year::-webkit-outer-spin-button,
 .flatpickr-current-month input.cur-year::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+.flatpickr-months .flatpickr-prev-month:hover, .flatpickr-months .flatpickr-next-month:hover {
+    color:var(--blue)!important;
 }
 .flatpickr-current-month .numInputWrapper {
     width: 3.8em;
