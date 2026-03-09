@@ -244,7 +244,29 @@
   }
 
   function getTodayIso() {
-    return new Date().toISOString().slice(0, 10);
+    var now = new Date();
+    if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+      try {
+        var parts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Atlantic/Reykjavik",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit"
+        }).formatToParts(now);
+        var out = {};
+        parts.forEach(function (part) {
+          if (part && part.type) out[part.type] = part.value;
+        });
+        if (out.year && out.month && out.day) {
+          return out.year + "-" + out.month + "-" + out.day;
+        }
+      } catch (_err) {}
+    }
+
+    var yyyy = now.getFullYear();
+    var mm = String(now.getMonth() + 1).padStart(2, "0");
+    var dd = String(now.getDate()).padStart(2, "0");
+    return yyyy + "-" + mm + "-" + dd;
   }
 
   function getCurrentMonthKey() {
