@@ -5,6 +5,7 @@
 
   var DEBUG = true;
   var pageReadySent = false;
+  var selectedDay = null;
 
   function log() { if (DEBUG && window.console) console.log.apply(console, arguments); }
 
@@ -45,17 +46,92 @@
     return Math.max(0, Math.min(1, v));
   }
 
+  function getTodayIso() {
+    var now = new Date();
+    if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+      try {
+        var parts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Atlantic/Reykjavik",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit"
+        }).formatToParts(now);
+        var out = {};
+        parts.forEach(function (part) {
+          if (part && part.type) out[part.type] = part.value;
+        });
+        if (out.year && out.month && out.day) {
+          return out.year + "-" + out.month + "-" + out.day;
+        }
+      } catch (_err) {}
+    }
+    return now.toISOString().slice(0, 10);
+  }
+
+  function shiftIsoDays(dayStr, delta) {
+    var s = normalizeDay(dayStr);
+    if (!s) return "";
+    var d = new Date(s + "T00:00:00Z");
+    if (isNaN(d.getTime())) return "";
+    d.setUTCDate(d.getUTCDate() + Number(delta || 0));
+    return d.toISOString().slice(0, 10);
+  }
+
+  function normalizeDay(dayStr) {
+    var s = String(dayStr || "").trim();
+    if (!s) return "";
+    var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) return s;
+    var dot = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (dot) {
+      var dd = String(Number(dot[1])).padStart(2, "0");
+      var mm = String(Number(dot[2])).padStart(2, "0");
+      return dot[3] + "-" + mm + "-" + dd;
+    }
+    var slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slash) {
+      var dds = String(Number(slash[1])).padStart(2, "0");
+      var mms = String(Number(slash[2])).padStart(2, "0");
+      return slash[3] + "-" + mms + "-" + dds;
+    }
+    return "";
+  }
+
+  function initFlatpickrIfAvailable(dayPicker) {
+    if (!dayPicker || typeof window.flatpickr !== "function") return;
+    if (dayPicker._flatpickr) return;
+
+    try {
+      var localeOpt = (window.flatpickr && window.flatpickr.l10ns && window.flatpickr.l10ns.is) ? "is" : "default";
+      window.flatpickr(dayPicker, {
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "d.m.Y",
+        locale: localeOpt,
+        monthSelectorType: "static",
+        disableMobile: true,
+        allowInput: true,
+        defaultDate: normalizeDay(dayPicker.value) || getRequestedDay(),
+        onChange: function (_selectedDates, dateStr) {
+          dayPicker.value = normalizeDay(dateStr) || "";
+          dayPicker.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      });
+    } catch (err) {
+      log("Website flatpickr init failed:", err);
+    }
+  }
+
   function getRequestedDay() {
+    if (selectedDay) return selectedDay;
     var fromBody = document.body ? String(document.body.getAttribute("data-website-kpi-day") || "").trim() : "";
     if (!fromBody || fromBody.toLowerCase() === "yesterday") {
-      var d = new Date();
-      d.setUTCDate(d.getUTCDate() - 1);
-      return d.toISOString().slice(0, 10);
+      return shiftIsoDays(getTodayIso(), -1);
     }
     if (fromBody.toLowerCase() === "today") {
-      return new Date().toISOString().slice(0, 10);
+      return getTodayIso();
     }
-    return fromBody;
+    return normalizeDay(fromBody) || shiftIsoDays(getTodayIso(), -1);
   }
 
   function setText(metric, valueText) {
@@ -235,6 +311,21 @@
   function init() {
     var hasMetrics = !!document.querySelector('[data-metric^="website-"]');
     if (!hasMetrics) return;
+    var dayPicker = document.querySelector("input[data-website-day-picker], [data-website-day-picker] input[type='date'], input[type='date'][data-website-day-picker]");
+
+    if (dayPicker) {
+      dayPicker.setAttribute("lang", "is-IS");
+      selectedDay = normalizeDay(dayPicker.value) || getRequestedDay();
+      dayPicker.value = selectedDay;
+      initFlatpickrIfAvailable(dayPicker);
+      dayPicker.addEventListener("change", function () {
+        selectedDay = normalizeDay(dayPicker.value) || getRequestedDay();
+        fetchWebsiteKpis();
+      });
+    } else {
+      selectedDay = getRequestedDay();
+    }
+
     fetchWebsiteKpis();
   }
 
