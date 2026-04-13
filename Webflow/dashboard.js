@@ -283,6 +283,46 @@
     return getTodayIso().slice(0, 7);
   }
 
+  function getMonthDropdownCount() {
+    var fromBody = document.body ? Number(document.body.getAttribute("data-month-count")) : NaN;
+    if (Number.isFinite(fromBody) && fromBody > 0) return Math.max(1, Math.min(36, Math.round(fromBody)));
+    return 12;
+  }
+
+  function shiftMonthKey(monthKey, diffMonths) {
+    var s = String(monthKey || "").trim();
+    if (!/^\d{4}-\d{2}$/.test(s)) return "";
+    var parts = s.split("-");
+    var year = Number(parts[0]);
+    var monthIndex = Number(parts[1]) - 1;
+    if (!Number.isFinite(year) || !Number.isFinite(monthIndex)) return "";
+    var d = new Date(Date.UTC(year, monthIndex + Number(diffMonths || 0), 1));
+    if (isNaN(d.getTime())) return "";
+    return d.toISOString().slice(0, 7);
+  }
+
+  function populateMonthDropdown() {
+    var list = document.querySelector(".dropdowndashboardlist");
+    if (!list) return;
+
+    var count = getMonthDropdownCount();
+    var currentMonth = getCurrentMonthKey();
+    var activeMonth = getActiveMonth() || currentMonth;
+    var html = "";
+
+    for (var i = 0; i < count; i += 1) {
+      var month = shiftMonthKey(currentMonth, -i);
+      if (!month) continue;
+      var activeClass = month === activeMonth ? " active" : "";
+      html += ''
+        + '<div data-month="' + month + '" class="dashboard-date-item' + activeClass + '">'
+        +   '<div>' + prettifyMonthLabel(month) + '</div>'
+        + '</div>';
+    }
+
+    list.innerHTML = html;
+  }
+
   function normalizeDay(day) {
     var s = String(day || "").trim();
     return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
@@ -1294,6 +1334,7 @@
   }
 
   function init() {
+    populateMonthDropdown();
     var items = document.querySelectorAll(".dashboard-date-item[data-month]");
     var hasMetrics = !!document.querySelector("[data-metric]");
     var dayPicker = document.querySelector("input[data-day-picker], [data-day-picker] input[type='date'], input[type='date'][data-day-picker]");
