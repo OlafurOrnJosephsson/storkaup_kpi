@@ -1,6 +1,6 @@
 (function () {
   if (typeof window === "undefined" || typeof document === "undefined") return;
-  if (document.body && String(document.body.getAttribute("data-dashboard-type") || "").trim().toLowerCase() === "website") return;
+  if (!document.body || String(document.body.getAttribute("data-dashboard-type") || "").trim().toLowerCase() !== "website") return;
 
   function ensureGlobalLoader() {
     var existing = document.getElementById("storkaup-global-loader");
@@ -39,18 +39,11 @@
     }, 220);
   }
 
-  showGlobalLoader();
-
-  window.STORKAUP_CONFIG = Object.assign({
-    supabaseUrl: "https://kwpsqpvbhvoyrrffmbcx.supabase.co",
-    publishableKey: "sb_publishable_QaZnXk5bDOpJcxg6_k0z9w_30WacMEv"
-  }, window.STORKAUP_CONFIG || {});
-
   function getBootstrapScript() {
     var scripts = document.querySelectorAll("script[src]");
     for (var i = 0; i < scripts.length; i += 1) {
       var src = scripts[i].getAttribute("src") || "";
-      if (src.indexOf("dashboard-bootstrap.js") !== -1) return scripts[i];
+      if (src.indexOf("website-dashboard-bootstrap.js") !== -1) return scripts[i];
     }
     return null;
   }
@@ -65,9 +58,6 @@
 
     return "main";
   }
-
-  var rev = getRevision();
-  var base = "https://cdn.jsdelivr.net/gh/OlafurOrnJosephsson/storkaup_kpi@" + rev + "/Webflow/";
 
   function ensureCss(href, key) {
     if (document.querySelector('link[' + key + '="1"]') || document.querySelector('link[href="' + href + '"]')) return;
@@ -96,12 +86,21 @@
     document.head.appendChild(script);
   }
 
-  if (document.querySelector('script[data-storkaup-dashboard="1"]')) {
+  window.STORKAUP_CONFIG = Object.assign({
+    supabaseUrl: "https://kwpsqpvbhvoyrrffmbcx.supabase.co",
+    publishableKey: "sb_publishable_QaZnXk5bDOpJcxg6_k0z9w_30WacMEv"
+  }, window.STORKAUP_CONFIG || {});
+
+  showGlobalLoader();
+
+  var rev = getRevision();
+  var base = "https://cdn.jsdelivr.net/gh/OlafurOrnJosephsson/storkaup_kpi@" + rev + "/Webflow/";
+
+  if (document.querySelector('script[data-storkaup-website-dashboard="1"]')) {
     hideGlobalLoader();
     return;
   }
 
-  ensureCss("https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css", "data-flatpickr-css");
   ensureCss(base + "dashboard-theme.css", "data-storkaup-theme-css");
 
   var readyFired = false;
@@ -116,13 +115,5 @@
   });
   setTimeout(onPageReady, 12000);
 
-  ensureScript("https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.js", "data-flatpickr-js", function () {
-    ensureScript("https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/is.js", "data-flatpickr-is-l10n", function () {
-      ensureScript(base + "customer-profiles.js", "data-storkaup-customer-profiles", function () {
-        ensureScript(base + "top-products.js", "data-storkaup-top-products", function () {
-          ensureScript(base + "dashboard.js", "data-storkaup-dashboard");
-        });
-      });
-    });
-  });
+  ensureScript(base + "website-dashboard.js", "data-storkaup-website-dashboard");
 })();
