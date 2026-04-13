@@ -622,16 +622,6 @@ input[type="text"].is-invalid {
 }
 
 /* Digital Adoption Score */
-[data-kpi="digital-adoption"] [data-role="digital-adoption-disclaimer"] {
-  display: block;
-  max-width: 18rem;
-  margin: 0.5rem auto 0;
-  color: var(--black-700, #5b5b5b);
-  font-size: 0.72rem;
-  line-height: 1.35;
-  text-align: center;
-}
-
 [data-kpi="digital-adoption"][data-score-band="good"] [data-metric="digital-adoption-score"],
 [data-kpi="digital-adoption"][data-score-band="good"] [data-metric="digital-adoption-score-pct"] {
   color: var(--success-dark, #257b17);

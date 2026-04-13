@@ -87,23 +87,8 @@
       + pct(getDigitalAdoptionTargetPct()) + " markmið (20%).";
   }
 
-  function ensureDigitalAdoptionDisclaimer() {
-    var card = document.querySelector('[data-kpi="digital-adoption"]');
-    if (!card) return;
-
-    var scoreEl = card.querySelector('[data-metric="digital-adoption-score-pct"]')
-      || card.querySelector('[data-metric="digital-adoption-score"]');
-    if (!scoreEl || !scoreEl.parentNode) return;
-
-    var disclaimer = card.querySelector('[data-role="digital-adoption-disclaimer"]');
-    if (!disclaimer) {
-      disclaimer = document.createElement("div");
-      disclaimer.setAttribute("data-role", "digital-adoption-disclaimer");
-      disclaimer.className = "dashboard-kpi-disclaimer";
-      scoreEl.parentNode.insertBefore(disclaimer, scoreEl.nextSibling);
-    }
-
-    disclaimer.textContent = getDigitalAdoptionDisclaimerText();
+  function applyDigitalAdoptionDisclaimer() {
+    setText("digital-adoption-disclaimer", getDigitalAdoptionDisclaimerText());
   }
 
   function setDigitalAdoptionVisualState(score100) {
@@ -131,7 +116,7 @@
     setText("digital-adoption-newcustomers-norm-pct", pct(normalizedNewWeb));
 
     setDigitalAdoptionVisualState(score100);
-    ensureDigitalAdoptionDisclaimer();
+    applyDigitalAdoptionDisclaimer();
   }
 
   function parsePercent(text) {
@@ -1316,7 +1301,7 @@
 
     if (!items.length && !hasMetrics && !dayPicker) return;
     log("Found month items:", items.length);
-    ensureDigitalAdoptionDisclaimer();
+    applyDigitalAdoptionDisclaimer();
 
     if (dayPicker && dayMode !== "live") {
       dayPicker.setAttribute("lang", "is-IS");
