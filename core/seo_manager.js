@@ -213,27 +213,6 @@ function getSeoQueueData_() {
   return { sheet: sh, header: header, rows: rows };
 }
 
-function buildSeoPrompt_(categoryName, context, keywordHints, currentMetaTitle, currentMetaDescription) {
-  const compact = compactSeoInputs_(context, keywordHints);
-  return [
-    'Þú ert SEO sérfræðingur fyrir Stórkaup.is.',
-    'Skrifaðu Meta Title og Meta Description fyrir vöruflokk.',
-    'Flokkur: ' + categoryName,
-    'Samhengi: ' + (compact.context || 'Engin frekari samantekt tiltæk.'),
-    compact.keywordHints ? ('Keyword hints: ' + compact.keywordHints) : '',
-    currentMetaTitle ? ('Núverandi Meta Title: ' + currentMetaTitle) : '',
-    currentMetaDescription ? ('Núverandi Meta Description: ' + currentMetaDescription) : '',
-    'Leggðu áherslu á heildsöluverð, gæði og fljóta afhendingu.',
-    'Tungumál: Íslenska.',
-    'Stíll: professional B2B.',
-    'Strict limit: Title must be between 40-55 characters, Description 130-150 characters.',
-    'Ef samhengið inniheldur vinsæl vörumerki eða söluhæstu vörur, má nefna það sem styrkir trúverðugleika og smellihlutfall, en aðeins ef það passar eðlilega.',
-    'Forðastu keyword stuffing og of almennan texta.',
-    'Skilaðu EINUNGIS JSON á forminu {"title":"...","description":"..."}',
-    'Meta Title verður að vera undir 60 stöfum.',
-    'Meta Description verður að vera undir 155 stöfum.'
-  ].filter(Boolean).join('\n');
-}
 
 function generateSEOTitles(categoryName, context, keywordHints, currentMetaTitle, currentMetaDescription) {
   const env = getSeoManagerEnv_({ requireAi: true });
@@ -520,26 +499,29 @@ function clearSeoErrorRows_v1(opts) {
   });
 
   const header = SEO_QUEUE_HEADER;
-  const clearColumns = [
+  const clearCols = [
     'Suggested Meta Title',
     'Suggested Meta Description',
     'Status',
     'Last Generated At',
     'Notes'
-  ];
+  ].map(function(name) { return header.indexOf(name); }).filter(function(i) { return i !== -1; });
 
+  const a1s = [];
   let cleared = 0;
+
   queue.rows.forEach(function(row) {
     const status = normalizeStatus_(row.Status);
     if (statusesToClear.indexOf(status) === -1) return;
-
-    clearColumns.forEach(function(columnName) {
-      const colIdx = header.indexOf(columnName);
-      if (colIdx === -1) return;
-      sheet.getRange(row.__rowNumber, colIdx + 1).clearContent();
+    clearCols.forEach(function(colIdx) {
+      a1s.push(sheet.getRange(row.__rowNumber, colIdx + 1).getA1Notation());
     });
     cleared += 1;
   });
+
+  if (a1s.length) {
+    sheet.getRangeList(a1s).clearContent();
+  }
 
   Logger.log(
     'SEO Manager: cleared error rows -> ' + cleared +
@@ -555,39 +537,21 @@ function clearSeoErrorRows_v1(opts) {
 
 function writeSeoQueueResult_(sheet, rowNumber, updates) {
   const header = SEO_QUEUE_HEADER;
-  const row = new Array(header.length).fill('');
+  const range = sheet.getRange(rowNumber, 1, 1, header.length);
+  const row = range.getValues()[0];
 
-  function setValue(columnName, value) {
+  function setCol(columnName, value) {
     const idx = header.indexOf(columnName);
     if (idx !== -1) row[idx] = value;
   }
 
-  if ('suggestedTitle' in updates) {
-    setValue('Suggested Meta Title', updates.suggestedTitle);
-  }
-  if ('suggestedDescription' in updates) {
-    setValue('Suggested Meta Description', updates.suggestedDescription);
-  }
-  if ('status' in updates) {
-    setValue('Status', updates.status);
-  }
-  if ('lastGeneratedAt' in updates) {
-    setValue('Last Generated At', updates.lastGeneratedAt);
-  }
-  if ('notes' in updates) {
-    setValue('Notes', updates.notes);
-  }
+  if ('suggestedTitle' in updates)       setCol('Suggested Meta Title', updates.suggestedTitle);
+  if ('suggestedDescription' in updates) setCol('Suggested Meta Description', updates.suggestedDescription);
+  if ('status' in updates)               setCol('Status', updates.status);
+  if ('lastGeneratedAt' in updates)      setCol('Last Generated At', updates.lastGeneratedAt);
+  if ('notes' in updates)                setCol('Notes', updates.notes);
 
-  const ranges = [];
-  header.forEach(function(columnName, idx) {
-    if (row[idx] !== '') {
-      ranges.push({ col: idx + 1, value: row[idx] });
-    }
-  });
-
-  ranges.forEach(function(entry) {
-    sheet.getRange(rowNumber, entry.col).setValue(entry.value);
-  });
+  range.setValues([row]);
 }
 
 function seedSeoQueueRows_(items) {
@@ -933,51 +897,6 @@ function generateSeoWithGeminiModel_(prompt, env, model) {
   );
 }
 
-function generateSeoWithGeminiPlainJson_(prompt, env, model) {
-  const url =
-    'https://generativelanguage.googleapis.com/v1beta/models/' +
-    encodeURIComponent(normalizeGeminiModelName_(model)) +
-    ':generateContent';
-
-  const payload = {
-    contents: [
-      {
-        parts: [
-          { text: prompt + '\nSkilaðu aðeins hreinu JSON objecti með lyklunum title og description.' }
-        ]
-      }
-    ],
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 120,
-      topP: 0.8,
-      topK: 20,
-      responseMimeType: 'application/json',
-      responseSchema: buildGeminiSeoSchema_()
-    }
-  };
-
-  const res = UrlFetchApp.fetch(url, {
-    method: 'post',
-    contentType: 'application/json',
-    headers: {
-      'x-goog-api-key': env.geminiApiKey,
-      Accept: 'application/json'
-    },
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  });
-
-  const code = res.getResponseCode();
-  const body = res.getContentText();
-  if (code < 200 || code >= 300) {
-    throw new Error('Gemini plain JSON retry failed [' + model + '] (' + code + '): ' + body);
-  }
-
-  const parsed = safeJsonParse_(body) || {};
-  const content = extractGeminiText_(parsed);
-  return parseSeoJson_(content);
-}
 
 function generateSeoWithGeminiPlainJsonV2_(prompt, env, model) {
   const url =
@@ -1174,14 +1093,6 @@ function enforceMaxLength_(value, maxLen) {
     : text.slice(0, maxLen);
 
   return safe.trim().replace(/[.,;:!?-]+$/, '');
-}
-
-function safeJsonParse_(text) {
-  try {
-    return JSON.parse(text);
-  } catch (_) {
-    return null;
-  }
 }
 
 function buildGeminiSeoSchema_() {
