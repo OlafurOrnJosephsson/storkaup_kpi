@@ -143,6 +143,7 @@ function fetchMagentoWithRetry_(url, options) {
   const maxAttempts = 3;
   let attempt = 0;
   let lastError = null;
+  let didForceRefresh = false;
 
   while (attempt < maxAttempts) {
     attempt++;
@@ -150,7 +151,15 @@ function fetchMagentoWithRetry_(url, options) {
     const code = res.getResponseCode();
 
     if (code === 401 || code === 403) {
-      throw new Error(`Magento auth failed (${code}). Clear MAGENTO_ADMIN_TOKEN_CACHE/TS and verify user role.`);
+      if (!didForceRefresh) {
+        didForceRefresh = true;
+        clearMagentoAdminTokenCache_();
+        options = Object.assign({}, options, {
+          headers: magentoHeaders_({ forceRefresh: true })
+        });
+        continue;
+      }
+      throw new Error(`Magento auth failed (${code}). Clear MAGENTO_ADMIN_TOKEN_CACHE/TS and verify 2FA credentials/user role.`);
     }
 
     if (code === 429 || code >= 500) {

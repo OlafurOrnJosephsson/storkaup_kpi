@@ -73,21 +73,21 @@ bc_invoices_month as (
     count(*) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.order_date < timestamp '2025-08-18'
+           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     )::numeric as web_orders,
     coalesce(sum(i.amount_excl) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.order_date < timestamp '2025-08-18'
+           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     ), 0)::numeric as web_revenue_excl
   from raw.bc_invoices_raw i
   cross join month_ctx m
-  where i.order_date >= m.month_start::timestamp
-    and i.order_date < m.month_end::timestamp
+  where coalesce(i.booking_date, i.order_date) >= m.month_start::timestamp
+    and coalesce(i.booking_date, i.order_date) < m.month_end::timestamp
 ),
 bc_credits_month as (
   select
@@ -97,21 +97,21 @@ bc_credits_month as (
     count(*) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.order_date < timestamp '2025-08-18'
+           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     )::numeric as web_orders,
     coalesce(sum(i.amount_excl) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.order_date < timestamp '2025-08-18'
+           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     ), 0)::numeric as web_revenue_excl
   from raw.bc_credit_invoices_raw i
   cross join month_ctx m
-  where i.order_date >= m.month_start::timestamp
-    and i.order_date < m.month_end::timestamp
+  where coalesce(i.booking_date, i.order_date) >= m.month_start::timestamp
+    and coalesce(i.booking_date, i.order_date) < m.month_end::timestamp
 ),
 bc_net as (
   select

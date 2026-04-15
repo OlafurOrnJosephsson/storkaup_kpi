@@ -6,50 +6,50 @@ create schema if not exists mart;
 create or replace view mart.v_bc_monthly_net_v1 as
 with inv as (
   select
-    date_trunc('month', i.order_date)::date as month_start,
+    date_trunc('month', coalesce(i.booking_date, i.order_date))::date as month_start,
     count(*)::numeric as orders,
     coalesce(sum(i.amount_incl), 0)::numeric as revenue_incl,
     coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
     count(*) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.order_date < timestamp '2025-08-18'
+           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     )::numeric as web_orders,
     coalesce(sum(i.amount_excl) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.order_date < timestamp '2025-08-18'
+           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     ), 0)::numeric as web_revenue_excl
   from raw.bc_invoices_raw i
-  where i.order_date is not null
+  where coalesce(i.booking_date, i.order_date) is not null
   group by 1
 ),
 cr as (
   select
-    date_trunc('month', i.order_date)::date as month_start,
+    date_trunc('month', coalesce(i.booking_date, i.order_date))::date as month_start,
     count(*)::numeric as orders,
     coalesce(sum(i.amount_incl), 0)::numeric as revenue_incl,
     coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
     count(*) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.order_date < timestamp '2025-08-18'
+           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     )::numeric as web_orders,
     coalesce(sum(i.amount_excl) filter (
       where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
          or (
-           i.order_date < timestamp '2025-08-18'
+           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
     ), 0)::numeric as web_revenue_excl
   from raw.bc_credit_invoices_raw i
-  where i.order_date is not null
+  where coalesce(i.booking_date, i.order_date) is not null
   group by 1
 )
 select

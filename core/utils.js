@@ -173,6 +173,24 @@ function loadTableBySchemaFull(schemaKey) {
   return loadTableBySchemaFull_(schemaKey);
 }
 
+function applyDefaultFormatting_(sh, dateHeaderName) {
+  applySheetStyling_(sh, {});
+
+  if (!sh || !dateHeaderName) return;
+
+  var lastRow = sh.getLastRow();
+  var lastCol = sh.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return;
+
+  var header = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function(v) {
+    return String(v || '').trim();
+  });
+  var idx = header.indexOf(String(dateHeaderName).trim());
+  if (idx === -1) return;
+
+  sh.getRange(2, idx + 1, lastRow - 1, 1).setNumberFormat('yyyy-mm-dd');
+}
+
 /************************************************************
  * Cached loader to avoid repeated sheet reads in one execution
  ************************************************************/
@@ -407,8 +425,46 @@ function stringSimilarity_(a, b) {
  ************************************************************/
 function toNum_(v) {
   if (!v && v !== 0) return 0;
-  v = String(v).replace(/[^\d.-]/g, '');
-  const n = Number(v);
+  if (typeof v === 'number') {
+    return isNaN(v) ? 0 : v;
+  }
+
+  var s = String(v).trim();
+  if (!s) return 0;
+
+  s = s.replace(/\s+/g, '');
+  s = s.replace(/[^0-9,.\-]/g, '');
+  if (!s) return 0;
+
+  var hasComma = s.indexOf(',') !== -1;
+  var hasDot = s.indexOf('.') !== -1;
+
+  if (hasComma && hasDot) {
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+      // Icelandic/European style: 27.710,00 -> 27710.00
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      // English style with thousands commas: 27,710.00 -> 27710.00
+      s = s.replace(/,/g, '');
+    }
+  } else if (hasComma) {
+    var commaParts = s.split(',');
+    if (commaParts.length === 2 && commaParts[1].length <= 2) {
+      s = commaParts[0].replace(/\./g, '') + '.' + commaParts[1];
+    } else {
+      s = s.replace(/,/g, '');
+    }
+  } else if (hasDot) {
+    var dotParts = s.split('.');
+    if (dotParts.length > 2) {
+      s = s.replace(/\./g, '');
+    } else if (dotParts.length === 2 && dotParts[1].length === 3) {
+      // Treat single dot with 3 trailing digits as thousands separator.
+      s = dotParts[0] + dotParts[1];
+    }
+  }
+
+  const n = Number(s);
   return isNaN(n) ? 0 : n;
 }
 
@@ -1309,8 +1365,10 @@ function getBcSyncState_() {
   var props = getScriptProperties_();
   return {
     invoicesWatermarkIso: props.getProperty('BC_INVOICES_LAST_SYNC_ISO') || '',
+    invoicesRowCount: Number(props.getProperty('BC_INVOICES_LAST_ROW_COUNT') || 0) || 0,
     creditInvoicesWatermarkIso: props.getProperty('BC_CREDIT_INVOICES_LAST_SYNC_ISO') || '',
     linesWatermarkIso: props.getProperty('BC_LINES_LAST_SYNC_ISO') || '',
+    linesRowCount: Number(props.getProperty('BC_LINES_LAST_ROW_COUNT') || 0) || 0,
     linesFullCursor: Number(props.getProperty('BC_LINES_FULL_CURSOR') || 0) || 0
   };
 }
@@ -1320,11 +1378,17 @@ function setBcSyncState_(next) {
   if (next && Object.prototype.hasOwnProperty.call(next, 'invoicesWatermarkIso')) {
     props.setProperty('BC_INVOICES_LAST_SYNC_ISO', String(next.invoicesWatermarkIso || ''));
   }
+  if (next && Object.prototype.hasOwnProperty.call(next, 'invoicesRowCount')) {
+    props.setProperty('BC_INVOICES_LAST_ROW_COUNT', String(Number(next.invoicesRowCount || 0) || 0));
+  }
   if (next && Object.prototype.hasOwnProperty.call(next, 'creditInvoicesWatermarkIso')) {
     props.setProperty('BC_CREDIT_INVOICES_LAST_SYNC_ISO', String(next.creditInvoicesWatermarkIso || ''));
   }
   if (next && Object.prototype.hasOwnProperty.call(next, 'linesWatermarkIso')) {
     props.setProperty('BC_LINES_LAST_SYNC_ISO', String(next.linesWatermarkIso || ''));
+  }
+  if (next && Object.prototype.hasOwnProperty.call(next, 'linesRowCount')) {
+    props.setProperty('BC_LINES_LAST_ROW_COUNT', String(Number(next.linesRowCount || 0) || 0));
   }
   if (next && Object.prototype.hasOwnProperty.call(next, 'linesFullCursor')) {
     var cursor = Number(next.linesFullCursor || 0) || 0;
@@ -1344,6 +1408,29 @@ function shouldIncludeByWatermark_(rowIso, watermarkIso, lookbackDays) {
     watermarkDate = new Date(watermarkDate.getTime() - (lookback * 24 * 60 * 60 * 1000));
   }
   return rowDate >= watermarkDate;
+}
+
+function getAppendedRowsSinceCount_(rows, previousRowCount) {
+  var list = Array.isArray(rows) ? rows : [];
+  var prev = Math.max(0, Number(previousRowCount || 0) || 0);
+  if (prev <= 0 || prev >= list.length) return [];
+  return list.slice(prev);
+}
+
+function dedupeRowsByKey_(rows, keyFn) {
+  var list = Array.isArray(rows) ? rows : [];
+  var out = [];
+  var seen = {};
+
+  list.forEach(function(row, idx) {
+    var rawKey = keyFn ? keyFn(row, idx) : idx;
+    var key = String(rawKey || '');
+    if (!key || seen[key]) return;
+    seen[key] = true;
+    out.push(row);
+  });
+
+  return out;
 }
 
 function upsertBcInvoicesToSupabase_(rows) {
@@ -1423,14 +1510,21 @@ function backfillBcInvoicesToSupabase_v1(options) {
     return { totalRows: 0, selectedRows: 0, uploaded: 0, mode: full ? 'full' : 'incremental' };
   }
 
-  var selected = full ? rows : rows.filter(function(r) {
-    var rowIso = parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE);
-    return shouldIncludeByWatermark_(rowIso, previousIso, lookbackDays);
-  });
+  var selected = rows;
+  if (!full) {
+    var selectedByDate = rows.filter(function(r) {
+      var rowIso = parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE);
+      return shouldIncludeByWatermark_(rowIso, previousIso, lookbackDays);
+    });
+    var appendedRows = getAppendedRowsSinceCount_(rows, state.invoicesRowCount);
+    selected = dedupeRowsByKey_(selectedByDate.concat(appendedRows), function(r) {
+      return String(r && r.DOCUMENT_NO || '').trim();
+    });
+  }
 
   if (!selected.length) {
     Logger.log('[BC_INVOICES][INFO] No incremental rows to upload.');
-    setBcSyncState_({ invoicesWatermarkIso: runStartedIso });
+    setBcSyncState_({ invoicesWatermarkIso: runStartedIso, invoicesRowCount: rows.length });
     return {
       totalRows: rows.length,
       selectedRows: 0,
@@ -1451,7 +1545,7 @@ function backfillBcInvoicesToSupabase_v1(options) {
     Logger.log('[BC_INVOICES][INFO] Backfill batch uploaded: ' + uploaded + '/' + selected.length);
   }
 
-  setBcSyncState_({ invoicesWatermarkIso: runStartedIso });
+  setBcSyncState_({ invoicesWatermarkIso: runStartedIso, invoicesRowCount: rows.length });
   Logger.log('[BC_INVOICES][INFO] Backfill completed. Uploaded: ' + uploaded);
   return {
     totalRows: rows.length,
@@ -1680,9 +1774,19 @@ function backfillBcLinesToSupabase_v1(options) {
       if (doc) changedDocNos[doc] = true;
     });
 
-    selected = rows.filter(function(line) {
+    var selectedByDoc = rows.filter(function(line) {
       var docNo = String(line.DOCUMENT_NO || '').trim();
       return !!changedDocNos[docNo];
+    });
+    var appendedRows = getAppendedRowsSinceCount_(rows, state.linesRowCount);
+    selected = dedupeRowsByKey_(selectedByDoc.concat(appendedRows), function(line) {
+      return [
+        String(line && line.DOCUMENT_NO || '').trim(),
+        String(line && line.SKU || '').trim(),
+        String(line && line.PRODUCT_NAME || '').trim(),
+        String(line && line.QTY || '').trim(),
+        String(line && line.AMOUNT_EXCL || '').trim()
+      ].join('|');
     });
   }
 
@@ -1700,7 +1804,7 @@ function backfillBcLinesToSupabase_v1(options) {
 
   if (!selected.length) {
     Logger.log('[BC_LINES][INFO] No incremental rows to upload.');
-    setBcSyncState_({ linesWatermarkIso: runStartedIso });
+    setBcSyncState_({ linesWatermarkIso: runStartedIso, linesRowCount: rows.length });
     return {
       totalRows: rows.length,
       totalSelectedRows: totalSelected,
@@ -1731,6 +1835,7 @@ function backfillBcLinesToSupabase_v1(options) {
 
   setBcSyncState_({
     linesWatermarkIso: runStartedIso,
+    linesRowCount: rows.length,
     linesFullCursor: full ? (startIndex + selected.length) : state.linesFullCursor
   });
   if (full && (startIndex + selected.length) >= totalSelected) {
@@ -1776,8 +1881,10 @@ function syncBcToSupabaseIncremental_v1(options) {
 function resetBcSupabaseSyncState_v1() {
   setBcSyncState_({
     invoicesWatermarkIso: '',
+    invoicesRowCount: 0,
     creditInvoicesWatermarkIso: '',
     linesWatermarkIso: '',
+    linesRowCount: 0,
     linesFullCursor: 0
   });
   return { ok: true };
@@ -2172,26 +2279,45 @@ function upsertProductsToSupabase_(rows) {
 
   if (!payload.length) return { uploaded: 0 };
 
-  var chunkSize = 500;
+  var chunkSize = 200;
   var uploaded = 0;
   for (var i = 0; i < payload.length; i += chunkSize) {
     var chunk = payload.slice(i, i + chunkSize);
-    var res = UrlFetchApp.fetch(endpoint, {
-      method: 'post',
-      contentType: 'application/json',
-      headers: {
-        apikey: conf.serviceRole,
-        Authorization: 'Bearer ' + conf.serviceRole,
-        'Content-Profile': 'raw',
-        'Accept-Profile': 'raw',
-        Prefer: 'resolution=merge-duplicates,return=minimal'
-      },
-      payload: JSON.stringify(chunk),
-      muteHttpExceptions: true
-    });
-    var code = res.getResponseCode();
+    var attempts = 3;
+    var code = 0;
+    var body = '';
+    for (var attempt = 1; attempt <= attempts; attempt += 1) {
+      var res = UrlFetchApp.fetch(endpoint, {
+        method: 'post',
+        contentType: 'application/json',
+        headers: {
+          apikey: conf.serviceRole,
+          Authorization: 'Bearer ' + conf.serviceRole,
+          'Content-Profile': 'raw',
+          'Accept-Profile': 'raw',
+          Prefer: 'resolution=merge-duplicates,return=minimal'
+        },
+        payload: JSON.stringify(chunk),
+        muteHttpExceptions: true
+      });
+      code = res.getResponseCode();
+      body = res.getContentText() || '';
+      if (code >= 200 && code < 300) break;
+
+      var shouldRetry = attempt < attempts && isTransientSyncError_('PRODUCTS Supabase upsert failed: ' + code + ' ' + body);
+      Logger.log(
+        '[PRODUCTS][WARN] Upsert chunk ' + (Math.floor(i / chunkSize) + 1) +
+        ' attempt ' + attempt + '/' + attempts +
+        ' failed: ' + code + ' ' + body.slice(0, 300) +
+        (shouldRetry ? ' (retrying)' : ' (no retry)')
+      );
+      if (!shouldRetry) {
+        throw new Error('PRODUCTS Supabase upsert failed: ' + code + ' ' + body);
+      }
+      Utilities.sleep(4000 * attempt);
+    }
     if (code < 200 || code >= 300) {
-      throw new Error('PRODUCTS Supabase upsert failed: ' + code + ' ' + res.getContentText());
+      throw new Error('PRODUCTS Supabase upsert failed: ' + code + ' ' + body);
     }
     uploaded += chunk.length;
   }
@@ -2410,6 +2536,17 @@ function isTransientSyncError_(errorObj) {
     raw.indexOf('http 502') !== -1 ||
     raw.indexOf('http 503') !== -1 ||
     raw.indexOf('http 504') !== -1 ||
+    raw.indexOf(' 429 ') !== -1 ||
+    raw.indexOf(' 500 ') !== -1 ||
+    raw.indexOf(' 502 ') !== -1 ||
+    raw.indexOf(' 503 ') !== -1 ||
+    raw.indexOf(' 504 ') !== -1 ||
+    raw.indexOf('429 too many requests') !== -1 ||
+    raw.indexOf('500 internal server error') !== -1 ||
+    raw.indexOf('502 bad gateway') !== -1 ||
+    raw.indexOf('503 service unavailable') !== -1 ||
+    raw.indexOf('504 gateway timeout') !== -1 ||
+    raw.indexOf('cloudflare') !== -1 ||
     raw.indexOf('timed out') !== -1 ||
     raw.indexOf('timeout') !== -1 ||
     raw.indexOf('service invoked too many times') !== -1 ||

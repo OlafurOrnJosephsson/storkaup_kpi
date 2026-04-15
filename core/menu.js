@@ -35,6 +35,12 @@ function onOpen() {
     .addSubMenu(
       ui.createMenu('Tools')
         .addItem('Test Config', 'menu_testConfig')
+        .addItem('Setup SEO Queue', 'menu_setupSeoQueue')
+        .addItem('Seed SEO Queue from Cludo', 'menu_buildSeoQueueFromCludo')
+        .addItem('Generate SEO for Selected Row', 'menu_runSeoSelectedRow')
+        .addItem('Generate SEO Batch', 'menu_runSeoBatch')
+        .addItem('Debug Gemini Models', 'menu_debugGeminiModels')
+        .addItem('Clear SEO Error Rows', 'menu_clearSeoErrorRows')
         .addItem('Clear Magento Token Cache', 'menu_clearMagentoTokenCache')
         .addItem('Run Klaviyo Sync', 'menu_runKlaviyoSync')
         .addItem('Show Runtime Cache', 'menu_showRuntimeCache')
@@ -154,6 +160,58 @@ function menu_buildSalesRepOnboarding() {
 function menu_testConfig() {
   const cfg = loadConfig_();
   SpreadsheetApp.getUi().alert('CONFIG OK:\n\n' + JSON.stringify(cfg, null, 2));
+}
+
+function menu_setupSeoQueue() {
+  if (typeof setupSeoQueueSheet_v1 !== 'function') {
+    throw new Error('setupSeoQueueSheet_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  setupSeoQueueSheet_v1();
+  toast_('SEO queue sheet ready.', 'KPI CORE');
+}
+
+function menu_buildSeoQueueFromCludo() {
+  if (typeof buildSeoQueueFromCludo_v1 !== 'function') {
+    throw new Error('buildSeoQueueFromCludo_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = buildSeoQueueFromCludo_v1();
+  toast_('SEO queue seeded from Cludo: ' + ((out && out.rows) || 0), 'KPI CORE');
+}
+
+function menu_runSeoBatch() {
+  if (typeof runSeoAutomationBatch_v1 !== 'function') {
+    throw new Error('runSeoAutomationBatch_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = runSeoAutomationBatch_v1();
+  toast_('SEO batch done. Generated: ' + ((out && out.successCount) || 0), 'KPI CORE');
+}
+
+function menu_runSeoSelectedRow() {
+  if (typeof runSeoForSelectedRow_v1 !== 'function') {
+    throw new Error('runSeoForSelectedRow_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = runSeoForSelectedRow_v1();
+  toast_(
+    'SEO generated for row ' + ((out && out.rowNumber) || '?') +
+    ': ' + ((out && out.categoryName) || ''),
+    'KPI CORE'
+  );
+}
+
+function menu_clearSeoErrorRows() {
+  if (typeof clearSeoErrorRows_v1 !== 'function') {
+    throw new Error('clearSeoErrorRows_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = clearSeoErrorRows_v1();
+  toast_('SEO error rows cleared: ' + ((out && out.cleared) || 0), 'KPI CORE');
+}
+
+function menu_debugGeminiModels() {
+  if (typeof debugAvailableGeminiModels_v1 !== 'function') {
+    throw new Error('debugAvailableGeminiModels_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const models = debugAvailableGeminiModels_v1();
+  SpreadsheetApp.getUi().alert('Gemini models:\n\n' + models.join('\n'));
 }
 
 function menu_clearMagentoTokenCache() {
