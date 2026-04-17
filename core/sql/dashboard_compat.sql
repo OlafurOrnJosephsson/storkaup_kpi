@@ -315,10 +315,10 @@ select jsonb_build_object(
     'revenueExcl', coalesce((select revenue_excl from web_month), 0),
     'orders', coalesce((select orders from web_month), 0),
     'webOrdersPct', case when coalesce((select orders from bc_net), 0) > 0
-      then coalesce((select orders from web_month), 0) / nullif((select orders from bc_net), 0)
+      then coalesce((select web_orders from bc_net), 0) / nullif((select orders from bc_net), 0)
       else 0 end,
     'webRevenuePct', case when coalesce((select revenue_excl from bc_net), 0) > 0
-      then coalesce((select revenue_excl from web_month), 0) / nullif((select revenue_excl from bc_net), 0)
+      then coalesce((select web_revenue_excl from bc_net), 0) / nullif((select revenue_excl from bc_net), 0)
       else 0 end,
     'salesRepPct', case when coalesce((select revenue_incl from web_month), 0) > 0
       then coalesce((select rep_revenue_incl from rep_month), 0) / nullif((select revenue_incl from web_month), 0)
