@@ -6,6 +6,10 @@
   var selectedWeekdayIso = null; // 1..7 (Mon..Sun) for separate weekday-average chart override
   var weekdayGridCacheDay = null;
   var weekdayGridCacheTs = 0;
+  var bcSyncCacheTs = 0;
+  var webBookingCacheTs = 0;
+  var klaviyoCacheTs = 0;
+  var STABLE_RPC_TTL_MS = 10 * 60 * 1000; // 10 minutes — these RPCs update infrequently
   var dayApiUnavailable = false;
   var DEBUG = true;
   var pageReadySent = false;
@@ -940,6 +944,7 @@
 
   function fetchKlaviyoAttributionSummary() {
     if (!hasKlaviyoMetricTargets()) return Promise.resolve();
+    if (klaviyoCacheTs && (Date.now() - klaviyoCacheTs) < STABLE_RPC_TTL_MS) return Promise.resolve();
     var cfg = getCfg();
     var apiKey = cfg.publishableKey || "";
     if (!cfg.supabaseUrl || !apiKey) return Promise.resolve();
@@ -1147,6 +1152,7 @@
           }
         });
 
+        klaviyoCacheTs = Date.now();
         setText("klaviyo-orders-30d", toNumberSafe(totals.orders30d));
         setText("klaviyo-revenue-excl-30d", formatNumber(totals.revenueExcl30d));
         setText("klaviyo-revenue-incl-30d", formatNumber(totals.revenueIncl30d));
@@ -1195,6 +1201,7 @@
       && !document.querySelector('[data-metric="bc-sync-errors-24h"]')) {
       return Promise.resolve();
     }
+    if (bcSyncCacheTs && (Date.now() - bcSyncCacheTs) < STABLE_RPC_TTL_MS) return Promise.resolve();
 
     var cfg = getCfg();
     var apiKey = cfg.publishableKey || "";
@@ -1218,6 +1225,7 @@
       .then(function (raw) {
         var row = Array.isArray(raw) ? (raw[0] || null) : raw;
         if (!row) return;
+        bcSyncCacheTs = Date.now();
         setText("bc-last-sync-at", formatSyncDateTime(row.last_success_at));
         if (row.error_count_24h != null) {
           setText("bc-sync-errors-24h", toNumberSafe(row.error_count_24h));
@@ -1240,6 +1248,7 @@
 
   function fetchWebBookingReconciliationSummary() {
     if (!hasWebBookingMetricTargets()) return Promise.resolve();
+    if (webBookingCacheTs && (Date.now() - webBookingCacheTs) < STABLE_RPC_TTL_MS) return Promise.resolve();
 
     var cfg = getCfg();
     var apiKey = cfg.publishableKey || "";
@@ -1250,6 +1259,7 @@
 
     function applyRow(row) {
       if (!row) return;
+      webBookingCacheTs = Date.now();
       setText("web-booking-orders-30d", toNumberSafe(row.web_orders_30d));
       setText("web-booking-booked-exact-30d", toNumberSafe(row.web_orders_booked_exact_30d));
       setText("web-booking-booked-est-30d", toNumberSafe(row.web_orders_booked_est_30d));

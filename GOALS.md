@@ -1,6 +1,6 @@
 # KPI Goals
 
-Updated: 2026-03-09
+Updated: 2026-04-17
 
 ## North Star
 
@@ -16,6 +16,7 @@ Updated: 2026-03-09
 
 - Webflow dashboards load and read current Supabase RPC/view data.
 - Daily dashboard live mode uses Reykjavik day calculation instead of raw UTC rollover.
+- Dashboard month dropdown is automated (no manual selection needed).
 - BC monthly web-share cards match Supabase net BC math:
   - `Vefpantanir % af heildarsolu`
   - `Vefsala % af heildarsolu`
@@ -27,6 +28,13 @@ Updated: 2026-03-09
   - sales rep CTA states are dynamic
   - sales rep assignment auto-creates missing priority rows
 - Trigger schedule is now codified in Apps Script instead of being implicit UI state.
+- Magento 2FA handled in `scheduledMagentoSync_v1`.
+- BC `booking_date` synced through `scheduledBcSync_v1`.
+- `safePoll_v2` and staggered trigger schedule validated over 6+ weeks.
+- Daily sanity checks (`runDailySanityChecks_v1`) running without false positive noise.
+- Klaviyo attribution live: sync running, attribution mart in Supabase, KPI widgets at `/kpi/klaviyo`.
+- Website dashboard (GA4) phase 1 live in Webflow.
+- SEO manager phase 1 live: queue-driven Icelandic copy generation via OpenAI.
 
 ## Non-Negotiables
 
@@ -40,20 +48,19 @@ Updated: 2026-03-09
 
 ## Watch Items
 
-- `scheduledCustomerAnalysisSync_v1` should be watched after trigger reset because it previously showed a high error rate.
-- `scheduledMagentoSync_v1` had historical failures; check after one business day that the new schedule is calm.
-- Samsung / native TV browser should be observed one morning to confirm live day rollover is now correct.
-- Datepicker styling is now heavily overridden; if Webflow global input styles change, re-check focus/active states.
+- `scheduledCustomerAnalysisSync_v1` has historically high error rate; consider disabling if low-value.
+- Klaviyo sync (`scheduledKlaviyoSync_v1`) is new — watch first weeks for checkpoint drift or API rate errors.
+- Website dashboard (`website_kpi_pack` RPC) is new — watch for cold-start latency on first load.
+- Datepicker styling is heavily overridden; if Webflow global input styles change, re-check focus/active states.
 
 ## Next Practical Improvements
 
-- Add one lightweight operational status view:
-  - last successful run per critical trigger
-  - rows processed
-  - stale warning if BC / Magento / safePoll fall behind
-- Clean remaining mojibake / encoding leftovers in older GAS docs and utility logs.
+- Investigate `Sala frá Klaviyo með vsk` showing `–` on `/kpi/klaviyo` (likely null `revenue_incl` in `newweb_orders_raw`).
+- Validate website dashboard in production; define phase 2 scope.
+- Decide SEO manager phase 2: Prismic API write vs manual copy/paste workflow.
 - Decide whether `scheduledCustomerAnalysisSync_v1` is truly needed daily; disable if low-value and noisy.
 - Add a tiny trigger audit function that logs current trigger schedules in one place.
+- Clean remaining mojibake / encoding leftovers in older GAS docs and utility logs.
 
 ## Trigger Intent
 

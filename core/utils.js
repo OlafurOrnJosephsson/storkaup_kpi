@@ -3195,6 +3195,9 @@ function installDailySanityChecksTrigger_v1() {
 function refreshSupabaseMarts_v1(options) {
   var opts = options || {};
   var strict = !!opts.strict;
+  // Iceland is always UTC+0. Off-peak = before 07:00 or at/after 19:00.
+  var utcHour = new Date().getUTCHours();
+  var offPeak = utcHour < 7 || utcHour >= 19;
   var out = {
     top_products_30d: 'skipped',
     top_products_all: 'skipped',
@@ -3211,14 +3214,19 @@ function refreshSupabaseMarts_v1(options) {
     if (strict) throw e30;
   }
 
-  try {
-    callSupabaseRpc_('refresh_mv_top_products_all', {});
-    out.top_products_all = 'ok';
-  } catch (eAll) {
-    out.top_products_all = 'error';
-    out.error = out.error || String(eAll);
-    Logger.log('[MART_REFRESH][WARN] refresh_mv_top_products_all failed: ' + eAll);
-    if (strict) throw eAll;
+  if (!offPeak) {
+    out.top_products_all = 'skipped_peak_hours';
+    Logger.log('[MART_REFRESH][INFO] Skipping top_products_all refresh (peak hours, UTC ' + utcHour + ':xx)');
+  } else {
+    try {
+      callSupabaseRpc_('refresh_mv_top_products_all', {});
+      out.top_products_all = 'ok';
+    } catch (eAll) {
+      out.top_products_all = 'error';
+      out.error = out.error || String(eAll);
+      Logger.log('[MART_REFRESH][WARN] refresh_mv_top_products_all failed: ' + eAll);
+      if (strict) throw eAll;
+    }
   }
 
   Logger.log('[MART_REFRESH][INFO] refreshSupabaseMarts_v1 result: ' + JSON.stringify(out));
@@ -3646,6 +3654,15 @@ function scheduledCustomerAnalysisSync_v1() {
         function() { return backfillCustomerAnalysisToSupabase_v1(); },
         { attempts: 2, delayMs: 7000 }
       );
+    }
+
+    try {
+      callSupabaseRpc_('refresh_mv_customer_profiles_labeled_trends', {});
+      result.profilesMvRefresh = 'ok';
+      Logger.log('[CASYNC][INFO] Refreshed mv_customer_profiles_labeled_trends');
+    } catch (mvErr) {
+      result.profilesMvRefresh = 'error';
+      Logger.log('[CASYNC][WARN] mv_customer_profiles_labeled_trends refresh failed: ' + mvErr);
     }
 
     result.finishedAt = new Date().toISOString();

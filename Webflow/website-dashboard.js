@@ -239,17 +239,7 @@
     var s = String(day || "").trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
     var parts = s.split("-");
-    var d = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
-    try {
-      return new Intl.DateTimeFormat("is-IS", {
-        day: "numeric",
-        month: "2-digit",
-        year: "numeric",
-        timeZone: "UTC"
-      }).format(d);
-    } catch (_err) {
-      return s;
-    }
+    return parts[2] + "." + parts[1] + "." + parts[0];
   }
 
   function applyWebsiteMetrics(row) {

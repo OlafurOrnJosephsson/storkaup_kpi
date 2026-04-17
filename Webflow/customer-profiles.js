@@ -556,7 +556,7 @@
 
     async function fetchProfilesPage(offset, pageSize, useOrder) {
         var path =
-            "/rest/v1/v_customer_profiles_labeled_trends?select=" + encodeURIComponent(PROFILE_FIELDS) +
+            "/rest/v1/mv_customer_profiles_labeled_trends?select=" + encodeURIComponent(PROFILE_FIELDS) +
             (useOrder === false ? "" : "&order=customer_id.asc.nullslast") +
             "&limit=" + pageSize +
             "&offset=" + offset;
@@ -585,7 +585,7 @@
         var escaped = q.replace(/[%*,()]/g, "");
         var orExpr = "(customer_name.ilike.*" + escaped + "*,customer_id.ilike.*" + escaped + "*)";
         var path =
-            "/rest/v1/v_customer_profiles_labeled_trends?select=" + encodeURIComponent(PROFILE_FIELDS) +
+            "/rest/v1/mv_customer_profiles_labeled_trends?select=" + encodeURIComponent(PROFILE_FIELDS) +
             "&or=" + encodeURIComponent(orExpr) +
             "&limit=" + lim;
         var res = await fetch(URL + path, { headers: headers("api"), cache: "no-store" });
@@ -610,7 +610,7 @@
                 return '"' + v.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
             }).join(",");
             var path =
-                "/rest/v1/v_customer_profiles_labeled_trends?select=" + encodeURIComponent(PROFILE_FIELDS) +
+                "/rest/v1/mv_customer_profiles_labeled_trends?select=" + encodeURIComponent(PROFILE_FIELDS) +
                 "&customer_id=in.(" + inList + ")" +
                 "&limit=" + Math.min(1000, chunk.length);
             var res = await fetch(URL + path, { headers: headers("api"), cache: "no-store" });
