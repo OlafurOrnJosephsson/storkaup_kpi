@@ -3201,6 +3201,7 @@ function refreshSupabaseMarts_v1(options) {
   var out = {
     top_products_30d: 'skipped',
     top_products_all: 'skipped',
+    top_products_master: 'skipped',
     error: null
   };
 
@@ -3216,7 +3217,8 @@ function refreshSupabaseMarts_v1(options) {
 
   if (!offPeak) {
     out.top_products_all = 'skipped_peak_hours';
-    Logger.log('[MART_REFRESH][INFO] Skipping top_products_all refresh (peak hours, UTC ' + utcHour + ':xx)');
+    out.top_products_master = 'skipped_peak_hours';
+    Logger.log('[MART_REFRESH][INFO] Skipping heavy mart refreshes (peak hours, UTC ' + utcHour + ':xx)');
   } else {
     try {
       callSupabaseRpc_('refresh_mv_top_products_all', {});
@@ -3226,6 +3228,16 @@ function refreshSupabaseMarts_v1(options) {
       out.error = out.error || String(eAll);
       Logger.log('[MART_REFRESH][WARN] refresh_mv_top_products_all failed: ' + eAll);
       if (strict) throw eAll;
+    }
+
+    try {
+      callSupabaseRpc_('refresh_mv_top_products_master', {});
+      out.top_products_master = 'ok';
+    } catch (eMaster) {
+      out.top_products_master = 'error';
+      out.error = out.error || String(eMaster);
+      Logger.log('[MART_REFRESH][WARN] refresh_mv_top_products_master failed: ' + eMaster);
+      if (strict) throw eMaster;
     }
   }
 
