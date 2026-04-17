@@ -84,7 +84,7 @@
 | P6-1 | Validate `website_kpi_pack` RPC in Supabase and confirm all dashboard cards render | Olafur | Done | All KPI cards confirmed live in production (2026-04-17) |
 | P6-2 | Fix `Dagsetning:` date label on `/kpi/vefur-kpi` showing American format (04/16/2026) | Olafur | Done | `formatDayLabel` rewritten to manual `dd.mm.yyyy` — no Intl locale dependency; deploy to Webflow and update pin |
 | P6-3 | Pin `website-dashboard.js` + `website-dashboard-bootstrap.js` in Webflow and update pins below | Olafur | Done | Webflow deploy rev updated to `cb56c43`; all pages confirmed loading |
-| P6-4 | Define phase 2 scope for website dashboard (segments, funnels, or trend lines) | Olafur | Todo | Scope decision made; tasks added here |
+| P6-4 | Define phase 2 scope for website dashboard (segments, funnels, or trend lines) | Olafur | Blocked | Waiting for GA4 purchase tracking fix to stabilise (GTM fix applied 2026-04-17 — validate ratio next day before adding funnel metrics) |
 
 ## Priority 7 - SEO Manager
 
@@ -92,6 +92,14 @@
 |---|---|---|---|---|
 | P7-1 | Run SEO manager on full category queue and review output quality | Olafur | In progress | Generated copy reviewed; false positives / poor suggestions caught and corrected |
 | P7-2 | Decide phase 2 scope: Prismic API write vs manual copy/paste workflow remains | Olafur | Todo | Decision made; either Prismic API integration scoped or workflow documented |
+
+## Priority 8 - GTM / GA4 Tracking Quality
+
+| ID | Task | Owner | Status | Acceptance Check |
+|---|---|---|---|---|
+| P8-1 | Fix GA4 purchase over-counting (GTM EV trigger dedup broken) | Olafur | Done | `CJS – Seen Txn` moved to condition on `EV – order success total visible`; `EX – purchase duplicate` removed from tag exceptions; sanity check `ga4_purchase_ratio_7d` wired into `runDailySanityChecks_v1` (threshold 2.5x) |
+| P8-2 | Validate GA4 purchase ratio after fix | Olafur | Todo | `ga4_purchase_ratio_7d` passes (ratio < 2.5) on next daily sanity run; compare query confirms ga4_purchases ≈ actual_orders |
+| P8-3 | Add funnel conversion rates to website dashboard once P8-2 passes | Olafur | Todo | `add_to_cart→checkout %` and `checkout→purchase %` visible on `/kpi/vefur-kpi`; numbers make business sense |
 
 ## Current Production Pins
 
