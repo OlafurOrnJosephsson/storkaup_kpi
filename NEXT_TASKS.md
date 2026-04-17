@@ -78,7 +78,7 @@
 |---|---|---|---|---|
 | P6-1 | Validate `website_kpi_pack` RPC in Supabase and confirm all dashboard cards render | Olafur | Done | All KPI cards confirmed live in production (2026-04-17) |
 | P6-2 | Fix `Dagsetning:` date label on `/kpi/vefur-kpi` showing American format (04/16/2026) | Olafur | Done | `formatDayLabel` rewritten to manual `dd.mm.yyyy` — no Intl locale dependency; deploy to Webflow and update pin |
-| P6-3 | Pin `website-dashboard.js` + `website-dashboard-bootstrap.js` in Webflow and update pins below | Olafur | In progress | Production pins documented; Webflow custom code updated |
+| P6-3 | Pin `website-dashboard.js` + `website-dashboard-bootstrap.js` in Webflow and update pins below | Olafur | Done | Webflow deploy rev updated to `cb56c43`; all pages confirmed loading |
 | P6-4 | Define phase 2 scope for website dashboard (segments, funnels, or trend lines) | Olafur | Todo | Scope decision made; tasks added here |
 
 ## Priority 7 - SEO Manager
@@ -92,11 +92,8 @@
 
 Update these whenever Webflow custom code is changed.
 
-- `Webflow/customer-profiles.js`: `2a6dd57`
-- `Webflow/dashboard.js`: `e4f7e48`
+- Webflow deploy rev (both bootstrap `data-storkaup-rev`): `cb56c43`
 - `Webflow/dashboard-theme.css`: `2b272cd`
-- `Webflow/website-dashboard.js`: `ab67688`
-- `Webflow/website-dashboard-bootstrap.js`: `45e2e01`
 - Trigger schedule baseline: `ab2931a`
 
 ## Weekly Review Checklist
