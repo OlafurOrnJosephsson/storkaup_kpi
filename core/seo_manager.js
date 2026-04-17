@@ -1177,3 +1177,71 @@ function parseCsvList_(value) {
     .map(function(item) { return String(item || '').trim(); })
     .filter(Boolean);
 }
+
+/************************************************************
+ * Scheduled SEO automation
+ * installSeoAutomationTrigger_v1()  — set up every-30-min trigger
+ * runScheduledSeoAutomation_v1()    — called by trigger; self-removes when done
+ * removeSeoAutomationTrigger_v1()   — manual cleanup
+ ************************************************************/
+
+function runScheduledSeoAutomation_v1() {
+  var result;
+  try {
+    result = runSeoAutomationBatch_v1({});
+  } catch (err) {
+    var msg = err && err.message ? err.message : String(err || '');
+    Logger.log('[SEO_AUTO][ERROR] batch failed: ' + msg);
+    // Rate limit / quota — leave trigger running, retry next interval
+    if (isQuotaOrTemporaryAiError_(msg)) {
+      Logger.log('[SEO_AUTO][INFO] Rate limit hit — will retry next interval.');
+      return;
+    }
+    throw err;
+  }
+
+  Logger.log(
+    '[SEO_AUTO][INFO] batch done — processed=' + result.processed +
+    ', eligible=' + result.eligible +
+    ', nextRow=' + result.nextRow +
+    ', total=' + result.total
+  );
+
+  // All eligible rows done (cursor reset to 0 AND no eligible rows remain)
+  var allDone = result.eligible === 0 ||
+    (result.nextRow === 0 && result.processed > 0 && result.eligible <= result.processed);
+
+  if (allDone) {
+    Logger.log('[SEO_AUTO][INFO] All eligible SEO rows processed — removing trigger.');
+    removeSeoAutomationTrigger_v1();
+  }
+}
+
+function installSeoAutomationTrigger_v1() {
+  var fn = 'runScheduledSeoAutomation_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[SEO_AUTO][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .everyMinutes(30)
+    .create();
+
+  Logger.log('[SEO_AUTO][INFO] Created trigger for ' + fn + ' (every 30 min)');
+  return { created: true, schedule: 'everyMinutes(30)' };
+}
+
+function removeSeoAutomationTrigger_v1() {
+  var fn = 'runScheduledSeoAutomation_v1';
+  var triggers = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  triggers.forEach(function(t) { ScriptApp.deleteTrigger(t); });
+  Logger.log('[SEO_AUTO][INFO] Removed ' + triggers.length + ' trigger(s) for ' + fn);
+  return { removed: triggers.length };
+}
