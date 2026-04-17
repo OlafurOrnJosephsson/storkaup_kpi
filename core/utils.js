@@ -4347,6 +4347,68 @@ function removeScheduledBcSyncTrigger_v1() {
   return { removed: out.removed };
 }
 
+/**
+ * auditTriggers_v1()
+ * Logs all project triggers with handler, type, and schedule info.
+ * Run manually from Apps Script IDE to verify trigger state.
+ * Returns array of trigger descriptors; also writes to Logger.
+ */
+function auditTriggers_v1() {
+  var EXPECTED = {
+    safePoll_v2:                    'every 5 min',
+    runDailySanityChecks_v1:        'daily ~02:xx',
+    scheduledReferenceSync_v1:      'daily ~03:xx',
+    scheduledMagentoSync_v1:        'daily ~04:xx',
+    scheduledCludoSync_v1:          'daily ~04:xx',
+    scheduledCustomerAnalysisSync_v1: 'daily ~05:xx',
+    scheduledKlaviyoSync_v1:        'daily ~05:xx',
+    scheduledBcSync_v1:             'twice daily ~06:xx + ~13:xx'
+  };
+
+  var triggers = ScriptApp.getProjectTriggers();
+  var rows = triggers.map(function(t) {
+    var handler = t.getHandlerFunction();
+    var type    = t.getTriggerSource().toString();
+    var evtType = t.getEventType().toString();
+    return {
+      handler:  handler,
+      type:     type,
+      eventType: evtType,
+      expected: EXPECTED[handler] || '(unrecognised)'
+    };
+  });
+
+  // Group by handler for summary
+  var counts = {};
+  rows.forEach(function(r) {
+    counts[r.handler] = (counts[r.handler] || 0) + 1;
+  });
+
+  Logger.log('[AUDIT][TRIGGERS] Total triggers: ' + triggers.length);
+  rows.forEach(function(r) {
+    Logger.log('[AUDIT][TRIGGERS] ' + r.handler +
+      ' | type=' + r.type +
+      ' | event=' + r.eventType +
+      ' | expected=' + r.expected);
+  });
+
+  // Warn about unexpected handlers
+  Object.keys(counts).forEach(function(handler) {
+    if (!EXPECTED[handler]) {
+      Logger.log('[AUDIT][WARN] Unknown handler: ' + handler + ' (' + counts[handler] + ' trigger(s))');
+    }
+  });
+
+  // Warn about missing expected handlers
+  Object.keys(EXPECTED).forEach(function(handler) {
+    if (!counts[handler]) {
+      Logger.log('[AUDIT][WARN] Missing trigger for: ' + handler + ' (expected ' + EXPECTED[handler] + ')');
+    }
+  });
+
+  return { total: triggers.length, byHandler: counts, triggers: rows };
+}
+
 function resetRecommendedTimeTriggers_v1() {
   var handlers = [
     'safePoll_v2',
