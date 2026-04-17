@@ -2,6 +2,11 @@
 
 ## Recent Release Notes
 
+- Top products page fixed:
+  - `api.v_top_products_master` og `api.v_category_master` voru að timeouta (57014) við REST API köll
+  - Búið til `mart.mv_top_products_master` og `mart.mv_category_master` (pre-computed)
+  - api views beinast nú að MVum; refresh keyrður off-peak í `refreshSupabaseMarts_v1`
+
 - Website dashboard (GA4) added:
   - `Webflow/website-dashboard.js` + `website-dashboard-bootstrap.js` live
   - date picker and month dropdown automated
