@@ -3047,6 +3047,54 @@ function runDailySanityChecks_v1() {
     }
   }
 
+  function checkGa4PurchaseRatio_() {
+    // Compare GA4 purchase event count vs actual web orders for last 7 completed days.
+    // After GTM fix (2026-04-17) ratio should be close to 1.0.
+    // Alert if ratio > 2.5 — likely means GTM dedup has regressed.
+    var GA4_RATIO_WARN = 2.5;
+    var fromIso = isoDateUtcDaysAgo_(8);
+    var toIso   = isoDateUtcDaysAgo_(1);
+    try {
+      var ga4Rows = supabaseRestGetJson_(
+        'ga4_daily_metrics_raw?select=day,purchases'
+        + '&day=gte.' + fromIso
+        + '&day=lte.' + toIso
+        + '&limit=500',
+        'raw'
+      );
+      var webRows = supabaseRestGetJson_(
+        'newweb_orders_raw?select=purchase_date'
+        + '&purchase_date=gte.' + fromIso + 'T00:00:00Z'
+        + '&purchase_date=lte.' + toIso   + 'T23:59:59Z'
+        + '&limit=5000',
+        'raw'
+      );
+
+      var ga4Total = (Array.isArray(ga4Rows) ? ga4Rows : []).reduce(function(s, r) {
+        return s + toNum_(r && r.purchases);
+      }, 0);
+      var webTotal = Array.isArray(webRows) ? webRows.length : 0;
+
+      if (webTotal === 0) {
+        addCheck_('ga4_purchase_ratio_7d', true, 'No web orders in window — skipping ratio check', 'warning');
+        return;
+      }
+
+      var ratio = ga4Total / webTotal;
+      var ok = ratio <= GA4_RATIO_WARN;
+      addCheck_(
+        'ga4_purchase_ratio_7d',
+        ok,
+        'ga4_purchases=' + ga4Total + ', actual_orders=' + webTotal
+          + ', ratio=' + Math.round(ratio * 10) / 10
+          + (ok ? '' : ' (threshold=' + GA4_RATIO_WARN + ' — GTM dedup may have regressed)'),
+        'warning'
+      );
+    } catch (e) {
+      addCheck_('ga4_purchase_ratio_7d', false, String(e && e.message ? e.message : e), 'warning');
+    }
+  }
+
   function checkBcSyncRowsWarning_() {
     var since48Iso = new Date(nowMs - 48 * 60 * 60 * 1000).toISOString();
     var path = 'ingestion_runs?select=job_name,status,started_at,rows_processed'
@@ -3094,6 +3142,7 @@ function runDailySanityChecks_v1() {
     checkIngestionRuns_();
     checkKlaviyoAttributionBound_();
     checkBcSyncRowsWarning_();
+    checkGa4PurchaseRatio_();
 
     result.passed = result.failedCount === 0;
     result.finishedAt = new Date().toISOString();
