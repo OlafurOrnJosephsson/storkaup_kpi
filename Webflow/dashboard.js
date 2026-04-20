@@ -890,6 +890,17 @@
         setText("month-yoy", pct(data.month.yoyPct));
         setText("month-weborders-pct", pct(data.month.webOrdersPct));
         setText("month-webrev-pct", pct(data.month.webRevenuePct));
+        var bcMonthNames = {
+          "01":"janúar","02":"febrúar","03":"mars","04":"apríl","05":"maí","06":"júní",
+          "07":"júlí","08":"ágúst","09":"september","10":"október","11":"nóvember","12":"desember"
+        };
+        if (data.month.bcRatioMonth) {
+          var rmParts = String(data.month.bcRatioMonth).split("-");
+          var rmLabel = (bcMonthNames[rmParts[1]] || rmParts[1]) + " " + rmParts[0];
+          setText("bc-as-of-label", rmLabel);
+          setMetricHint("month-weborders-pct", "BC hlutföll byggjast á: " + rmLabel);
+          setMetricHint("month-webrev-pct", "BC hlutföll byggjast á: " + rmLabel);
+        }
         setText("month-salesrep-pct", pct(data.month.salesRepPct));
         setText("month-yoy-orders", pct(data.month.yoyOrdersPct));
         if (dayApiUnavailable) {

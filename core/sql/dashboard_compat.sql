@@ -16,6 +16,28 @@ with month_ctx as (
     (date_trunc('month', coalesce(p_month, current_date)::timestamp) + interval '1 month')::date as month_end,
     date_trunc('month', current_date::timestamp)::date as current_month_start
 ),
+bc_sync_anchor as (
+  -- cap BC CTEs at the last successful BC sync so ratios are stable mid-month
+  select max(started_at)::date as last_sync_date
+  from raw.ingestion_runs
+  where job_name = 'scheduledBcSync_v1'
+    and status = 'success'
+),
+bc_ratio_ctx as (
+  -- for current month use previous complete month for BC ratios (avoids booking lag)
+  select
+    case
+      when m.month_start = m.current_month_start
+        then (m.month_start - interval '1 month')::date
+      else m.month_start
+    end as ratio_start,
+    case
+      when m.month_start = m.current_month_start
+        then m.month_start
+      else m.month_end
+    end as ratio_end
+  from month_ctx m
+),
 month_key as (
   select to_char(month_start, 'YYYY-MM') as ym from month_ctx
 ),
@@ -85,9 +107,9 @@ bc_invoices_month as (
          )
     ), 0)::numeric as web_revenue_excl
   from raw.bc_invoices_raw i
-  cross join month_ctx m
-  where coalesce(i.order_date, i.booking_date) >= m.month_start::timestamp
-    and coalesce(i.order_date, i.booking_date) < m.month_end::timestamp
+  cross join bc_ratio_ctx r
+  where coalesce(i.order_date, i.booking_date) >= r.ratio_start::timestamp
+    and coalesce(i.order_date, i.booking_date) < r.ratio_end::timestamp
 ),
 bc_credits_month as (
   select
@@ -109,9 +131,9 @@ bc_credits_month as (
          )
     ), 0)::numeric as web_revenue_excl
   from raw.bc_credit_invoices_raw i
-  cross join month_ctx m
-  where coalesce(i.order_date, i.booking_date) >= m.month_start::timestamp
-    and coalesce(i.order_date, i.booking_date) < m.month_end::timestamp
+  cross join bc_ratio_ctx r
+  where coalesce(i.order_date, i.booking_date) >= r.ratio_start::timestamp
+    and coalesce(i.order_date, i.booking_date) < r.ratio_end::timestamp
 ),
 bc_net as (
   select
@@ -413,7 +435,9 @@ select jsonb_build_object(
       else 0 end,
     'yoyOrdersPct', case when coalesce((select orders from web_prev_year), 0) > 0
       then coalesce((select orders from web_month), 0) / nullif((select orders from web_prev_year), 0)
-      else 0 end
+      else 0 end,
+    'bcAsOf', to_char((select last_sync_date from bc_sync_anchor), 'YYYY-MM-DD'),
+    'bcRatioMonth', to_char((select ratio_start from bc_ratio_ctx), 'YYYY-MM')
   ),
   'day',
   jsonb_build_object(

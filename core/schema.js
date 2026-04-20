@@ -125,6 +125,7 @@ BC_CREDIT_INVOICES: {
     DUE_DATE: 'Gjalddagi',
     BOOKING_DATE: 'Bokunardags.',
     DOCUMENT_DATE: 'Dags. fylgiskjals',
+    ORDER_DATE: 'Pontunardags.',
     AMOUNT_EXCL: 'Upphaed',
     AMOUNT_INCL: 'Upphaed med VSK',
     REMAINING: 'Eftirstodvar',
