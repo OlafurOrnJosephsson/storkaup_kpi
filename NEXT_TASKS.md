@@ -32,6 +32,13 @@
   - `safePoll_v2` installer added (every 5 minutes)
   - `scheduledBcSync_v1` staggered to twice daily
   - reset helper added for recommended trigger schedule
+- BC ratio alignment (commit `6617e82`):
+  - `dashboard_compat` notar nú fyrri lokaðan mánuð fyrir `webOrdersPct` / `webRevenuePct` (bc_ratio_ctx CTE)
+  - Mars 2026: webRevenuePct 36.4% ≈ Power BI 36.5% ✓
+  - `bcRatioMonth` bætt í JSON; dashboard sýnir "mars 2026" label
+  - BC sync anchor (`ingestion_runs`) heldur áfram að geyma `bcAsOf`
+  - Þekkt takmörkun: BC invoicing lag gerir live mid-month % ógerlegt; Power BI er primary source fyrir mánaðarlegar KPI tölur; DataBricks/BC cloud lausn í horisonti
+  - `BC_CREDIT_INVOICES` schema fær `ORDER_DATE`; credit invoice mapping leiðrétt í `upsertBcCreditInvoicesToSupabase_`
 
 ## Priority 1 - Stabilize Operations
 
@@ -105,7 +112,7 @@
 
 Update these whenever Webflow custom code is changed.
 
-- Webflow deploy rev (both bootstrap `data-storkaup-rev`): `cb56c43`
+- Webflow deploy rev (both bootstrap `data-storkaup-rev`): `6617e82`
 - `Webflow/dashboard-theme.css`: `2b272cd`
 - Trigger schedule baseline: `ab2931a`
 
