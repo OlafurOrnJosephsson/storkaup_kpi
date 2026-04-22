@@ -2279,10 +2279,11 @@ function upsertProductsToSupabase_(rows) {
 
   if (!payload.length) return { uploaded: 0 };
 
-  var chunkSize = 200;
+  var chunkSize = 100;
   var uploaded = 0;
   for (var i = 0; i < payload.length; i += chunkSize) {
     var chunk = payload.slice(i, i + chunkSize);
+    if (i > 0) Utilities.sleep(1000);
     var attempts = 3;
     var code = 0;
     var body = '';
@@ -2329,12 +2330,30 @@ function backfillProductsToSupabase_v1() {
   var rows = loadTableBySchema_('PRODUCTS') || [];
   if (!rows.length) {
     Logger.log('[PRODUCTS][INFO] No rows found for backfill.');
-    return { totalRows: 0, uploaded: 0 };
+    return { totalRows: 0, uploaded: 0, skipped: false };
+  }
+
+  var props = PropertiesService.getScriptProperties();
+  var hashKey = 'PRODUCTS_SUPABASE_HASH';
+
+  // Simple checksum: row count + first/last SKU + timestamp of newest row
+  var sample = [
+    rows.length,
+    (rows[0] && rows[0].SKU) || '',
+    (rows[rows.length - 1] && rows[rows.length - 1].SKU) || ''
+  ].join('|');
+  var currentHash = Utilities.base64Encode(sample);
+  var lastHash = props.getProperty(hashKey) || '';
+
+  if (currentHash === lastHash) {
+    Logger.log('[PRODUCTS][INFO] No changes detected — skipping Supabase upload (' + rows.length + ' rows unchanged).');
+    return { totalRows: rows.length, uploaded: 0, skipped: true };
   }
 
   var out = upsertProductsToSupabase_(rows);
+  props.setProperty(hashKey, currentHash);
   Logger.log('[PRODUCTS][INFO] Backfill completed. Uploaded: ' + out.uploaded);
-  return { totalRows: rows.length, uploaded: out.uploaded || 0 };
+  return { totalRows: rows.length, uploaded: out.uploaded || 0, skipped: false };
 }
 
 /************************************************************

@@ -316,6 +316,29 @@ function writeMissingSkus_(missingList) {
  *  - Uppfærir PRODUCTS skjalið með Cludo info
  *  - Tryggir header, text-format, sort og batch-processing
  ****************************************************/
+function countIncompleteProducts_() {
+  const cfg = loadConfig_();
+  const ss = SpreadsheetApp.openById(cfg.SHEETS.PRODUCTS.ID);
+  const sh = ss.getSheetByName(cfg.SHEETS.PRODUCTS.NAME);
+  if (!sh || sh.getLastRow() < 2) return 0;
+
+  const vals = sh.getDataRange().getValues();
+  const h = vals[0].map(String);
+  const iL1   = h.indexOf('Level 1');
+  const iPATH = h.indexOf('Category Path');
+  if (iL1 < 0 && iPATH < 0) return vals.length - 1;
+
+  var incomplete = 0;
+  for (var r = 1; r < vals.length; r++) {
+    const path = iPATH >= 0 ? String(vals[r][iPATH] || '').trim() : '';
+    const l1   = iL1   >= 0 ? String(vals[r][iL1]   || '').trim() : '';
+    const bad  = !path || path === 'Vörur' || path === '/vara' ||
+                 !l1   || l1   === 'Vörur' || l1   === '(Uncategorized)';
+    if (bad) incomplete++;
+  }
+  return incomplete;
+}
+
 function updateFromSalesCludo_Batched() {
   const missing = [];   // geymir SKUs sem ekki finnast
 
@@ -603,6 +626,14 @@ function syncCludoToSalesSheets() {
  * 🔁 ONE-CLICK FULL SYNC
  ************************************************************/
 function runCludoFullSync() {
+  const incomplete = countIncompleteProducts_();
+  Logger.log('🔍 Cludo sync — incomplete products: ' + incomplete);
+
+  if (incomplete === 0) {
+    Logger.log('⏭ Cludo sync skipped — all products complete.');
+    return { skipped: true, reason: 'all_products_complete' };
+  }
+
   Logger.log('🚀 Step 1/3 — updateFromSalesCludo_Batched()');
   updateFromSalesCludo_Batched();
 
@@ -613,6 +644,7 @@ function runCludoFullSync() {
   syncCludoToSalesSheets();
 
   Logger.log('✅ Cludo full sync complete!');
+  return { skipped: false, incomplete: incomplete };
 }
 
 
