@@ -34,6 +34,7 @@ function getSeoManagerEnv_(opts) {
   const openAiApi = cfg.API.OpenAI || {};
   const openAiEndpoints = cfg.ENDPOINTS.OpenAI || {};
   const geminiApi = cfg.API.Gemini || {};
+  const anthropicApi = cfg.API.Anthropic || cfg.API.Claude || {};
 
   const env = {
     cfg: cfg,
@@ -69,6 +70,14 @@ function getSeoManagerEnv_(opts) {
       geminiApi.FALLBACK_MODELS ||
       'gemini-2.5-flash-lite,gemini-2.0-flash-lite'
     ),
+    claudeApiKey:
+      anthropicApi.API_KEY ||
+      anthropicApi.KEY ||
+      '',
+    claudeModel:
+      cfg.SETTINGS.SEO_CLAUDE_MODEL ||
+      anthropicApi.MODEL ||
+      'claude-sonnet-4-6',
     batchSize: Number(cfg.SETTINGS.SEO_BATCH_SIZE || 10),
     sleepMs: Number(cfg.SETTINGS.SEO_BATCH_SLEEP_MS || 600)
   };
@@ -78,6 +87,7 @@ function getSeoManagerEnv_(opts) {
   if (opts.requireAi) {
     if (env.provider === 'gemini' && !env.geminiApiKey) missing.push('API.Gemini.API_KEY');
     if (env.provider === 'openai' && !env.openAiKey) missing.push('API.OpenAI.API_KEY');
+    if (env.provider === 'claude' && !env.claudeApiKey) missing.push('API.Anthropic.API_KEY');
   }
 
   if (missing.length) {
@@ -111,9 +121,9 @@ function getSafeGeminiModelChain_(env) {
     .filter(function(model, idx, arr) { return arr.indexOf(model) === idx; });
 
   const safeDefaults = [
-    'gemini-2.5-flash',
+    'gemini-2.0-flash',
     'gemini-2.5-flash-lite',
-    'gemini-2.0-flash-lite'
+    'gemini-2.5-flash'
   ];
 
   const cleaned = configured.filter(function(model) {
@@ -179,9 +189,9 @@ function ensureSeoQueueSheet_() {
   if (needsHeader) {
     sh.clearContents();
     sh.getRange(1, 1, 1, SEO_QUEUE_HEADER.length).setValues([SEO_QUEUE_HEADER]);
+    applySheetStyling_(sh, { zebra: true });
   }
 
-  applySheetStyling_(sh, { zebra: true });
   return sh;
 }
 
@@ -214,19 +224,18 @@ function getSeoQueueData_() {
 }
 
 
-function generateSEOTitles(categoryName, context, keywordHints, currentMetaTitle, currentMetaDescription) {
+function generateSEOTitles(categoryName, context, keywordHints, currentMetaTitle, currentMetaDescription, opts) {
+  opts = opts || {};
   const env = getSeoManagerEnv_({ requireAi: true });
-  const prompt = buildSeoPromptV2_(
-    categoryName,
-    context,
-    keywordHints,
-    currentMetaTitle,
-    currentMetaDescription
-  );
+  const prompt = opts.useV3
+    ? buildSeoPromptV3_(categoryName, context, keywordHints, currentMetaTitle, currentMetaDescription, opts)
+    : buildSeoPromptV2_(categoryName, context, keywordHints, currentMetaTitle, currentMetaDescription);
 
   const seo = env.provider === 'gemini'
-    ? generateSeoWithGemini_(prompt, env)
-    : generateSeoWithOpenAi_(prompt, env);
+    ? generateSeoWithGemini_(prompt, env, opts)
+    : env.provider === 'claude'
+      ? generateSeoWithClaude_(prompt, env, opts)
+      : generateSeoWithOpenAi_(prompt, env, opts);
 
   if (!seo.title || !seo.description) {
     throw new Error('AI SEO response missing title/description: ' + JSON.stringify(seo));
@@ -390,8 +399,6 @@ function runSeoAutomationBatch_v1(opts) {
     ? startIndex + batch.length
     : 0;
   props.setProperty(stateKey, String(nextIndex));
-
-  applySheetStyling_(queue.sheet, { zebra: true });
 
   const summary = {
     ok: true,
@@ -601,6 +608,39 @@ function setupSeoQueueSheet_v1() {
   Logger.log('SEO Manager: queue sheet ready -> ' + sh.getName());
 }
 
+function testGeminiSpeed() {
+  var env = getSeoManagerEnv_({ requireAi: true });
+  var modelsToTest = [
+    'gemini-2.0-flash-lite',
+    'gemini-2.0-flash',
+    'gemini-2.5-flash'
+  ];
+
+  modelsToTest.forEach(function(model) {
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+      encodeURIComponent(model) + ':generateContent';
+
+    var start = Date.now();
+    Logger.log('[testGeminiSpeed] Calling: ' + model);
+
+    var res = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-goog-api-key': env.geminiApiKey },
+      payload: JSON.stringify({
+        contents: [{ parts: [{ text: 'Return JSON: {"title":"Hanskar | Stórkaup","description":"Einnota hanskar fyrir fyrirtæki."}' }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 100 }
+      }),
+      muteHttpExceptions: true
+    });
+
+    var elapsed = Date.now() - start;
+    Logger.log('[testGeminiSpeed] ' + model +
+      ' → status=' + res.getResponseCode() +
+      ', time=' + elapsed + 'ms');
+  });
+}
+
 function testGenerateSeoTitle_() {
   return generateSEOTitles(
     'Hanskar',
@@ -764,10 +804,11 @@ function formatIskApprox_(value) {
   return Math.round(num).toLocaleString('is-IS') + ' kr.';
 }
 
-function generateSeoWithOpenAi_(prompt, env) {
+function generateSeoWithOpenAi_(prompt, env, opts) {
+  opts = opts || {};
   const payload = {
     model: env.openAiModel,
-    temperature: 0.4,
+    temperature: opts.temperature != null ? Number(opts.temperature) : 0.4,
     response_format: { type: 'json_object' },
     messages: [
       {
@@ -803,14 +844,15 @@ function generateSeoWithOpenAi_(prompt, env) {
   return parseSeoJson_(content);
 }
 
-function generateSeoWithGemini_(prompt, env) {
+function generateSeoWithGemini_(prompt, env, opts) {
+  opts = opts || {};
   const models = getSafeGeminiModelChain_(env);
 
   let lastError = '';
   for (let i = 0; i < models.length; i++) {
     const model = models[i];
     try {
-      return generateSeoWithGeminiModel_(prompt, env, model);
+      return generateSeoWithGeminiModel_(prompt, env, model, opts);
     } catch (err) {
       lastError = err && err.message ? err.message : String(err || 'Unknown Gemini error');
       Logger.log('SEO Manager Gemini fallback miss [' + model + ']: ' + lastError);
@@ -824,7 +866,8 @@ function generateSeoWithGemini_(prompt, env) {
   throw new Error(lastError || 'Gemini SEO generation failed with all configured models.');
 }
 
-function generateSeoWithGeminiModel_(prompt, env, model) {
+function generateSeoWithGeminiModel_(prompt, env, model, opts) {
+  opts = opts || {};
   if (isDeprecatedGeminiModel_(model)) {
     throw new Error(
       'Gemini model is deprecated or shut down: ' + model +
@@ -856,8 +899,8 @@ function generateSeoWithGeminiModel_(prompt, env, model) {
       }
     ],
     generationConfig: {
-      temperature: 0.3,
-      maxOutputTokens: 140,
+      temperature: opts.temperature != null ? Number(opts.temperature) : 0.3,
+      maxOutputTokens: 256,
       topP: 0.8,
       topK: 40,
       responseMimeType: 'application/json',
@@ -888,7 +931,7 @@ function generateSeoWithGeminiModel_(prompt, env, model) {
   if (seo.title && seo.description) return seo;
 
   const simplifiedPrompt = buildSimplifiedSeoPrompt_(prompt);
-  const retrySeo = generateSeoWithGeminiPlainJsonV2_(simplifiedPrompt, env, model);
+  const retrySeo = generateSeoWithGeminiPlainJsonV2_(simplifiedPrompt, env, model, opts);
   if (retrySeo.title && retrySeo.description) return retrySeo;
 
   throw new Error(
@@ -898,7 +941,8 @@ function generateSeoWithGeminiModel_(prompt, env, model) {
 }
 
 
-function generateSeoWithGeminiPlainJsonV2_(prompt, env, model) {
+function generateSeoWithGeminiPlainJsonV2_(prompt, env, model, opts) {
+  opts = opts || {};
   const url =
     'https://generativelanguage.googleapis.com/v1beta/models/' +
     encodeURIComponent(normalizeGeminiModelName_(model)) +
@@ -913,8 +957,8 @@ function generateSeoWithGeminiPlainJsonV2_(prompt, env, model) {
       }
     ],
     generationConfig: {
-      temperature: 0.1,
-      maxOutputTokens: 120,
+      temperature: opts.temperature != null ? Number(opts.temperature) : 0.1,
+      maxOutputTokens: 256,
       topP: 0.8,
       topK: 20,
       responseMimeType: 'application/json',
@@ -1176,6 +1220,488 @@ function parseCsvList_(value) {
     .split(',')
     .map(function(item) { return String(item || '').trim(); })
     .filter(Boolean);
+}
+
+/************************************************************
+ * SEO PROMPT V3 + REVISE FLOW
+ ************************************************************/
+
+var SEO_KNOWN_BRANDS_ = [
+  'Tork', 'Katla', 'Lavazza', 'Diversey', 'Tena', 'Leifheit', 'Vileda',
+  'Scotch-Brite', 'Flash', 'Fairy', 'Ariel', 'Lenor', 'Persil', 'Vanish',
+  'Kimberly-Clark', '3M', 'Dettol', 'Domestos', 'Rubbermaid', 'Brabantia'
+];
+
+var SEO_KNOWN_ATTRIBUTES_ = [
+  'Svanurinn', 'Svansmerktur', 'Umhverfisvænt', 'Umhverfisvænn',
+  'Nitril', 'Latex', 'Vinyl', 'Einnota', 'Lífrænt',
+  'Hitaþolið', 'Vatnsþétt', 'Sýklalæsing', 'FDA', 'HACCP'
+];
+
+function detectBrandsFromText_(text) {
+  var lower = String(text || '').toLowerCase();
+  return SEO_KNOWN_BRANDS_.filter(function(brand) {
+    return lower.indexOf(brand.toLowerCase()) !== -1;
+  });
+}
+
+function detectAttributesFromText_(text) {
+  var lower = String(text || '').toLowerCase();
+  return SEO_KNOWN_ATTRIBUTES_.filter(function(attr) {
+    return lower.indexOf(attr.toLowerCase()) !== -1;
+  });
+}
+
+function buildSeoPromptV3_(categoryName, context, keywordHints, currentMetaTitle, currentMetaDescription, opts) {
+  opts = opts || {};
+  var compact = compactSeoInputs_(context, keywordHints);
+  var searchText = (compact.context || '') + ' ' + (compact.keywordHints || '');
+  var brands = detectBrandsFromText_(searchText);
+  var attributes = detectAttributesFromText_(searchText);
+
+  var level = Number(opts.level || 0);
+
+  // Title structure rules from SEO review (Atli, Apr 2025)
+  var titleRule = level === 1
+    ? 'Title form: "X í heildsölu | Stórkaup" — broad landing page, "í heildsölu" is justified here.'
+    : level === 2
+      ? 'Title form: "Flokkur | Undirflokkur | Stórkaup" — context separates the subcategory, no "í heildsölu".'
+      : 'Title form: "Vara | Hook (magn/tegund/notkunarsvið) | Stórkaup" — specific, direct, no "í heildsölu".';
+
+  var levelGuidance = level === 1
+    ? 'LVL1 aðalflokkur: heildarúrval og lausnir fyrir fyrirtæki.'
+    : 'LVL2/3 undirflokkur: vertu sértækur — nefndu vörumerki, eiginleika eða notkunarsvið ef við á.';
+
+  var brandNote = brands.length
+    ? 'Vörumerki sem finnast í gögnum: ' + brands.join(', ') + ' — SKAL nota ef þau passa náttúrulega.'
+    : '';
+  var attrNote = attributes.length
+    ? 'Eiginleikar: ' + attributes.join(', ') + ' — SKAL nefna ef við á.'
+    : '';
+
+  return [
+    'Þú ert SEO sérfræðingur fyrir Stórkaup.is.',
+    'Skrifaðu Meta Title og Meta Description fyrir vöruflokkinn.',
+    'Flokkur: ' + categoryName,
+    levelGuidance,
+    titleRule,
+    'MIKILVÆGT um title: Notaðu NAFNORÐ og notkunarsamband — ENGIN lýsingarorð (ekki "faglegar", "gæðamikið", "úrvalsleg").',
+    '"í heildsölu" má AÐEINS vera í LVL1 titles — aldrei í LVL2 eða LVL3.',
+    'Samhengi: ' + (compact.context || 'Engin frekari samantekt tiltæk.'),
+    compact.keywordHints ? ('Keyword hints: ' + compact.keywordHints) : '',
+    brandNote,
+    attrNote,
+    currentMetaTitle ? ('Núverandi Meta Title: ' + currentMetaTitle) : '',
+    currentMetaDescription ? ('Núverandi Meta Description: ' + currentMetaDescription) : '',
+    'Description: Má flétta inn CTA eins og "Skoðaðu úrvalið", "Pantaðu hér" eða "Fáðu tilboð". "í magni" hentar í description sem longtail keyword.',
+    'Leggðu áherslu á rekstrarþarfir fyrirtækja, gæði og traust.',
+    'Tungumál: Íslenska.',
+    'Stíll: professional B2B, beinn og trúverðugur.',
+    'Strict limit: Title must be between 40-55 characters. Description must be between 130-150 characters.',
+    'Forðastu keyword stuffing, of almennan texta og auglýsingalegan tón.',
+    'Ekki nota "pantaðu í dag", "fáðu sent hratt", "skjót afhending", "mikið úrval".',
+    'Ekki lofa hraðri afhendingu nema það sé beinlínis studd af samhenginu.',
+    'Skrifaðu eins og fyrir íslenskan fyrirtækjamarkað, ekki eins og fyrir neytendaauglýsingu.',
+    'Ekki bæta við inngangI, skýringum eða texta eins og "Here is the JSON requested".',
+    'Return only raw JSON with this exact shape: {"title":"...","description":"..."}'
+  ].filter(Boolean).join('\n');
+}
+
+function buildSeoRevisePrompt_(categoryName, suggestedTitle, suggestedDescription, notes) {
+  return [
+    'Þú ert SEO sérfræðingur fyrir Stórkaup.is.',
+    'Endurskoðaðu og bættu eftirfarandi Meta Title og Meta Description fyrir vöruflokkinn: ' + categoryName,
+    '',
+    'Núverandi tillaga:',
+    'Meta Title: ' + (suggestedTitle || '(engin tillaga)'),
+    'Meta Description: ' + (suggestedDescription || '(engin tillaga)'),
+    '',
+    notes
+      ? 'Athugasemdir til að taka tillit til:\n' + notes
+      : 'Engar sérstakar athugasemdir — gerðu textann ennþá grípandi og sannfærandi.',
+    '',
+    'Tungumál: Íslenska.',
+    'Stíll: professional B2B, beinn og trúverðugur.',
+    'Strict limit: Title must be between 40-55 characters. Description must be between 130-150 characters.',
+    'Forðastu keyword stuffing, of almennan texta og auglýsingalegan tón.',
+    'Ekki nota setningar eins og "pantaðu í dag", "fáðu sent hratt", "skjót afhending", "mikið úrval".',
+    'Skrifaðu eins og fyrir íslenskan fyrirtækjamarkað, ekki eins og fyrir neytendaauglýsingu.',
+    'Ekki bæta við inngangI, skýringum eða texta eins og "Here is the JSON requested".',
+    'Return only raw JSON with this exact shape: {"title":"...","description":"..."}'
+  ].filter(Boolean).join('\n');
+}
+
+function reviseSEOTitles(categoryName, suggestedTitle, suggestedDescription, notes) {
+  var opts = { temperature: 0.5 };
+  var env = getSeoManagerEnv_({ requireAi: true });
+  var prompt = buildSeoRevisePrompt_(categoryName, suggestedTitle, suggestedDescription, notes);
+
+  var seo = env.provider === 'gemini'
+    ? generateSeoWithGemini_(prompt, env, opts)
+    : env.provider === 'claude'
+      ? generateSeoWithClaude_(prompt, env, opts)
+      : generateSeoWithOpenAi_(prompt, env, opts);
+
+  if (!seo.title || !seo.description) {
+    throw new Error('AI SEO revise response missing title/description: ' + JSON.stringify(seo));
+  }
+
+  var cleaned = {
+    title: enforceMaxLength_(sanitizeSeoText_(seo.title), 59),
+    description: enforceMaxLength_(sanitizeSeoText_(seo.description), 154)
+  };
+
+  Logger.log(
+    'SEO Manager: revised SEO copy for "' + categoryName + '" -> ' +
+    JSON.stringify(cleaned)
+  );
+
+  return cleaned;
+}
+
+function runReviseSeoForSelectedRows_v1() {
+  var queue = getSeoQueueData_();
+  var sheet = queue.sheet;
+  var activeSheet = SpreadsheetApp.getActiveSheet();
+
+  if (!activeSheet || activeSheet.getName() !== sheet.getName()) {
+    throw new Error('Open SEO_QUEUE sheet and select one or more data rows first.');
+  }
+
+  var activeRange = SpreadsheetApp.getActiveRange();
+  if (!activeRange) {
+    throw new Error('No range selected. Select one or more data rows first.');
+  }
+
+  var startRow = activeRange.getRow();
+  var endRow = activeRange.getLastRow();
+
+  if (startRow < 2) {
+    throw new Error('Select data rows only — not the header row.');
+  }
+
+  var env = getSeoManagerEnv_({ requireAi: true });
+  var results = [];
+
+  for (var rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+    var row = null;
+    for (var r = 0; r < queue.rows.length; r++) {
+      if (queue.rows[r].__rowNumber === rowNumber) {
+        row = queue.rows[r];
+        break;
+      }
+    }
+    if (!row) continue;
+
+    var categoryName = String(row['Category Name'] || '').trim();
+    if (!categoryName) continue;
+
+    if (normalizeBooleanFlag_(row.Approved)) {
+      Logger.log('SEO Manager: skipping approved row ' + rowNumber + ' (' + categoryName + ')');
+      results.push({ ok: true, rowNumber: rowNumber, categoryName: categoryName, skipped: true });
+      continue;
+    }
+
+    var suggestedTitle = String(row['Suggested Meta Title'] || '').trim();
+    var suggestedDescription = String(row['Suggested Meta Description'] || '').trim();
+    var notes = String(row.Notes || '').trim();
+
+    try {
+      var seoData = reviseSEOTitles(categoryName, suggestedTitle, suggestedDescription, notes);
+
+      writeSeoQueueResult_(queue.sheet, rowNumber, {
+        suggestedTitle: seoData.title,
+        suggestedDescription: seoData.description,
+        status: 'REVISED',
+        lastGeneratedAt: new Date()
+      });
+
+      results.push({ ok: true, rowNumber: rowNumber, categoryName: categoryName, seoData: seoData });
+
+    } catch (err) {
+      var errMessage = err && err.message ? err.message : String(err || 'Unknown error');
+      writeSeoQueueResult_(queue.sheet, rowNumber, {
+        status: 'ERROR',
+        lastGeneratedAt: new Date(),
+        notes: errMessage
+      });
+      results.push({ ok: false, rowNumber: rowNumber, categoryName: categoryName, error: errMessage });
+      Logger.log('SEO Manager REVISE ERROR [row ' + rowNumber + ']: ' + errMessage);
+    }
+
+    if (rowNumber < endRow && env.sleepMs > 0) {
+      Utilities.sleep(env.sleepMs);
+    }
+  }
+
+  var summary = {
+    ok: true,
+    processed: results.filter(function(r) { return !r.skipped; }).length,
+    skipped: results.filter(function(r) { return r.skipped; }).length,
+    successCount: results.filter(function(r) { return r.ok && !r.skipped; }).length,
+    errorCount: results.filter(function(r) { return !r.ok; }).length,
+    results: results
+  };
+
+  Logger.log('SEO Manager revise summary: ' + JSON.stringify(summary));
+  return summary;
+}
+
+/************************************************************
+ * CLAUDE (ANTHROPIC) PROVIDER
+ ************************************************************/
+
+function generateSeoWithClaude_(prompt, env, opts) {
+  opts = opts || {};
+  if (!env.claudeApiKey) {
+    throw new Error('Claude API key not configured. Add API.Anthropic.API_KEY to config.');
+  }
+
+  const payload = {
+    model: env.claudeModel,
+    max_tokens: 256,
+    temperature: opts.temperature != null ? Number(opts.temperature) : 0.3,
+    system: [
+      'Þú skrifar stuttan, sannfærandi og hnitmiðaðan SEO texta á íslensku.',
+      'Skrifaðu á kjarnyrtri íslensku. Notaðu nafnorð og notkunarsamband — engin lýsingarorð.',
+      'Hentar íslenskum B2B fyrirtækjamarkaði, ekki neytendaauglýsingum.'
+    ].join(' '),
+    messages: [
+      { role: 'user', content: prompt }
+    ]
+  };
+
+  const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': env.claudeApiKey,
+      'anthropic-version': '2023-06-01',
+      Accept: 'application/json'
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  if (code < 200 || code >= 300) {
+    throw new Error('Claude SEO generation failed (' + code + '): ' + body);
+  }
+
+  const parsed = safeJsonParse_(body) || {};
+  const content = extractClaudeMessageContent_(parsed);
+  return parseSeoJson_(content);
+}
+
+function extractClaudeMessageContent_(payload) {
+  try {
+    const blocks = Array.isArray(payload.content) ? payload.content : [];
+    return blocks
+      .filter(function(b) { return b && b.type === 'text'; })
+      .map(function(b) { return b.text || ''; })
+      .join('');
+  } catch (_) {
+    return '';
+  }
+}
+
+/************************************************************
+ * IMPORT SEO FROM EXCEL SHEET
+ * importSeoFromExcelSheet_v1(sheetName) — reads an imported
+ * Excel tab and seeds matching rows into SEO_QUEUE as GENERATED
+ ************************************************************/
+
+function importSeoFromExcelSheet_v1(sheetName) {
+  sheetName = sheetName || 'Storkaup meta seo v2';
+  const env = getSeoManagerEnv_();
+  const ss = SpreadsheetApp.openById(env.spreadsheetId);
+  const src = ss.getSheetByName(sheetName);
+  if (!src) {
+    throw new Error('Sheet not found: "' + sheetName + '". Import the Excel file first.');
+  }
+
+  const values = src.getDataRange().getValues();
+  if (values.length < 2) {
+    throw new Error('Sheet "' + sheetName + '" has no data rows.');
+  }
+
+  // Normalise header names for flexible column matching
+  const rawHeader = values[0].map(function(v) { return String(v || '').trim(); });
+  function findCol(candidates) {
+    for (var i = 0; i < candidates.length; i++) {
+      var needle = candidates[i].toLowerCase();
+      for (var j = 0; j < rawHeader.length; j++) {
+        if (rawHeader[j].toLowerCase().indexOf(needle) !== -1) return j;
+      }
+    }
+    return -1;
+  }
+
+  const colCategory    = findCol(['category', 'flokkur', 'category name']);
+  const colTitle       = findCol(['meta title', 'title']);
+  const colDesc        = findCol(['meta description', 'description', 'lýsing']);
+  const colKeywords    = findCol(['keyword', 'leitarorð']);
+  const colLevel       = findCol(['lvl', 'level', 'stig']);
+  const colPath        = findCol(['path', 'slóð']);
+
+  if (colCategory === -1 || colTitle === -1 || colDesc === -1) {
+    throw new Error(
+      'Could not find required columns (Category, Meta Title, Meta Description) in "' +
+      sheetName + '". Headers found: ' + rawHeader.join(', ')
+    );
+  }
+
+  const items = [];
+  for (var r = 1; r < values.length; r++) {
+    const row = values[r];
+    const categoryName = String(row[colCategory] || '').trim();
+    const title        = String(row[colTitle] || '').trim();
+    const description  = String(row[colDesc] || '').trim();
+    if (!categoryName || !title) continue;
+
+    const levelRaw = colLevel !== -1 ? String(row[colLevel] || '').trim().toUpperCase() : '';
+    const level    = levelRaw === 'LVL1' || levelRaw === '1' ? 1
+                   : levelRaw === 'LVL2' || levelRaw === '2' ? 2
+                   : levelRaw === 'LVL3' || levelRaw === '3' ? 3
+                   : 0;
+
+    items.push({
+      categoryName:        categoryName,
+      categoryPath:        colPath !== -1 ? String(row[colPath] || '').trim() : '',
+      level1:              level === 1 ? categoryName : '',
+      level2:              level === 2 ? categoryName : '',
+      level3:              level === 3 ? categoryName : '',
+      keywordHints:        colKeywords !== -1 ? String(row[colKeywords] || '').trim() : '',
+      currentMetaTitle:    '',
+      currentMetaDescription: '',
+      suggestedMetaTitle:  title,
+      suggestedDescription: description,
+      status:              'GENERATED',
+      notes:               'Imported from ' + sheetName
+    });
+  }
+
+  if (!items.length) {
+    throw new Error('No importable rows found in "' + sheetName + '".');
+  }
+
+  // Seed into queue — items already have suggested values so we write directly
+  const sh = getSeoQueueSheet_();
+  const header = SEO_QUEUE_HEADER;
+  const startRow = Math.max(sh.getLastRow() + 1, 2);
+
+  const rowData = items.map(function(item) {
+    const r = new Array(header.length).fill('');
+    function set(col, val) {
+      const idx = header.indexOf(col);
+      if (idx !== -1) r[idx] = val;
+    }
+    set('Category Name',           item.categoryName);
+    set('Category Path',           item.categoryPath);
+    set('Level 1',                 item.level1);
+    set('Level 2',                 item.level2);
+    set('Level 3',                 item.level3);
+    set('Keyword Hints',           item.keywordHints);
+    set('Suggested Meta Title',    item.suggestedMetaTitle);
+    set('Suggested Meta Description', item.suggestedDescription);
+    set('Status',                  item.status);
+    set('Last Generated At',       new Date());
+    set('Notes',                   item.notes);
+    return r;
+  });
+
+  sh.getRange(startRow, 1, rowData.length, header.length).setValues(rowData);
+  applySheetStyling_(sh, { zebra: true });
+
+  Logger.log('SEO Manager: imported ' + items.length + ' rows from "' + sheetName + '".');
+  return { ok: true, imported: items.length, sheetName: sheetName };
+}
+
+/************************************************************
+ * MERGE SEO FROM SHEET INTO SEO_QUEUE
+ * mergeSeoFromSheet_v1(sheetName) — matches rows by category name,
+ * writes titles/descriptions into existing SEO_QUEUE rows as GENERATED.
+ * Rows in SEO_QUEUE with no match are left untouched (still PENDING).
+ ************************************************************/
+
+function mergeSeoFromSheet_v1(sheetName) {
+  sheetName = sheetName || 'Meta SEO';
+  const env = getSeoManagerEnv_();
+  const ss = SpreadsheetApp.openById(env.spreadsheetId);
+  const src = ss.getSheetByName(sheetName);
+  if (!src) {
+    throw new Error('Sheet not found: "' + sheetName + '".');
+  }
+
+  const srcValues = src.getDataRange().getValues();
+  if (srcValues.length < 2) throw new Error('No data in "' + sheetName + '".');
+
+  const srcHeader = srcValues[0].map(function(v) { return String(v || '').trim(); });
+  function findCol(candidates) {
+    for (var i = 0; i < candidates.length; i++) {
+      var needle = candidates[i].toLowerCase();
+      for (var j = 0; j < srcHeader.length; j++) {
+        if (srcHeader[j].toLowerCase().indexOf(needle) !== -1) return j;
+      }
+    }
+    return -1;
+  }
+
+  const colCat   = findCol(['vöruflokkur', 'category name', 'category', 'flokkur']);
+  const colTitle = findCol(['meta title', 'title']);
+  const colDesc  = findCol(['meta description', 'description', 'lýsing']);
+
+  if (colCat === -1 || colTitle === -1 || colDesc === -1) {
+    throw new Error(
+      'Could not find required columns in "' + sheetName +
+      '". Headers: ' + srcHeader.join(', ')
+    );
+  }
+
+  // Build lookup: normalised category name → { title, description }
+  const lookup = {};
+  for (var r = 1; r < srcValues.length; r++) {
+    const row = srcValues[r];
+    const name  = String(row[colCat]   || '').trim();
+    const title = String(row[colTitle] || '').trim();
+    const desc  = String(row[colDesc]  || '').trim();
+    if (!name || !title) continue;
+    lookup[name.toLowerCase()] = { title: title, description: desc };
+  }
+
+  const queue = getSeoQueueData_();
+  const header = SEO_QUEUE_HEADER;
+
+  let matched = 0;
+  let skipped = 0;
+
+  queue.rows.forEach(function(row) {
+    const categoryName = String(row['Category Name'] || '').trim();
+    if (!categoryName) return;
+
+    if (normalizeBooleanFlag_(row.Approved)) { skipped++; return; }
+
+    const key = categoryName.toLowerCase();
+    const found = lookup[key];
+    if (!found) return;
+
+    writeSeoQueueResult_(queue.sheet, row.__rowNumber, {
+      suggestedTitle:       found.title,
+      suggestedDescription: found.description,
+      status:               'GENERATED',
+      lastGeneratedAt:      new Date(),
+      notes:                'Merged from ' + sheetName
+    });
+    matched++;
+  });
+
+  Logger.log(
+    'SEO merge: matched=' + matched +
+    ', skipped(approved)=' + skipped +
+    ', sourceRows=' + Object.keys(lookup).length
+  );
+  return { ok: true, matched: matched, skipped: skipped, sourceRows: Object.keys(lookup).length };
 }
 
 /************************************************************

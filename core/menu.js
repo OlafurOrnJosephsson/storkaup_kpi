@@ -37,7 +37,10 @@ function onOpen() {
         .addItem('Test Config', 'menu_testConfig')
         .addItem('Setup SEO Queue', 'menu_setupSeoQueue')
         .addItem('Seed SEO Queue from Cludo', 'menu_buildSeoQueueFromCludo')
+        .addItem('Merge Meta SEO → SEO_QUEUE', 'menu_mergeSeoFromSheet')
+        .addItem('Import SEO from Excel Sheet', 'menu_importSeoFromExcel')
         .addItem('Generate SEO for Selected Row', 'menu_runSeoSelectedRow')
+        .addItem('Revise SEO for Selected Rows', 'menu_runReviseSelectedRows')
         .addItem('Generate SEO Batch', 'menu_runSeoBatch')
         .addItem('Debug Gemini Models', 'menu_debugGeminiModels')
         .addItem('Clear SEO Error Rows', 'menu_clearSeoErrorRows')
@@ -170,6 +173,33 @@ function menu_setupSeoQueue() {
   toast_('SEO queue sheet ready.', 'KPI CORE');
 }
 
+function menu_mergeSeoFromSheet() {
+  if (typeof mergeSeoFromSheet_v1 !== 'function') {
+    throw new Error('mergeSeoFromSheet_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = mergeSeoFromSheet_v1('Meta SEO');
+  toast_(
+    'Merged: ' + ((out && out.matched) || 0) + ' rows updated in SEO_QUEUE from Meta SEO tab.',
+    'KPI CORE'
+  );
+}
+
+function menu_importSeoFromExcel() {
+  if (typeof importSeoFromExcelSheet_v1 !== 'function') {
+    throw new Error('importSeoFromExcelSheet_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.prompt(
+    'Import SEO from Excel Sheet',
+    'Enter the sheet name (tab name) of the imported Excel file:',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  const sheetName = (resp.getResponseText() || '').trim() || 'Storkaup meta seo v2';
+  const out = importSeoFromExcelSheet_v1(sheetName);
+  toast_('Imported ' + ((out && out.imported) || 0) + ' rows from "' + sheetName + '"', 'KPI CORE');
+}
+
 function menu_buildSeoQueueFromCludo() {
   if (typeof buildSeoQueueFromCludo_v1 !== 'function') {
     throw new Error('buildSeoQueueFromCludo_v1() not found. Ensure core/seo_manager.js is deployed.');
@@ -194,6 +224,18 @@ function menu_runSeoSelectedRow() {
   toast_(
     'SEO generated for row ' + ((out && out.rowNumber) || '?') +
     ': ' + ((out && out.categoryName) || ''),
+    'KPI CORE'
+  );
+}
+
+function menu_runReviseSelectedRows() {
+  if (typeof runReviseSeoForSelectedRows_v1 !== 'function') {
+    throw new Error('runReviseSeoForSelectedRows_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = runReviseSeoForSelectedRows_v1();
+  toast_(
+    'SEO revised: ' + ((out && out.successCount) || 0) +
+    ' rows. Skipped (approved): ' + ((out && out.skipped) || 0),
     'KPI CORE'
   );
 }
