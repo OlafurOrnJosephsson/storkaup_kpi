@@ -449,10 +449,7 @@ function updateFromSalesCludo_Batched() {
       er.l1 === 'Vörur' ||
       er.l1 === '(Uncategorized)';
 
-    if (!needsUpdate) {
-      Logger.log(`⏭ Skip ${sku} — already complete`);
-      continue;
-    }
+    if (!needsUpdate) continue;
 
     const result = fetchCludoResult_(sku, env);
 
