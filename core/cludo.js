@@ -428,13 +428,14 @@ function updateFromSalesCludo_Batched() {
   // ----------------------------------------------------
   // 6) Batch-loop
   // ----------------------------------------------------
-  const MAX_PER_RUN = 150;
+  const MAX_API_CALLS = 50;
+  let apiCalls = 0;
   let processed = 0;
   let index = Number(props.getProperty('CLUDO_LAST_INDEX') || 0);
 
   Logger.log(`▶ Starting Cludo batch from index ${index}/${uniqueSKUs.length}`);
 
-  while (index < uniqueSKUs.length && processed < MAX_PER_RUN) {
+  while (index < uniqueSKUs.length && apiCalls < MAX_API_CALLS) {
 
     const sku = normalizeSkuGlobal_(uniqueSKUs[index]);
     index++;
@@ -452,10 +453,10 @@ function updateFromSalesCludo_Batched() {
     if (!needsUpdate) continue;
 
     const result = fetchCludoResult_(sku, env);
+    apiCalls++;
 
     if (!result) {
       missing.push({ sku, source: "Cludo API - No Result" });
-      Logger.log(`⚠️ Missing ${sku} — no Cludo result`);
       continue;
     }
 
