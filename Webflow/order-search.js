@@ -63,8 +63,9 @@
 
         // All data as attributes on the root element
         el.setAttribute("data-source",      row.source      || "");
-        el.setAttribute("data-order-id",    row.order_id    || "");   // SR-nr (BC) / order_id (web)
-        el.setAttribute("data-ext-id",      row.ext_id      || "");   // SP-nr (BC) / "" (web)
+        el.setAttribute("data-doc-type",    row.doc_type    || "");   // SR | SK | WEB
+        el.setAttribute("data-order-id",    row.order_id    || "");   // SR-nr / SK-nr / web order ID
+        el.setAttribute("data-sp-no",       row.sp_no       || "");   // SP-nr (sölupöntun, BC only)
         el.setAttribute("data-company-id",  row.company_id  || "");   // kennitala
         el.setAttribute("data-company-name",row.company_name|| "");
         el.setAttribute("data-total",       row.total       || "0");
@@ -78,8 +79,9 @@
         // Populate any child elements that declare data-field="..."
         var fields = {
             "source":       row.source      || "",
+            "doc-type":     row.doc_type    || "",
             "order-id":     row.order_id    || "",
-            "ext-id":       row.ext_id      || "",
+            "sp-no":        row.sp_no       || "",
             "company-id":   row.company_id  || "",
             "company-name": row.company_name|| "",
             "total":        totalFmt,
@@ -161,8 +163,9 @@
                     resultsEl.innerHTML = rows.map(function (row) {
                         return '<div'
                             + ' data-source="'      + escHtml(row.source)               + '"'
+                            + ' data-doc-type="'    + escHtml(row.doc_type)             + '"'
                             + ' data-order-id="'    + escHtml(row.order_id)             + '"'
-                            + ' data-ext-id="'      + escHtml(row.ext_id)               + '"'
+                            + ' data-sp-no="'       + escHtml(row.sp_no)               + '"'
                             + ' data-company-id="'  + escHtml(row.company_id)           + '"'
                             + ' data-company-name="'+ escHtml(row.company_name)         + '"'
                             + ' data-total="'       + escHtml(String(row.total || "0")) + '"'
