@@ -1,6 +1,12 @@
 -- Unified order search: BC invoices (SR), BC credits (SK), web orders (WEB).
 -- Run in Supabase SQL editor.
 
+-- Add order_no column if not already present
+alter table raw.bc_invoices_raw
+  add column if not exists order_no text;
+
+drop function if exists api.search_orders(text, integer);
+
 create schema if not exists api;
 
 create or replace function api.search_orders(
@@ -9,9 +15,10 @@ create or replace function api.search_orders(
 )
 returns table (
   source           text,    -- "bc" | "web"
-  doc_type         text,    -- "SR" (sölureikningur) | "SK" (sölukreditreikningur) | "WEB"
-  order_id         text,    -- SR-nr / SK-nr / web order ID
-  sp_no            text,    -- SP-nr (sölupöntun = external_doc_no, BC only)
+  doc_type         text,    -- "SR" | "SK" | "WEB"
+  order_id         text,    -- SR-nr / SK-nr / Magento order ID
+  sp_no            text,    -- SP-nr (sölupöntun, BC only)
+  web_order_id     text,    -- Magento order ID (SR: external_doc_no | WEB: order_id)
   company_name     text,
   company_id       text,    -- kennitala
   total            numeric,
@@ -35,10 +42,11 @@ as $function$
       'bc'::text                                                           as source,
       'SR'::text                                                           as doc_type,
       coalesce(i.document_no::text, '')                                   as order_id,
-      coalesce(i.external_doc_no, '')::text                               as sp_no,
+      coalesce(i.order_no, '')::text                                      as sp_no,
+      coalesce(i.external_doc_no, '')::text                               as web_order_id,
       coalesce(i.company_name, '')::text                                  as company_name,
       coalesce(i.company_id::text, '')                                    as company_id,
-      coalesce(i.amount_excl, 0)::numeric                                 as total,
+      coalesce(i.amount_incl, 0)::numeric                                 as total,
       coalesce(i.booking_date, i.order_date)::timestamptz                 as order_date,
       case
         when lower(coalesce(i.canceled, '')) not in ('', 'no', 'false', '0', 'nei') then 'canceled'
@@ -51,6 +59,7 @@ as $function$
     cross join q
     where
       lower(coalesce(i.document_no::text,   '')) like q.pat
+      or lower(coalesce(i.order_no,         '')) like q.pat
       or lower(coalesce(i.external_doc_no,  '')) like q.pat
       or lower(coalesce(i.company_name,     '')) like q.pat
       or lower(coalesce(i.company_id::text, '')) like q.pat
@@ -62,9 +71,10 @@ as $function$
       'SK'::text                                                           as doc_type,
       coalesce(c.document_no::text, '')                                   as order_id,
       ''::text                                                            as sp_no,
+      ''::text                                                            as web_order_id,
       coalesce(c.company_name, '')::text                                  as company_name,
       coalesce(c.company_id::text, '')                                    as company_id,
-      coalesce(c.amount_excl, 0)::numeric                                 as total,
+      coalesce(c.amount_incl, 0)::numeric                                 as total,
       coalesce(c.booking_date, c.order_date)::timestamptz                 as order_date,
       case
         when lower(coalesce(c.canceled, '')) not in ('', 'no', 'false', '0', 'nei') then 'canceled'
@@ -87,6 +97,7 @@ as $function$
       'WEB'::text                                                         as doc_type,
       coalesce(n.order_id, '')::text                                      as order_id,
       ''::text                                                            as sp_no,
+      coalesce(n.order_id, '')::text                                      as web_order_id,
       coalesce(nullif(trim(n.company_name), ''), n.customer_name, '')     as company_name,
       coalesce(nullif(trim(n.company_id), ''), n.national_id, '')         as company_id,
       coalesce(n.grand_total, n.subtotal_excl, 0)::numeric               as total,
@@ -96,12 +107,17 @@ as $function$
       coalesce(n.items, '')::text                                         as items
     from raw.newweb_orders_raw n
     cross join q
-    where
+    where (
       lower(coalesce(n.order_id,        '')) like q.pat
       or lower(coalesce(n.company_name, '')) like q.pat
       or lower(coalesce(n.customer_name,'')) like q.pat
       or lower(coalesce(n.company_id,   '')) like q.pat
       or lower(coalesce(n.national_id,  '')) like q.pat
+    )
+    and not exists (
+      select 1 from raw.bc_invoices_raw i
+      where i.external_doc_no = n.order_id
+    )
   ),
   combined as (
     select * from sr
@@ -111,7 +127,7 @@ as $function$
     select * from web
   )
   select
-    source, doc_type, order_id, sp_no,
+    source, doc_type, order_id, sp_no, web_order_id,
     company_name, company_id,
     total, order_date, status, salesperson_code, items
   from combined

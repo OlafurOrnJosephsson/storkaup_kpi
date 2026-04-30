@@ -65,8 +65,9 @@
         el.setAttribute("data-source",      row.source      || "");
         el.setAttribute("data-doc-type",    row.doc_type    || "");   // SR | SK | WEB
         el.setAttribute("data-order-id",    row.order_id    || "");   // SR-nr / SK-nr / web order ID
-        el.setAttribute("data-sp-no",       row.sp_no       || "");   // SP-nr (sölupöntun, BC only)
-        el.setAttribute("data-company-id",  row.company_id  || "");   // kennitala
+        el.setAttribute("data-sp-no",          row.sp_no        || "");   // SP-nr (sölupöntun)
+        el.setAttribute("data-web-order-id", row.web_order_id || "");   // Magento order ID
+        el.setAttribute("data-company-id",   row.company_id   || "");   // kennitala
         el.setAttribute("data-company-name",row.company_name|| "");
         el.setAttribute("data-total",       row.total       || "0");
         el.setAttribute("data-total-fmt",   totalFmt);
@@ -81,8 +82,9 @@
             "source":       row.source      || "",
             "doc-type":     row.doc_type    || "",
             "order-id":     row.order_id    || "",
-            "sp-no":        row.sp_no       || "",
-            "company-id":   row.company_id  || "",
+            "sp-no":          row.sp_no        || "",
+            "web-order-id":   row.web_order_id || "",
+            "company-id":     row.company_id   || "",
             "company-name": row.company_name|| "",
             "total":        totalFmt,
             "date":         dateFmt,
@@ -165,8 +167,9 @@
                             + ' data-source="'      + escHtml(row.source)               + '"'
                             + ' data-doc-type="'    + escHtml(row.doc_type)             + '"'
                             + ' data-order-id="'    + escHtml(row.order_id)             + '"'
-                            + ' data-sp-no="'       + escHtml(row.sp_no)               + '"'
-                            + ' data-company-id="'  + escHtml(row.company_id)           + '"'
+                            + ' data-sp-no="'          + escHtml(row.sp_no)               + '"'
+                            + ' data-web-order-id="' + escHtml(row.web_order_id)         + '"'
+                            + ' data-company-id="'   + escHtml(row.company_id)           + '"'
                             + ' data-company-name="'+ escHtml(row.company_name)         + '"'
                             + ' data-total="'       + escHtml(String(row.total || "0")) + '"'
                             + ' data-total-fmt="'   + escHtml(fmtIsk(row.total))        + '"'

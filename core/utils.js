@@ -191,16 +191,6 @@ function applyDefaultFormatting_(sh, dateHeaderName) {
   sh.getRange(2, idx + 1, lastRow - 1, 1).setNumberFormat('yyyy-mm-dd');
 }
 
-/************************************************************
- * Cached loader to avoid repeated sheet reads in one execution
- ************************************************************/
-function loadTableCached_(schemaKey) {
-  const key = 'TABLE_' + schemaKey;
-  const hit = cacheGet_(key);
-  if (hit) return hit;
-  const rows = loadTableBySchema_(schemaKey);
-  return cacheSet_(key, rows);
-}
 
 /************************************************************
  * ðŸŽ¨ applySheetStyling_(sh, options)
@@ -270,14 +260,6 @@ function applyStylingTo(serviceKey, options) {
 }
 
 
-/************************************************************
- * ðŸ“š makeColumnMap_
- ************************************************************/
-function makeColumnMap_(headers) {
-  const map = {};
-  headers.forEach((h, i) => map[h] = i);
-  return map;
-}
 
 
 /************************************************************
@@ -302,10 +284,6 @@ function formatDateYMD_(d) {
   return Utilities.formatDate(d, 'GMT', 'yyyy-MM-dd');
 }
 
-function formatDateDMY_(d) {
-  if (!(d instanceof Date)) return '';
-  return Utilities.formatDate(d, 'GMT', 'dd.MM.yyyy');
-}
 
 
 /************************************************************
@@ -320,9 +298,6 @@ function cleanString(s) {
   return cleanString_(s);
 }
 
-function normalizeName_(s) {
-  return cleanString_(s).toLowerCase();
-}
 
 function safeJsonParse_(str) {
   try { return JSON.parse(str); } catch (_) { return null; }
@@ -509,18 +484,6 @@ function extractUom_(rawSku) {
 
 
 
-/************************************************************
- * ðŸ—‚ RANGE HELPERS
- ************************************************************/
-function clearSheetKeepHeader_(sh) {
-  const last = sh.getLastRow();
-  if (last > 1) sh.getRange(2, 1, last - 1, sh.getLastColumn()).clearContent();
-}
-
-function writeRows_(sh, rows, row, col) {
-  if (!rows || !rows.length) return;
-  sh.getRange(row, col, rows.length, rows[0].length).setValues(rows);
-}
 
 
 /************************************************************
@@ -574,42 +537,6 @@ function loadSheetObjects_(ssId, sheetName) {
 }
 
 
-/************************************************************
- * (Legacy helper â€“ ef Ã¾Ãº vilt enn nota Ã¾etta annars staÃ°ar)
- ************************************************************/
-function loadBcSalesCustomers_(cfg) {
-  const binding = cfg.SHEETS['BC_SALES'];
-  if (!binding) return [];
-
-  const ss = SpreadsheetApp.openById(binding.ID);
-  const sh = ss.getSheetByName('ViÃ°skiptamenn');
-  if (!sh) return [];
-
-  const values = sh.getDataRange().getValues();
-  if (values.length < 2) return [];
-
-  const header = values[0].map(String);
-  const map = {};
-  header.forEach((h,i) => map[h] = i);
-
-  const out = [];
-
-  for (let r = 1; r < values.length; r++) {
-    const row = values[r];
-    const id = cleanString_(row[map['Nr.']] || '');
-    const name = cleanString_(row[map['Heiti']] || '');
-    if (!id && !name) continue;
-
-    out.push({
-      id,
-      name,
-      phone: row[map['SÃ­mi']] || '',
-      balance: row[map['Hreyfing (SGM)']] || '',
-      lastModified: row[map['SÃ­Ã°ast breytt, dags.']] || ''
-    });
-  }
-  return out;
-}
 
 
 /************************************************************
@@ -868,30 +795,6 @@ function resolveCompanyInfo_(resolver, rawId, rawName, rawGroup, customerName, a
 }
 
 
-/************************************************************
- * ðŸ§® ID HELPERS
- ************************************************************/
-function looksLikeKennitala_(v) {
-  if (!v) return false;
-  const s = String(v).replace(/\D/g, '');  // tÃ¶kum bara tÃ¶lur
-  // Leyfum 7â€“12 stafi: 10 fyrir venjulega kt, 11â€“12 fyrir undirkennitÃ¶lur o.fl.
-  return s.length >= 7 && s.length <= 12;
-}
-
-function extractRawDigits_(s) {
-  if (!s) return "";
-  return String(s).replace(/\D/g, "");
-}
-
-function similarity_(a, b) {
-  if (!a || !b) return 0;
-  let matches = 0;
-  const len = Math.min(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    if (a[i] === b[i]) matches++;
-  }
-  return matches / Math.max(a.length, b.length);
-}
 
 
 /************************************************************
@@ -990,10 +893,6 @@ function normalizeOldwebCompanyIds() {
   };
 }
 
-function testNormalizeOldweb() {
-  var res = normalizeOldwebCompanyIds();
-  Logger.log(res);
-}
 
 /************************************************************
  * ðŸ”§ normalizeOldwebCompanyIdsAndNames_
@@ -1444,6 +1343,7 @@ function upsertBcInvoicesToSupabase_(rows) {
       document_no: documentNo,
       company_id: r.COMPANY_ID || null,
       external_doc_no: r.EXTERNAL_DOC_NO || null,
+      order_no: r.ORDER_NO || null,
       company_name: r.COMPANY_NAME || null,
       currency: r.CURRENCY || null,
       due_date: parseBcDateForSupabase_(r.DUE_DATE),
@@ -1855,29 +1755,6 @@ function backfillBcLinesToSupabase_v1(options) {
   };
 }
 
-function syncBcToSupabaseIncremental_v1(options) {
-  var opts = options || {};
-  var invoices = backfillBcInvoicesToSupabase_v1({
-    full: !!opts.full,
-    lookbackDays: opts.lookbackDays
-  });
-  var creditInvoices = backfillBcCreditInvoicesToSupabase_v1({
-    full: !!opts.full,
-    lookbackDays: opts.lookbackDays
-  });
-  var lines = backfillBcLinesToSupabase_v1({
-    full: !!opts.full,
-    lookbackDays: opts.lookbackDays
-  });
-  var customers = backfillBcCustomersToSupabase_v1();
-  return {
-    invoices: invoices,
-    creditInvoices: creditInvoices,
-    lines: lines,
-    customers: customers
-  };
-}
-
 function resetBcSupabaseSyncState_v1() {
   setBcSyncState_({
     invoicesWatermarkIso: '',
@@ -1899,17 +1776,272 @@ function runBcInvoicesFullBackfill_v1() {
   return backfillBcInvoicesToSupabase_v1({ full: true, lookbackDays: 0 });
 }
 
+/************************************************************
+ * BC INVOICE GAP-FILL WITH SUPABASE DEDUP
+ * Fetches existing document_nos from Supabase first, then only
+ * uploads rows that are genuinely missing. Safe to run repeatedly —
+ * after the initial gap-fill subsequent runs upload 0 rows.
+ *
+ * opts.lookbackDays  — how far back to check (default 90)
+ * opts.rowsPerRun    — max new rows to upload per call (default 2000)
+ ************************************************************/
+
+function runBcInvoicesChunkedBackfill_v1(opts) {
+  opts = opts || {};
+  var ROWS_PER_RUN = opts.rowsPerRun != null ? Number(opts.rowsPerRun) : 5000;
+  var LOOKBACK_DAYS = opts.lookbackDays != null ? Number(opts.lookbackDays) : 90;
+
+  var allRows = loadTableBySchema_('BC_INVOICES') || [];
+  if (!allRows.length) {
+    Logger.log('[BC_INVOICES_CHUNK] No rows in BC_INVOICES sheet.');
+    return { ok: true, done: true, uploaded: 0, total: 0 };
+  }
+
+  var cutoffDate = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
+    .toISOString().slice(0, 10);
+
+  var inWindow = allRows.filter(function(r) {
+    var date = parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE) || '';
+    return date >= cutoffDate;
+  });
+
+  Logger.log('[BC_INVOICES_CHUNK] Sheet rows in window (' + LOOKBACK_DAYS + 'd): ' + inWindow.length);
+
+  // Fetch document_nos already in Supabase — small GET, just string keys
+  var existingKeys = fetchExistingBcInvoiceKeys_(cutoffDate);
+
+  var newRows = inWindow.filter(function(r) {
+    return !existingKeys[String(r.DOCUMENT_NO || '').trim()];
+  });
+
+  Logger.log(
+    '[BC_INVOICES_CHUNK] Already in Supabase: ' + (inWindow.length - newRows.length) +
+    ' | Missing: ' + newRows.length
+  );
+
+  if (!newRows.length) {
+    Logger.log('[BC_INVOICES_CHUNK] Supabase is up to date — nothing to upload.');
+    return { ok: true, done: true, uploaded: 0, skipped: inWindow.length, total: inWindow.length };
+  }
+
+  var chunk = newRows.slice(0, ROWS_PER_RUN);
+  var out = upsertBcInvoicesToSupabase_(chunk);
+  var remaining = newRows.length - chunk.length;
+  var done = remaining === 0;
+
+  Logger.log(
+    '[BC_INVOICES_CHUNK] Uploaded: ' + out.uploaded +
+    (done ? ' — done.' : ' — ' + remaining + ' still missing, run again.')
+  );
+
+  return {
+    ok: true,
+    done: done,
+    uploaded: out.uploaded,
+    remaining: remaining,
+    total: inWindow.length
+  };
+}
+
+// Paginates through a Supabase table and returns a plain-object key set.
+// baseUrl must already contain ?select=<col>&filter=... — no trailing &
+function fetchSupabaseKeySet_(baseUrl, keyField, schema, logPrefix) {
+  var conf = getSupabaseRestConfig_();
+  var PAGE = 1000;
+  var keys = {};
+  var offset = 0;
+
+  while (true) {
+    var url = baseUrl + '&limit=' + PAGE + '&offset=' + offset;
+    var res = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Accept-Profile': schema || 'raw'
+      },
+      muteHttpExceptions: true
+    });
+
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error((logPrefix || '') + ' fetchSupabaseKeySet_ failed (' + code + '): ' + res.getContentText());
+    }
+
+    var rows = safeJsonParse_(res.getContentText()) || [];
+    rows.forEach(function(row) { if (row[keyField]) keys[row[keyField]] = true; });
+
+    if (rows.length < PAGE) break;
+    offset += PAGE;
+  }
+
+  return keys;
+}
+
+function fetchExistingBcInvoiceKeys_(cutoffDate) {
+  var base = getSupabaseRestConfig_().baseUrl +
+    '/bc_invoices_raw?select=document_no&booking_date=gte.' + cutoffDate;
+  var keys = fetchSupabaseKeySet_(base, 'document_no', 'raw', '[BC_INVOICES_CHUNK]');
+  Logger.log('[BC_INVOICES_CHUNK] Existing invoice keys since ' + cutoffDate + ': ' + Object.keys(keys).length);
+  return keys;
+}
+
 function runBcCreditInvoicesFullBackfill_v1() {
   return backfillBcCreditInvoicesToSupabase_v1({ full: true, lookbackDays: 0 });
 }
 
-function runBcIncrementalSync_v1() {
-  return syncBcToSupabaseIncremental_v1({ lookbackDays: 2 });
+/************************************************************
+ * DEDUP-BASED CHUNKED BACKFILLS FOR CREDIT INVOICES + LINES
+ * Same pattern as runBcInvoicesChunkedBackfill_v1 —
+ * fetches existing keys from Supabase first, uploads only new rows.
+ ************************************************************/
+
+function runBcCreditInvoicesChunkedBackfill_v1(opts) {
+  opts = opts || {};
+  var ROWS_PER_RUN = opts.rowsPerRun != null ? Number(opts.rowsPerRun) : 2000;
+  var LOOKBACK_DAYS = opts.lookbackDays != null ? Number(opts.lookbackDays) : 365;
+
+  var allRows = loadTableBySchema_('BC_CREDIT_INVOICES') || [];
+  if (!allRows.length) {
+    Logger.log('[BC_CREDIT_CHUNK] No rows in BC_CREDIT_INVOICES sheet.');
+    return { ok: true, done: true, uploaded: 0, total: 0 };
+  }
+
+  var cutoffDate = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
+    .toISOString().slice(0, 10);
+
+  var inWindow = allRows.filter(function(r) {
+    var date = parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.DOCUMENT_DATE) || '';
+    return date >= cutoffDate;
+  });
+
+  Logger.log('[BC_CREDIT_CHUNK] Sheet rows in window (' + LOOKBACK_DAYS + 'd): ' + inWindow.length);
+
+  var existingKeys = fetchExistingBcCreditInvoiceKeys_(cutoffDate);
+  var newRows = inWindow.filter(function(r) {
+    return !existingKeys[String(r.DOCUMENT_NO || '').trim()];
+  });
+
+  Logger.log('[BC_CREDIT_CHUNK] Already in Supabase: ' + (inWindow.length - newRows.length) + ' | Missing: ' + newRows.length);
+
+  if (!newRows.length) {
+    Logger.log('[BC_CREDIT_CHUNK] Supabase is up to date.');
+    return { ok: true, done: true, uploaded: 0, skipped: inWindow.length, total: inWindow.length };
+  }
+
+  var chunk = newRows.slice(0, ROWS_PER_RUN);
+  var out = upsertBcCreditInvoicesToSupabase_(chunk);
+  var remaining = newRows.length - chunk.length;
+
+  Logger.log('[BC_CREDIT_CHUNK] Uploaded: ' + out.uploaded + (remaining ? ' — ' + remaining + ' remaining.' : ' — done.'));
+  return { ok: true, done: remaining === 0, uploaded: out.uploaded, remaining: remaining, total: inWindow.length };
 }
 
-function runBcLinesFullBackfillChunk_v1() {
-  // Safer for Apps Script URL Fetch quotas: process one chunked window per run.
-  return backfillBcLinesToSupabase_v1({ full: true, lookbackDays: 0, maxRows: 50000 });
+function fetchExistingBcCreditInvoiceKeys_(cutoffDate) {
+  var base = getSupabaseRestConfig_().baseUrl +
+    '/bc_credit_invoices_raw?select=document_no&booking_date=gte.' + cutoffDate;
+  var keys = fetchSupabaseKeySet_(base, 'document_no', 'raw', '[BC_CREDIT_CHUNK]');
+  Logger.log('[BC_CREDIT_CHUNK] Existing credit invoice keys since ' + cutoffDate + ': ' + Object.keys(keys).length);
+  return keys;
+}
+
+function runBcLinesChunkedBackfill_v1(opts) {
+  opts = opts || {};
+  var ROWS_PER_RUN = opts.rowsPerRun != null ? Number(opts.rowsPerRun) : 15000;
+  var LOOKBACK_DAYS = opts.lookbackDays != null ? Number(opts.lookbackDays) : 365;
+
+  var allLines = loadTableBySchema_('BC_LINES') || [];
+  if (!allLines.length) {
+    Logger.log('[BC_LINES_CHUNK] No rows in BC_LINES sheet.');
+    return { ok: true, done: true, uploaded: 0, total: 0 };
+  }
+
+  var cutoffDate = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
+    .toISOString().slice(0, 10);
+
+  // Lines have no date — use invoice doc_nos as proxy for date filtering + dedup.
+  // If an invoice doc_no is missing from bc_invoices_raw, its lines need uploading too.
+  var allInvoices = loadTableBySchema_('BC_INVOICES') || [];
+  var existingInvoiceKeys = fetchExistingBcInvoiceKeys_(cutoffDate);
+
+  var missingDocNos = {};
+  allInvoices.forEach(function(r) {
+    var date = parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE) || '';
+    if (date < cutoffDate) return;
+    var docNo = String(r.DOCUMENT_NO || '').trim();
+    if (docNo && !existingInvoiceKeys[docNo]) missingDocNos[docNo] = true;
+  });
+
+  var missingCount = Object.keys(missingDocNos).length;
+  Logger.log('[BC_LINES_CHUNK] Invoice doc_nos missing from Supabase: ' + missingCount);
+
+  if (!missingCount) {
+    Logger.log('[BC_LINES_CHUNK] All invoices already in Supabase — no lines to upload.');
+    return { ok: true, done: true, uploaded: 0, total: allLines.length };
+  }
+
+  var newLines = allLines.filter(function(r) {
+    return missingDocNos[String(r.DOCUMENT_NO || '').trim()];
+  });
+
+  Logger.log('[BC_LINES_CHUNK] Lines to upload: ' + newLines.length + ' (for ' + missingCount + ' missing invoices)');
+
+  var chunk = newLines.slice(0, ROWS_PER_RUN);
+  var out = upsertBcLinesToSupabase_(chunk);
+  var remaining = newLines.length - chunk.length;
+
+  Logger.log('[BC_LINES_CHUNK] Uploaded: ' + out.uploaded + (remaining ? ' — ' + remaining + ' remaining.' : ' — done.'));
+  return { ok: true, done: remaining === 0, uploaded: out.uploaded, remaining: remaining, total: allLines.length };
+}
+
+/************************************************************
+ * POST-IMPORT SYNC — run after each BC Excel import
+ * Chains all 4 BC tables with dedup. Safe to run repeatedly.
+ ************************************************************/
+
+function runPostBcImportSync_v1() {
+  Logger.log('[BC_POST_IMPORT] Starting post-import sync...');
+  var results = {};
+
+  try {
+    results.customers = backfillBcCustomersToSupabase_v1({ force: false });
+    Logger.log('[BC_POST_IMPORT] Customers done: uploaded=' + (results.customers.uploaded || 0));
+  } catch (e) {
+    results.customers = { error: e.message };
+    Logger.log('[BC_POST_IMPORT] Customers ERROR: ' + e.message);
+  }
+
+  try {
+    results.invoices = runBcInvoicesChunkedBackfill_v1({ lookbackDays: 365 });
+    Logger.log('[BC_POST_IMPORT] Invoices done: uploaded=' + results.invoices.uploaded + ', remaining=' + (results.invoices.remaining || 0));
+  } catch (e) {
+    results.invoices = { error: e.message };
+    Logger.log('[BC_POST_IMPORT] Invoices ERROR: ' + e.message);
+  }
+
+  try {
+    results.creditInvoices = runBcCreditInvoicesChunkedBackfill_v1({ lookbackDays: 365 });
+    Logger.log('[BC_POST_IMPORT] Credit invoices done: uploaded=' + results.creditInvoices.uploaded + ', remaining=' + (results.creditInvoices.remaining || 0));
+  } catch (e) {
+    results.creditInvoices = { error: e.message };
+    Logger.log('[BC_POST_IMPORT] Credit invoices ERROR: ' + e.message);
+  }
+
+  try {
+    results.lines = runBcLinesChunkedBackfill_v1({ lookbackDays: 365 });
+    Logger.log('[BC_POST_IMPORT] Lines done: uploaded=' + results.lines.uploaded + ', remaining=' + (results.lines.remaining || 0));
+  } catch (e) {
+    results.lines = { error: e.message };
+    Logger.log('[BC_POST_IMPORT] Lines ERROR: ' + e.message);
+  }
+
+  var anyRemaining =
+    (results.invoices && results.invoices.remaining > 0) ||
+    (results.creditInvoices && results.creditInvoices.remaining > 0) ||
+    (results.lines && results.lines.remaining > 0);
+
+  Logger.log('[BC_POST_IMPORT] Done. Run again if remaining > 0. Results: ' + JSON.stringify(results));
+  return { ok: true, runAgain: anyRemaining, results: results };
 }
 
 function resetBcLinesFullBackfillCursor_v1() {
@@ -1968,7 +2100,20 @@ function upsertBcCustomersToSupabase_(rows) {
   return { uploaded: uploaded };
 }
 
-function backfillBcCustomersToSupabase_v1() {
+function backfillBcCustomersToSupabase_v1(options) {
+  var opts = options || {};
+  // Full customer upload is expensive — throttle to once per 24h unless forced.
+  if (!opts.force) {
+    var props = PropertiesService.getScriptProperties();
+    var key = 'BC_CUSTOMERS_LAST_UPLOAD_MS';
+    var last = Number(props.getProperty(key) || 0);
+    if (last && (Date.now() - last) < 24 * 60 * 60 * 1000) {
+      Logger.log('[BC_CUSTOMERS][INFO] Skipping upload — last run was ' + Math.round((Date.now() - last) / 3600000) + 'h ago.');
+      return { totalRows: 0, uploaded: 0, skipped: true };
+    }
+    props.setProperty(key, String(Date.now()));
+  }
+
   var rows = loadTableBySchema_('BC_CUSTOMERS') || [];
   if (!rows.length) {
     Logger.log('[BC_CUSTOMERS][INFO] No rows found for backfill.');
@@ -2973,7 +3118,6 @@ function runDailySanityChecks_v1() {
     var jobs = [
       'safePoll_v2',
       'scheduledMagentoSync_v1',
-      'scheduledBcSync_v1',
       'scheduledCludoSync_v1',
       'scheduledCustomerAnalysisSync_v1',
       'scheduledKlaviyoSync_v1'
@@ -3001,7 +3145,6 @@ function runDailySanityChecks_v1() {
       var expectedWindowsHours = {
         safePoll_v2: 4,
         scheduledMagentoSync_v1: 6,
-        scheduledBcSync_v1: 36,
         scheduledCludoSync_v1: 24,
         scheduledCustomerAnalysisSync_v1: 36,
         scheduledKlaviyoSync_v1: 4
@@ -3114,30 +3257,61 @@ function runDailySanityChecks_v1() {
     }
   }
 
-  function checkBcSyncRowsWarning_() {
-    var since48Iso = new Date(nowMs - 48 * 60 * 60 * 1000).toISOString();
-    var path = 'ingestion_runs?select=job_name,status,started_at,rows_processed'
-      + '&job_name=eq.scheduledBcSync_v1'
-      + '&status=eq.success'
-      + '&started_at=gte.' + encodeURIComponent(since48Iso)
-      + '&order=started_at.desc'
-      + '&limit=1';
+  function checkStuckPendingOrders_() {
+    var STUCK_HOURS = 12;
+    var LOOKBACK_DAYS = 7;
+    var cutoffIso = new Date(nowMs - STUCK_HOURS * 60 * 60 * 1000).toISOString();
+    var windowIso = new Date(nowMs - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
     try {
-      var rows = supabaseRestGetJson_(path, 'raw');
-      var last = Array.isArray(rows) && rows.length ? rows[0] : null;
-      if (!last) {
-        addCheck_('bc_rows_processed_recent', false, 'No successful scheduledBcSync_v1 in last 48h', 'warning');
+      var rows = supabaseRestGetJson_(
+        'newweb_orders_raw?select=order_id,purchase_date,status'
+        + '&status=eq.pending'
+        + '&purchase_date=gte.' + encodeURIComponent(windowIso)
+        + '&purchase_date=lte.' + encodeURIComponent(cutoffIso)
+        + '&order=purchase_date.asc'
+        + '&limit=50',
+        'raw'
+      );
+      var list = Array.isArray(rows) ? rows : [];
+      if (!list.length) {
+        addCheck_('stuck_pending_orders', true, 'No pending orders older than ' + STUCK_HOURS + 'h', 'warning');
         return;
       }
-      var rp = toNum_(last.rows_processed);
-      addCheck_(
-        'bc_rows_processed_recent',
-        rp > 0,
-        'last_rows_processed=' + rp + ', started_at=' + last.started_at,
-        'warning'
+
+      // Cross-check against BC invoices sheet directly (authoritative — Supabase may lag)
+      var allIds = list.map(function(r) { return r.order_id; });
+      var allIdsSet = new Set(allIds.map(String));
+      var bcSheetRows = loadTableBySchema_('BC_INVOICES') || [];
+      var inBc = new Set(
+        bcSheetRows
+          .filter(function(r) { return allIdsSet.has(String(r.EXTERNAL_DOC_NO || '').trim()); })
+          .map(function(r) { return String(r.EXTERNAL_DOC_NO || '').trim(); })
       );
+
+      var notInBc = list.filter(function(r) { return !inBc.has(String(r.order_id)); });
+      var inBcList = list.filter(function(r) { return inBc.has(String(r.order_id)); });
+
+      var ok = notInBc.length === 0;
+      var notInBcIds = notInBc.slice(0, 10).map(function(r) { return r.order_id; }).join(', ');
+      var details = ok
+        ? list.length + ' pending order(s) older than ' + STUCK_HOURS + 'h but all found in BC invoices (' + allIds.join(', ') + ')'
+        : notInBc.length + ' pending order(s) older than ' + STUCK_HOURS + 'h and NOT in BC. IDs: ' + notInBcIds
+          + (inBcList.length ? ' | Already in BC: ' + inBcList.map(function(r) { return r.order_id; }).join(', ') : '');
+
+      addCheck_('stuck_pending_orders', ok, details, 'warning');
+
+      if (!ok) {
+        sendOpsAlert_(
+          '[KPI ALERT] Stuck pending orders not in BC',
+          notInBc.length + ' order(s) have been "pending" in Magento for >' + STUCK_HOURS + 'h and have NO invoice in BC.\n\n'
+            + notInBc.map(function(r) { return r.order_id + ' — ' + r.purchase_date; }).join('\n')
+            + (inBcList.length ? '\n\nAlready in BC (status mismatch only): ' + inBcList.map(function(r) { return r.order_id; }).join(', ') : ''),
+          'stuck_pending_orders',
+          getAlertThrottleMinutes_('stuck_pending_orders', 720)
+        );
+      }
     } catch (e) {
-      addCheck_('bc_rows_processed_recent', false, String(e && e.message ? e.message : e), 'warning');
+      addCheck_('stuck_pending_orders', false, String(e && e.message ? e.message : e), 'warning');
     }
   }
 
@@ -3160,8 +3334,8 @@ function runDailySanityChecks_v1() {
     checkDashboardShares_();
     checkIngestionRuns_();
     checkKlaviyoAttributionBound_();
-    checkBcSyncRowsWarning_();
     checkGa4PurchaseRatio_();
+    checkStuckPendingOrders_();
 
     result.passed = result.failedCount === 0;
     result.finishedAt = new Date().toISOString();
@@ -4295,125 +4469,6 @@ function removeTriggersByHandler_v1(handlerFn) {
   return { removed: triggers.length, handler: fn };
 }
 
-/************************************************************
- * BC incremental sync schedule
- ************************************************************/
-function scheduledBcSync_v1() {
-  var lock = null;
-  var runId = null;
-  var startedAt = new Date();
-  var result = {
-    startedAt: startedAt.toISOString(),
-    bcSync: null,
-    finishedAt: null
-  };
-
-  try {
-    lock = LockService.getScriptLock();
-    if (!lock.tryLock(15000)) {
-      Logger.log('[BCSYNC][WARN] Skipping scheduledBcSync_v1: another run is in progress.');
-      return { skipped: true, reason: 'lock_not_acquired', startedAt: startedAt.toISOString() };
-    }
-
-    try {
-      runId = startIngestionRun_('scheduledBcSync_v1', 'bc_data', {
-        trigger_type: 'time_based'
-      });
-      result.runId = runId;
-    } catch (logErr) {
-      Logger.log('[BCSYNC][WARN] Could not start ingestion run log: ' + logErr);
-    }
-
-    result.bcSync = runBcIncrementalSync_v1();
-    result.finishedAt = new Date().toISOString();
-
-    var rowsProcessed =
-      toNum_(result.bcSync && result.bcSync.invoices && result.bcSync.invoices.uploaded) +
-      toNum_(result.bcSync && result.bcSync.creditInvoices && result.bcSync.creditInvoices.uploaded) +
-      toNum_(result.bcSync && result.bcSync.lines && result.bcSync.lines.uploaded) +
-      toNum_(result.bcSync && result.bcSync.customers && result.bcSync.customers.uploaded);
-
-    if (runId) {
-      try {
-        finishIngestionRun_(runId, 'success', rowsProcessed, result, null);
-      } catch (logErr2) {
-        Logger.log('[BCSYNC][WARN] Could not finish ingestion run log (success): ' + logErr2);
-      }
-    }
-
-    Logger.log('[BCSYNC][INFO] Completed scheduledBcSync_v1: ' + JSON.stringify(result));
-    return result;
-  } catch (e) {
-    result.finishedAt = new Date().toISOString();
-    result.error = {
-      name: e && e.name ? e.name : '',
-      message: e && e.message ? e.message : String(e),
-      stack: e && e.stack ? e.stack : ''
-    };
-
-    var rowsProcessedErr =
-      toNum_(result.bcSync && result.bcSync.invoices && result.bcSync.invoices.uploaded) +
-      toNum_(result.bcSync && result.bcSync.creditInvoices && result.bcSync.creditInvoices.uploaded) +
-      toNum_(result.bcSync && result.bcSync.lines && result.bcSync.lines.uploaded) +
-      toNum_(result.bcSync && result.bcSync.customers && result.bcSync.customers.uploaded);
-
-    if (runId) {
-      try {
-        finishIngestionRun_(runId, 'error', rowsProcessedErr, result, result.error.message);
-      } catch (logErr3) {
-        Logger.log('[BCSYNC][WARN] Could not finish ingestion run log (error): ' + logErr3);
-      }
-    }
-
-    try {
-      notifyTriggerFailure_('scheduledBcSync_v1', result.error, result);
-    } catch (alertErr) {
-      Logger.log('[BCSYNC][WARN] Failure alert failed: ' + alertErr);
-    }
-
-    Logger.log('[BCSYNC][ERROR] scheduledBcSync_v1 failed: ' + JSON.stringify(result));
-    throw e;
-  } finally {
-    if (lock) {
-      try { lock.releaseLock(); } catch (_) {}
-    }
-  }
-}
-
-function installScheduledBcSyncTrigger_v1() {
-  var fn = 'scheduledBcSync_v1';
-  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
-    return t.getHandlerFunction() === fn;
-  });
-  if (existing.length >= 2) {
-    Logger.log('[BCSYNC][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
-    return { created: false, existing: existing.length };
-  }
-
-  ScriptApp.newTrigger(fn)
-    .timeBased()
-    .everyDays(1)
-    .atHour(6)
-    .nearMinute(10)
-    .create();
-
-  ScriptApp.newTrigger(fn)
-    .timeBased()
-    .everyDays(1)
-    .atHour(13)
-    .nearMinute(10)
-    .create();
-
-  Logger.log('[BCSYNC][INFO] Created trigger for ' + fn + ' (every 1 day at ~06:10 and ~13:10)');
-  return { created: true, schedule: ['everyDays(1).atHour(6).nearMinute(10)', 'everyDays(1).atHour(13).nearMinute(10)'] };
-}
-
-function removeScheduledBcSyncTrigger_v1() {
-  var fn = 'scheduledBcSync_v1';
-  var out = removeTriggersByHandler_v1(fn);
-  Logger.log('[BCSYNC][INFO] Removed ' + out.removed + ' trigger(s) for ' + fn);
-  return { removed: out.removed };
-}
 
 /**
  * auditTriggers_v1()
@@ -4429,8 +4484,7 @@ function auditTriggers_v1() {
     scheduledMagentoSync_v1:        'daily ~04:xx',
     scheduledCludoSync_v1:          'daily ~04:xx',
     scheduledCustomerAnalysisSync_v1: 'daily ~05:xx',
-    scheduledKlaviyoSync_v1:        'daily ~05:xx',
-    scheduledBcSync_v1:             'twice daily ~06:xx + ~13:xx'
+    scheduledKlaviyoSync_v1:        'daily ~05:xx'
   };
 
   var triggers = ScriptApp.getProjectTriggers();
@@ -4485,8 +4539,7 @@ function resetRecommendedTimeTriggers_v1() {
     'scheduledMagentoSync_v1',
     'scheduledCludoSync_v1',
     'scheduledCustomerAnalysisSync_v1',
-    'scheduledKlaviyoSync_v1',
-    'scheduledBcSync_v1'
+    'scheduledKlaviyoSync_v1'
   ];
 
   handlers.forEach(function(fn) {
@@ -4500,8 +4553,7 @@ function resetRecommendedTimeTriggers_v1() {
     installScheduledMagentoSyncTrigger_v1(),
     installScheduledCludoSyncTrigger_v1(),
     installScheduledCustomerAnalysisSyncTrigger_v1(),
-    installScheduledKlaviyoSyncTrigger_v1(),
-    installScheduledBcSyncTrigger_v1()
+    installScheduledKlaviyoSyncTrigger_v1()
   ];
 
   Logger.log('[TRIGGERS][INFO] Recommended trigger schedule reset completed.');
