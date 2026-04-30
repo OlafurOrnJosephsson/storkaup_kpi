@@ -120,7 +120,9 @@
     ensureScript("https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/is.js", "data-flatpickr-is-l10n", function () {
       ensureScript(base + "customer-profiles.js", "data-storkaup-customer-profiles", function () {
         ensureScript(base + "top-products.js", "data-storkaup-top-products", function () {
-          ensureScript(base + "dashboard.js", "data-storkaup-dashboard");
+          ensureScript(base + "order-search.js", "data-storkaup-order-search", function () {
+            ensureScript(base + "dashboard.js", "data-storkaup-dashboard");
+          });
         });
       });
     });
