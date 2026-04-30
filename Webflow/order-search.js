@@ -49,42 +49,52 @@
             .replace(/"/g,  "&quot;");
     }
 
-    function statusTag(row) {
-        if (row.source === "bc") {
-            if (row.status === "canceled") return { label: "Afturkallaður", cls: "order-tag--red" };
-            if (row.status === "closed")   return { label: "Lokið",         cls: "order-tag--grey" };
-            return { label: "Opið", cls: "order-tag--green" };
-        }
-        var s = String(row.status || "").toLowerCase();
-        if (s === "complete")   return { label: "Lokið",      cls: "order-tag--grey" };
-        if (s === "canceled")   return { label: "Afturkallaður", cls: "order-tag--red" };
-        if (s === "pending")    return { label: "Í bið",       cls: "order-tag--yellow" };
-        if (s === "processing") return { label: "Í vinnslu",   cls: "order-tag--blue" };
-        return { label: row.status || "-", cls: "order-tag--grey" };
-    }
+    // Clone the Webflow-designed template, fill data-field children, set data-* on root.
+    // Template element: [data-el="order-template"] (hidden in Webflow)
+    // Child elements carry data-field="order-id" | "ext-id" | "company-id" |
+    //   "company-name" | "total" | "date" | "status" | "salesperson" | "items" | "source"
+    function renderRow(row, tmpl) {
+        var el = tmpl.cloneNode(true);
+        el.removeAttribute("data-el");      // don't accidentally match template selector
+        el.style.display = "";              // template is hidden; show the clone
 
-    function renderRow(row) {
-        var srcBadge = row.source === "bc"
-            ? '<span class="order-tag order-tag--bc">BC</span>'
-            : '<span class="order-tag order-tag--web">WEB</span>';
+        var totalFmt = fmtIsk(row.total);
+        var dateFmt  = fmtDate(row.order_date);
 
-        var isVefur = row.source === "bc" && String(row.salesperson_code || "").toUpperCase() === "VEFUR";
-        var vefurBadge = isVefur ? '<span class="order-tag order-tag--vefur">Vefpöntun</span>' : "";
+        // All data as attributes on the root element
+        el.setAttribute("data-source",      row.source      || "");
+        el.setAttribute("data-order-id",    row.order_id    || "");   // SR-nr (BC) / order_id (web)
+        el.setAttribute("data-ext-id",      row.ext_id      || "");   // SP-nr (BC) / "" (web)
+        el.setAttribute("data-company-id",  row.company_id  || "");   // kennitala
+        el.setAttribute("data-company-name",row.company_name|| "");
+        el.setAttribute("data-total",       row.total       || "0");
+        el.setAttribute("data-total-fmt",   totalFmt);
+        el.setAttribute("data-date",        dateFmt);
+        el.setAttribute("data-status",      row.status      || "");
+        el.setAttribute("data-salesperson", row.salesperson_code || "");
+        el.setAttribute("data-items",       row.items       || "");
+        el.setAttribute("data-is-vefur",    (row.source === "bc" && String(row.salesperson_code || "").toUpperCase() === "VEFUR") ? "true" : "false");
 
-        var st = statusTag(row);
-        var stBadge = '<span class="order-tag ' + st.cls + '">' + st.label + '</span>';
+        // Populate any child elements that declare data-field="..."
+        var fields = {
+            "source":       row.source      || "",
+            "order-id":     row.order_id    || "",
+            "ext-id":       row.ext_id      || "",
+            "company-id":   row.company_id  || "",
+            "company-name": row.company_name|| "",
+            "total":        totalFmt,
+            "date":         dateFmt,
+            "status":       row.status      || "",
+            "salesperson":  row.salesperson_code || "",
+            "items":        row.items       || ""
+        };
 
-        return '<div class="order-row">'
-            + '<div class="order-row__meta">'
-            +   srcBadge + vefurBadge + stBadge
-            +   '<span class="order-row__date">' + fmtDate(row.order_date) + '</span>'
-            + '</div>'
-            + '<div class="order-row__main">'
-            +   '<span class="order-row__id">' + escHtml(row.order_id || "-") + '</span>'
-            +   '<span class="order-row__name">' + escHtml(row.company_name || "-") + '</span>'
-            + '</div>'
-            + '<div class="order-row__total">' + fmtIsk(row.total) + '</div>'
-            + '</div>';
+        el.querySelectorAll("[data-field]").forEach(function (child) {
+            var key = child.getAttribute("data-field");
+            if (key in fields) child.textContent = fields[key];
+        });
+
+        return el;
     }
 
     async function searchOrders(query) {
@@ -95,6 +105,7 @@
         var emptyEl   = root.querySelector('[data-el="order-empty"]');
         var loadingEl = root.querySelector('[data-el="order-loading"]');
         var countEl   = root.querySelector('[data-el="order-count"]');
+        var tmpl      = root.querySelector('[data-el="order-template"]');
 
         if (q.length < MIN_LEN) {
             if (resultsEl)  resultsEl.innerHTML     = "";
@@ -137,8 +148,33 @@
             if (countEl) {
                 countEl.textContent = rows.length + (rows.length >= LIMIT ? "+" : "") + " niðurstöður";
             }
-            if (emptyEl)   emptyEl.style.display = "none";
-            if (resultsEl) resultsEl.innerHTML    = rows.map(renderRow).join("");
+            if (emptyEl) emptyEl.style.display = "none";
+
+            if (resultsEl) {
+                resultsEl.innerHTML = "";
+                if (tmpl) {
+                    rows.forEach(function (row) {
+                        resultsEl.appendChild(renderRow(row, tmpl));
+                    });
+                } else {
+                    // Fallback if no Webflow template: plain data-attribute divs
+                    resultsEl.innerHTML = rows.map(function (row) {
+                        return '<div'
+                            + ' data-source="'      + escHtml(row.source)               + '"'
+                            + ' data-order-id="'    + escHtml(row.order_id)             + '"'
+                            + ' data-ext-id="'      + escHtml(row.ext_id)               + '"'
+                            + ' data-company-id="'  + escHtml(row.company_id)           + '"'
+                            + ' data-company-name="'+ escHtml(row.company_name)         + '"'
+                            + ' data-total="'       + escHtml(String(row.total || "0")) + '"'
+                            + ' data-total-fmt="'   + escHtml(fmtIsk(row.total))        + '"'
+                            + ' data-date="'        + escHtml(fmtDate(row.order_date))  + '"'
+                            + ' data-status="'      + escHtml(row.status)               + '"'
+                            + ' data-salesperson="' + escHtml(row.salesperson_code)     + '"'
+                            + ' data-items="'       + escHtml(row.items)                + '"'
+                            + '></div>';
+                    }).join("");
+                }
+            }
 
         } catch (err) {
             if (seq !== state.seq) return;

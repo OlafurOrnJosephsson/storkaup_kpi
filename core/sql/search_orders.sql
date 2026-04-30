@@ -8,15 +8,16 @@ create or replace function api.search_orders(
   p_limit int default 25
 )
 returns table (
-  source        text,
-  order_id      text,
-  company_name  text,
-  company_id    text,
-  total         numeric,
-  order_date    timestamptz,
-  status        text,
+  source           text,
+  order_id         text,   -- BC: document_no (SR-nr)  | Web: Magento order_id
+  ext_id           text,   -- BC: external_doc_no (SP) | Web: ""
+  company_name     text,
+  company_id       text,   -- kennitala / customer ID
+  total            numeric,
+  order_date       timestamptz,
+  status           text,
   salesperson_code text,
-  items         text
+  items            text
 )
 language sql
 stable
@@ -31,6 +32,7 @@ as $function$
     select
       'bc'::text                                                           as source,
       coalesce(i.document_no::text, '')                                   as order_id,
+      coalesce(i.external_doc_no, '')::text                               as ext_id,
       coalesce(i.company_name, '')::text                                  as company_name,
       coalesce(i.company_id::text, '')                                    as company_id,
       coalesce(i.amount_excl, 0)::numeric                                 as total,
@@ -54,6 +56,7 @@ as $function$
     select
       'web'::text                                                         as source,
       coalesce(n.order_id, '')::text                                      as order_id,
+      ''::text                                                            as ext_id,
       coalesce(nullif(trim(n.company_name), ''), n.customer_name, '')     as company_name,
       coalesce(nullif(trim(n.company_id), ''), n.national_id, '')         as company_id,
       coalesce(n.grand_total, n.subtotal_excl, 0)::numeric               as total,
@@ -76,7 +79,7 @@ as $function$
     select * from web
   )
   select
-    source, order_id, company_name, company_id,
+    source, order_id, ext_id, company_name, company_id,
     total, order_date, status, salesperson_code, items
   from combined
   order by order_date desc nulls last
