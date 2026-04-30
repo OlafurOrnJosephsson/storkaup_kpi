@@ -2000,6 +2000,8 @@ function runBcLinesChunkedBackfill_v1(opts) {
 function runPostBcImportSync_v1() {
   Logger.log('[BC_POST_IMPORT] Starting post-import sync...');
   var results = {};
+  var runId = null;
+  try { runId = startIngestionRun_('scheduledBcSync_v1', 'bc', { trigger_type: 'manual' }); } catch (_) {}
 
   try {
     results.customers = backfillBcCustomersToSupabase_v1({ force: false });
@@ -2039,6 +2041,7 @@ function runPostBcImportSync_v1() {
     (results.lines && results.lines.remaining > 0);
 
   Logger.log('[BC_POST_IMPORT] Done. Run again if remaining > 0. Results: ' + JSON.stringify(results));
+  try { if (runId) finishIngestionRun_(runId, 'success', null, results); } catch (_) {}
   return { ok: true, runAgain: anyRemaining, results: results };
 }
 
