@@ -42,11 +42,18 @@ function onOpen() {
         .addItem('Generate SEO for Selected Row', 'menu_runSeoSelectedRow')
         .addItem('Revise SEO for Selected Rows', 'menu_runReviseSelectedRows')
         .addItem('Generate SEO Batch', 'menu_runSeoBatch')
+        .addItem('Fetch Current Meta from Web', 'menu_fetchCurrentSeoFromWeb')
+        .addItem('Deduplicate SEO Queue', 'menu_deduplicateSeoQueue')
         .addItem('Debug Gemini Models', 'menu_debugGeminiModels')
         .addItem('Clear SEO Error Rows', 'menu_clearSeoErrorRows')
         .addItem('Clear Magento Token Cache', 'menu_clearMagentoTokenCache')
         .addItem('Run Klaviyo Sync', 'menu_runKlaviyoSync')
         .addItem('Show Runtime Cache', 'menu_showRuntimeCache')
+    )
+    .addSubMenu(
+      ui.createMenu('BC Sync')
+        .addItem('📂 Importa BC skrár úr Drive Drop', 'menu_processBcDrop')
+        .addItem('▶ Sync BC → Supabase (after manual import)', 'menu_runPostBcImportSync')
     )
     .addSubMenu(
       ui.createMenu('Admin')
@@ -240,6 +247,37 @@ function menu_runReviseSelectedRows() {
   );
 }
 
+function menu_fetchCurrentSeoFromWeb() {
+  if (typeof fetchCurrentSeoFromWeb_v1 !== 'function') {
+    throw new Error('fetchCurrentSeoFromWeb_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = fetchCurrentSeoFromWeb_v1({ limit: 50 });
+  toast_(
+    'Fetched: ' + ((out && out.fetched) || 0) +
+    ' | Errors: ' + ((out && out.errors) || 0) +
+    ' | Remaining: ' + ((out && out.skipped) || 0),
+    'KPI CORE'
+  );
+}
+
+function menu_deduplicateSeoQueue() {
+  if (typeof deduplicateSeoQueue_v1 !== 'function') {
+    throw new Error('deduplicateSeoQueue_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  var ui = SpreadsheetApp.getUi();
+  var resp = ui.alert(
+    'Deduplicate SEO Queue',
+    'This will DELETE duplicate rows (same Category Name), keeping the best one per name (Approved > Generated > highest revenue).\n\nRun a dry-run first via the script editor: deduplicateSeoQueue_v1({ dryRun: true })\n\nProceed with deletion?',
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) {
+    toast_('Deduplication cancelled.', 'KPI CORE');
+    return;
+  }
+  var out = deduplicateSeoQueue_v1({});
+  toast_('Deduplication done. Removed: ' + ((out && out.duplicates) || 0) + ' rows.', 'KPI CORE');
+}
+
 function menu_clearSeoErrorRows() {
   if (typeof clearSeoErrorRows_v1 !== 'function') {
     throw new Error('clearSeoErrorRows_v1() not found. Ensure core/seo_manager.js is deployed.');
@@ -276,6 +314,60 @@ function menu_runKlaviyoSync() {
   }
   var out = scheduledKlaviyoSync_v1();
   toast_('Klaviyo sync complete. Uploaded: ' + (out && out.uploaded || 0), 'KPI CORE');
+}
+
+function menu_processBcDrop() {
+  if (typeof processBcDrop_v1 !== 'function') {
+    throw new Error('processBcDrop_v1() not found. Ensure core/utils.js is deployed.');
+  }
+  toast_('📂 Les BC skrár úr Drive Drop...', 'KPI CORE');
+  var out = processBcDrop_v1();
+
+  if (out.reason === 'no_folder_configured') {
+    SpreadsheetApp.getUi().alert(
+      'BC_DROP_FOLDER_ID vantar',
+      'Bættu við línu í STORKAUP_CONFIG → SETTINGS:\n  Key = BC_DROP_FOLDER_ID\n  Value = <folder ID úr Drive URL>',
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+    return;
+  }
+  if (out.reason === 'no_files') {
+    SpreadsheetApp.getUi().alert('Engar XLSX skrár fundust í BC Drop möppunni.', '', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+
+  var r = (out.sync && out.sync.results) || {};
+  var lines = (out.processed || []).map(function(p) {
+    return '✅ ' + p.file + ' (' + p.rows + ' raðir → ' + p.schema + ')';
+  }).concat((out.errors || []).map(function(e) {
+    return '❌ ' + e.file + ': ' + e.error;
+  }));
+
+  if (out.sync) {
+    lines.push('');
+    lines.push('Supabase sync:');
+    lines.push('  Invoices: ' + ((r.invoices && r.invoices.uploaded) || 0) + ' uploaded' +
+      (r.invoices && r.invoices.remaining > 0 ? ' (' + r.invoices.remaining + ' remaining — run sync again)' : ''));
+    lines.push('  Credit: ' + ((r.creditInvoices && r.creditInvoices.uploaded) || 0) + ' uploaded');
+    lines.push('  Lines: ' + ((r.lines && r.lines.uploaded) || 0) + ' uploaded');
+  }
+
+  SpreadsheetApp.getUi().alert('BC Drive Drop\n\n' + lines.join('\n'));
+}
+
+function menu_runPostBcImportSync() {
+  if (typeof runPostBcImportSync_v1 !== 'function') {
+    throw new Error('runPostBcImportSync_v1() not found. Ensure core/utils.js is deployed.');
+  }
+  var out = runPostBcImportSync_v1();
+  var r = out.results || {};
+  var lines = [
+    'Customers: ' + ((r.customers && r.customers.error) ? 'ERROR' : (r.customers && r.customers.uploaded || 0) + ' uploaded'),
+    'Invoices: ' + ((r.invoices && r.invoices.error) ? 'ERROR' : (r.invoices && r.invoices.uploaded || 0) + ' uploaded' + (r.invoices && r.invoices.remaining > 0 ? ' (' + r.invoices.remaining + ' remaining)' : '')),
+    'Credit invoices: ' + ((r.creditInvoices && r.creditInvoices.error) ? 'ERROR' : (r.creditInvoices && r.creditInvoices.uploaded || 0) + ' uploaded'),
+    'Lines: ' + ((r.lines && r.lines.error) ? 'ERROR' : (r.lines && r.lines.uploaded || 0) + ' uploaded' + (r.lines && r.lines.remaining > 0 ? ' (' + r.lines.remaining + ' remaining — run again)' : ''))
+  ].join('\n');
+  SpreadsheetApp.getUi().alert('BC → Supabase sync complete\n\n' + lines + (out.runAgain ? '\n\n⚠ Run again to upload remaining rows.' : ''));
 }
 
 function menu_clearCustomerAnalysis() {

@@ -1771,3 +1771,251 @@ function removeSeoAutomationTrigger_v1() {
   Logger.log('[SEO_AUTO][INFO] Removed ' + triggers.length + ' trigger(s) for ' + fn);
   return { removed: triggers.length };
 }
+
+/************************************************************
+ * FETCH LIVE META TAGS FROM STORKAUP.IS
+ * fetchCurrentSeoFromWeb_v1(opts)
+ *   - Reads SEO_QUEUE rows where Current Meta Title is empty
+ *   - Converts Category Path → URL slug → fetches storkaup.is
+ *   - Writes <title> and <meta name="description"> back to sheet
+ *   opts.limit      — max rows per run (default 50)
+ *   opts.sleepMs    — delay between requests in ms (default 1500)
+ *   opts.forceRefetch — overwrite rows that already have a value
+ ************************************************************/
+
+function fetchCurrentSeoFromWeb_v1(opts) {
+  opts = opts || {};
+  var BASE_URL = 'https://storkaup.is';
+  var SLEEP_MS = opts.sleepMs != null ? Number(opts.sleepMs) : 1500;
+  var BATCH_LIMIT = opts.limit != null ? Number(opts.limit) : 50;
+  var forceRefetch = !!opts.forceRefetch;
+
+  var queue = getSeoQueueData_();
+  var header = SEO_QUEUE_HEADER;
+  var titleColIdx = header.indexOf('Current Meta Title');
+  var descColIdx = header.indexOf('Current Meta Description');
+
+  if (titleColIdx === -1 || descColIdx === -1) {
+    throw new Error('SEO_QUEUE sheet is missing Current Meta Title or Current Meta Description columns.');
+  }
+
+  var eligible = queue.rows.filter(function(row) {
+    var categoryPath = String(row['Category Path'] || '').trim();
+    if (!categoryPath) return false;
+    if (!forceRefetch && String(row['Current Meta Title'] || '').trim()) return false;
+    return true;
+  });
+
+  if (!eligible.length) {
+    Logger.log('[SEO_FETCH_META] No eligible rows found.');
+    return { ok: true, fetched: 0, skipped: 0, errors: 0, total: queue.rows.length };
+  }
+
+  var batch = eligible.slice(0, BATCH_LIMIT);
+  var fetched = 0;
+  var errors = 0;
+
+  Logger.log('[SEO_FETCH_META] Fetching meta for ' + batch.length + ' rows (eligible=' + eligible.length + ')');
+
+  batch.forEach(function(row, idx) {
+    var categoryPath = String(row['Category Path'] || '').trim();
+    var slug = categoryPathToSlug_(categoryPath);
+    var url = BASE_URL + '/' + slug;
+
+    try {
+      var res = UrlFetchApp.fetch(url, {
+        method: 'get',
+        muteHttpExceptions: true,
+        followRedirects: true,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StorkaupBot/1.0)' }
+      });
+
+      var code = res.getResponseCode();
+      if (code === 200) {
+        var html = res.getContentText();
+        var title = extractHtmlTitle_(html);
+        var description = extractHtmlMetaDescription_(html);
+
+        var sheetRange = queue.sheet.getRange(row.__rowNumber, 1, 1, header.length);
+        var values = sheetRange.getValues()[0];
+        values[titleColIdx] = title || '';
+        values[descColIdx] = description || '';
+        sheetRange.setValues([values]);
+
+        Logger.log(
+          '[SEO_FETCH_META] Row ' + row.__rowNumber +
+          ' (' + categoryPath + ') → "' + title + '"'
+        );
+        fetched++;
+      } else {
+        Logger.log('[SEO_FETCH_META] Row ' + row.__rowNumber + ' HTTP ' + code + ': ' + url);
+        errors++;
+      }
+    } catch (err) {
+      var msg = err && err.message ? err.message : String(err || '');
+      Logger.log('[SEO_FETCH_META] Row ' + row.__rowNumber + ' ERROR: ' + msg);
+      errors++;
+    }
+
+    if (idx < batch.length - 1) {
+      Utilities.sleep(SLEEP_MS);
+    }
+  });
+
+  var summary = {
+    ok: true,
+    fetched: fetched,
+    skipped: eligible.length - batch.length,
+    errors: errors,
+    total: queue.rows.length
+  };
+  Logger.log('[SEO_FETCH_META] Done: ' + JSON.stringify(summary));
+  return summary;
+}
+
+function categoryPathToSlug_(categoryPath) {
+  return categoryPath
+    .split(/\s*\/\s*/)
+    .map(function(segment) {
+      return transliterateIcelandic_(segment.trim())
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    })
+    .filter(Boolean)
+    .join('/');
+}
+
+function transliterateIcelandic_(text) {
+  return String(text || '')
+    .replace(/[Þþ]/g, 'th')
+    .replace(/[Ææ]/g, 'ae')
+    .replace(/[Áá]/g, 'a')
+    .replace(/[Éé]/g, 'e')
+    .replace(/[Íí]/g, 'i')
+    .replace(/[Óó]/g, 'o')
+    .replace(/[Úú]/g, 'u')
+    .replace(/[Ýý]/g, 'y')
+    .replace(/[Ðð]/g, 'd')
+    .replace(/[Öö]/g, 'o');
+}
+
+function extractHtmlTitle_(html) {
+  var match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (!match) return '';
+  return decodeHtmlEntities_(match[1]).replace(/\s+/g, ' ').trim();
+}
+
+function extractHtmlMetaDescription_(html) {
+  var match =
+    html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)/i) ||
+    html.match(/<meta[^>]+content=["']([^"']*)[^>]+name=["']description["']/i);
+  if (!match) return '';
+  return decodeHtmlEntities_(match[1]).replace(/\s+/g, ' ').trim();
+}
+
+function decodeHtmlEntities_(text) {
+  return String(text || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
+/************************************************************
+ * DEDUPLICATE SEO_QUEUE BY CATEGORY NAME
+ * deduplicateSeoQueue_v1(opts)
+ *   - Groups rows by Category Name (case-insensitive)
+ *   - Keeps best row per group: Approved > GENERATED > Revenue Incl > first
+ *   - opts.markOnly: true  → sets Status='DUPLICATE' instead of deleting
+ *   - opts.dryRun: true    → logs what would happen, no writes
+ ************************************************************/
+
+function deduplicateSeoQueue_v1(opts) {
+  opts = opts || {};
+  var markOnly = !!opts.markOnly;
+  var dryRun = !!opts.dryRun;
+
+  var queue = getSeoQueueData_();
+  var rows = queue.rows;
+
+  var groups = {};
+  rows.forEach(function(row) {
+    var key = String(row['Category Name'] || '').trim().toLowerCase();
+    if (!key) return;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(row);
+  });
+
+  var toKeep = [];
+  var toDrop = [];
+
+  Object.keys(groups).forEach(function(key) {
+    var group = groups[key];
+    if (group.length <= 1) return;
+
+    // Priority: Approved > GENERATED status > Revenue Incl desc > earliest row
+    group.sort(function(a, b) {
+      var aApproved = normalizeBooleanFlag_(a.Approved) ? 2 : 0;
+      var bApproved = normalizeBooleanFlag_(b.Approved) ? 2 : 0;
+      if (aApproved !== bApproved) return bApproved - aApproved;
+
+      var STATUS_RANK = { APPROVED: 3, GENERATED: 2, REVISED: 2, PENDING: 1, ERROR: 0, RETRY: 0, DUPLICATE: -1 };
+      var aStatus = STATUS_RANK[normalizeStatus_(a.Status)] || 0;
+      var bStatus = STATUS_RANK[normalizeStatus_(b.Status)] || 0;
+      if (aStatus !== bStatus) return bStatus - aStatus;
+
+      var aRevenue = Number(a['Revenue Incl'] || 0);
+      var bRevenue = Number(b['Revenue Incl'] || 0);
+      if (aRevenue !== bRevenue) return bRevenue - aRevenue;
+
+      return a.__rowNumber - b.__rowNumber;
+    });
+
+    toKeep.push(group[0].__rowNumber);
+    group.slice(1).forEach(function(row) { toDrop.push(row); });
+  });
+
+  if (!toDrop.length) {
+    Logger.log('[SEO_DEDUP] No duplicates found.');
+    return { ok: true, duplicates: 0, action: 'none' };
+  }
+
+  Logger.log(
+    '[SEO_DEDUP] Found ' + toDrop.length + ' duplicate rows. ' +
+    (dryRun ? '(dry run)' : markOnly ? 'Marking.' : 'Deleting.')
+  );
+  toDrop.forEach(function(row) {
+    Logger.log(
+      '[SEO_DEDUP] ' + (dryRun ? '[DRY] ' : '') +
+      'Drop row ' + row.__rowNumber + ': ' + row['Category Name'] +
+      ' (Level2=' + (row['Level 2'] || '') + ')'
+    );
+  });
+
+  if (dryRun) {
+    return { ok: true, duplicates: toDrop.length, action: 'dry_run' };
+  }
+
+  if (markOnly) {
+    toDrop.forEach(function(row) {
+      writeSeoQueueResult_(queue.sheet, row.__rowNumber, {
+        status: 'DUPLICATE',
+        notes: 'Duplicate of row kept at earlier/higher-priority position'
+      });
+    });
+    return { ok: true, duplicates: toDrop.length, action: 'marked' };
+  }
+
+  // Delete rows from bottom to top so row numbers stay valid
+  var rowsToDelete = toDrop.map(function(row) { return row.__rowNumber; });
+  rowsToDelete.sort(function(a, b) { return b - a; });
+  rowsToDelete.forEach(function(rowNumber) {
+    queue.sheet.deleteRow(rowNumber);
+  });
+
+  Logger.log('[SEO_DEDUP] Deleted ' + rowsToDelete.length + ' duplicate rows.');
+  return { ok: true, duplicates: rowsToDelete.length, action: 'deleted' };
+}
