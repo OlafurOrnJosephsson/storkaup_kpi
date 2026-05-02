@@ -901,6 +901,12 @@
           setMetricHint("month-weborders-pct", "BC hlutföll byggjast á: " + rmLabel);
           setMetricHint("month-webrev-pct", "BC hlutföll byggjast á: " + rmLabel);
         }
+        setText("rolling30-webrev-pct", pctOrDash(data.month.rolling30WebRevenuePct));
+        if (data.month.rolling30StartDate && data.month.rolling30EndDate) {
+          var r30Label = data.month.rolling30StartDate + "–" + data.month.rolling30EndDate;
+          setText("rolling30-date-range", r30Label);
+          setMetricHint("rolling30-webrev-pct", "Síðustu 30 dagar (3d buffer): " + r30Label);
+        }
         setText("month-salesrep-pct", pct(data.month.salesRepPct));
         setText("month-yoy-orders", pct(data.month.yoyOrdersPct));
         if (dayApiUnavailable) {

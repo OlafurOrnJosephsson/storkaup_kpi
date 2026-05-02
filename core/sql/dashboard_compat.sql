@@ -328,6 +328,49 @@ day_avg_weekday_12w as (
     coalesce(avg(daily.revenue_incl), 0)::numeric as avg_revenue_incl,
     coalesce(count(*), 0)::int as sample_days
   from daily
+),
+rolling30_ctx as (
+  -- 30-day window ending 3 days ago — both sides have same BC booking lag applied
+  select
+    (current_date - interval '33 day')::date as start_date,
+    (current_date - interval '3 day')::date  as end_date
+),
+rolling30_bc_inv as (
+  select
+    coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
+    coalesce(sum(i.amount_excl) filter (
+      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+         or (
+           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
+           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
+         )
+    ), 0)::numeric as web_revenue_excl
+  from raw.bc_invoices_raw i
+  cross join rolling30_ctx r
+  where coalesce(i.booking_date, i.order_date) >= r.start_date::timestamp
+    and coalesce(i.booking_date, i.order_date) < r.end_date::timestamp
+),
+rolling30_bc_cr as (
+  select
+    coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
+    coalesce(sum(i.amount_excl) filter (
+      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+         or (
+           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
+           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
+         )
+    ), 0)::numeric as web_revenue_excl
+  from raw.bc_credit_invoices_raw i
+  cross join rolling30_ctx r
+  where coalesce(i.booking_date, i.order_date) >= r.start_date::timestamp
+    and coalesce(i.booking_date, i.order_date) < r.end_date::timestamp
+),
+rolling30_net as (
+  select
+    greatest(inv.revenue_excl - cr.revenue_excl, 0)::numeric as revenue_excl,
+    greatest(inv.web_revenue_excl - cr.web_revenue_excl, 0)::numeric as web_revenue_excl
+  from rolling30_bc_inv inv
+  cross join rolling30_bc_cr cr
 )
 select jsonb_build_object(
   'month',
@@ -437,7 +480,14 @@ select jsonb_build_object(
       then coalesce((select orders from web_month), 0) / nullif((select orders from web_prev_year), 0)
       else 0 end,
     'bcAsOf', to_char((select last_sync_date from bc_sync_anchor), 'YYYY-MM-DD'),
-    'bcRatioMonth', to_char((select ratio_start from bc_ratio_ctx), 'YYYY-MM')
+    'bcRatioMonth', to_char((select ratio_start from bc_ratio_ctx), 'YYYY-MM'),
+    'rolling30WebRevenuePct', case
+      when coalesce((select revenue_excl from rolling30_net), 0) > 0
+        then coalesce((select web_revenue_excl from rolling30_net), 0)
+             / nullif((select revenue_excl from rolling30_net), 0)
+      else null end,
+    'rolling30StartDate', to_char((select start_date from rolling30_ctx), 'DD.MM'),
+    'rolling30EndDate',   to_char((select end_date   from rolling30_ctx), 'DD.MM')
   ),
   'day',
   jsonb_build_object(
