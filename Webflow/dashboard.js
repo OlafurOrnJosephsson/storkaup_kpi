@@ -311,7 +311,7 @@
 
     var count = getMonthDropdownCount();
     var currentMonth = getCurrentMonthKey();
-    var activeMonth = getActiveMonth() || currentMonth;
+    var activeMonth = currentMonth;
     var html = "";
 
     for (var i = 0; i < count; i += 1) {
