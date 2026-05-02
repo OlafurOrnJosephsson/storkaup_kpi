@@ -1,6 +1,6 @@
 # KPI Goals
 
-Updated: 2026-04-17
+Updated: 2026-05-02
 
 ## North Star
 
@@ -16,7 +16,7 @@ Updated: 2026-04-17
 
 - Webflow dashboards load and read current Supabase RPC/view data.
 - Daily dashboard live mode uses Reykjavik day calculation instead of raw UTC rollover.
-- Dashboard month dropdown is automated (no manual selection needed).
+- Dashboard month dropdown is automated and always defaults to current month.
 - BC monthly web-share cards match Supabase net BC math:
   - `Vefpantanir % af heildarsolu`
   - `Vefsala % af heildarsolu`
@@ -35,6 +35,9 @@ Updated: 2026-04-17
 - Klaviyo attribution live: sync running, attribution mart in Supabase, KPI widgets at `/kpi/klaviyo`.
 - Website dashboard (GA4) phase 1 live in Webflow.
 - SEO manager phase 1 live: queue-driven Icelandic copy generation via OpenAI.
+- Unified order search live: SR/SK/WEB orders searchable by company name, kennitala, order ID, SP-nr; results rendered as `data-*` attributes for Webflow design control.
+- BC upsert no longer overwrites `amount_excl` with 0; `order_no` (SP-nr) now synced per invoice.
+- `runPostBcImportSync_v1` restores `scheduledBcSync_v1` ingestion_run → "Uppfært" timestamp stays current.
 
 ## Non-Negotiables
 
@@ -45,27 +48,34 @@ Updated: 2026-04-17
   - canonical BC web tagging remains `salesperson_code = 'VEFUR'` with historical `CO22-*` fallback only where already defined
 - Do not reintroduce runtime-heavy BC date parsing in `day_kpi_pack`.
 - Keep Webflow pages resilient if a secondary RPC fails; primary dashboard should still render.
+- Never include `amount_excl` in BC invoice/credit invoice upsert payloads — the BC sheets do not have that column and it will overwrite with 0.
 
 ## Watch Items
 
 - `scheduledCustomerAnalysisSync_v1` has historically high error rate; consider disabling if low-value.
-- Klaviyo sync (`scheduledKlaviyoSync_v1`) is new — watch first weeks for checkpoint drift or API rate errors.
-- Website dashboard (`website_kpi_pack` RPC) is new — watch for cold-start latency on first load.
+- Klaviyo sync (`scheduledKlaviyoSync_v1`) checkpoint stability — watch for drift or missed events as it ages past 6 weeks.
+- `webRevenuePct` currently broken (amount_excl zeroed by backfill on 2026-05-01) — pending P9-1 SQL restoration.
+- `Sala frá Klaviyo með vsk` shows `–` on `/kpi/klaviyo` — likely null `revenue_incl` in `newweb_orders_raw`; pending P5-6.
+- GA4 purchase ratio (`ga4_purchase_ratio_7d`) not yet validated post-GTM fix — blocks funnel metrics (P8-2, P8-3).
 - Datepicker styling is heavily overridden; if Webflow global input styles change, re-check focus/active states.
 
 ## Next Practical Improvements
 
-- Investigate `Sala frá Klaviyo með vsk` showing `–` on `/kpi/klaviyo` (likely null `revenue_incl` in `newweb_orders_raw`).
-- Validate website dashboard in production; define phase 2 scope.
-- Decide SEO manager phase 2: Prismic API write vs manual copy/paste workflow.
-- Decide whether `scheduledCustomerAnalysisSync_v1` is truly needed daily; disable if low-value and noisy.
-- Add a tiny trigger audit function that logs current trigger schedules in one place.
-- Clean remaining mojibake / encoding leftovers in older GAS docs and utility logs.
+In rough priority order:
+
+1. **Restore `amount_excl` in Supabase** (P9-1) — run the two-step SQL (bc_lines_raw sum, fallback amount_incl/1.24); `webRevenuePct` is broken until this is done.
+2. **Validate GA4 purchase ratio** (P8-2) — check `ga4_purchase_ratio_7d` sanity result; unblocks funnel metrics and website dashboard phase 2.
+3. **Fix Klaviyo revenue display** (P5-6) — trace null `revenue_incl` in `newweb_orders_raw`; probably missing field in Magento sync mapping.
+4. **Decide SEO phase 2** (P7-2) — Prismic API integration vs. keep manual copy/paste; scoping decision only.
+5. **Confirm ALERT_EMAILS is configured** (P10-1) — verify failure alerts actually deliver.
+6. **Disable or fix `scheduledCustomerAnalysisSync_v1`** (P10-2) — reduce noisy failures if truly low-value.
+7. **Add trigger audit function** (P10-3) — one-shot menu item to print active trigger schedule.
+8. **Turn off DEBUG flags** (P10-4) — `Webflow/dashboard.js` and `Webflow/website-dashboard.js` have `DEBUG = true`.
 
 ## Trigger Intent
 
 - `safePoll_v2`: every 5 minutes
-- `scheduledBcSync_v1`: twice daily, morning and early afternoon
+- `scheduledBcSync_v1` / `runPostBcImportSync_v1`: twice daily, morning and early afternoon
 - `scheduledMagentoSync_v1`: hourly
 - `scheduledKlaviyoSync_v1`: every 15 minutes
 - `runDailySanityChecks_v1`: morning, after early ingest jobs

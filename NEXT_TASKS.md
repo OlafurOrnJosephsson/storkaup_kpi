@@ -2,6 +2,22 @@
 
 ## Recent Release Notes
 
+- Order search (`/kpi/pantanir` or similar) added (2026-05-02):
+  - `core/sql/search_orders.sql` — unified RPC across SR (BC invoices), SK (BC credit invoices), WEB (Magento)
+  - `Webflow/order-search.js` — debounced search, template-clone render, all data as `data-*` attributes
+  - Fields: `data-source`, `data-doc-type`, `data-order-id`, `data-sp-no`, `data-web-order-id`, `data-company-id`, `data-company-name`, `data-total`, `data-total-fmt`, `data-date`, `data-status`, `data-salesperson`, `data-items`, `data-is-vefur`
+  - WEB dedup: rows excluded if `external_doc_no` already exists as SR in BC
+  - `dashboard-bootstrap.js` updated to load `order-search.js` in chain
+
+- BC data integrity fixes (2026-05-02):
+  - `amount_excl` removed from BC invoice and credit invoice upsert payloads — column does not exist in BC sheets, was overwriting with 0
+  - `order_no` (SP-nr) added to BC invoice upsert payload
+  - `runPostBcImportSync_v1` now writes `scheduledBcSync_v1` ingestion_run → restores "Uppfært" timestamp on dashboard
+  - **Pending**: run Supabase SQL to restore `amount_excl` values from `bc_lines_raw` (see P9-1)
+
+- Dashboard default month fixed (2026-05-02):
+  - `populateMonthDropdown` now always defaults to current month; no longer inherits stale `.active` from Webflow-authored DOM
+
 - Top products page fixed:
   - `api.v_top_products_master` og `api.v_category_master` voru að timeouta (57014) við REST API köll
   - Búið til `mart.mv_top_products_master` og `mart.mv_category_master` (pre-computed)
@@ -83,6 +99,7 @@
 | P5-3 | Implement v1 attribution mart (`last_click`, 30-day window) | Olafur | Done | `mv_klaviyo_attribution_daily_nobot` live; returning 326 total attributed orders |
 | P5-4 | Add KPI widgets (campaign revenue, conversions, conv %) to Webflow dashboard | Olafur | Done | `/kpi/klaviyo` page live with all KPI cards; `Sala með vsk` shows `–` (likely null `revenue_incl` in source — watch) |
 | P5-5 | Add validation check (Klaviyo-attributed orders <= total web orders) | Olafur | Done | `klaviyo_orders_le_web_orders_30d` check implemented in `runDailySanityChecks_v1`; runs daily |
+| P5-6 | Fix null `revenue_incl` on Klaviyo dashboard (`Sala frá Klaviyo með vsk` shows `–`) | Olafur | Todo | `/kpi/klaviyo` shows a non-null ISK value for `Sala frá Klaviyo með vsk`; root cause traced to `newweb_orders_raw` |
 
 ## Priority 6 - Website Dashboard & GA4
 
@@ -91,7 +108,7 @@
 | P6-1 | Validate `website_kpi_pack` RPC in Supabase and confirm all dashboard cards render | Olafur | Done | All KPI cards confirmed live in production (2026-04-17) |
 | P6-2 | Fix `Dagsetning:` date label on `/kpi/vefur-kpi` showing American format (04/16/2026) | Olafur | Done | `formatDayLabel` rewritten to manual `dd.mm.yyyy` — no Intl locale dependency; deploy to Webflow and update pin |
 | P6-3 | Pin `website-dashboard.js` + `website-dashboard-bootstrap.js` in Webflow and update pins below | Olafur | Done | Webflow deploy rev updated to `cb56c43`; all pages confirmed loading |
-| P6-4 | Define phase 2 scope for website dashboard (segments, funnels, or trend lines) | Olafur | Blocked | Waiting for GA4 purchase tracking fix to stabilise (GTM fix applied 2026-04-17 — validate ratio next day before adding funnel metrics) |
+| P6-4 | Define phase 2 scope for website dashboard (segments, funnels, or trend lines) | Olafur | Blocked | Waiting for P8-2 GA4 purchase ratio validation to pass |
 
 ## Priority 7 - SEO Manager
 
@@ -108,11 +125,27 @@
 | P8-2 | Validate GA4 purchase ratio after fix | Olafur | Todo | `ga4_purchase_ratio_7d` passes (ratio < 2.5) on next daily sanity run; compare query confirms ga4_purchases ≈ actual_orders |
 | P8-3 | Add funnel conversion rates to website dashboard once P8-2 passes | Olafur | Todo | `add_to_cart→checkout %` and `checkout→purchase %` visible on `/kpi/vefur-kpi`; numbers make business sense |
 
+## Priority 9 - BC Data Integrity (Urgent)
+
+| ID | Task | Owner | Status | Acceptance Check |
+|---|---|---|---|---|
+| P9-1 | Restore `bc_invoices_raw.amount_excl` in Supabase via SQL (backfill from `bc_lines_raw`, fallback `amount_incl/1.24`) | Olafur | Todo | `webRevenuePct` shows correct % matching Power BI again; no zero rows for amount_excl in recent months |
+| P9-2 | Validate `webRevenuePct` on dashboard after P9-1 | Olafur | Todo | Dashboard `Vefsala % af heildarsolu` matches Power BI within ~1% for last closed month |
+
+## Priority 10 - Operational Hygiene
+
+| ID | Task | Owner | Status | Acceptance Check |
+|---|---|---|---|---|
+| P10-1 | Confirm `ALERT_EMAILS` Script Property is set in Apps Script | Olafur | Todo | `notifyTriggerFailure_` confirmed to deliver email on test failure; no silent gaps |
+| P10-2 | Decide fate of `scheduledCustomerAnalysisSync_v1` (disable if low-value and noisy) | Olafur | Todo | Either disabled with no dashboard regression, or error rate reduced and kept |
+| P10-3 | Add `auditTriggerSchedule_v1()` menu function to log active trigger cadences | Olafur | Todo | Running the function prints all active triggers with their cadence to log/sheet |
+| P10-4 | Turn off `DEBUG = true` in `Webflow/dashboard.js` and `Webflow/website-dashboard.js` for production | Olafur | Todo | No `[dashboard]` or `[website-dashboard]` debug lines in browser console on production pages |
+
 ## Current Production Pins
 
 Update these whenever Webflow custom code is changed.
 
-- Webflow deploy rev (both bootstrap `data-storkaup-rev`): `6617e82`
+- Webflow deploy rev (both bootstrap `data-storkaup-rev`): `627e802`
 - `Webflow/dashboard-theme.css`: `2b272cd`
 - Trigger schedule baseline: `ab2931a`
 
