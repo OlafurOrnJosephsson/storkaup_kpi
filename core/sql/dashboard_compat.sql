@@ -344,7 +344,15 @@ rolling30_bc_inv as (
            coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
-    ), 0)::numeric as web_revenue_excl
+    ), 0)::numeric as web_revenue_excl,
+    count(*)::numeric as orders,
+    count(*) filter (
+      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+         or (
+           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
+           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
+         )
+    )::numeric as web_orders
   from raw.bc_invoices_raw i
   cross join rolling30_ctx r
   where coalesce(i.booking_date, i.order_date) >= r.start_date::timestamp
@@ -359,7 +367,15 @@ rolling30_bc_cr as (
            coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
            and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
          )
-    ), 0)::numeric as web_revenue_excl
+    ), 0)::numeric as web_revenue_excl,
+    count(*)::numeric as orders,
+    count(*) filter (
+      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+         or (
+           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
+           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
+         )
+    )::numeric as web_orders
   from raw.bc_credit_invoices_raw i
   cross join rolling30_ctx r
   where coalesce(i.booking_date, i.order_date) >= r.start_date::timestamp
@@ -368,7 +384,9 @@ rolling30_bc_cr as (
 rolling30_net as (
   select
     greatest(inv.revenue_excl - cr.revenue_excl, 0)::numeric as revenue_excl,
-    greatest(inv.web_revenue_excl - cr.web_revenue_excl, 0)::numeric as web_revenue_excl
+    greatest(inv.web_revenue_excl - cr.web_revenue_excl, 0)::numeric as web_revenue_excl,
+    greatest(inv.orders - cr.orders, 0)::numeric as orders,
+    greatest(inv.web_orders - cr.web_orders, 0)::numeric as web_orders
   from rolling30_bc_inv inv
   cross join rolling30_bc_cr cr
 )
@@ -485,6 +503,11 @@ select jsonb_build_object(
       when coalesce((select revenue_excl from rolling30_net), 0) > 0
         then coalesce((select web_revenue_excl from rolling30_net), 0)
              / nullif((select revenue_excl from rolling30_net), 0)
+      else null end,
+    'rolling30WebOrdersPct', case
+      when coalesce((select orders from rolling30_net), 0) > 0
+        then coalesce((select web_orders from rolling30_net), 0)
+             / nullif((select orders from rolling30_net), 0)
       else null end,
     'rolling30StartDate', to_char((select start_date from rolling30_ctx), 'DD.MM'),
     'rolling30EndDate',   to_char((select end_date   from rolling30_ctx), 'DD.MM')
