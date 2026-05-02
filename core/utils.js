@@ -2053,27 +2053,66 @@ function resetBcLinesFullBackfillCursor_v1() {
 /************************************************************
  * BC DRIVE DROP — processBcDrop_v1()
  *
- * User saves BC XLSX exports to a configured Google Drive folder.
- * This function detects new XLSX files, converts each to a temporary
- * Google Sheet, writes the data into the corresponding BC_SALES tab,
- * cleans up, and calls runPostBcImportSync_v1().
+ * Incremental: reads XLSX in memory, deduplicates against Supabase,
+ * uploads only NEW rows. Does NOT write to BC_SALES sheets.
  *
  * Setup:
- *   1. Create a folder in Google Drive (e.g. inside STÓRKAUP_KPI_CORE).
- *   2. Add row in STORKAUP_CONFIG → SETTINGS tab:
- *        Key = BC_DROP_FOLDER_ID   Value = <folder ID from Drive URL>
- *   3. Save BC XLSX exports to that folder instead of local computer.
- *   4. Run from menu "BC Sync → Importa BC skrár úr Drive Drop" or
- *      let the trigger call it (set up a 15-min trigger on this function).
+ *   1. Create a folder in Google Drive (e.g. STÓRKAUP_KPI_CORE/BC_DROP).
+ *   2. STORKAUP_CONFIG → SETTINGS: BC_DROP_FOLDER_ID = <folder ID>
+ *   3. Save BC XLSX exports to that folder.
+ *   4. Menu: BC Sync → Importa BC skrár úr Drive Drop
+ *      (or set a 15-min time trigger on processBcDrop_v1)
  *
- * File matching (by normalized filename):
- *   "...solureikningslinur..."  → BC_LINES
- *   "...kredit..."              → BC_CREDIT_INVOICES
- *   "...solureikn..."           → BC_INVOICES
+ * File matching (normalized filename):
+ *   "...linur..."      → BC_LINES
+ *   "...kredit..."     → BC_CREDIT_INVOICES
+ *   "...solureikn..."  → BC_INVOICES
  ************************************************************/
+
+function parseBcXlsxRows_(data, schemaKey) {
+  var schema = STORKAUP_SCHEMA[schemaKey];
+  if (!schema || !data || data.length < 2) return [];
+
+  var header = data[0].map(String);
+  var colIndex = {};
+  var colIndexNorm = {};
+  header.forEach(function(name, i) { colIndex[name] = i; });
+  header.forEach(function(name, i) {
+    var n = normalizeHeaderKeyLocal_(name);
+    if (n && !(n in colIndexNorm)) colIndexNorm[n] = i;
+  });
+
+  function resolveIdx(colName) {
+    if (colName in colIndex) return colIndex[colName];
+    var n = normalizeHeaderKeyLocal_(colName);
+    return (n && n in colIndexNorm) ? colIndexNorm[n] : -1;
+  }
+
+  var rows = [];
+  for (var r = 1; r < data.length; r++) {
+    var rowVals = data[r];
+    var obj = {};
+    Object.keys(schema).forEach(function(key) {
+      if (key === 'FILE' || key === 'PK' || key === 'SHEET') return;
+      if (key === 'COLUMNS' && typeof schema.COLUMNS === 'object') {
+        Object.keys(schema.COLUMNS).forEach(function(subKey) {
+          var idx = resolveIdx(schema.COLUMNS[subKey]);
+          obj[subKey] = idx >= 0 ? rowVals[idx] : '';
+        });
+        return;
+      }
+      if (typeof schema[key] !== 'string') return;
+      var idx = resolveIdx(schema[key]);
+      obj[key] = idx >= 0 ? rowVals[idx] : '';
+    });
+    rows.push(obj);
+  }
+  return rows;
+}
+
 function processBcDrop_v1() {
   var cfg = loadConfig_();
-  var dropFolderId = String(((cfg.SETTINGS || {})).BC_DROP_FOLDER_ID || '').trim();
+  var dropFolderId = String((cfg.SETTINGS || {}).BC_DROP_FOLDER_ID || '').trim();
   if (!dropFolderId) {
     Logger.log('[BC_DROP] BC_DROP_FOLDER_ID not set in STORKAUP_CONFIG → SETTINGS.');
     return { ok: false, reason: 'no_folder_configured' };
@@ -2083,48 +2122,68 @@ function processBcDrop_v1() {
   try {
     dropFolder = DriveApp.getFolderById(dropFolderId);
   } catch (e) {
-    Logger.log('[BC_DROP] Cannot open drop folder ' + dropFolderId + ': ' + e.message);
+    Logger.log('[BC_DROP] Cannot open drop folder: ' + e.message);
     return { ok: false, reason: 'folder_not_found', error: e.message };
   }
 
-  // Ensure archive subfolder exists
   var archiveIter = dropFolder.getFoldersByName('archive');
   var archiveFolder = archiveIter.hasNext() ? archiveIter.next() : dropFolder.createFolder('archive');
 
-  var processed = [];
-  var errors = [];
+  // Collect files and classify
+  var filesToProcess = [];
   var fileIter = dropFolder.getFilesByType(
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   );
-
   while (fileIter.hasNext()) {
     var file = fileIter.next();
-    var fileName = file.getName();
-    var norm = normalizeHeaderKeyLocal_(fileName.replace(/\.xlsx$/i, ''));
-
-    // Match filename to schema — check lines before invoices (lines name contains "solureikn" too)
-    var schemaKey;
-    if (norm.indexOf('linur') !== -1) {
-      schemaKey = 'BC_LINES';
-    } else if (norm.indexOf('kredit') !== -1) {
-      schemaKey = 'BC_CREDIT_INVOICES';
-    } else if (norm.indexOf('solureikn') !== -1) {
-      schemaKey = 'BC_INVOICES';
-    } else {
-      Logger.log('[BC_DROP] Unknown file type, skipping: ' + fileName);
-      errors.push({ file: fileName, error: 'unknown_file_type' });
+    var norm = normalizeHeaderKeyLocal_(file.getName().replace(/\.xlsx$/i, ''));
+    var schemaKey = norm.indexOf('linur') !== -1 ? 'BC_LINES'
+                  : norm.indexOf('kredit') !== -1 ? 'BC_CREDIT_INVOICES'
+                  : norm.indexOf('solureikn') !== -1 ? 'BC_INVOICES'
+                  : null;
+    if (!schemaKey) {
+      Logger.log('[BC_DROP] Skipping unrecognised file: ' + file.getName());
       continue;
     }
+    filesToProcess.push({ file: file, fileName: file.getName(), schemaKey: schemaKey });
+  }
 
-    Logger.log('[BC_DROP] ' + fileName + ' → ' + schemaKey);
+  if (!filesToProcess.length) {
+    Logger.log('[BC_DROP] No matching XLSX files found.');
+    return { ok: true, processed: 0, reason: 'no_files' };
+  }
 
+  // Process invoices before lines so dedup is consistent
+  filesToProcess.sort(function(a, b) {
+    var ord = { BC_INVOICES: 1, BC_CREDIT_INVOICES: 2, BC_LINES: 3 };
+    return (ord[a.schemaKey] || 9) - (ord[b.schemaKey] || 9);
+  });
+
+  // Pre-fetch existing Supabase keys (2-year window covers backdated corrections)
+  var cutoff = new Date(Date.now() - 730 * 86400 * 1000).toISOString().slice(0, 10);
+  var existingInvoiceKeys = {};
+  var existingCreditKeys = {};
+  try { existingInvoiceKeys = fetchExistingBcInvoiceKeys_(cutoff); } catch (e) {
+    Logger.log('[BC_DROP] Could not fetch invoice keys: ' + e.message);
+  }
+  try { existingCreditKeys = fetchExistingBcCreditInvoiceKeys_(cutoff); } catch (e) {
+    Logger.log('[BC_DROP] Could not fetch credit keys: ' + e.message);
+  }
+  Logger.log('[BC_DROP] Existing keys — invoices: ' + Object.keys(existingInvoiceKeys).length +
+             ', credits: ' + Object.keys(existingCreditKeys).length);
+
+  var processed = [];
+  var errors = [];
+
+  filesToProcess.forEach(function(item) {
     var tempFileId = null;
     var fileOk = false;
+    Logger.log('[BC_DROP] Processing: ' + item.fileName + ' (' + item.schemaKey + ')');
 
     try {
-      // Convert XLSX → Google Sheet via Drive API v3 (no advanced service needed)
+      // Convert XLSX → temp Google Sheet via Drive API v3
       var copyRes = UrlFetchApp.fetch(
-        'https://www.googleapis.com/drive/v3/files/' + file.getId() + '/copy',
+        'https://www.googleapis.com/drive/v3/files/' + item.file.getId() + '/copy',
         {
           method: 'post',
           headers: {
@@ -2133,92 +2192,74 @@ function processBcDrop_v1() {
           },
           payload: JSON.stringify({
             mimeType: 'application/vnd.google-apps.spreadsheet',
-            name: '_BC_DROP_TEMP_' + schemaKey + '_' + Date.now()
+            name: '_BC_DROP_TEMP_' + item.schemaKey + '_' + Date.now()
           }),
           muteHttpExceptions: true
         }
       );
-
       if (copyRes.getResponseCode() !== 200) {
         throw new Error('Drive copy failed (' + copyRes.getResponseCode() + '): ' +
-          copyRes.getContentText().slice(0, 300));
+          copyRes.getContentText().slice(0, 200));
       }
 
       tempFileId = JSON.parse(copyRes.getContentText()).id;
-      var tempSs = SpreadsheetApp.openById(tempFileId);
-      var data = tempSs.getSheets()[0].getDataRange().getValues();
+      var data = SpreadsheetApp.openById(tempFileId).getSheets()[0].getDataRange().getValues();
+      if (data.length < 2) throw new Error('Empty file');
 
-      if (data.length < 2) {
-        throw new Error('Tóm skrá (< 2 raðir): ' + fileName);
+      var allRows = parseBcXlsxRows_(data, item.schemaKey);
+      Logger.log('[BC_DROP] Parsed rows: ' + allRows.length);
+
+      var newRows, result;
+
+      if (item.schemaKey === 'BC_INVOICES') {
+        newRows = allRows.filter(function(r) {
+          return !existingInvoiceKeys[String(r.DOCUMENT_NO || '').trim()];
+        });
+        Logger.log('[BC_DROP] New invoices: ' + newRows.length + ' / ' + allRows.length);
+        result = newRows.length ? upsertBcInvoicesToSupabase_(newRows) : { uploaded: 0 };
+
+      } else if (item.schemaKey === 'BC_CREDIT_INVOICES') {
+        newRows = allRows.filter(function(r) {
+          return !existingCreditKeys[String(r.DOCUMENT_NO || '').trim()];
+        });
+        Logger.log('[BC_DROP] New credits: ' + newRows.length + ' / ' + allRows.length);
+        result = newRows.length ? upsertBcCreditInvoicesToSupabase_(newRows) : { uploaded: 0 };
+
+      } else {
+        // BC_LINES: upload lines for invoices not already in Supabase
+        newRows = allRows.filter(function(r) {
+          return !existingInvoiceKeys[String(r.DOCUMENT_NO || '').trim()];
+        });
+        Logger.log('[BC_DROP] New lines: ' + newRows.length + ' / ' + allRows.length);
+        result = newRows.length ? upsertBcLinesToSupabase_(newRows) : { uploaded: 0 };
       }
 
-      // Locate the target tab in BC_SALES (or whichever sheet the schema points to)
-      var schema = STORKAUP_SCHEMA[schemaKey];
-      var binding = cfg.SHEETS[schema.FILE];
-      if (!binding || !binding.ID) {
-        throw new Error('No SHEETS binding for ' + schema.FILE + ' in STORKAUP_CONFIG');
-      }
-
-      var targetSs = SpreadsheetApp.openById(binding.ID);
-      var sheetName = schema.SHEET || binding.NAME || schemaKey;
-      var targetSheet = targetSs.getSheetByName(sheetName);
-
-      if (!targetSheet) {
-        var wanted = normalizeHeaderKeyLocal_(sheetName);
-        var allSheets = targetSs.getSheets();
-        for (var s = 0; s < allSheets.length; s++) {
-          if (normalizeHeaderKeyLocal_(allSheets[s].getName()) === wanted) {
-            targetSheet = allSheets[s];
-            break;
-          }
-        }
-      }
-      if (!targetSheet) {
-        targetSheet = targetSs.insertSheet(sheetName);
-      }
-
-      targetSheet.clearContents();
-      targetSheet.getRange(1, 1, data.length, data[0].length).setValues(data);
-
-      processed.push({ file: fileName, schema: schemaKey, rows: data.length - 1 });
-      Logger.log('[BC_DROP] ✅ ' + fileName + ' → ' + sheetName + ' (' + (data.length - 1) + ' rows)');
+      processed.push({
+        file: item.fileName, schema: item.schemaKey,
+        total: allRows.length, new: newRows.length, uploaded: result.uploaded || 0
+      });
+      Logger.log('[BC_DROP] ✅ ' + item.fileName + ' — uploaded: ' + (result.uploaded || 0));
       fileOk = true;
 
     } catch (e) {
-      Logger.log('[BC_DROP] ❌ ' + fileName + ': ' + e.message);
-      errors.push({ file: fileName, schema: schemaKey, error: e.message });
+      Logger.log('[BC_DROP] ❌ ' + item.fileName + ': ' + e.message);
+      errors.push({ file: item.fileName, schema: item.schemaKey, error: e.message });
     } finally {
-      if (tempFileId) {
-        try { DriveApp.getFileById(tempFileId).setTrashed(true); } catch (_) {}
-      }
+      if (tempFileId) { try { DriveApp.getFileById(tempFileId).setTrashed(true); } catch (_) {} }
     }
 
-    // Move to archive only on success — failures stay in drop folder for retry
-    if (fileOk) {
-      try { file.moveTo(archiveFolder); } catch (e) {
-        Logger.log('[BC_DROP] Could not archive ' + fileName + ': ' + e.message);
-      }
-    }
-  }
+    if (fileOk) { try { item.file.moveTo(archiveFolder); } catch (_) {} }
+  });
 
-  if (!processed.length && !errors.length) {
-    Logger.log('[BC_DROP] No XLSX files found in drop folder.');
-    return { ok: true, processed: 0, reason: 'no_files' };
-  }
+  // Write ingestion_run so dashboard "Uppfært" timestamp stays current
+  var runId = null;
+  try { runId = startIngestionRun_('scheduledBcSync_v1', 'bc', { trigger_type: 'drive_drop' }); } catch (_) {}
+  var summary = { processed: processed, errors: errors };
+  var status = errors.length === 0 ? 'success' : (processed.length > 0 ? 'partial' : 'error');
+  try { if (runId) finishIngestionRun_(runId, status, null, summary); } catch (_) {}
 
-  Logger.log('[BC_DROP] Processed: ' + processed.length + ', Errors: ' + errors.length);
-
-  if (processed.length > 0) {
-    try {
-      var syncResult = runPostBcImportSync_v1();
-      return { ok: true, processed: processed, errors: errors, sync: syncResult };
-    } catch (e) {
-      Logger.log('[BC_DROP] runPostBcImportSync_v1 error: ' + e.message);
-      return { ok: true, processed: processed, errors: errors, syncError: e.message };
-    }
-  }
-
-  return { ok: false, processed: processed, errors: errors };
+  Logger.log('[BC_DROP] Done. Processed: ' + processed.length + ', Errors: ' + errors.length);
+  return { ok: status !== 'error', processed: processed, errors: errors };
 }
 
 /************************************************************
