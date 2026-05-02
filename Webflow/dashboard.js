@@ -131,8 +131,8 @@
   }
 
   function setText(metric, valueText) {
-    var el = document.querySelector('[data-metric="' + metric + '"]');
-    if (el) el.textContent = valueText;
+    var els = document.querySelectorAll('[data-metric="' + metric + '"]');
+    els.forEach(function(el) { el.textContent = valueText; });
   }
 
   function setMetricHint(metric, hintText) {
