@@ -13,7 +13,8 @@ const APP_SOURCES = [
   {
     key         : 'RAFRAEN_INNSKRANING',
     label       : 'RAFRÆN INNSKRÁNING',
-    formId      : 'QUu0PkqX',
+    formId           : 'QUu0PkqX',
+    notifyEmailSetting: 'APPLICATION_NOTIFY_EMAIL_RAFRAEN',
     mainTab     : 'Kennitölu skráning',
     nameHeader  : 'Fullt nafn umsækjanda',
     emailHeader : 'Netfang umsækjanda',
@@ -27,7 +28,8 @@ const APP_SOURCES = [
   {
     key         : 'UMSOKN_VIDSKIPTI',
     label       : 'UMSÓKN VIÐSKIPTI',
-    formId      : 'G2ZPwISA',
+    formId           : 'G2ZPwISA',
+    notifyEmailSetting: 'APPLICATION_NOTIFY_EMAIL_UMSOKN',
     mainTab     : 'Umsókn um viðskipti',
     nameHeader  : 'Fullt nafn tengiliðar (prókúruhafa)',
     emailHeader : 'Netfang tengiliðar',
@@ -72,14 +74,16 @@ function doPost(e) {
       sh = ss.insertSheet(src.mainTab);
     }
 
-    // Build field-title → answer-value map from Typeform payload
+    // Build normalized-title → answer-value map from Typeform payload
+    // normalizeFieldTitle_() strips "/ subtitle" suffixes and lowercases,
+    // so "Nafn fyrirtækis / Nafn á deild" matches sheet header "Nafn fyrirtækis"
     const fields    = (response.definition && response.definition.fields) || [];
     const answers   = response.answers || [];
     const answerMap = {};
 
     answers.forEach(ans => {
       const field = fields.find(f => f.id === ans.field.id);
-      if (field) answerMap[field.title] = extractTypeformValue_(ans);
+      if (field) answerMap[normalizeFieldTitle_(field.title)] = extractTypeformValue_(ans);
     });
 
     // Initialise headers if sheet is brand new
@@ -93,7 +97,7 @@ function doPost(e) {
 
     const row = headers.map(h => {
       if (h === 'Submitted At') return response.submitted_at || new Date().toISOString();
-      return answerMap[h] !== undefined ? answerMap[h] : '';
+      return answerMap[normalizeFieldTitle_(h)] !== undefined ? answerMap[normalizeFieldTitle_(h)] : '';
     });
 
     sh.appendRow(row);
@@ -146,8 +150,11 @@ function cleanSingleRow_(src, sh, rowNum) {
  ************************************************************/
 function notifyNewApplication_(src, answerMap, submittedAt) {
   try {
-    const CONFIG = loadConfig_();
-    const to     = (CONFIG.SETTINGS && CONFIG.SETTINGS.APPLICATION_NOTIFY_EMAIL) || 'oj@storkaup.is';
+    const CONFIG   = loadConfig_();
+    const settings = CONFIG.SETTINGS || {};
+    const to = (src.notifyEmailSetting && settings[src.notifyEmailSetting])
+            || settings.APPLICATION_NOTIFY_EMAIL
+            || 'oj@storkaup.is';
 
     const name  = answerMap[src.nameHeader]  || '(óþekkt)';
     const email = answerMap[src.emailHeader] || '';
@@ -172,6 +179,13 @@ function notifyNewApplication_(src, answerMap, submittedAt) {
 /************************************************************
  * Extract a typed answer value from Typeform payload
  ************************************************************/
+// Strips " / subtitle" suffixes and lowercases so sheet headers match
+// Typeform field titles even when Typeform appends a description segment.
+// e.g. "Nafn fyrirtækis / Nafn á deild" → "nafn fyrirtækis"
+function normalizeFieldTitle_(s) {
+  return String(s).toLowerCase().trim().split(/\s*\/\s*/)[0].trim();
+}
+
 function extractTypeformValue_(ans) {
   switch (ans.type) {
     case 'text':         return ans.text         || '';
