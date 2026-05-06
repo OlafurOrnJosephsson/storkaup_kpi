@@ -286,6 +286,7 @@ function syncMagentoCustomers() {
   });
 
   props.setProperty(MAGENTO_CUSTOMERS_LAST_SYNC_KEY,new Date().toISOString());
+  pruneCompletedApplications_();
 
   Logger.log(`✅ Customers synced. New: ${newCount}, Updated: ${updatedCount}`);
 }
@@ -368,4 +369,69 @@ function loadCustomerLookup_() {
   });
 
   return { byId, byEmail };
+}
+
+
+/************************************************************
+ * Move completed applications from MAIN → LOKID
+ * Runs after syncMagentoCustomers — moves rows where email
+ * or kennitala exists in MAGENTO_CUSTOMERS.
+ ************************************************************/
+function pruneCompletedApplications() { pruneCompletedApplications_(); }
+
+function pruneCompletedApplications_() {
+  const CONFIG = loadConfig_();
+
+  const custSh = getMagentoCustomersSheet_();
+  if (custSh.getLastRow() < 2) return;
+
+  const custData = custSh.getRange(2, 1, custSh.getLastRow() - 1, 17).getValues();
+  const magentoEmails = new Set([
+    ...custData.map(r => String(r[2]  || '').toLowerCase().trim()).filter(Boolean),
+    ...custData.map(r => String(r[12] || '').toLowerCase().trim()).filter(Boolean)
+  ]);
+  const magentoKt = new Set(
+    custData.map(r => String(r[16] || '').trim()).filter(v => v && v !== '0000000000')
+  );
+
+  const sources = typeof APP_SOURCES !== 'undefined' ? APP_SOURCES : [];
+  if (!sources.length) { Logger.log('⚠️ pruneCompletedApplications_: APP_SOURCES not found'); return; }
+
+  let totalMoved = 0;
+
+  sources.forEach(src => {
+    const ssId = CONFIG.SHEET_IDS[src.key];
+    if (!ssId) { Logger.log(`⚠️ pruneCompletedApplications_: vantar SHEET_IDS.${src.key}`); return; }
+
+    const ss     = SpreadsheetApp.openById(ssId);
+    const mainSh = ss.getSheetByName(src.mainTab || 'MAIN');
+    if (!mainSh || mainSh.getLastRow() < 2) return;
+
+    // Ensure LOKID tab exists
+    let doneSh = ss.getSheetByName('LOKID');
+    if (!doneSh) doneSh = ss.insertSheet('LOKID');
+
+    const numRows = mainSh.getLastRow() - 1;
+    const headers = mainSh.getRange(1, 1, 1, mainSh.getLastColumn()).getValues()[0];
+    const emailIdx = headers.findIndex(h => h.toString().toLowerCase().trim() === src.emailHeader.toLowerCase().trim());
+    const ktIdx    = headers.findIndex(h => h.toString().toLowerCase().trim() === src.ktHeader.toLowerCase().trim());
+    const data     = mainSh.getRange(2, 1, numRows, mainSh.getLastColumn()).getValues();
+
+    const toMove = [];
+    data.forEach((row, i) => {
+      const email = emailIdx > -1 ? String(row[emailIdx] || '').toLowerCase().trim() : '';
+      const kt    = ktIdx    > -1 ? String(row[ktIdx]    || '').trim()               : '';
+      if ((email && magentoEmails.has(email)) || (kt && magentoKt.has(kt))) {
+        toMove.push({ rowNum: i + 2, data: row });
+      }
+    });
+
+    // Append to LOKID, delete from MAIN bottom-up
+    toMove.forEach(item => doneSh.appendRow(item.data));
+    toMove.reverse().forEach(item => { mainSh.deleteRow(item.rowNum); totalMoved++; });
+
+    if (toMove.length) Logger.log(`✅ ${src.label}: ${toMove.length} rows moved to LOKID`);
+  });
+
+  Logger.log(`✅ pruneCompletedApplications_: ${totalMoved} total rows moved`);
 }

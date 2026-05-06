@@ -3747,6 +3747,11 @@ function scheduledReferenceSync_v1() {
       result.magentoSync = 'missing_function';
     }
 
+    if (typeof cleanApplicationSheets_ === 'function') {
+      runWithRetries_('cleanApplicationSheets_', function() { cleanApplicationSheets_(); }, { attempts: 2, delayMs: 5000 });
+      result.applicationClean = 'ok';
+    }
+
     if (typeof backfillMagentoCustomersToSupabaseIncremental_v1 === 'function') {
       result.magentoBackfill = runWithRetries_(
         'backfillMagentoCustomersToSupabaseIncremental_v1',
