@@ -407,12 +407,18 @@ function pruneCompletedApplications_() {
     const mainSh = ss.getSheetByName(src.mainTab || 'MAIN');
     if (!mainSh || mainSh.getLastRow() < 2) return;
 
-    // Ensure LOKID tab exists
+    // Ensure LOKID tab exists with same headers as main tab
     let doneSh = ss.getSheetByName('LOKID');
     if (!doneSh) doneSh = ss.insertSheet('LOKID');
 
     const numRows = mainSh.getLastRow() - 1;
     const headers = mainSh.getRange(1, 1, 1, mainSh.getLastColumn()).getValues()[0];
+
+    if (doneSh.getLastRow() === 0) {
+      doneSh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+      doneSh.setFrozenRows(1);
+    }
+
     const emailIdx = headers.findIndex(h => h.toString().toLowerCase().trim() === src.emailHeader.toLowerCase().trim());
     const ktIdx    = headers.findIndex(h => h.toString().toLowerCase().trim() === src.ktHeader.toLowerCase().trim());
     const data     = mainSh.getRange(2, 1, numRows, mainSh.getLastColumn()).getValues();
@@ -426,7 +432,7 @@ function pruneCompletedApplications_() {
       }
     });
 
-    // Append to LOKID, delete from MAIN bottom-up
+    // Append to LOKID (after header), delete from MAIN bottom-up
     toMove.forEach(item => doneSh.appendRow(item.data));
     toMove.reverse().forEach(item => { mainSh.deleteRow(item.rowNum); totalMoved++; });
 

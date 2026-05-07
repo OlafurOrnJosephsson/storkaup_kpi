@@ -57,6 +57,9 @@ function doPost(e) {
 
     const response = payload.form_response;
     const formId   = response.form_id;
+    // event_id stays the same on Typeform retries — use as dedup key
+    // Fall back to submitted_at if event_id missing (older webhook format)
+    const eventId  = payload.event_id || response.token || response.submitted_at || '';
 
     const src = APP_SOURCES.find(s => s.formId === formId);
     if (!src) {
@@ -95,8 +98,15 @@ function doPost(e) {
 
     const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
 
+    // Duplicate guard — event_id is identical on Typeform retries
+    if (eventId && isDuplicateSubmission_(sh, headers, eventId)) {
+      Logger.log(`⚠️ doPost: duplicate event_id ${eventId} — skipping`);
+      return jsonResponse_({ status: 'ok', note: 'duplicate' });
+    }
+
     const row = headers.map(h => {
       if (h === 'Submitted At') return response.submitted_at || new Date().toISOString();
+      if (h === '_token')       return eventId;
       return answerMap[normalizeFieldTitle_(h)] !== undefined ? answerMap[normalizeFieldTitle_(h)] : '';
     });
 
@@ -115,6 +125,30 @@ function doPost(e) {
     Logger.log(`❌ doPost error: ${err.stack || err.message}`);
     return jsonResponse_({ status: 'error', message: err.message }, 500);
   }
+}
+
+// Returns true if this Typeform response token already exists in the sheet or LOKID
+function isDuplicateSubmission_(sh, headers, token) {
+  const tokenColIdx = headers.indexOf('_token');
+  if (tokenColIdx === -1) return false;
+
+  if (sh.getLastRow() >= 2) {
+    const col = sh.getRange(2, tokenColIdx + 1, sh.getLastRow() - 1, 1).getValues();
+    if (col.some(r => String(r[0]).trim() === token)) return true;
+  }
+
+  // Also check LOKID — pruneCompletedApplications_ moves rows there
+  const lokid = sh.getParent().getSheetByName('LOKID');
+  if (lokid && lokid.getLastRow() >= 1) {
+    const lokidHeaders = lokid.getRange(1, 1, 1, lokid.getLastColumn()).getValues()[0];
+    const lokidTokenIdx = lokidHeaders.indexOf('_token');
+    if (lokidTokenIdx > -1 && lokid.getLastRow() >= 2) {
+      const lokidCol = lokid.getRange(2, lokidTokenIdx + 1, lokid.getLastRow() - 1, 1).getValues();
+      if (lokidCol.some(r => String(r[0]).trim() === token)) return true;
+    }
+  }
+
+  return false;
 }
 
 function jsonResponse_(obj, code) {
@@ -256,22 +290,12 @@ function cleanApplicationSheets_() {
 /************************************************************
  * One-time trigger setup
  ************************************************************/
-function resetApplicationChangeTriggers() {
-  const CONFIG = loadConfig_();
-
-  ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === 'handleApplicationChange_')
-    .forEach(t => ScriptApp.deleteTrigger(t));
-
-  APP_SOURCES.forEach(src => {
-    const ssId = CONFIG.SHEET_IDS[src.key];
-    if (!ssId) { Logger.log(`⚠️ resetApplicationChangeTriggers: vantar SHEET_IDS.${src.key}`); return; }
-    ScriptApp.newTrigger('handleApplicationChange_')
-      .forSpreadsheet(ssId)
-      .onChange()
-      .create();
-    Logger.log(`✅ onChange trigger set: ${src.label}`);
-  });
+// Removes all onChange triggers for application sheets (no longer needed — webhook handles everything)
+function removeApplicationChangeTriggers() {
+  const removed = ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'handleApplicationChange_');
+  removed.forEach(t => ScriptApp.deleteTrigger(t));
+  Logger.log(`✅ removeApplicationChangeTriggers: ${removed.length} trigger(s) removed`);
 }
 
 
