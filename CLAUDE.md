@@ -94,7 +94,9 @@ Title rules (V3, from SEO review Apr 2025):
 
 Update these whenever Webflow custom code changes:
 
-- Webflow deploy rev (`data-storkaup-rev`): `fd63ddb`
+- Webflow deploy rev (`data-storkaup-rev`): `9d75dcb`
+- `Webflow/dashboard.js`: `9d75dcb`
+- `Webflow/website-dashboard.js`: `9d75dcb`
 - `Webflow/dashboard-theme.css`: `2b272cd`
 - `Webflow/customer-profiles.js`: `59f0cda`
 
