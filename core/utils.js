@@ -2140,6 +2140,7 @@ function processBcDrop_v1() {
     var schemaKey = norm.indexOf('linur') !== -1 ? 'BC_LINES'
                   : norm.indexOf('kredit') !== -1 ? 'BC_CREDIT_INVOICES'
                   : norm.indexOf('solureikn') !== -1 ? 'BC_INVOICES'
+                  : norm.indexOf('vidskiptam') !== -1 ? 'BC_CUSTOMERS'
                   : null;
     if (!schemaKey) {
       Logger.log('[BC_DROP] Skipping unrecognised file: ' + file.getName());
@@ -2155,7 +2156,7 @@ function processBcDrop_v1() {
 
   // Process invoices before lines so dedup is consistent
   filesToProcess.sort(function(a, b) {
-    var ord = { BC_INVOICES: 1, BC_CREDIT_INVOICES: 2, BC_LINES: 3 };
+    var ord = { BC_CUSTOMERS: 1, BC_INVOICES: 2, BC_CREDIT_INVOICES: 3, BC_LINES: 4 };
     return (ord[a.schemaKey] || 9) - (ord[b.schemaKey] || 9);
   });
 
@@ -2211,7 +2212,12 @@ function processBcDrop_v1() {
 
       var newRows, result;
 
-      if (item.schemaKey === 'BC_INVOICES') {
+      if (item.schemaKey === 'BC_CUSTOMERS') {
+        Logger.log('[BC_DROP] Customers: ' + allRows.length + ' rows — full upsert (merge)');
+        result = allRows.length ? upsertBcCustomersToSupabase_(allRows) : { uploaded: 0 };
+        newRows = allRows;
+
+      } else if (item.schemaKey === 'BC_INVOICES') {
         newRows = allRows.filter(function(r) {
           return !existingInvoiceKeys[String(r.DOCUMENT_NO || '').trim()];
         });
