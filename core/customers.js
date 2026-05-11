@@ -19,6 +19,7 @@ const MAGENTO_CUSTOMERS_LAST_SYNC_KEY = 'MAGENTO_CUSTOMERS_LAST_SYNC';
 /************************************************************
  * Spreadsheet helpers
  ************************************************************/
+
 function getCustomersSpreadsheet_() {
   const CONFIG = loadConfig_();
   const ssId   = CONFIG.SHEET_IDS.CUSTOMERS;

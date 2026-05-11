@@ -3,7 +3,7 @@
   if (window.__STORKAUP_WEBSITE_DASHBOARD_INIT__) return;
   window.__STORKAUP_WEBSITE_DASHBOARD_INIT__ = true;
 
-  var DEBUG = true;
+  var DEBUG = false;
   var pageReadySent = false;
   var selectedDay = null;
 

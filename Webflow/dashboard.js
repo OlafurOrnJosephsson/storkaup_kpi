@@ -11,7 +11,7 @@
   var klaviyoCacheTs = 0;
   var STABLE_RPC_TTL_MS = 10 * 60 * 1000; // 10 minutes — these RPCs update infrequently
   var dayApiUnavailable = false;
-  var DEBUG = true;
+  var DEBUG = false;
   var pageReadySent = false;
   var WEEKDAY_SHORT_IS = { 1: "Mán", 2: "Þri", 3: "Mið", 4: "Fim", 5: "Fös", 6: "Lau", 7: "Sun" };
 

@@ -649,6 +649,7 @@ function runCludoFullSync() {
 /************************************************************
  * 🔬 Manual test function
  ************************************************************/
+
 function testSingleSku() {
   const raw = '107228';
   const sku = normalizeSkuGlobal_(raw);
