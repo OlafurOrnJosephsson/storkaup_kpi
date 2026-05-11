@@ -4749,12 +4749,43 @@ function auditTriggers_v1() {
   return { total: triggers.length, byHandler: counts, triggers: rows };
 }
 
+function installRunPostBcImportSyncTrigger_v1() {
+  var fn = 'runPostBcImportSync_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[BC_POST_IMPORT][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+  ScriptApp.newTrigger(fn).timeBased().everyDays(1).atHour(7).nearMinute(20).create();
+  ScriptApp.newTrigger(fn).timeBased().everyDays(1).atHour(13).nearMinute(20).create();
+  Logger.log('[BC_POST_IMPORT][INFO] Created 2 triggers for ' + fn + ' (~07:20 and ~13:20)');
+  return { created: true, schedule: 'twice daily at ~07:20 and ~13:20' };
+}
+
+function installScheduledGa4SyncTrigger_v1() {
+  var fn = 'scheduledGa4Sync_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[GA4][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+  ScriptApp.newTrigger(fn).timeBased().everyDays(1).atHour(6).nearMinute(30).create();
+  Logger.log('[GA4][INFO] Created trigger for ' + fn + ' (every day at ~06:30)');
+  return { created: true, schedule: 'everyDays(1).atHour(6).nearMinute(30)' };
+}
+
 function resetRecommendedTimeTriggers_v1() {
   var handlers = [
     'safePoll_v2',
     'runDailySanityChecks_v1',
     'scheduledReferenceSync_v1',
     'scheduledMagentoSync_v1',
+    'runPostBcImportSync_v1',
+    'scheduledGa4Sync_v1',
     'scheduledCludoSync_v1',
     'scheduledCustomerAnalysisSync_v1',
     'scheduledKlaviyoSync_v1'
@@ -4769,9 +4800,8 @@ function resetRecommendedTimeTriggers_v1() {
     installDailySanityChecksTrigger_v1(),
     installScheduledReferenceSyncTrigger_v1(),
     installScheduledMagentoSyncTrigger_v1(),
-    installScheduledCludoSyncTrigger_v1(),
-    installScheduledCustomerAnalysisSyncTrigger_v1(),
-    installScheduledKlaviyoSyncTrigger_v1()
+    installRunPostBcImportSyncTrigger_v1(),
+    installScheduledGa4SyncTrigger_v1()
   ];
 
   Logger.log('[TRIGGERS][INFO] Recommended trigger schedule reset completed.');
