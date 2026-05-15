@@ -38,7 +38,9 @@ const APP_SOURCES = [
     companyHeader   : 'Heiti fyrirtækis',
     ktHeader        : 'Kennitala tengiliðar (umsækjandi)',
     companyKtHeader : 'Kennitala fyrirtækis',
-    paymentHeader   : 'Greiðslufyrirkomulag',
+    phoneHeader       : 'Símanúmer tengiliðar',
+    creditScoreHeader : 'Lánshæfismat',
+    paymentHeader     : 'Greiðslufyrirkomulag',
     cleanHeaders: [
       { header: 'Kennitala fyrirtækis',              pad: 10 },
       { header: 'Kennitala tengiliðar (umsækjandi)', pad: 10 },

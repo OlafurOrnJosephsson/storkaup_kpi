@@ -10,43 +10,36 @@
 body {
   font-family: "SF Pro Text", -apple-system, Arial, sans-serif;
   font-size: 14px;
-  background: #f4f5f7;
+  background:transparent;
   color: #282828;
 }
 
-/* ── Header ── */
-.header {
-  background: #fff;
-  border-bottom: 1px solid #e9e9e9;
-  padding: 0 32px;
-  display: flex;
-  align-items: center;
-  height: 56px;
-  gap: 16px;
-}
-.header img { height: 36px; width: auto; }
-.header-title { font-size: 15px; font-weight: 600; color: #282828; }
-
 /* ── Tabs ── */
 .tabs {
-  background: #fff;
+  background:transparent;
   border-bottom: 1px solid #e9e9e9;
-  padding: 0 32px;
+  padding: 0;
   display: flex;
   gap: 0;
 }
 .tab {
-  padding: 14px 20px;
+  padding: 0 1rem;
+  min-width:230px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 400;
+  display:flex; align-items:center;justify-content: center;
+  height: 3rem;
   cursor: pointer;
   font-size: 13px;
-  font-weight: 500;
-  color: #5b5b5b;
+  font-weight: 400;
+  color: #282828;
   border-bottom: 2px solid transparent;
   transition: all 0.15s;
   user-select: none;
 }
 .tab:hover { color: #282828; }
-.tab.active { color: #10069f; border-bottom-color: #10069f; font-weight: 600; }
+.tab.active { color: #10069f; border-bottom-color: #10069f; font-weight: 700; }
 .tab-badge {
   display: inline-block;
   background: #f0f0f0;
@@ -157,6 +150,29 @@ tr.done td { opacity: 0.4; }
   border: 1px solid #e9e9e9;
 }
 
+/* ── Credit score input ── */
+.score-input {
+  width: 52px;
+  padding: 4px 6px;
+  border: 1px solid #e9e9e9;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: center;
+  background: #fff;
+}
+.score-input:focus { outline: 2px solid #10069f; }
+.score-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+.score-red    { background: #f8d7da; color: #721c24; }
+.score-yellow { background: #fff3cd; color: #856404; }
+.score-green  { background: #d4edda; color: #155724; }
+
 /* ── Template dropdown ── */
 .action-cell { white-space: nowrap; }
 .template-select {
@@ -224,11 +240,6 @@ tr.done td { opacity: 0.4; }
 </head>
 <body>
 
-<div class="header">
-  <img src="https://images.prismic.io/storkaup/agbVeKYofJOwHQ9Y_klavyio-storkauplogo.jpg" alt="Stórkaup">
-  <span class="header-title">Umsóknir</span>
-</div>
-
 <div class="tabs">
   <div class="tab active" data-tab="rafraen" onclick="switchTab('rafraen')">
     Rafræn Innskráning <span class="tab-badge" id="badge-rafraen">0</span>
@@ -244,8 +255,8 @@ tr.done td { opacity: 0.4; }
     <span>Sæki umsóknir og athugar BC stöðu…</span>
   </div>
 
-  <div id="tab-rafraen" class="tab-content" style="display:none;"></div>
-  <div id="tab-umsokn"  class="tab-content" style="display:none;"></div>
+  <div id="tab-rafraen"     class="tab-content" style="display:none;"></div>
+  <div id="tab-umsokn"      class="tab-content" style="display:none;"></div>
 </div>
 
 <!-- Confirm modal -->
@@ -372,25 +383,36 @@ function renderUmsokn(rows) {
     return;
   }
   var html = '<div class="table-wrap"><table>'
-    + '<thead><tr><th>Dags.</th><th>Fyrirtæki</th><th>Nafn</th><th>Greiðsla</th><th>BC staða</th><th>Aðgerð</th></tr></thead><tbody>';
+    + '<thead><tr><th>Dags.</th><th>Fyrirtæki</th><th>Nafn</th><th>Greiðsla</th><th>BC staða</th><th>Skor</th><th>Aðgerð</th></tr></thead><tbody>';
   rows.forEach(function(r, i) {
     html += '<tr id="ums-row-' + i + '">'
       + '<td class="date-cell">' + fmtDate(r.date) + '</td>'
       + '<td>'
         + '<div class="company-cell">' + esc(r.company) + '</div>'
-        + '<div style="font-size:11px;color:#5b5b5b;font-family:monospace;">' + esc(r.companyKt) + '</div>'
+        + '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" style="font-size:11px;color:#10069f;font-family:monospace;text-decoration:none;">' + esc(r.companyKt) + '</a>'
         + '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.email) + '</div>'
+        + (r.phone ? '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.phone) + '</div>' : '')
       + '</td>'
-      + '<td class="name-cell">' + esc(r.name) + '</td>'
+      + '<td class="name-cell">'
+        + '<div>' + esc(r.name) + '</div>'
+        + (r.personKt ? '<div style="font-size:11px;color:#888;font-family:monospace;">' + esc(r.personKt) + '</div>' : '')
+      + '</td>'
       + '<td class="payment-cell">' + paymentBadge(r.payment) + '</td>'
-      + '<td>' + bcBadge(r.bcFound) + '</td>'
+      + '<td>'
+        + bcBadge(r.bcFound)
+        + (isPersonalKt(r.companyKt) ? '<br><span style="display:inline-block;margin-top:4px;background:#fff3cd;color:#856404;font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;">Einstaklingur</span>' : '')
+      + '</td>'
+      + '<td style="white-space:nowrap;">'
+        + '<input class="score-input" id="score-' + i + '" type="number" min="1" max="10" placeholder="1-10" value="' + esc(r.creditScore) + '" onchange="onScoreChange(' + i + ')" />'
+        + '<div id="score-badge-' + i + '">' + scoreBadge(r.creditScore) + '</div>'
+      + '</td>'
       + '<td class="action-cell">'
         + (r.bcFound
           ? '<button class="btn btn-ghost" onclick="confirmDone(' + i + ')">✓ Klárað</button>'
           : '<select class="template-select" id="tmpl-' + i + '">'
             + '<option value="">Velja…</option>'
             + '<option value="1">1 — Ekkert VSK-númer</option>'
-            + '<option value="2">2 — Þarf lánshæfismat</option>'
+            + '<option value="2" ' + (isPersonalKt(r.companyKt) ? 'selected' : '') + '>2 — Þarf lánshæfismat</option>'
             + '<option value="3">3 — Staðgreiðsla einungis</option>'
             + '</select>'
             + '<button class="btn btn-primary" onclick="confirmUmsokn(' + i + ')">Senda</button>'
@@ -400,6 +422,7 @@ function renderUmsokn(rows) {
   html += '</tbody></table></div>';
   el.innerHTML = html;
 }
+
 
 function confirmDone(i) {
   var r = appData.umsokn[i];
@@ -424,15 +447,23 @@ function confirmUmsokn(i) {
   var sel = document.getElementById('tmpl-' + i);
   var tmpl = Number(sel.value);
   if (!tmpl) { showToast('Veldu template áður en þú sendir.', true); return; }
-  var labels = ['', 'Ekkert VSK-númer (hafnað)', 'Þarf lánshæfismat', 'Staðgreiðsla einungis'];
+  var labels     = ['', 'Ekkert VSK-númer (hafnað)', 'Þarf lánshæfismat', 'Staðgreiðsla einungis'];
+  var archiveIds = ['', 'novsk', 'needscredit', 'cashonly'];
   openModal(
     'Senda email — ' + labels[tmpl],
-    'Sendir template ' + tmpl + ' á umsækjanda.',
+    'Sendir template ' + tmpl + ' á umsækjanda og flytur í "' + labels[tmpl] + '" flipa.',
     '<strong>' + esc(r.name || r.email) + '</strong>' + esc(r.company ? ' — ' + r.company : '') + '<br>' + esc(r.email),
     function() {
       run('webapp_sendUmsokn_Email', [{ rowIndex: r.rowIndex, email: r.email, name: r.name }, tmpl])
         .then(function() {
           document.getElementById('ums-row-' + i).classList.add('done');
+          setTimeout(function() {
+            document.getElementById('ums-row-' + i).remove();
+            appData.umsokn[i]._done = true;
+            var left = appData.umsokn.filter(function(x) { return x && !x._done; }).length;
+            document.getElementById('badge-umsokn').textContent = left;
+            }, 600);
+          appData.umsokn.forEach(function(x) { if (x && x.rowIndex > r.rowIndex) x.rowIndex--; });
           showToast('Póstur sendur til ' + r.email);
         })
         .catch(function(e) { showToast('Villa: ' + (e.message || e), true); });
@@ -441,6 +472,40 @@ function confirmUmsokn(i) {
 }
 
 // ── Badges ─────────────────────────────────────────────────────────────────
+
+function isPersonalKt(kt) {
+  var s = String(kt).replace(/[^0-9]/g, '');
+  return s.length === 10 && parseInt(s.substring(0, 2), 10) <= 31;
+}
+
+function scoreBadge(val) {
+  var n = parseInt(val);
+  if (!n || isNaN(n)) return '';
+  if (n >= 6)  return '<span class="score-badge score-red">'    + n + '/10 — Staðgreiðsla</span>';
+  if (n >= 4)  return '<span class="score-badge score-yellow">' + n + '/10 — Takmörkuð heimild</span>';
+  return              '<span class="score-badge score-green">'  + n + '/10 — Heimild samþykkt</span>';
+}
+
+function onScoreChange(i) {
+  var r   = appData.umsokn[i];
+  var val = document.getElementById('score-' + i).value.trim();
+  var n   = parseInt(val);
+
+  // Update badge
+  document.getElementById('score-badge-' + i).innerHTML = scoreBadge(val);
+
+  // Auto-suggest template 3 if score 6-10
+  if (n >= 6) {
+    var sel = document.getElementById('tmpl-' + i);
+    if (sel) sel.value = '3';
+  }
+
+  // Save to sheet
+  if (val !== '') {
+    run('webapp_saveCreditScore_', [r.rowIndex, val])
+      .catch(function(e) { showToast('Villa við vistun skors: ' + (e.message || e), true); });
+  }
+}
 
 function bcBadge(found) {
   return found

@@ -12,25 +12,40 @@ function webapp_getApplications() {
 
   var rafRows = [];
   var umsRows = [];
+  var umsSs   = null;
 
   if (rafId) {
     var rafSheet = SpreadsheetApp.openById(rafId).getSheets()[0];
     rafRows = webapp_readRows_(rafSheet, rafSrc);
   }
   if (umsId) {
-    var umsSs = SpreadsheetApp.openById(umsId);
+    umsSs = SpreadsheetApp.openById(umsId);
     var umsSheet = umsSs.getSheetByName(umsSrc.mainTab);
     if (umsSheet) umsRows = webapp_readRows_(umsSheet, umsSrc);
   }
 
-  // Batch BC lookup
+  // Batch BC lookup (pending rows only)
   var allKts = rafRows.concat(umsRows).map(function(r) { return r.companyKt; }).filter(Boolean);
   var bcMap  = webapp_batchBcLookup_(allKts);
 
   rafRows.forEach(function(r) { r.bcFound = !!bcMap[r.companyKt]; r.bcName = bcMap[r.companyKt] || ''; });
   umsRows.forEach(function(r) { r.bcFound = !!bcMap[r.companyKt]; r.bcName = bcMap[r.companyKt] || ''; });
 
-  return { rafraen: rafRows, umsokn: umsRows };
+  // Archive tabs
+  var ARCHIVE = [
+    { key: 'noVsk',       tab: 'Ekkert VSK' },
+    { key: 'needsCredit', tab: 'Þarf lánshæfismat' },
+    { key: 'cashOnly',    tab: 'Staðgreiðsla' }
+  ];
+  var archives = { noVsk: [], needsCredit: [], cashOnly: [] };
+  if (umsSs) {
+    ARCHIVE.forEach(function(a) {
+      var sh = umsSs.getSheetByName(a.tab);
+      if (sh) archives[a.key] = webapp_readRows_(sh, umsSrc);
+    });
+  }
+
+  return { rafraen: rafRows, umsokn: umsRows, noVsk: archives.noVsk, needsCredit: archives.needsCredit, cashOnly: archives.cashOnly };
 }
 
 function webapp_readRows_(sheet, src) {
@@ -42,7 +57,10 @@ function webapp_readRows_(sheet, src) {
   var emailIdx     = headers.indexOf(src.emailHeader);
   var companyIdx   = headers.indexOf(src.companyHeader);
   var companyKtIdx = headers.indexOf(src.companyKtHeader || 'Kennitala fyrirtækis');
-  var paymentIdx   = src.paymentHeader ? headers.indexOf(src.paymentHeader) : -1;
+  var personKtIdx  = src.ktHeader      ? headers.indexOf(src.ktHeader)      : -1;
+  var phoneIdx       = src.phoneHeader       ? headers.indexOf(src.phoneHeader)       : -1;
+  var creditScoreIdx = src.creditScoreHeader ? headers.indexOf(src.creditScoreHeader) : -1;
+  var paymentIdx     = src.paymentHeader     ? headers.indexOf(src.paymentHeader)     : -1;
   var dateIdx      = headers.indexOf('Submitted At');
 
   return data.map(function(row, i) {
@@ -57,7 +75,10 @@ function webapp_readRows_(sheet, src) {
       email     : email,
       company   : companyIdx   >= 0 ? String(row[companyIdx]   || '').trim() : '',
       companyKt : companyKtIdx >= 0 ? String(row[companyKtIdx] || '').trim() : '',
-      payment   : paymentIdx   >= 0 ? String(row[paymentIdx]   || '').trim() : ''
+      personKt  : personKtIdx  >= 0 ? String(row[personKtIdx]  || '').trim() : '',
+      phone       : phoneIdx       >= 0 ? String(row[phoneIdx]       || '').trim() : '',
+      creditScore : creditScoreIdx >= 0 ? String(row[creditScoreIdx] || '').trim() : '',
+      payment     : paymentIdx     >= 0 ? String(row[paymentIdx]     || '').trim() : ''
     };
   }).filter(Boolean);
 }
@@ -108,6 +129,20 @@ function webapp_sendRafraenRedirect(rowData) {
   return { ok: true };
 }
 
+function webapp_saveCreditScore_(rowIndex, score) {
+  var cfg   = loadConfig_();
+  var src   = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
+  var sheet = SpreadsheetApp.openById(cfg.SHEETS.UMSOKN_VIDSKIPTI.ID).getSheetByName(src.mainTab);
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var colIdx = headers.indexOf('Lánshæfismat');
+  if (colIdx === -1) {
+    colIdx = headers.length;
+    sheet.getRange(1, colIdx + 1).setValue('Lánshæfismat').setFontWeight('bold').setBackground('#e8e8e8');
+  }
+  sheet.getRange(rowIndex, colIdx + 1).setValue(score || '');
+  return { ok: true };
+}
+
 function webapp_markUmsokn_Done(rowData) {
   var cfg   = loadConfig_();
   var src   = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
@@ -130,12 +165,25 @@ function webapp_sendUmsokn_Email(rowData, templateId) {
     rowData.email,
     subjects[tid],
     plainFns[tid](rowData.name),
-    { htmlBody: htmlFns[tid](rowData.name), from: 'vefur@storkaup.is' }
+    { htmlBody: htmlFns[tid](rowData.name), from: 'vefur@storkaup.is', bcc: 'umsokn@storkaup.is' }
   );
 
   var cfg     = loadConfig_();
   var src     = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
-  var sheet   = SpreadsheetApp.openById(cfg.SHEETS.UMSOKN_VIDSKIPTI.ID).getSheetByName(src.mainTab);
-  sheet.getRange(rowData.rowIndex, 1, 1, sheet.getLastColumn()).setBackground('#d4edda');
+  var ss      = SpreadsheetApp.openById(cfg.SHEETS.UMSOKN_VIDSKIPTI.ID);
+  var sheet   = ss.getSheetByName(src.mainTab);
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var rowVals = sheet.getRange(rowData.rowIndex, 1, 1, headers.length).getValues()[0];
+
+  var destNames = ['Ekkert VSK', 'Þarf lánshæfismat', 'Staðgreiðsla'];
+  var destName  = destNames[tid];
+  var dest = ss.getSheetByName(destName);
+  if (!dest) {
+    dest = ss.insertSheet(destName);
+    dest.appendRow(headers);
+    dest.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e8e8e8');
+  }
+  dest.appendRow(rowVals);
+  sheet.deleteRow(rowData.rowIndex);
   return { ok: true };
 }
