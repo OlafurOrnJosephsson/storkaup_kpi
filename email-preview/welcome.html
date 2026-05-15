@@ -1,0 +1,195 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Velkomin — Preview</title>
+
+<style>
+/* ═══════════════════════════════════════════════════════════
+   DESIGN TOKENS — gildið koma úr Webflow/dashboard-theme.css
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --sk-blue:           #10069f;
+  --sk-blue-bg:        #f5f6ff;
+  --sk-black:          #282828;
+  --sk-black-700:      #5b5b5b;
+  --sk-border:         #e9e9e9;
+  --sk-white:          #ffffff;
+}
+
+body { margin: 40px; background: #f0f0f0; }
+
+.sk-email {
+  max-width: 600px;
+  margin: 0 auto;
+  font-family: "SF Pro Text", Arial, sans-serif;
+  font-size: 14px;
+  color: var(--sk-black);
+}
+.sk-header {
+  background: var(--sk-blue-bg);
+  border: 1px solid var(--sk-border);
+  border-bottom: none;
+  padding: 28px 32px;
+  border-radius: 8px 8px 0 0;
+}
+.sk-body {
+  background: var(--sk-white);
+  border: 1px solid var(--sk-border);
+  border-top: none;
+  padding: 28px 32px;
+}
+.sk-footer {
+  background: #f5f5f5;
+  border: 1px solid var(--sk-border);
+  border-top: none;
+  padding: 16px 32px;
+  border-radius: 0 0 8px 8px;
+}
+.sk-card {
+  border: 1px solid var(--sk-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--sk-blue-bg);
+}
+.sk-card-text { flex: 1; }
+.sk-card-title { font-weight: 600; font-size: 13px; color: var(--sk-black); margin: 0 0 2px; }
+.sk-card-desc  { font-size: 12px; color: var(--sk-black-700); margin: 0; }
+.sk-btn {
+  display: inline-block;
+  background: var(--sk-blue);
+  color: var(--sk-white) !important;
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.sk-divider { border: none; border-top: 1px solid var(--sk-border); margin: 20px 0; }
+.sk-lbl {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sk-black-700);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+</style>
+</head>
+<body>
+
+<div class="sk-email">
+
+  <div class="sk-header">
+    <div style="font-size:22px; font-weight:700; color:var(--sk-black); letter-spacing:0.5px;">
+      STÓRKAUP
+    </div>
+    <div style="color:var(--sk-black-700); font-size:13px; margin-top:4px;">Verkfærakistan</div>
+  </div>
+
+  <div class="sk-body">
+    <p style="margin:0 0 6px; font-size:15px; font-weight:600;">Kæru starfsmenn Stórkaups</p>
+    <p style="margin:0 0 12px; color:#444; line-height:1.6;">
+      Við höfum sett upp gagnvirkar síður þar sem hægr er að fylgjast með sölu, viðskiptavinum og vefumferð. Hér eru tenglar beint á þær síður sem eru í boði.
+    </p>
+    <p style="margin:0 0 16px; font-size:13px; background:var(--sk-blue-bg); border:1px solid var(--sk-border); border-radius:6px; padding:10px 14px; color:var(--sk-black-700);">
+      Aðgangsorð: <strong style="color:var(--sk-black);">Stortkaup_2026</strong>
+    </p>
+
+    <hr class="sk-divider">
+    <p class="sk-lbl">Yfirlit</p>
+
+    <div class="sk-card">
+      <div class="sk-card-text">
+        <p class="sk-card-title">Mælaborð</p>
+        <p class="sk-card-desc">Dagleg KPI yfirlit – pantanir, sala, samanburður við meðaltal</p>
+      </div>
+      <a class="sk-btn" href="https://storkaup.webflow.io/kpi/dashboard">Opna</a>
+    </div>
+
+    <div class="sk-card">
+      <div class="sk-card-text">
+        <p class="sk-card-title">Sölutölur</p>
+        <p class="sk-card-desc">Söluþróun, BC velta og vefpantanir</p>
+      </div>
+      <a class="sk-btn" href="https://storkaup.webflow.io/kpi/solutolur">Opna</a>
+    </div>
+
+    <hr class="sk-divider">
+    <p class="sk-lbl">Viðskiptavinir</p>
+
+    <div class="sk-card">
+      <div class="sk-card-text">
+        <p class="sk-card-title">Viðskiptavinakort</p>
+        <p class="sk-card-desc">Fletttu upp viðskiptavinum – pantanasaga, veltuþróun, innkaupalisti</p>
+      </div>
+      <a class="sk-btn" href="https://storkaup.webflow.io/kpi/vidskiptavinur">Opna</a>
+    </div>
+
+    <div class="sk-card">
+      <div class="sk-card-text">
+        <p class="sk-card-title">Forgangslisti</p>
+        <p class="sk-card-desc">Viðskiptavinir sem eru í onboarding á vef</p>
+      </div>
+      <a class="sk-btn" href="https://storkaup.webflow.io/kpi/forgangslisti">Opna</a>
+    </div>
+
+    <hr class="sk-divider">
+    <p class="sk-lbl">Markaðssetning og vörur</p>
+
+    <div class="sk-card">
+      <div class="sk-card-text">
+        <p class="sk-card-title">Markaðsherferðir</p>
+        <p class="sk-card-desc">Tölvupóstar, pantanir og tekjur frá markaðsherferðum</p>
+      </div>
+      <a class="sk-btn" href="https://storkaup.webflow.io/kpi/klaviyo">Opna</a>
+    </div>
+
+    <div class="sk-card">
+      <div class="sk-card-text">
+        <p class="sk-card-title">Vinsælar vörur</p>
+        <p class="sk-card-desc">Mest seldu vörurnar og flokkar á vef og BC</p>
+      </div>
+      <a class="sk-btn" href="https://storkaup.webflow.io/kpi/top-products">Opna</a>
+    </div>
+
+    <div class="sk-card">
+      <div class="sk-card-text">
+        <p class="sk-card-title">Vefmælaborð</p>
+        <p class="sk-card-desc">Heimsóknir, notendur, körfusetning og kaup á vef</p>
+      </div>
+      <a class="sk-btn" href="https://storkaup.webflow.io/kpi/vefur-kpi">Opna</a>
+    </div>
+
+    <hr class="sk-divider">
+    <p class="sk-lbl">Pantanir</p>
+
+    <div class="sk-card">
+      <div class="sk-card-text">
+        <p class="sk-card-title">Pantanir</p>
+        <p class="sk-card-desc">Flettu upp pöntunum á fyrirtæki eða pöntunarnúmer</p>
+      </div>
+      <a class="sk-btn" href="https://storkaup.webflow.io/kpi/pantanir">Opna</a>
+    </div>
+
+    <hr class="sk-divider">
+    <p style="margin:0; color:#666; font-size:13px; line-height:1.6;">
+      Ef þú hefur spurningar eða ábendingar varðandi uppsetningu eða notkun, hafðu þá samband við <a href="mailto:vefur@storkaup.is">vefur@storkaup.is</a>
+    </p>
+  </div>
+
+  <div class="sk-footer">
+    <p style="margin:0; font-size:11px; color:#888;">
+      Stórkaup ehf. · Innanhús KPI kerfi · Þetta eru gögn í rauntíma
+    </p>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -11,14 +11,16 @@
 
 const APP_SOURCES = [
   {
-    key         : 'RAFRAEN_INNSKRANING',
-    label       : 'RAFRÆN INNSKRÁNING',
-    formId           : 'QUu0PkqX',
+    key             : 'RAFRAEN_INNSKRANING',
+    label           : 'RAFRÆN INNSKRÁNING',
+    formId          : 'QUu0PkqX',
     notifyEmailSetting: 'APPLICATION_NOTIFY_EMAIL_RAFRAEN',
-    mainTab     : 'Kennitölu skráning',
-    nameHeader  : 'Fullt nafn umsækjanda',
-    emailHeader : 'Netfang umsækjanda',
-    ktHeader    : 'Kennitala umsækjanda',
+    mainTab         : 'Kennitölu skráning',
+    nameHeader      : 'Fullt nafn umsækjanda',
+    emailHeader     : 'Netfang umsækjanda',
+    companyHeader   : 'Nafn fyrirtækis / Nafn á deild',
+    ktHeader        : 'Kennitala umsækjanda',
+    companyKtHeader : 'Kennitala fyrirtækis',
     cleanHeaders: [
       { header: 'Kennitala fyrirtækis',  pad: 10 },
       { header: 'Kennitala umsækjanda',  pad: 10 },
@@ -26,14 +28,17 @@ const APP_SOURCES = [
     ]
   },
   {
-    key         : 'UMSOKN_VIDSKIPTI',
-    label       : 'UMSÓKN VIÐSKIPTI',
-    formId           : 'G2ZPwISA',
+    key             : 'UMSOKN_VIDSKIPTI',
+    label           : 'UMSÓKN VIÐSKIPTI',
+    formId          : 'G2ZPwISA',
     notifyEmailSetting: 'APPLICATION_NOTIFY_EMAIL_UMSOKN',
-    mainTab     : 'Umsókn um viðskipti',
-    nameHeader  : 'Fullt nafn tengiliðar (prókúruhafa)',
-    emailHeader : 'Netfang tengiliðar',
-    ktHeader    : 'Kennitala tengiliðar (umsækjandi)',
+    mainTab         : 'Umsókn um viðskipti',
+    nameHeader      : 'Fullt nafn tengiliðar (prókúruhafa)',
+    emailHeader     : 'Netfang tengiliðar',
+    companyHeader   : 'Heiti fyrirtækis',
+    ktHeader        : 'Kennitala tengiliðar (umsækjandi)',
+    companyKtHeader : 'Kennitala fyrirtækis',
+    paymentHeader   : 'Greiðslufyrirkomulag',
     cleanHeaders: [
       { header: 'Kennitala fyrirtækis',              pad: 10 },
       { header: 'Kennitala tengiliðar (umsækjandi)', pad: 10 },

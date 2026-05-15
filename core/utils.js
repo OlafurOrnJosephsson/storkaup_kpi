@@ -3079,6 +3079,26 @@ function callSupabaseRpc_(rpcName, payloadObj) {
   return body;
 }
 
+function lookupBcCustomerByKt_(kennitala) {
+  if (!kennitala) return null;
+  var conf = getSupabaseRestConfig_();
+  var kt = String(kennitala).replace(/[^0-9]/g, '');
+  var endpoint = conf.baseUrl + '/bc_customers_raw?company_id=eq.' + encodeURIComponent(kt)
+    + '&select=company_id,company_name&limit=1';
+  var res = UrlFetchApp.fetch(endpoint, {
+    method: 'get',
+    headers: {
+      apikey: conf.serviceRole,
+      Authorization: 'Bearer ' + conf.serviceRole,
+      'Accept-Profile': 'raw'
+    },
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) return null;
+  var rows = safeJsonParse_(res.getContentText(), []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
 function bulkSetCustomerPriorityFlagsInSupabase_v1(customerIds, status, note) {
   var ids = [];
   if (Array.isArray(customerIds)) {
@@ -4794,7 +4814,8 @@ function resetRecommendedTimeTriggers_v1() {
     'scheduledGa4Sync_v1',
     'scheduledCludoSync_v1',
     'scheduledCustomerAnalysisSync_v1',
-    'scheduledKlaviyoSync_v1'
+    'scheduledKlaviyoSync_v1',
+    'scheduledWeeklyDigest'
   ];
 
   handlers.forEach(function(fn) {
@@ -4807,7 +4828,8 @@ function resetRecommendedTimeTriggers_v1() {
     installScheduledReferenceSyncTrigger_v1(),
     installScheduledMagentoSyncTrigger_v1(),
     installRunPostBcImportSyncTrigger_v1(),
-    installScheduledGa4SyncTrigger_v1()
+    installScheduledGa4SyncTrigger_v1(),
+    installWeeklyDigestTrigger_v1()
   ];
 
   Logger.log('[TRIGGERS][INFO] Recommended trigger schedule reset completed.');

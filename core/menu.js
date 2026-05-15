@@ -51,6 +51,16 @@ function onOpen() {
         .addItem('Show Runtime Cache', 'menu_showRuntimeCache')
     )
     .addSubMenu(
+      ui.createMenu('Email')
+        .addItem('Senda vikulegt yfirlit', 'menu_sendWelcomeEmail')
+        .addSeparator()
+        .addItem('Rafræn — senda redirect póst', 'menu_sendRafraenRedirect')
+        .addItem('Rafræn — TEST redirect póst', 'menu_testRafraenRedirect')
+        .addSeparator()
+        .addItem('Umsókn — athuga BC stöðu', 'menu_checkUmsokn_BC')
+        .addItem('Umsókn — senda email', 'menu_sendUmsokn_Email')
+    )
+    .addSubMenu(
       ui.createMenu('BC Sync')
         .addItem('📂 Importa BC skrár úr Drive Drop', 'menu_processBcDrop')
         .addItem('▶ Sync BC → Supabase (after manual import)', 'menu_runPostBcImportSync')
@@ -427,6 +437,240 @@ function menu_clearAllSummaries() {
   });
 
   ui.alert('All summaries cleared.');
+}
+
+// ── Umsókn um viðskipti ───────────────────────────────────────────────────────
+
+function menu_checkUmsokn_BC() {
+  var cfg = loadConfig_();
+  var sheetId = cfg.SHEETS && cfg.SHEETS.UMSOKN_VIDSKIPTI && cfg.SHEETS.UMSOKN_VIDSKIPTI.ID;
+  if (!sheetId) { SpreadsheetApp.getUi().alert('UMSOKN_VIDSKIPTI sheet ID vantar í config.'); return; }
+
+  var src = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
+  var ss = SpreadsheetApp.openById(sheetId);
+  var sheet = ss.getSheetByName(src.mainTab);
+  if (!sheet || sheet.getLastRow() < 2) { SpreadsheetApp.getUi().alert('Engar umsóknir fundust.'); return; }
+
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var companyKtIdx = headers.indexOf(src.companyKtHeader);
+  var companyIdx   = headers.indexOf(src.companyHeader);
+
+  // Get or create "BC staða" column
+  var bcColIdx = headers.indexOf('BC staða');
+  if (bcColIdx === -1) {
+    bcColIdx = headers.length;
+    sheet.getRange(1, bcColIdx + 1).setValue('BC staða').setFontWeight('bold');
+  }
+
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  toast_('Athuga BC stöðu fyrir ' + data.length + ' umsóknir...', 'Umsóknir');
+
+  var found = 0;
+  data.forEach(function(row, i) {
+    var kt = companyKtIdx >= 0 ? String(row[companyKtIdx] || '').trim() : '';
+    if (!kt) return;
+    var customer = lookupBcCustomerByKt_(kt);
+    var statusCell = sheet.getRange(i + 2, bcColIdx + 1);
+    if (customer) {
+      statusCell.setValue('✓ Til í BC').setBackground('#d4edda').setFontColor('#155724');
+      found++;
+    } else {
+      statusCell.setValue('— Ekki til').setBackground('#fff3cd').setFontColor('#856404');
+    }
+  });
+
+  toast_(found + ' af ' + data.length + ' fyrirtækjum til í BC', 'BC staða');
+}
+
+function menu_sendUmsokn_Email() {
+  var cfg = loadConfig_();
+  var sheetId = cfg.SHEETS && cfg.SHEETS.UMSOKN_VIDSKIPTI && cfg.SHEETS.UMSOKN_VIDSKIPTI.ID;
+  if (!sheetId) { SpreadsheetApp.getUi().alert('UMSOKN_VIDSKIPTI sheet ID vantar í config.'); return; }
+
+  var src = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
+  var ss = SpreadsheetApp.openById(sheetId);
+  var sheet = ss.getSheetByName(src.mainTab);
+  if (!sheet || sheet.getLastRow() < 2) { SpreadsheetApp.getUi().alert('Engar umsóknir fundust.'); return; }
+
+  var headers  = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var nameIdx    = headers.indexOf(src.nameHeader);
+  var emailIdx   = headers.indexOf(src.emailHeader);
+  var companyIdx = headers.indexOf(src.companyHeader);
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+
+  var pending = [];
+  data.forEach(function(row, i) {
+    var email = emailIdx >= 0 ? String(row[emailIdx] || '').trim() : '';
+    if (!email) return;
+    pending.push({
+      sheetRow : i + 2,
+      email    : email,
+      name     : nameIdx    >= 0 ? String(row[nameIdx]    || '').trim() : '',
+      company  : companyIdx >= 0 ? String(row[companyIdx] || '').trim() : ''
+    });
+  });
+
+  if (!pending.length) { SpreadsheetApp.getUi().alert('Engar umsóknir með netfang fundust.'); return; }
+
+  var ui = SpreadsheetApp.getUi();
+  var target;
+
+  if (pending.length === 1) {
+    target = pending[0];
+  } else {
+    var listText = pending.map(function(p, i) {
+      return (i + 1) + '. ' + (p.company || '—') + ' — ' + (p.name || '—') + '\n   ' + p.email;
+    }).join('\n\n');
+    var resp = ui.prompt('Umsókn — velja', 'Umsóknir:\n\n' + listText + '\n\nNúmer:', ui.ButtonSet.OK_CANCEL);
+    if (resp.getSelectedButton() !== ui.Button.OK) return;
+    var idx = parseInt(resp.getResponseText(), 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= pending.length) { ui.alert('Ógilt val.'); return; }
+    target = pending[idx];
+  }
+
+  var templateResp = ui.prompt(
+    'Velja template',
+    'Veldu tegund pósts:\n\n'
+      + '1. Einstaklingur ekki með VSK-númer (hafnað)\n'
+      + '2. Þarf lánshæfismat (einstaklingur í rekstri)\n'
+      + '3. Lánshæfismat uppfyllir ekki skilyrði (staðgreiðsla)\n\n'
+      + 'Númer (1–3):',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (templateResp.getSelectedButton() !== ui.Button.OK) return;
+  var tmpl = parseInt(templateResp.getResponseText(), 10);
+  if (tmpl < 1 || tmpl > 3) { ui.alert('Ógilt val.'); return; }
+
+  var subjects = [
+    'Frekari upplýsingar vegna skráningar hjá Stórkaup',
+    'Frekari upplýsingar vegna reikningsviðskipta hjá Stórkaup',
+    'Staðgreiðsluviðskipti hjá Stórkaup'
+  ];
+
+  var confirm = ui.alert(
+    'Staðfesta sendingu',
+    'Senda template ' + tmpl + ' til:\n\n'
+      + (target.name || target.email) + '\n' + target.email
+      + (target.company ? '\nFyrirtæki: ' + target.company : '')
+      + '\n\nÁframhald?',
+    ui.ButtonSet.YES_NO
+  );
+  if (confirm !== ui.Button.YES) return;
+
+  var htmlFn   = [buildUmsokn_NoVskHtml_,   buildUmsokn_NeedsCreditHtml_,   buildUmsokn_CashOnlyHtml_]  [tmpl - 1];
+  var plainFn  = [buildUmsokn_NoVskPlain_,  buildUmsokn_NeedsCreditPlain_,  buildUmsokn_CashOnlyPlain_] [tmpl - 1];
+
+  GmailApp.sendEmail(
+    target.email,
+    subjects[tmpl - 1],
+    plainFn(target.name),
+    { htmlBody: htmlFn(target.name), from: 'vefur@storkaup.is' }
+  );
+
+  sheet.getRange(target.sheetRow, 1, 1, headers.length).setBackground('#d4edda');
+  toast_('Póst ' + tmpl + ' sendur til ' + target.email, 'Umsóknir');
+}
+
+function menu_testRafraenRedirect() {
+  var cfg = loadConfig_();
+  var testEmail = (cfg.SETTINGS && cfg.SETTINGS.ALERT_EMAILS) || 'oj@storkaup.is';
+  GmailApp.sendEmail(
+    testEmail,
+    'TEST — Umsókn um aðgang að vefverslun Stórkaups',
+    buildRafraenRedirectPlain_('Mariel Hilario', 'Skerfloð'),
+    { htmlBody: buildRafraenRedirectHtml_('Mariel Hilario', 'Skerfloð'), from: 'vefur@storkaup.is' }
+  );
+  toast_('Test sent til ' + testEmail, 'Email');
+}
+
+function menu_sendRafraenRedirect() {
+  var cfg = loadConfig_();
+  var sheetId = cfg.SHEETS && cfg.SHEETS.RAFRAEN_INNSKRANING && cfg.SHEETS.RAFRAEN_INNSKRANING.ID;
+  if (!sheetId) {
+    SpreadsheetApp.getUi().alert('RAFRAEN_INNSKRANING sheet ID vantar í config.');
+    return;
+  }
+
+  var ss = SpreadsheetApp.openById(sheetId);
+  var sheet = ss.getSheets()[0];
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) {
+    SpreadsheetApp.getUi().alert('Engar umsóknir fundust í RAFRÆN INNSKRÁNING.');
+    return;
+  }
+
+  var headers = data[0];
+  var emailIdx   = headers.indexOf('Netfang umsækjanda');
+  var nameIdx    = headers.indexOf('Fullt nafn umsækjanda');
+  var companyIdx = headers.indexOf('Nafn fyrirtækis / Nafn á deild');
+
+  var pending = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var email = emailIdx >= 0 ? String(row[emailIdx] || '').trim() : '';
+    if (!email) continue;
+    pending.push({
+      sheetRow : i + 1,
+      email    : email,
+      name     : nameIdx    >= 0 ? String(row[nameIdx]    || '').trim() : '',
+      company  : companyIdx >= 0 ? String(row[companyIdx] || '').trim() : ''
+    });
+  }
+
+  if (!pending.length) {
+    SpreadsheetApp.getUi().alert('Engar umsóknir með netfang fundust.');
+    return;
+  }
+
+  var ui = SpreadsheetApp.getUi();
+  var target;
+
+  if (pending.length === 1) {
+    target = pending[0];
+  } else {
+    var listText = pending.map(function(p, i) {
+      return (i + 1) + '. ' + (p.name || '—') + ' — ' + (p.company || '—') + '\n   ' + p.email;
+    }).join('\n\n');
+    var resp = ui.prompt(
+      'Senda redirect póst',
+      'Umsóknir í bið:\n\n' + listText + '\n\nSláðu inn númer (1, 2, …):',
+      ui.ButtonSet.OK_CANCEL
+    );
+    if (resp.getSelectedButton() !== ui.Button.OK) return;
+    var idx = parseInt(resp.getResponseText(), 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= pending.length) { ui.alert('Ógilt val.'); return; }
+    target = pending[idx];
+  }
+
+  var confirm = ui.alert(
+    'Staðfesta sendingu',
+    'Senda redirect póst til:\n\n'
+      + (target.name || target.email) + '\n' + target.email
+      + (target.company ? '\nFyrirtæki: ' + target.company : '')
+      + '\n\nÁframhald?',
+    ui.ButtonSet.YES_NO
+  );
+  if (confirm !== ui.Button.YES) return;
+
+  GmailApp.sendEmail(
+    target.email,
+    'Umsókn um aðgang að vefverslun Stórkaups',
+    buildRafraenRedirectPlain_(target.name, target.company),
+    { htmlBody: buildRafraenRedirectHtml_(target.name, target.company), from: 'vefur@storkaup.is' }
+  );
+
+  // Move row to "Framsent" tab
+  var destSheet = ss.getSheetByName('Framsent');
+  if (!destSheet) {
+    destSheet = ss.insertSheet('Framsent');
+    destSheet.appendRow(headers);
+    destSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e8e8e8');
+  }
+  var rowValues = sheet.getRange(target.sheetRow, 1, 1, headers.length).getValues()[0];
+  destSheet.appendRow(rowValues);
+  sheet.deleteRow(target.sheetRow);
+
+  toast_('Redirect póst sendur til ' + target.email + ' — færð í Framsent flipa', 'Email');
 }
 
 function toast_(msg, title) {

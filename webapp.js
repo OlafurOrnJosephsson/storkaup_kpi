@@ -1,6 +1,12 @@
 'use strict';
 
 function doGet(e) {
+  var app = e && e.parameter && e.parameter.app;
+  if (app === 'umsokn') {
+    return HtmlService.createHtmlOutputFromFile('umsokn_app')
+      .setTitle('Stórkaup — Umsóknir')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
   var action = (e && e.parameter && e.parameter.action) || 'dashboard';
   if (action === 'dashboard') {
     return jsonResponse_(getDashboardMetrics_(e));
