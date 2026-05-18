@@ -53,15 +53,20 @@ function webapp_readRows_(sheet, src) {
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var data    = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
 
-  var nameIdx      = headers.indexOf(src.nameHeader);
-  var emailIdx     = headers.indexOf(src.emailHeader);
-  var companyIdx   = headers.indexOf(src.companyHeader);
-  var companyKtIdx = headers.indexOf(src.companyKtHeader || 'Kennitala fyrirtækis');
-  var personKtIdx  = src.ktHeader      ? headers.indexOf(src.ktHeader)      : -1;
-  var phoneIdx       = src.phoneHeader       ? headers.indexOf(src.phoneHeader)       : -1;
-  var creditScoreIdx = src.creditScoreHeader ? headers.indexOf(src.creditScoreHeader) : -1;
-  var paymentIdx     = src.paymentHeader     ? headers.indexOf(src.paymentHeader)     : -1;
-  var dateIdx      = headers.indexOf('Submitted At');
+  var nameIdx        = headers.indexOf(src.nameHeader);
+  var emailIdx       = headers.indexOf(src.emailHeader);
+  var companyIdx     = headers.indexOf(src.companyHeader);
+  var companyKtIdx   = headers.indexOf(src.companyKtHeader || 'Kennitala fyrirtækis');
+  var companyEmailIdx = src.companyEmailHeader ? headers.indexOf(src.companyEmailHeader) : -1;
+  var addressIdx      = src.addressHeader      ? headers.indexOf(src.addressHeader)      : -1;
+  var cityIdx         = src.cityHeader         ? headers.indexOf(src.cityHeader)         : -1;
+  var postalIdx       = src.postalHeader       ? headers.indexOf(src.postalHeader)       : -1;
+  var personKtIdx     = src.ktHeader           ? headers.indexOf(src.ktHeader)           : -1;
+  var phoneIdx        = src.phoneHeader        ? headers.indexOf(src.phoneHeader)        : -1;
+  var creditScoreIdx  = src.creditScoreHeader  ? headers.indexOf(src.creditScoreHeader)  : -1;
+  var paymentIdx      = src.paymentHeader      ? headers.indexOf(src.paymentHeader)      : -1;
+  var billingInfoIdx  = src.billingInfoHeader  ? headers.indexOf(src.billingInfoHeader)  : -1;
+  var dateIdx        = headers.indexOf('Submitted At');
 
   return data.map(function(row, i) {
     var email = emailIdx >= 0 ? String(row[emailIdx] || '').trim() : '';
@@ -74,11 +79,16 @@ function webapp_readRows_(sheet, src) {
       name      : nameIdx      >= 0 ? String(row[nameIdx]      || '').trim() : '',
       email     : email,
       company   : companyIdx   >= 0 ? String(row[companyIdx]   || '').trim() : '',
-      companyKt : companyKtIdx >= 0 ? String(row[companyKtIdx] || '').trim() : '',
-      personKt  : personKtIdx  >= 0 ? String(row[personKtIdx]  || '').trim() : '',
-      phone       : phoneIdx       >= 0 ? String(row[phoneIdx]       || '').trim() : '',
-      creditScore : creditScoreIdx >= 0 ? String(row[creditScoreIdx] || '').trim() : '',
-      payment     : paymentIdx     >= 0 ? String(row[paymentIdx]     || '').trim() : ''
+      companyKt    : companyKtIdx    >= 0 ? String(row[companyKtIdx]    || '').trim() : '',
+      companyEmail : companyEmailIdx >= 0 ? String(row[companyEmailIdx] || '').trim() : '',
+      address      : addressIdx      >= 0 ? String(row[addressIdx]      || '').trim() : '',
+      city         : cityIdx         >= 0 ? String(row[cityIdx]         || '').trim() : '',
+      postal       : postalIdx       >= 0 ? String(row[postalIdx]       || '').trim() : '',
+      personKt     : personKtIdx     >= 0 ? String(row[personKtIdx]     || '').trim() : '',
+      phone        : phoneIdx        >= 0 ? String(row[phoneIdx]        || '').trim() : '',
+      creditScore  : creditScoreIdx  >= 0 ? String(row[creditScoreIdx]  || '').trim() : '',
+      payment      : paymentIdx      >= 0 ? String(row[paymentIdx]      || '').trim() : '',
+      billingInfo  : billingInfoIdx  >= 0 ? String(row[billingInfoIdx]  || '').trim() : ''
     };
   }).filter(Boolean);
 }
@@ -129,7 +139,7 @@ function webapp_sendRafraenRedirect(rowData) {
   return { ok: true };
 }
 
-function webapp_saveCreditScore_(rowIndex, score) {
+function webapp_saveCreditScore(rowIndex, score) {
   var cfg   = loadConfig_();
   var src   = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
   var sheet = SpreadsheetApp.openById(cfg.SHEETS.UMSOKN_VIDSKIPTI.ID).getSheetByName(src.mainTab);

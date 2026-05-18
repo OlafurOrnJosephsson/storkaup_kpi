@@ -53,7 +53,7 @@ body {
 .tab.active .tab-badge { background: #e8eaff; color: #10069f; }
 
 /* ── Content ── */
-.content { padding: 24px 32px; max-width: 1100px; }
+.content { padding: 24px 32px; }
 
 /* ── Loading ── */
 .loading {
@@ -390,14 +390,19 @@ function renderUmsokn(rows) {
       + '<td>'
         + '<div class="company-cell">' + esc(r.company) + '</div>'
         + '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" style="font-size:11px;color:#10069f;font-family:monospace;text-decoration:none;">' + esc(r.companyKt) + '</a>'
-        + '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.email) + '</div>'
-        + (r.phone ? '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.phone) + '</div>' : '')
+        + (r.companyEmail ? '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.companyEmail) + '</div>' : '')
+        + ((r.address || r.city) ? '<div style="font-size:11px;color:#5b5b5b;">' + esc([r.address, r.city, r.postal].filter(Boolean).join(', ')) + '</div>' : '')
       + '</td>'
       + '<td class="name-cell">'
         + '<div>' + esc(r.name) + '</div>'
+        + (r.email   ? '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.email) + '</div>' : '')
         + (r.personKt ? '<div style="font-size:11px;color:#888;font-family:monospace;">' + esc(r.personKt) + '</div>' : '')
+        + (r.phone   ? '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.phone) + '</div>' : '')
       + '</td>'
-      + '<td class="payment-cell">' + paymentBadge(r.payment) + '</td>'
+      + '<td class="payment-cell">'
+        + paymentBadge(r.payment)
+        + (r.billingInfo ? '<div style="font-size:11px;color:#5b5b5b;margin-top:4px;">' + esc(r.billingInfo) + '</div>' : '')
+      + '</td>'
       + '<td>'
         + bcBadge(r.bcFound)
         + (isPersonalKt(r.companyKt) ? '<br><span style="display:inline-block;margin-top:4px;background:#fff3cd;color:#856404;font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;">Einstaklingur</span>' : '')
@@ -502,7 +507,7 @@ function onScoreChange(i) {
 
   // Save to sheet
   if (val !== '') {
-    run('webapp_saveCreditScore_', [r.rowIndex, val])
+    run('webapp_saveCreditScore', [r.rowIndex, val])
       .catch(function(e) { showToast('Villa við vistun skors: ' + (e.message || e), true); });
   }
 }
