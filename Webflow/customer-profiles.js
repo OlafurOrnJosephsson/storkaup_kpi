@@ -25,6 +25,7 @@
         profileScope: "family"
     };
     var MAX_RENDERED_CUSTOMERS = 150;
+    var STALE_PENDING_DAYS = 30;
     var CUSTOMER_CACHE_KEY = "storkaup:customer_profiles_labeled_trends:v1";
     var CUSTOMER_CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutes
     var PRIORITY_FLAGS_CACHE_KEY = "storkaup:customer_priority_flags:v1";
@@ -186,6 +187,14 @@
             compact === "biduronboarding"
         ) return "priority_pending";
 
+        if (
+            compact === "prioritypendingstale" ||
+            compact === "stalependig" ||
+            compact === "gomulpending" ||
+            compact === "gamlarpending" ||
+            compact === "gamalpending"
+        ) return "priority_pending_stale";
+
         return raw;
     }
 
@@ -271,6 +280,7 @@
             first_selfserve_order_at: "",
             assigned_rep_name_norm: "",
             updated_at: "",
+            created_at: "",
             note: ""
         };
     }
@@ -284,6 +294,7 @@
         target.first_selfserve_order_at = f.first_selfserve_order_at || "";
         target.assigned_rep_name_norm = f.assigned_rep_name_norm || "";
         target.manual_priority_updated_at = f.updated_at || "";
+        target.manual_priority_created_at = f.created_at || "";
         target.manual_priority_note = f.note || "";
     }
 
@@ -677,6 +688,12 @@
         if (chip === "priority_onboarded_selfserve") return String(c.onboarded_status || "").toLowerCase() === "onboarded_selfserve";
         if (chip === "priority_pending") return String(c.onboarded_status || "").toLowerCase() === "priority_pending";
         if (chip === "priority_rep_only") return String(c.onboarded_status || "").toLowerCase() === "onboarded_rep_only";
+        if (chip === "priority_pending_stale") {
+            if (String(c.onboarded_status || "").toLowerCase() !== "priority_pending") return false;
+            var ca = c.manual_priority_created_at;
+            if (!ca) return true;
+            return (Date.now() - new Date(ca).getTime()) / 86400000 >= STALE_PENDING_DAYS;
+        }
         if (chip === "lhfs_very_high") return String(c.lhfs_label || "").toLowerCase() === "very high";
         if (chip === "no_web_30d") return numOrZero(c.web_orders_30d) === 0;
         if (chip === "revenue_down_30d") return numOrZero(c.bc_revenue_30d) < numOrZero(c.bc_revenue_prev_30d);
@@ -783,6 +800,7 @@
                 first_selfserve_order_at: r && r.first_selfserve_order_at ? r.first_selfserve_order_at : "",
                 assigned_rep_name_norm: String(r && r.assigned_rep_name_norm || "").toLowerCase(),
                 updated_at: r && r.updated_at ? r.updated_at : "",
+                created_at: r && r.created_at ? r.created_at : "",
                 note: r && r.note ? r.note : ""
             };
         });
@@ -1018,6 +1036,37 @@
         return null;
     }
 
+    function renderFunnelSummary_(root) {
+        var priority = (state.customers || []).filter(function(c) {
+            return String(c.manual_priority_status || "").toLowerCase() === "priority";
+        });
+        var selfserve = 0, repOnly = 0, pending = 0, pendingNoRep = 0;
+        priority.forEach(function(c) {
+            var os = String(c.onboarded_status || "").toLowerCase();
+            if (os === "onboarded_selfserve") { selfserve++; }
+            else if (os === "onboarded_rep_only") { repOnly++; }
+            else if (os === "priority_pending") {
+                pending++;
+                if (!String(c.assigned_rep_name_norm || "").trim()) pendingNoRep++;
+            }
+        });
+        var total = priority.length;
+        var convPct = total > 0 ? Math.round((selfserve / total) * 100) : 0;
+        var binds = {
+            "priority-funnel-total": String(total),
+            "priority-funnel-selfserve": String(selfserve),
+            "priority-funnel-rep-only": String(repOnly),
+            "priority-funnel-pending": String(pending),
+            "priority-funnel-pending-unassigned": String(pendingNoRep),
+            "priority-funnel-conversion-pct": convPct + "%"
+        };
+        Object.keys(binds).forEach(function(k) {
+            root.querySelectorAll('[data-bind="' + k + '"]').forEach(function(el) {
+                el.textContent = binds[k];
+            });
+        });
+    }
+
     function renderCustomers(root) {
         var list = root.querySelector('[data-list="customers"]');
         var proto = resolveProto(root, "customer-row");
@@ -1058,14 +1107,21 @@
             if (fp) fp.textContent = c.lhfs_percentile != null ? c.lhfs_percentile : "-";
             if (fl) fl.textContent = c.lhfs_label || "-";
             if (fps) fps.textContent = formatPriorityStatusLabel_(c.manual_priority_status);
+            var onboardedNorm = String(c.onboarded_status || "").toLowerCase() || "unknown";
             var fos = n.querySelector('[data-field="onboarded_status"]');
             if (fos) {
-                var onboardedNorm = String(c.onboarded_status || "").toLowerCase() || "unknown";
                 fos.textContent = formatOnboardedStatusLabel_(c.onboarded_status);
                 fos.setAttribute("data-status", onboardedNorm);
             }
             var frep = n.querySelector('[data-field="assigned_rep_name_norm"]');
             if (frep) frep.textContent = formatRepLabel_(c.assigned_rep_name_norm);
+
+            var isStale = onboardedNorm === "priority_pending" && (function() {
+                var ca = c.manual_priority_created_at;
+                if (!ca) return true;
+                return (Date.now() - new Date(ca).getTime()) / 86400000 >= STALE_PENDING_DAYS;
+            })();
+            n.setAttribute("data-stale", isStale ? "true" : "false");
 
             open.setAttribute("data-customer-id", c.customer_id || "");
             frag.appendChild(n);
@@ -1606,6 +1662,7 @@
         sortCustomers_(out);
         state.filtered = out;
         renderCustomers(root);
+        renderFunnelSummary_(root);
         updateCustomerSortIndicators(root);
     }
 
@@ -1645,6 +1702,7 @@
                         first_selfserve_order_at: r && r.first_selfserve_order_at ? r.first_selfserve_order_at : "",
                         assigned_rep_name_norm: String(r && r.assigned_rep_name_norm || "").toLowerCase(),
                         updated_at: r && r.updated_at ? r.updated_at : "",
+                        created_at: r && r.created_at ? r.created_at : "",
                         note: r && r.note ? r.note : ""
                     };
                 });
