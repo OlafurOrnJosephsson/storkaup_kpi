@@ -56,12 +56,14 @@ function onOpen() {
         .addSeparator()
         .addItem('Rafræn — senda redirect póst', 'menu_sendRafraenRedirect')
         .addItem('Rafræn — TEST redirect póst', 'menu_testRafraenRedirect')
+        .addItem('TEST — notification email (nafn)', 'menu_testNotificationEmail')
         .addSeparator()
         .addItem('Umsókn — athuga BC stöðu', 'menu_checkUmsokn_BC')
         .addItem('Umsókn — senda email', 'menu_sendUmsokn_Email')
     )
     .addSubMenu(
       ui.createMenu('BC Sync')
+        .addItem('🔍 Kíktu á BC headers (diagnóstic)', 'menu_diagnoseBcDropHeaders')
         .addItem('📂 Importa BC skrár úr Drive Drop', 'menu_processBcDrop')
         .addItem('▶ Sync BC → Supabase (after manual import)', 'menu_runPostBcImportSync')
     )
@@ -326,6 +328,14 @@ function menu_runKlaviyoSync() {
   toast_('Klaviyo sync complete. Uploaded: ' + (out && out.uploaded || 0), 'KPI CORE');
 }
 
+function menu_diagnoseBcDropHeaders() {
+  if (typeof diagnoseBcDropHeaders_v1 !== 'function') {
+    throw new Error('diagnoseBcDropHeaders_v1() not found. Ensure core/utils.js is deployed.');
+  }
+  toast_('🔍 Les BC headers úr Drop-möppu...', 'KPI CORE');
+  diagnoseBcDropHeaders_v1();
+}
+
 function menu_processBcDrop() {
   if (typeof processBcDrop_v1 !== 'function') {
     throw new Error('processBcDrop_v1() not found. Ensure core/utils.js is deployed.');
@@ -564,11 +574,24 @@ function menu_sendUmsokn_Email() {
     target.email,
     subjects[tmpl - 1],
     plainFn(target.name),
-    { htmlBody: htmlFn(target.name), from: 'vefur@storkaup.is' }
+    { htmlBody: htmlFn(target.name), from: 'vefur@storkaup.is', name: 'Stórkaup ehf' }
   );
 
   sheet.getRange(target.sheetRow, 1, 1, headers.length).setBackground('#d4edda');
   toast_('Póst ' + tmpl + ' sendur til ' + target.email, 'Umsóknir');
+}
+
+function menu_testNotificationEmail() {
+  var cfg = loadConfig_();
+  var settings = cfg.SETTINGS || {};
+  var to = settings.APPLICATION_NOTIFY_EMAIL || 'oj@storkaup.is';
+  var src = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
+  var answerMap = {};
+  answerMap[src.nameHeader]  = 'Jón Jónsson (TEST)';
+  answerMap[src.emailHeader] = to;
+  answerMap[src.ktHeader]    = '1234567890';
+  notifyNewApplication_(src, answerMap, new Date().toISOString());
+  toast_('Test notification sent til ' + to, 'Email');
 }
 
 function menu_testRafraenRedirect() {
@@ -578,7 +601,7 @@ function menu_testRafraenRedirect() {
     testEmail,
     'TEST — Umsókn um aðgang að vefverslun Stórkaups',
     buildRafraenRedirectPlain_('Mariel Hilario', 'Skerfloð'),
-    { htmlBody: buildRafraenRedirectHtml_('Mariel Hilario', 'Skerfloð'), from: 'vefur@storkaup.is' }
+    { htmlBody: buildRafraenRedirectHtml_('Mariel Hilario', 'Skerfloð'), from: 'vefur@storkaup.is', name: 'Stórkaup ehf' }
   );
   toast_('Test sent til ' + testEmail, 'Email');
 }
@@ -656,7 +679,7 @@ function menu_sendRafraenRedirect() {
     target.email,
     'Umsókn um aðgang að vefverslun Stórkaups',
     buildRafraenRedirectPlain_(target.name, target.company),
-    { htmlBody: buildRafraenRedirectHtml_(target.name, target.company), from: 'vefur@storkaup.is' }
+    { htmlBody: buildRafraenRedirectHtml_(target.name, target.company), from: 'vefur@storkaup.is', name: 'Stórkaup ehf' }
   );
 
   // Move row to "Framsent" tab

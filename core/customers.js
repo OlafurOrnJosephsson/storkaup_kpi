@@ -394,6 +394,9 @@ function pruneCompletedApplications_() {
   const magentoKt = new Set(
     custData.map(r => String(r[16] || '').trim()).filter(v => v && v !== '0000000000')
   );
+  const magentoCompanyIds = new Set(
+    custData.map(r => String(r[11] || '').trim()).filter(v => v && v !== '0000000000')
+  );
 
   const sources = typeof APP_SOURCES !== 'undefined' ? APP_SOURCES : [];
   if (!sources.length) { Logger.log('⚠️ pruneCompletedApplications_: APP_SOURCES not found'); return; }
@@ -420,15 +423,23 @@ function pruneCompletedApplications_() {
       doneSh.setFrozenRows(1);
     }
 
-    const emailIdx = headers.findIndex(h => h.toString().toLowerCase().trim() === src.emailHeader.toLowerCase().trim());
-    const ktIdx    = headers.findIndex(h => h.toString().toLowerCase().trim() === src.ktHeader.toLowerCase().trim());
-    const data     = mainSh.getRange(2, 1, numRows, mainSh.getLastColumn()).getValues();
+    const emailIdx     = headers.findIndex(h => h.toString().toLowerCase().trim() === src.emailHeader.toLowerCase().trim());
+    const ktIdx        = headers.findIndex(h => h.toString().toLowerCase().trim() === src.ktHeader.toLowerCase().trim());
+    const companyKtIdx = src.companyKtHeader
+      ? headers.findIndex(h => h.toString().toLowerCase().trim() === src.companyKtHeader.toLowerCase().trim())
+      : -1;
+    const data = mainSh.getRange(2, 1, numRows, mainSh.getLastColumn()).getValues();
 
     const toMove = [];
     data.forEach((row, i) => {
-      const email = emailIdx > -1 ? String(row[emailIdx] || '').toLowerCase().trim() : '';
-      const kt    = ktIdx    > -1 ? String(row[ktIdx]    || '').trim()               : '';
-      if ((email && magentoEmails.has(email)) || (kt && magentoKt.has(kt))) {
+      const email     = emailIdx     > -1 ? String(row[emailIdx]     || '').toLowerCase().trim() : '';
+      const kt        = ktIdx        > -1 ? String(row[ktIdx]        || '').trim()               : '';
+      const companyKt = companyKtIdx > -1 ? String(row[companyKtIdx] || '').trim()               : '';
+      if (
+        (email     && magentoEmails.has(email))     ||
+        (kt        && magentoKt.has(kt))            ||
+        (companyKt && magentoCompanyIds.has(companyKt))
+      ) {
         toMove.push({ rowNum: i + 2, data: row });
       }
     });

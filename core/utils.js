@@ -2269,6 +2269,145 @@ function processBcDrop_v1() {
 }
 
 /************************************************************
+ * BC DROP HEADER DIAGNOSTIC — diagnoseBcDropHeaders_v1()
+ *
+ * Run this BEFORE processBcDrop_v1 when importing from a new
+ * BC SaaS export for the first time. Compares XLSX headers
+ * against STORKAUP_SCHEMA and reports:
+ *   unknown — columns in the file not in schema (new in SaaS)
+ *   missing — schema columns absent from the file (renamed?)
+ *
+ * Does NOT modify or archive any files.
+ ************************************************************/
+function diagnoseBcDropHeaders_v1() {
+  var cfg = loadConfig_();
+  var dropFolderId = String((cfg.SETTINGS || {}).BC_DROP_FOLDER_ID || '').trim();
+  if (!dropFolderId) {
+    Logger.log('[BC_DIAG] BC_DROP_FOLDER_ID not set.');
+    return { ok: false, reason: 'no_folder_configured' };
+  }
+
+  var dropFolder;
+  try {
+    dropFolder = DriveApp.getFolderById(dropFolderId);
+  } catch (e) {
+    Logger.log('[BC_DIAG] Cannot open drop folder: ' + e.message);
+    return { ok: false, reason: 'folder_not_found' };
+  }
+
+  var fileIter = dropFolder.getFilesByType(
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+
+  var report = [];
+
+  while (fileIter.hasNext()) {
+    var file = fileIter.next();
+    var norm = normalizeHeaderKeyLocal_(file.getName().replace(/\.xlsx$/i, ''));
+    var schemaKey = norm.indexOf('linur') !== -1       ? 'BC_LINES'
+                  : norm.indexOf('kredit') !== -1      ? 'BC_CREDIT_INVOICES'
+                  : norm.indexOf('solureikn') !== -1   ? 'BC_INVOICES'
+                  : norm.indexOf('vidskiptam') !== -1  ? 'BC_CUSTOMERS'
+                  : null;
+    if (!schemaKey) {
+      Logger.log('[BC_DIAG] Skipping unrecognised file: ' + file.getName());
+      continue;
+    }
+
+    var tempFileId = null;
+    try {
+      var copyRes = UrlFetchApp.fetch(
+        'https://www.googleapis.com/drive/v3/files/' + file.getId() + '/copy',
+        {
+          method: 'post',
+          headers: {
+            Authorization: 'Bearer ' + ScriptApp.getOAuthToken(),
+            'Content-Type': 'application/json'
+          },
+          payload: JSON.stringify({
+            mimeType: 'application/vnd.google-apps.spreadsheet',
+            name: '_BC_DIAG_TEMP_' + Date.now()
+          }),
+          muteHttpExceptions: true
+        }
+      );
+      if (copyRes.getResponseCode() !== 200) {
+        throw new Error('Drive copy failed (' + copyRes.getResponseCode() + ')');
+      }
+
+      tempFileId = JSON.parse(copyRes.getContentText()).id;
+      var firstRow = SpreadsheetApp.openById(tempFileId).getSheets()[0]
+        .getRange(1, 1, 1, 200).getValues()[0];
+      var fileHeaders = firstRow.map(String).filter(function(h) { return h.trim() !== ''; });
+
+      // Collect expected headers from schema
+      var schema = STORKAUP_SCHEMA[schemaKey];
+      var schemaHeaders = [];
+      Object.keys(schema).forEach(function(key) {
+        if (key === 'FILE' || key === 'PK' || key === 'SHEET') return;
+        if (key === 'COLUMNS' && typeof schema.COLUMNS === 'object') {
+          Object.keys(schema.COLUMNS).forEach(function(sub) {
+            schemaHeaders.push(schema.COLUMNS[sub]);
+          });
+          return;
+        }
+        if (typeof schema[key] === 'string') schemaHeaders.push(schema[key]);
+      });
+
+      // Normalize both sides — catches Unicode vs ASCII differences (Upphæð↔Upphaed etc.)
+      // Only report columns where normalized forms don't match any counterpart.
+      var fileNorm   = fileHeaders.map(normalizeHeaderKeyLocal_);
+      var schemaNorm = schemaHeaders.map(normalizeHeaderKeyLocal_);
+      var unknown = fileHeaders.filter(function(h, i) {
+        return schemaNorm.indexOf(fileNorm[i]) === -1;
+      });
+      var missing = schemaHeaders.filter(function(h, i) {
+        return fileNorm.indexOf(schemaNorm[i]) === -1;
+      });
+
+      Logger.log('[BC_DIAG] ' + file.getName() + ' → ' + schemaKey);
+      Logger.log('  File headers   (' + fileHeaders.length + '): ' + fileHeaders.join(' | '));
+      Logger.log('  Schema headers (' + schemaHeaders.length + '): ' + schemaHeaders.join(' | '));
+      Logger.log('  UNKNOWN (new in SaaS, not in schema): ' + (unknown.length ? unknown.join(' | ') : '—'));
+      Logger.log('  MISSING (in schema, absent in file):  ' + (missing.length  ? missing.join(' | ')  : '—'));
+
+      report.push({
+        file: file.getName(),
+        schema: schemaKey,
+        fileHeaderCount: fileHeaders.length,
+        schemaHeaderCount: schemaHeaders.length,
+        unknown: unknown,
+        missing: missing,
+        ok: unknown.length === 0 && missing.length === 0
+      });
+
+    } catch (e) {
+      Logger.log('[BC_DIAG] ❌ ' + file.getName() + ': ' + e.message);
+      report.push({ file: file.getName(), schema: schemaKey, error: e.message, ok: false });
+    } finally {
+      if (tempFileId) { try { DriveApp.getFileById(tempFileId).setTrashed(true); } catch (_) {} }
+    }
+  }
+
+  // Summary alert
+  var lines = report.map(function(r) {
+    if (r.error) return '❌ ' + r.file + ': ' + r.error;
+    var u = r.unknown.length ? '\n  + óþekktir: ' + r.unknown.join(', ') : '';
+    var m = r.missing.length  ? '\n  - vantar:    ' + r.missing.join(', ')  : '';
+    var status = r.ok ? '✅' : '⚠️';
+    return status + ' ' + r.schema + ' (' + r.file + ')' + u + m;
+  });
+
+  var msg = report.length
+    ? lines.join('\n\n')
+    : 'Engar þekktar BC XLSX skrár fundust í drop-möppu.';
+
+  SpreadsheetApp.getUi().alert('BC Header Diagnóstic', msg, SpreadsheetApp.getUi().ButtonSet.OK);
+  Logger.log('[BC_DIAG] Report: ' + JSON.stringify(report));
+  return report;
+}
+
+/************************************************************
  * SUPABASE MIGRATION: BC_CUSTOMERS
  ************************************************************/
 function upsertBcCustomersToSupabase_(rows) {

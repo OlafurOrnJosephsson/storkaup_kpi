@@ -125,7 +125,7 @@ function webapp_sendRafraenRedirect(rowData) {
     rowData.email,
     'Umsókn um aðgang að vefverslun Stórkaups',
     buildRafraenRedirectPlain_(rowData.name, rowData.company),
-    { htmlBody: buildRafraenRedirectHtml_(rowData.name, rowData.company), from: 'vefur@storkaup.is' }
+    { htmlBody: buildRafraenRedirectHtml_(rowData.name, rowData.company), from: 'vefur@storkaup.is', name: 'Stórkaup ehf' }
   );
 
   var dest = ss.getSheetByName('Framsent');
@@ -175,7 +175,7 @@ function webapp_sendUmsokn_Email(rowData, templateId) {
     rowData.email,
     subjects[tid],
     plainFns[tid](rowData.name),
-    { htmlBody: htmlFns[tid](rowData.name), from: 'vefur@storkaup.is', bcc: 'umsokn@storkaup.is' }
+    { htmlBody: htmlFns[tid](rowData.name), from: 'vefur@storkaup.is', name: 'Stórkaup ehf', bcc: 'umsokn@storkaup.is' }
   );
 
   var cfg     = loadConfig_();

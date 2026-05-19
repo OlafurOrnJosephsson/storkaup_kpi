@@ -240,12 +240,17 @@ tr.done td { opacity: 0.4; }
 </head>
 <body>
 
-<div class="tabs">
-  <div class="tab active" data-tab="rafraen" onclick="switchTab('rafraen')">
+<div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #e9e9e9; background:#fff;">
+<div class="tabs" style="border-bottom:none;">
+  <div class="tab" data-tab="rafraen" onclick="switchTab('rafraen')">
     Rafræn Innskráning <span class="tab-badge" id="badge-rafraen">0</span>
   </div>
-  <div class="tab" data-tab="umsokn" onclick="switchTab('umsokn')">
+  <div class="tab active" data-tab="umsokn" onclick="switchTab('umsokn')">
     Umsókn um viðskipti <span class="tab-badge" id="badge-umsokn">0</span>
+  </div>
+</div>
+  <div style="padding-right:24px;">
+    <button class="btn btn-ghost" id="sync-btn" onclick="syncMagento()">⟳ Samstilla</button>
   </div>
 </div>
 
@@ -317,7 +322,7 @@ function loadData() {
     document.getElementById('loading').style.display = 'none';
     renderRafraen(data.rafraen || []);
     renderUmsokn(data.umsokn  || []);
-    document.getElementById('tab-rafraen').style.display = '';
+    document.getElementById('tab-umsokn').style.display = '';
   }).catch(function(err) {
     document.getElementById('loading').innerHTML =
       '<span style="color:#c23340;">Villa við að sækja gögn: ' + (err.message || err) + '</span>';
@@ -334,14 +339,22 @@ function renderRafraen(rows) {
     return;
   }
   var html = '<div class="table-wrap"><table>'
-    + '<thead><tr><th>Dags.</th><th>Fyrirtæki</th><th>Kennitala</th><th>Nafn</th><th>Netfang</th><th>BC staða</th><th>Aðgerð</th></tr></thead><tbody>';
+    + '<thead><tr><th>Dags.</th><th>Fyrirtæki</th><th>Nafn</th><th>Netfang</th><th>BC staða</th><th>Aðgerð</th></tr></thead><tbody>';
   rows.forEach(function(r, i) {
     html += '<tr id="raf-row-' + i + '">'
       + '<td class="date-cell">' + fmtDate(r.date) + '</td>'
-      + '<td class="company-cell">' + esc(r.company) + '</td>'
-      + '<td class="kt-cell">' + esc(r.companyKt) + '</td>'
-      + '<td class="name-cell">' + esc(r.name) + '</td>'
-      + '<td class="email-cell">' + esc(r.email) + '</td>'
+      + '<td>'
+        + '<div class="company-cell">' + esc(r.company) + '</div>'
+        + (r.companyKt ? '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" style="font-size:11px;color:#10069f;font-family:monospace;text-decoration:none;">' + esc(r.companyKt) + '</a>' : '')
+      + '</td>'
+      + '<td class="name-cell">'
+        + '<div>' + esc(r.name) + '</div>'
+        + (r.personKt ? '<div style="font-size:11px;color:#888;font-family:monospace;">' + esc(r.personKt) + '</div>' : '')
+      + '</td>'
+      + '<td class="email-cell">'
+        + esc(r.email)
+        + (r.phone ? '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.phone) + '</div>' : '')
+      + '</td>'
       + '<td>' + bcBadge(r.bcFound) + '</td>'
       + '<td class="action-cell">'
       + '<button class="btn btn-primary" onclick="confirmRafraen(' + i + ')">Senda redirect</button>'
@@ -553,6 +566,26 @@ document.getElementById('modal').addEventListener('click', function(e) {
 
 function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Sync ───────────────────────────────────────────────────────────────────
+
+function syncMagento() {
+  var btn = document.getElementById('sync-btn');
+  btn.disabled = true;
+  btn.textContent = '⟳ Samstilli…';
+  run('syncMagentoCustomers')
+    .then(function() {
+      showToast('Samstilling lokið — hleð gögn að nýju');
+      btn.disabled = false;
+      btn.textContent = '⟳ Samstilla';
+      loadData();
+    })
+    .catch(function(e) {
+      showToast('Villa við samstillingu: ' + (e.message || e), true);
+      btn.disabled = false;
+      btn.textContent = '⟳ Samstilla';
+    });
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────

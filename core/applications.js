@@ -21,6 +21,7 @@ const APP_SOURCES = [
     companyHeader   : 'Nafn fyrirtækis / Nafn á deild',
     ktHeader        : 'Kennitala umsækjanda',
     companyKtHeader : 'Kennitala fyrirtækis',
+    phoneHeader     : 'Sími umsækjanda',
     cleanHeaders: [
       { header: 'Kennitala fyrirtækis',  pad: 10 },
       { header: 'Kennitala umsækjanda',  pad: 10 },
@@ -215,7 +216,7 @@ function notifyNewApplication_(src, answerMap, submittedAt) {
       kt    ? `Kt:      ${kt}`    : '',
     ].filter(l => l !== null && l !== undefined).join('\n');
 
-    MailApp.sendEmail(to, subject, body);
+    MailApp.sendEmail(to, subject, body, { name: 'Stórkaup ehf' });
   } catch (err) {
     Logger.log(`⚠️ notifyNewApplication_ failed: ${err.message}`);
   }

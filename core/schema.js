@@ -85,26 +85,27 @@ BC_INVOICES: {
   PK: 'Nr.',
   COLUMNS: {
     DOCUMENT_NO: 'Nr.',
-    COMPANY_ID: 'Numer vidskiptamanns',
-    EXTERNAL_DOC_NO: 'Numer utanadk. skjals',
-    COMPANY_NAME: 'Nafn vidskiptamanns',
-    ORDER_NO: 'Pontunarnr.',
-    CURRENCY: 'Gjaldmidilskoti',
-    DUE_DATE: 'Gjalddagi',
-    BOOKING_DATE: 'Bokunardags.',
-    DOCUMENT_DATE: 'Dags. fylgiskjals',
-    EMAIL: 'Netfang',
-    AMOUNT_EXCL: 'Upphaed',
-    AMOUNT_INCL: 'Upphaed med VSK',
-    ORDER_DATE: 'Pontunardags.',
-    SALESPERSON_CODE: 'Koti solumanns',
-    REMAINING: 'Eftirstodvar',
-    LOCATION_CODE: 'Koti birgdageymslu',
-    PRINTED: 'Prentad',
-    CLOSED: 'Lokad',
-    CANCELED: 'Haett vid',
-    CORRECTIVE: 'Leidrettandi',
-    RSM_PROVIDER: 'RSM thjonustuaadili',
+    COMPANY_ID: 'Numer vidskiptamanns',      // normalize → numervidskiptamanns ✓
+    EXTERNAL_DOC_NO: 'Numer utanadk. skjals', // normalize ✓
+    COMPANY_NAME: 'Nafn vidskiptamanns',      // normalize ✓
+    ORDER_NO: 'Pontunarnr.',                  // gone in SaaS — will be ''
+    CURRENCY: 'Gjaldmiðilskóði',             // SaaS: kodi (was koti — no normalize match)
+    DUE_DATE: 'Eindagi',                      // SaaS rename: was Gjalddagi
+    BOOKING_DATE: 'Bokunardags.',             // normalize ✓
+    DOCUMENT_DATE: 'Dags. fylgiskjals',       // gone in SaaS — will be ''
+    EMAIL: 'Netfang',                         // gone in SaaS — will be ''
+    AMOUNT_EXCL: 'Upphaed',                   // normalize ✓
+    AMOUNT_INCL: 'Upphaed med VSK',           // normalize ✓
+    ORDER_DATE: 'Pontunardags.',              // gone in SaaS — will be ''
+    SALESPERSON_CODE: 'Kóði sölumanns',       // SaaS: kodi (was koti — no normalize match)
+    WEB_ORDER_NO: 'Vefpöntunarnr.',          // new in SaaS (links to Magento web orders)
+    REMAINING: 'Eftirstodvar',               // normalize ✓
+    LOCATION_CODE: 'Kóði birgðageymslu',    // SaaS: kodi (was koti — no normalize match)
+    PRINTED: 'Prentad',                       // normalize ✓
+    CLOSED: 'Lokad',                          // normalize ✓
+    CANCELED: 'Haett vid',                    // normalize ✓
+    CORRECTIVE: 'Leidrettandi',               // normalize ✓
+    RSM_PROVIDER: 'RSM þjónustuaðili',       // SaaS: adili (was aadili — no normalize match)
     RSM_DATE: 'Dags RSM sent'
   }
 },
@@ -118,23 +119,23 @@ BC_CREDIT_INVOICES: {
   PK: 'Nr.',
   COLUMNS: {
     DOCUMENT_NO: 'Nr.',
-    COMPANY_ID: 'Selt-til - Vidskm.nr.',
-    SALESPERSON_CODE: 'Koti solumanns',
-    COMPANY_NAME: 'Nafn vidskiptamanns',
-    CURRENCY: 'Gjaldmidilskoti',
-    DUE_DATE: 'Gjalddagi',
-    BOOKING_DATE: 'Bokunardags.',
-    DOCUMENT_DATE: 'Dags. fylgiskjals',
-    ORDER_DATE: 'Pontunardags.',
-    AMOUNT_EXCL: 'Upphaed',
-    AMOUNT_INCL: 'Upphaed med VSK',
-    REMAINING: 'Eftirstodvar',
+    COMPANY_ID: 'Selt-til - Vidskm.nr.',     // normalize ✓
+    SALESPERSON_CODE: 'Kóði sölumanns',       // SaaS: kodi (was koti — no normalize match)
+    COMPANY_NAME: 'Nafn vidskiptamanns',      // normalize ✓
+    CURRENCY: 'Gjaldmiðilskóði',             // SaaS: kodi (was koti — no normalize match)
+    DUE_DATE: 'Eindagi',                      // SaaS rename: was Gjalddagi
+    BOOKING_DATE: 'Bokunardags.',             // gone in SaaS — will be ''
+    DOCUMENT_DATE: 'Dags. fylgiskjals',       // gone in SaaS — will be ''
+    ORDER_DATE: 'Pontunardags.',              // gone in SaaS — will be ''
+    AMOUNT_EXCL: 'Upphaed',                   // normalize ✓
+    AMOUNT_INCL: 'Upphaed med VSK',           // normalize ✓
+    REMAINING: 'Eftirstodvar',               // normalize ✓
     PAID: 'Greitt',
-    CANCELED: 'Haett vid',
-    CORRECTIVE: 'Leidrettandi',
-    LOCATION_CODE: 'Koti birgdageymslu',
-    PRINTED: 'Prentad',
-    RSM_PROVIDER: 'RSM Thjonusta',
+    CANCELED: 'Haett vid',                    // normalize ✓
+    CORRECTIVE: 'Leidrettandi',               // normalize ✓
+    LOCATION_CODE: 'Kóði birgðageymslu',    // SaaS: kodi (was koti — no normalize match)
+    PRINTED: 'Prentad',                       // normalize ✓
+    RSM_PROVIDER: 'RSM Þjónusta',            // normalize ✓ (þ→th matches Thjonusta)
     RSM_DATE: 'Dags RSM sent'
   }
 },

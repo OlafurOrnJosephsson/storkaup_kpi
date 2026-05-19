@@ -44,7 +44,8 @@ function scheduledWeeklyDigest() {
 
     GmailApp.sendEmail(recipients.join(','), subject, buildWeeklyDigestPlain_(stats), {
       htmlBody: buildWeeklyDigestHtml_(stats),
-      from: 'vefur@storkaup.is'
+      from: 'vefur@storkaup.is',
+      name: 'Stórkaup ehf'
     });
 
     result.sent = true;
@@ -99,7 +100,8 @@ function menu_sendWelcomeEmail() {
     var subject = 'Vikulegt yfirlit — ' + digestPeriodLabel_(weekStart, weekEndDisplay, true);
     GmailApp.sendEmail(rcpts.join(','), subject, buildWeeklyDigestPlain_(stats), {
       htmlBody: buildWeeklyDigestHtml_(stats),
-      from: 'vefur@storkaup.is'
+      from: 'vefur@storkaup.is',
+      name: 'Stórkaup ehf'
     });
     toast_('Sent til ' + rcpts.join(', '), 'Email');
   } else {
@@ -117,7 +119,8 @@ function menu_sendWelcomeEmail() {
     GmailApp.sendEmail(rcpts.join(','), 'Velkomin á KPI yfirlit Stórkaups',
       'Við höfum sett upp gagnvirkar KPI síður.\n\nAðgangsorð: Stortkaup_2026\n\nDashboard: https://storkaup.webflow.io/kpi/dashboard', {
       htmlBody: buildWelcomeEmailHtml_(),
-      from: 'vefur@storkaup.is'
+      from: 'vefur@storkaup.is',
+      name: 'Stórkaup ehf'
     });
     toast_('Velkomin-tölvupóstur sendur til ' + rcpts.join(', '), 'Email');
   }

@@ -2,6 +2,13 @@
 
 ## Recent Release Notes
 
+- Weekly email digest added (2026-05-13):
+  - `core/email.js` — `scheduledWeeklyDigest` (mánudagar kl. 08:00) + `menu_sendWelcomeEmail` (manual)
+  - `core/sql/weekly_digest.sql` — `public.weekly_digest_stats(p_week_start)` RPC; BC net, web, nýir viðskiptavinir, top 3, Klaviyo 30d
+  - `email-preview/weekly-digest.html` + `email-preview/welcome.html` — standalone preview skrár
+  - Sendir frá `vefur@storkaup.is` (Gmail alias á `umsokn@storkaup.is`)
+  - Trigger skráður: mánudagar kl. 08:00 UTC
+
 - Order search (`/kpi/pantanir` or similar) added (2026-05-02):
   - `core/sql/search_orders.sql` — unified RPC across SR (BC invoices), SK (BC credit invoices), WEB (Magento)
   - `Webflow/order-search.js` — debounced search, template-clone render, all data as `data-*` attributes
@@ -99,7 +106,7 @@
 | P5-3 | Implement v1 attribution mart (`last_click`, 30-day window) | Olafur | Done | `mv_klaviyo_attribution_daily_nobot` live; returning 326 total attributed orders |
 | P5-4 | Add KPI widgets (campaign revenue, conversions, conv %) to Webflow dashboard | Olafur | Done | `/kpi/klaviyo` page live with all KPI cards; `Sala með vsk` shows `–` (likely null `revenue_incl` in source — watch) |
 | P5-5 | Add validation check (Klaviyo-attributed orders <= total web orders) | Olafur | Done | `klaviyo_orders_le_web_orders_30d` check implemented in `runDailySanityChecks_v1`; runs daily |
-| P5-6 | Fix null `revenue_incl` on Klaviyo dashboard (`Sala frá Klaviyo með vsk` shows `–`) | Olafur | Todo | `/kpi/klaviyo` shows a non-null ISK value for `Sala frá Klaviyo með vsk`; root cause traced to `newweb_orders_raw` |
+| P5-6 | Fix null `revenue_incl` on Klaviyo dashboard (`Sala frá Klaviyo með vsk` shows `–`) | Olafur | Done | `revenue_incl` populated correctly in dashboard.js and attribution MVs |
 
 ## Priority 6 - Website Dashboard & GA4
 
@@ -108,7 +115,7 @@
 | P6-1 | Validate `website_kpi_pack` RPC in Supabase and confirm all dashboard cards render | Olafur | Done | All KPI cards confirmed live in production (2026-04-17) |
 | P6-2 | Fix `Dagsetning:` date label on `/kpi/vefur-kpi` showing American format (04/16/2026) | Olafur | Done | `formatDayLabel` rewritten to manual `dd.mm.yyyy` — no Intl locale dependency; deploy to Webflow and update pin |
 | P6-3 | Pin `website-dashboard.js` + `website-dashboard-bootstrap.js` in Webflow and update pins below | Olafur | Done | Webflow deploy rev updated to `cb56c43`; all pages confirmed loading |
-| P6-4 | Define phase 2 scope for website dashboard (segments, funnels, or trend lines) | Olafur | Blocked | Waiting for P8-2 GA4 purchase ratio validation to pass |
+| P6-4 | Define phase 2 scope for website dashboard (segments, funnels, or trend lines) | Olafur | Todo | P8-2 lokið og P8-4 lagfært — purchase tracking virkar aftur; funnel scope hægt að skilgreina |
 
 ## Priority 7 - SEO Manager
 
@@ -122,24 +129,25 @@
 | ID | Task | Owner | Status | Acceptance Check |
 |---|---|---|---|---|
 | P8-1 | Fix GA4 purchase over-counting (GTM EV trigger dedup broken) | Olafur | Done | `CJS – Seen Txn` moved to condition on `EV – order success total visible`; `EX – purchase duplicate` removed from tag exceptions; sanity check `ga4_purchase_ratio_7d` wired into `runDailySanityChecks_v1` (threshold 2.5x) |
-| P8-2 | Validate GA4 purchase ratio after fix | Olafur | Todo | `ga4_purchase_ratio_7d` passes (ratio < 2.5) on next daily sanity run; compare query confirms ga4_purchases ≈ actual_orders |
-| P8-3 | Add funnel conversion rates to website dashboard once P8-2 passes | Olafur | Todo | `add_to_cart→checkout %` and `checkout→purchase %` visible on `/kpi/vefur-kpi`; numbers make business sense |
+| P8-4 | Fix GA4 purchase event stopped firing after GTM edits | Olafur | Done | Next.js mergar history change inn í `page_view` dataLayer push; `HC – purchase` trigger breytt úr History Change í Custom Event (`page_view`) með `{{History Source}}` condition; staðfest í GTM Preview 2026-05-13 |
+| P8-2 | Validate GA4 purchase ratio after fix | Olafur | Done | `runDailySanityChecks_v1` keyrir daglega með 0% error; `ga4_purchase_ratio_7d` check wired in |
+| P8-3 | Add funnel conversion rates to website dashboard once P8-2 passes | Olafur | Dropped | Low value for B2B; funnel data exists in GA4 but not actionable without A/B testing or checkout redesign |
 
 ## Priority 9 - BC Data Integrity (Urgent)
 
 | ID | Task | Owner | Status | Acceptance Check |
 |---|---|---|---|---|
-| P9-1 | Restore `bc_invoices_raw.amount_excl` in Supabase via SQL (backfill from `bc_lines_raw`, fallback `amount_incl/1.24`) | Olafur | Todo | `webRevenuePct` shows correct % matching Power BI again; no zero rows for amount_excl in recent months |
-| P9-2 | Validate `webRevenuePct` on dashboard after P9-1 | Olafur | Todo | Dashboard `Vefsala % af heildarsolu` matches Power BI within ~1% for last closed month |
+| P9-1 | Restore `bc_invoices_raw.amount_excl` in Supabase via SQL (backfill from `bc_lines_raw`, fallback `amount_incl/1.24`) | Olafur | Done | Applied 2026-05-13; excl_pct_of_incl ~82-83% yfir alla mánuði ✓ |
+| P9-2 | Validate `webRevenuePct` on dashboard after P9-1 | Olafur | Done | excl_pct stöðugt ~82.6% yfir 2025-2026; passar við íslenskan VSK-blöndu ✓ |
 
 ## Priority 10 - Operational Hygiene
 
 | ID | Task | Owner | Status | Acceptance Check |
 |---|---|---|---|---|
-| P10-1 | Confirm `ALERT_EMAILS` Script Property is set in Apps Script | Olafur | Todo | `notifyTriggerFailure_` confirmed to deliver email on test failure; no silent gaps |
-| P10-2 | Decide fate of `scheduledCustomerAnalysisSync_v1` (disable if low-value and noisy) | Olafur | Todo | Either disabled with no dashboard regression, or error rate reduced and kept |
-| P10-3 | Add `auditTriggerSchedule_v1()` menu function to log active trigger cadences | Olafur | Todo | Running the function prints all active triggers with their cadence to log/sheet |
-| P10-4 | Turn off `DEBUG = true` in `Webflow/dashboard.js` and `Webflow/website-dashboard.js` for production | Olafur | Todo | No `[dashboard]` or `[website-dashboard]` debug lines in browser console on production pages |
+| P10-1 | Confirm `ALERT_EMAILS` Script Property is set in Apps Script | Olafur | Done | `ALERT_EMAILS` stillt í STORKAUP_CONFIG → SETTINGS tab (2026-05-13) |
+| P10-2 | Decide fate of `scheduledCustomerAnalysisSync_v1` (disable if low-value and noisy) | Olafur | Done | Halda — knýr `mv_customer_profiles_labeled_trends` (Forgangslisti); 0% error rate |
+| P10-3 | Add `auditTriggerSchedule_v1()` menu function to log active trigger cadences | Olafur | Done | `auditTriggers_v1()` er þegar til í core/utils.js og gerir þetta |
+| P10-4 | Turn off `DEBUG = true` in `Webflow/dashboard.js` and `Webflow/website-dashboard.js` for production | Olafur | Done | `DEBUG = false` í báðum skrám (dashboard.js:14, website-dashboard.js:6) |
 
 ## Current Production Pins
 
