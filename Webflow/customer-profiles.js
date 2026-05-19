@@ -754,7 +754,11 @@
                 key === "webshop_active" ||
                 key === "customer_id" ||
                 key === "low_hanging_fruit_score" ||
-                key === "assigned_rep_name_norm";
+                key === "assigned_rep_name_norm" ||
+                key === "orders_bc_365d" ||
+                key === "avg_days_between_bc_orders" ||
+                key === "orders_web_365d" ||
+                key === "avg_days_between_web_orders";
             if (!isCustomerSortKey) return;
             h.classList.remove("is-sort-active", "is-asc", "is-desc");
             if (key === state.customerSortKey) {
@@ -1842,7 +1846,11 @@
                     ckey === "webshop_active" ||
                     ckey === "customer_id" ||
                     ckey === "low_hanging_fruit_score" ||
-                    ckey === "assigned_rep_name_norm";
+                    ckey === "assigned_rep_name_norm" ||
+                    ckey === "orders_bc_365d" ||
+                    ckey === "avg_days_between_bc_orders" ||
+                    ckey === "orders_web_365d" ||
+                    ckey === "avg_days_between_web_orders";
                 if (isCustomerSortKey) {
                     e.preventDefault();
                     if (state.customerSortKey === ckey) {
