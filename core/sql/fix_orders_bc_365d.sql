@@ -112,7 +112,7 @@ select
   p.low_hanging_fruit_score,
   p.total_bc_orders,
   p.orders_bc_90d,
-  coalesce(b365.orders_bc_365d, 0)        as orders_bc_365d,
+  coalesce(b365.orders_bc_365d, 0)::numeric as orders_bc_365d,
   p.webshop_orders,
   p.webshop_sales,
   p.avg_days_between_bc_orders,
