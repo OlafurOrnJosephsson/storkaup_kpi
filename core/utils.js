@@ -1245,93 +1245,6 @@ function parseBcDateForSupabase_(raw) {
   return isNaN(fallback.getTime()) ? null : fallback.toISOString();
 }
 
-function getScriptProperties_() {
-  return PropertiesService.getScriptProperties();
-}
-
-function parseIsoToDate_(iso) {
-  if (!iso) return null;
-  var d = new Date(iso);
-  if (!d || isNaN(d.getTime())) return null;
-  return d;
-}
-
-function toIsoNow_() {
-  return new Date().toISOString();
-}
-
-function getBcSyncState_() {
-  var props = getScriptProperties_();
-  return {
-    invoicesWatermarkIso: props.getProperty('BC_INVOICES_LAST_SYNC_ISO') || '',
-    invoicesRowCount: Number(props.getProperty('BC_INVOICES_LAST_ROW_COUNT') || 0) || 0,
-    creditInvoicesWatermarkIso: props.getProperty('BC_CREDIT_INVOICES_LAST_SYNC_ISO') || '',
-    linesWatermarkIso: props.getProperty('BC_LINES_LAST_SYNC_ISO') || '',
-    linesRowCount: Number(props.getProperty('BC_LINES_LAST_ROW_COUNT') || 0) || 0,
-    linesFullCursor: Number(props.getProperty('BC_LINES_FULL_CURSOR') || 0) || 0
-  };
-}
-
-function setBcSyncState_(next) {
-  var props = getScriptProperties_();
-  if (next && Object.prototype.hasOwnProperty.call(next, 'invoicesWatermarkIso')) {
-    props.setProperty('BC_INVOICES_LAST_SYNC_ISO', String(next.invoicesWatermarkIso || ''));
-  }
-  if (next && Object.prototype.hasOwnProperty.call(next, 'invoicesRowCount')) {
-    props.setProperty('BC_INVOICES_LAST_ROW_COUNT', String(Number(next.invoicesRowCount || 0) || 0));
-  }
-  if (next && Object.prototype.hasOwnProperty.call(next, 'creditInvoicesWatermarkIso')) {
-    props.setProperty('BC_CREDIT_INVOICES_LAST_SYNC_ISO', String(next.creditInvoicesWatermarkIso || ''));
-  }
-  if (next && Object.prototype.hasOwnProperty.call(next, 'linesWatermarkIso')) {
-    props.setProperty('BC_LINES_LAST_SYNC_ISO', String(next.linesWatermarkIso || ''));
-  }
-  if (next && Object.prototype.hasOwnProperty.call(next, 'linesRowCount')) {
-    props.setProperty('BC_LINES_LAST_ROW_COUNT', String(Number(next.linesRowCount || 0) || 0));
-  }
-  if (next && Object.prototype.hasOwnProperty.call(next, 'linesFullCursor')) {
-    var cursor = Number(next.linesFullCursor || 0) || 0;
-    props.setProperty('BC_LINES_FULL_CURSOR', String(cursor));
-  }
-}
-
-function shouldIncludeByWatermark_(rowIso, watermarkIso, lookbackDays) {
-  if (!watermarkIso) return true;
-
-  var rowDate = parseIsoToDate_(rowIso);
-  var watermarkDate = parseIsoToDate_(watermarkIso);
-  if (!rowDate || !watermarkDate) return true;
-
-  var lookback = Number(lookbackDays || 0);
-  if (lookback > 0) {
-    watermarkDate = new Date(watermarkDate.getTime() - (lookback * 24 * 60 * 60 * 1000));
-  }
-  return rowDate >= watermarkDate;
-}
-
-function getAppendedRowsSinceCount_(rows, previousRowCount) {
-  var list = Array.isArray(rows) ? rows : [];
-  var prev = Math.max(0, Number(previousRowCount || 0) || 0);
-  if (prev <= 0 || prev >= list.length) return [];
-  return list.slice(prev);
-}
-
-function dedupeRowsByKey_(rows, keyFn) {
-  var list = Array.isArray(rows) ? rows : [];
-  var out = [];
-  var seen = {};
-
-  list.forEach(function(row, idx) {
-    var rawKey = keyFn ? keyFn(row, idx) : idx;
-    var key = String(rawKey || '');
-    if (!key || seen[key]) return;
-    seen[key] = true;
-    out.push(row);
-  });
-
-  return out;
-}
-
 function upsertBcInvoicesToSupabase_(rows) {
   if (!rows || !rows.length) return { uploaded: 0 };
 
@@ -1350,6 +1263,7 @@ function upsertBcInvoicesToSupabase_(rows) {
       booking_date: parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE),
       order_date: parseBcDateForSupabase_(r.ORDER_DATE) || parseBcDateForSupabase_(r.BOOKING_DATE),
       email: r.EMAIL || null,
+      amount_excl: toNum_(r.AMOUNT_EXCL),
       amount_incl: toNum_(r.AMOUNT_INCL),
       salesperson_code: r.SALESPERSON_CODE || null,
       remaining_amount: toNum_(r.REMAINING),
@@ -1393,67 +1307,6 @@ function upsertBcInvoicesToSupabase_(rows) {
   }
 
   return { uploaded: uploaded };
-}
-
-function backfillBcInvoicesToSupabase_v1(options) {
-  var opts = options || {};
-  var full = !!opts.full;
-  var lookbackDays = Number(opts.lookbackDays != null ? opts.lookbackDays : 2);
-  var state = getBcSyncState_();
-  var previousIso = full ? '' : (state.invoicesWatermarkIso || '');
-  var runStartedIso = toIsoNow_();
-
-  var rows = loadTableBySchema_('BC_INVOICES') || [];
-  if (!rows.length) {
-    Logger.log('[BC_INVOICES][INFO] No rows found for backfill.');
-    return { totalRows: 0, selectedRows: 0, uploaded: 0, mode: full ? 'full' : 'incremental' };
-  }
-
-  var selected = rows;
-  if (!full) {
-    var selectedByDate = rows.filter(function(r) {
-      var rowIso = parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE);
-      return shouldIncludeByWatermark_(rowIso, previousIso, lookbackDays);
-    });
-    var appendedRows = getAppendedRowsSinceCount_(rows, state.invoicesRowCount);
-    selected = dedupeRowsByKey_(selectedByDate.concat(appendedRows), function(r) {
-      return String(r && r.DOCUMENT_NO || '').trim();
-    });
-  }
-
-  if (!selected.length) {
-    Logger.log('[BC_INVOICES][INFO] No incremental rows to upload.');
-    setBcSyncState_({ invoicesWatermarkIso: runStartedIso, invoicesRowCount: rows.length });
-    return {
-      totalRows: rows.length,
-      selectedRows: 0,
-      uploaded: 0,
-      mode: full ? 'full' : 'incremental',
-      previousIso: previousIso || '',
-      nextIso: runStartedIso
-    };
-  }
-
-  var batchSize = 2000;
-  var uploaded = 0;
-
-  for (var i = 0; i < selected.length; i += batchSize) {
-    var batch = selected.slice(i, i + batchSize);
-    var out = upsertBcInvoicesToSupabase_(batch);
-    uploaded += out.uploaded || 0;
-    Logger.log('[BC_INVOICES][INFO] Backfill batch uploaded: ' + uploaded + '/' + selected.length);
-  }
-
-  setBcSyncState_({ invoicesWatermarkIso: runStartedIso, invoicesRowCount: rows.length });
-  Logger.log('[BC_INVOICES][INFO] Backfill completed. Uploaded: ' + uploaded);
-  return {
-    totalRows: rows.length,
-    selectedRows: selected.length,
-    uploaded: uploaded,
-    mode: full ? 'full' : 'incremental',
-    previousIso: previousIso || '',
-    nextIso: runStartedIso
-  };
 }
 
 function upsertBcCreditInvoicesToSupabase_(rows) {
@@ -1518,62 +1371,8 @@ function upsertBcCreditInvoicesToSupabase_(rows) {
   return { uploaded: uploaded };
 }
 
-function backfillBcCreditInvoicesToSupabase_v1(options) {
-  var opts = options || {};
-  var full = !!opts.full;
-  var lookbackDays = Number(opts.lookbackDays != null ? opts.lookbackDays : 2);
-  var state = getBcSyncState_();
-  var previousIso = full ? '' : (state.creditInvoicesWatermarkIso || state.invoicesWatermarkIso || '');
-  var runStartedIso = toIsoNow_();
-
-  var rows = loadTableBySchema_('BC_CREDIT_INVOICES') || [];
-  if (!rows.length) {
-    Logger.log('[BC_CREDIT_INVOICES][INFO] No rows found for backfill.');
-    return { totalRows: 0, selectedRows: 0, uploaded: 0, mode: full ? 'full' : 'incremental' };
-  }
-
-  var selected = full ? rows : rows.filter(function(r) {
-    var rowIso = parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.DOCUMENT_DATE);
-    return shouldIncludeByWatermark_(rowIso, previousIso, lookbackDays);
-  });
-
-  if (!selected.length) {
-    Logger.log('[BC_CREDIT_INVOICES][INFO] No incremental rows to upload.');
-    setBcSyncState_({ creditInvoicesWatermarkIso: runStartedIso });
-    return {
-      totalRows: rows.length,
-      selectedRows: 0,
-      uploaded: 0,
-      mode: full ? 'full' : 'incremental',
-      previousIso: previousIso || '',
-      nextIso: runStartedIso
-    };
-  }
-
-  var batchSize = 2000;
-  var uploaded = 0;
-
-  for (var i = 0; i < selected.length; i += batchSize) {
-    var batch = selected.slice(i, i + batchSize);
-    var out = upsertBcCreditInvoicesToSupabase_(batch);
-    uploaded += out.uploaded || 0;
-    Logger.log('[BC_CREDIT_INVOICES][INFO] Backfill batch uploaded: ' + uploaded + '/' + selected.length);
-  }
-
-  setBcSyncState_({ creditInvoicesWatermarkIso: runStartedIso });
-  Logger.log('[BC_CREDIT_INVOICES][INFO] Backfill completed. Uploaded: ' + uploaded);
-  return {
-    totalRows: rows.length,
-    selectedRows: selected.length,
-    uploaded: uploaded,
-    mode: full ? 'full' : 'incremental',
-    previousIso: previousIso || '',
-    nextIso: runStartedIso
-  };
-}
-
 /************************************************************
- * SUPABASE MIGRATION: BC_LINES (one-time + repeatable)
+ * SUPABASE MIGRATION: BC_LINES
  ************************************************************/
 function upsertBcLinesToSupabase_(rows) {
   if (!rows || !rows.length) return { uploaded: 0 };
@@ -1645,202 +1444,6 @@ function upsertBcLinesToSupabase_(rows) {
   return { uploaded: uploaded };
 }
 
-function backfillBcLinesToSupabase_v1(options) {
-  var opts = options || {};
-  var full = !!opts.full;
-  var lookbackDays = Number(opts.lookbackDays != null ? opts.lookbackDays : 2);
-  var maxRows = Number(opts.maxRows != null ? opts.maxRows : 0);
-  if (maxRows < 0) maxRows = 0;
-  var state = getBcSyncState_();
-  var previousIso = full ? '' : (state.linesWatermarkIso || state.invoicesWatermarkIso || '');
-  var runStartedIso = toIsoNow_();
-
-  var rows = loadTableBySchema_('BC_LINES') || [];
-  if (!rows.length) {
-    Logger.log('[BC_LINES][INFO] No rows found for backfill.');
-    return { totalRows: 0, selectedRows: 0, uploaded: 0, mode: full ? 'full' : 'incremental' };
-  }
-
-  var selected = rows;
-  if (!full && previousIso) {
-    var invoiceRows = loadTableBySchema_('BC_INVOICES') || [];
-    var changedDocNos = {};
-    invoiceRows.forEach(function(inv) {
-      var rowIso = parseBcDateForSupabase_(inv.BOOKING_DATE) || parseBcDateForSupabase_(inv.ORDER_DATE);
-      if (!shouldIncludeByWatermark_(rowIso, previousIso, lookbackDays)) return;
-      var doc = String(inv.DOCUMENT_NO || '').trim();
-      if (doc) changedDocNos[doc] = true;
-    });
-
-    var selectedByDoc = rows.filter(function(line) {
-      var docNo = String(line.DOCUMENT_NO || '').trim();
-      return !!changedDocNos[docNo];
-    });
-    var appendedRows = getAppendedRowsSinceCount_(rows, state.linesRowCount);
-    selected = dedupeRowsByKey_(selectedByDoc.concat(appendedRows), function(line) {
-      return [
-        String(line && line.DOCUMENT_NO || '').trim(),
-        String(line && line.SKU || '').trim(),
-        String(line && line.PRODUCT_NAME || '').trim(),
-        String(line && line.QTY || '').trim(),
-        String(line && line.AMOUNT_EXCL || '').trim()
-      ].join('|');
-    });
-  }
-
-  var totalSelected = selected.length;
-  var startIndex = 0;
-  if (full) {
-    startIndex = Math.max(0, Number(opts.startAt != null ? opts.startAt : state.linesFullCursor) || 0);
-    if (startIndex > totalSelected) startIndex = totalSelected;
-    if (maxRows > 0) {
-      selected = selected.slice(startIndex, startIndex + maxRows);
-    } else {
-      selected = selected.slice(startIndex);
-    }
-  }
-
-  if (!selected.length) {
-    Logger.log('[BC_LINES][INFO] No incremental rows to upload.');
-    setBcSyncState_({ linesWatermarkIso: runStartedIso, linesRowCount: rows.length });
-    return {
-      totalRows: rows.length,
-      totalSelectedRows: totalSelected,
-      selectedRows: 0,
-      uploaded: 0,
-      mode: full ? 'full' : 'incremental',
-      previousIso: previousIso || '',
-      nextIso: runStartedIso,
-      startIndex: startIndex,
-      nextCursor: full ? startIndex : 0
-    };
-  }
-
-  var batchSize = 2500;
-  var uploaded = 0;
-  var processedRows = 0;
-
-  for (var i = 0; i < selected.length; i += batchSize) {
-    var batch = selected.slice(i, i + batchSize);
-    var out = upsertBcLinesToSupabase_(batch);
-    uploaded += out.uploaded || 0;
-    processedRows += batch.length;
-    Logger.log('[BC_LINES][INFO] Backfill batch uploaded: ' + uploaded + '/' + selected.length);
-    if (full) {
-      setBcSyncState_({ linesFullCursor: startIndex + processedRows });
-    }
-  }
-
-  setBcSyncState_({
-    linesWatermarkIso: runStartedIso,
-    linesRowCount: rows.length,
-    linesFullCursor: full ? (startIndex + selected.length) : state.linesFullCursor
-  });
-  if (full && (startIndex + selected.length) >= totalSelected) {
-    setBcSyncState_({ linesFullCursor: 0 });
-  }
-  Logger.log('[BC_LINES][INFO] Backfill completed. Uploaded: ' + uploaded);
-  return {
-    totalRows: rows.length,
-    totalSelectedRows: totalSelected,
-    selectedRows: selected.length,
-    uploaded: uploaded,
-    mode: full ? 'full' : 'incremental',
-    previousIso: previousIso || '',
-    nextIso: runStartedIso,
-    startIndex: startIndex,
-    nextCursor: full ? (startIndex + selected.length) : 0
-  };
-}
-
-function resetBcSupabaseSyncState_v1() {
-  setBcSyncState_({
-    invoicesWatermarkIso: '',
-    invoicesRowCount: 0,
-    creditInvoicesWatermarkIso: '',
-    linesWatermarkIso: '',
-    linesRowCount: 0,
-    linesFullCursor: 0
-  });
-  return { ok: true };
-}
-
-// UI-friendly wrappers (Apps Script Run menu cannot pass function args)
-function runBcLinesFullBackfill_v1() {
-  return backfillBcLinesToSupabase_v1({ full: true, lookbackDays: 0 });
-}
-
-function runBcInvoicesFullBackfill_v1() {
-  return backfillBcInvoicesToSupabase_v1({ full: true, lookbackDays: 0 });
-}
-
-/************************************************************
- * BC INVOICE GAP-FILL WITH SUPABASE DEDUP
- * Fetches existing document_nos from Supabase first, then only
- * uploads rows that are genuinely missing. Safe to run repeatedly —
- * after the initial gap-fill subsequent runs upload 0 rows.
- *
- * opts.lookbackDays  — how far back to check (default 90)
- * opts.rowsPerRun    — max new rows to upload per call (default 2000)
- ************************************************************/
-
-function runBcInvoicesChunkedBackfill_v1(opts) {
-  opts = opts || {};
-  var ROWS_PER_RUN = opts.rowsPerRun != null ? Number(opts.rowsPerRun) : 5000;
-  var LOOKBACK_DAYS = opts.lookbackDays != null ? Number(opts.lookbackDays) : 90;
-
-  var allRows = loadTableBySchema_('BC_INVOICES') || [];
-  if (!allRows.length) {
-    Logger.log('[BC_INVOICES_CHUNK] No rows in BC_INVOICES sheet.');
-    return { ok: true, done: true, uploaded: 0, total: 0 };
-  }
-
-  var cutoffDate = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
-    .toISOString().slice(0, 10);
-
-  var inWindow = allRows.filter(function(r) {
-    var date = parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE) || '';
-    return date >= cutoffDate;
-  });
-
-  Logger.log('[BC_INVOICES_CHUNK] Sheet rows in window (' + LOOKBACK_DAYS + 'd): ' + inWindow.length);
-
-  // Fetch document_nos already in Supabase — small GET, just string keys
-  var existingKeys = fetchExistingBcInvoiceKeys_(cutoffDate);
-
-  var newRows = inWindow.filter(function(r) {
-    return !existingKeys[String(r.DOCUMENT_NO || '').trim()];
-  });
-
-  Logger.log(
-    '[BC_INVOICES_CHUNK] Already in Supabase: ' + (inWindow.length - newRows.length) +
-    ' | Missing: ' + newRows.length
-  );
-
-  if (!newRows.length) {
-    Logger.log('[BC_INVOICES_CHUNK] Supabase is up to date — nothing to upload.');
-    return { ok: true, done: true, uploaded: 0, skipped: inWindow.length, total: inWindow.length };
-  }
-
-  var chunk = newRows.slice(0, ROWS_PER_RUN);
-  var out = upsertBcInvoicesToSupabase_(chunk);
-  var remaining = newRows.length - chunk.length;
-  var done = remaining === 0;
-
-  Logger.log(
-    '[BC_INVOICES_CHUNK] Uploaded: ' + out.uploaded +
-    (done ? ' — done.' : ' — ' + remaining + ' still missing, run again.')
-  );
-
-  return {
-    ok: true,
-    done: done,
-    uploaded: out.uploaded,
-    remaining: remaining,
-    total: inWindow.length
-  };
-}
-
 // Paginates through a Supabase table and returns a plain-object key set.
 // baseUrl must already contain ?select=<col>&filter=... — no trailing &
 function fetchSupabaseKeySet_(baseUrl, keyField, schema, logPrefix) {
@@ -1878,61 +1481,10 @@ function fetchSupabaseKeySet_(baseUrl, keyField, schema, logPrefix) {
 
 function fetchExistingBcInvoiceKeys_(cutoffDate) {
   var base = getSupabaseRestConfig_().baseUrl +
-    '/bc_invoices_raw?select=document_no&booking_date=gte.' + cutoffDate;
+    '/bc_invoices_raw?select=document_no&or=(booking_date.gte.' + cutoffDate + ',order_date.gte.' + cutoffDate + ')';
   var keys = fetchSupabaseKeySet_(base, 'document_no', 'raw', '[BC_INVOICES_CHUNK]');
   Logger.log('[BC_INVOICES_CHUNK] Existing invoice keys since ' + cutoffDate + ': ' + Object.keys(keys).length);
   return keys;
-}
-
-function runBcCreditInvoicesFullBackfill_v1() {
-  return backfillBcCreditInvoicesToSupabase_v1({ full: true, lookbackDays: 0 });
-}
-
-/************************************************************
- * DEDUP-BASED CHUNKED BACKFILLS FOR CREDIT INVOICES + LINES
- * Same pattern as runBcInvoicesChunkedBackfill_v1 —
- * fetches existing keys from Supabase first, uploads only new rows.
- ************************************************************/
-
-function runBcCreditInvoicesChunkedBackfill_v1(opts) {
-  opts = opts || {};
-  var ROWS_PER_RUN = opts.rowsPerRun != null ? Number(opts.rowsPerRun) : 2000;
-  var LOOKBACK_DAYS = opts.lookbackDays != null ? Number(opts.lookbackDays) : 365;
-
-  var allRows = loadTableBySchema_('BC_CREDIT_INVOICES') || [];
-  if (!allRows.length) {
-    Logger.log('[BC_CREDIT_CHUNK] No rows in BC_CREDIT_INVOICES sheet.');
-    return { ok: true, done: true, uploaded: 0, total: 0 };
-  }
-
-  var cutoffDate = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
-    .toISOString().slice(0, 10);
-
-  var inWindow = allRows.filter(function(r) {
-    var date = parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.DOCUMENT_DATE) || '';
-    return date >= cutoffDate;
-  });
-
-  Logger.log('[BC_CREDIT_CHUNK] Sheet rows in window (' + LOOKBACK_DAYS + 'd): ' + inWindow.length);
-
-  var existingKeys = fetchExistingBcCreditInvoiceKeys_(cutoffDate);
-  var newRows = inWindow.filter(function(r) {
-    return !existingKeys[String(r.DOCUMENT_NO || '').trim()];
-  });
-
-  Logger.log('[BC_CREDIT_CHUNK] Already in Supabase: ' + (inWindow.length - newRows.length) + ' | Missing: ' + newRows.length);
-
-  if (!newRows.length) {
-    Logger.log('[BC_CREDIT_CHUNK] Supabase is up to date.');
-    return { ok: true, done: true, uploaded: 0, skipped: inWindow.length, total: inWindow.length };
-  }
-
-  var chunk = newRows.slice(0, ROWS_PER_RUN);
-  var out = upsertBcCreditInvoicesToSupabase_(chunk);
-  var remaining = newRows.length - chunk.length;
-
-  Logger.log('[BC_CREDIT_CHUNK] Uploaded: ' + out.uploaded + (remaining ? ' — ' + remaining + ' remaining.' : ' — done.'));
-  return { ok: true, done: remaining === 0, uploaded: out.uploaded, remaining: remaining, total: inWindow.length };
 }
 
 function fetchExistingBcCreditInvoiceKeys_(cutoffDate) {
@@ -1941,113 +1493,6 @@ function fetchExistingBcCreditInvoiceKeys_(cutoffDate) {
   var keys = fetchSupabaseKeySet_(base, 'document_no', 'raw', '[BC_CREDIT_CHUNK]');
   Logger.log('[BC_CREDIT_CHUNK] Existing credit invoice keys since ' + cutoffDate + ': ' + Object.keys(keys).length);
   return keys;
-}
-
-function runBcLinesChunkedBackfill_v1(opts) {
-  opts = opts || {};
-  var ROWS_PER_RUN = opts.rowsPerRun != null ? Number(opts.rowsPerRun) : 15000;
-  var LOOKBACK_DAYS = opts.lookbackDays != null ? Number(opts.lookbackDays) : 365;
-
-  var allLines = loadTableBySchema_('BC_LINES') || [];
-  if (!allLines.length) {
-    Logger.log('[BC_LINES_CHUNK] No rows in BC_LINES sheet.');
-    return { ok: true, done: true, uploaded: 0, total: 0 };
-  }
-
-  var cutoffDate = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
-    .toISOString().slice(0, 10);
-
-  // Lines have no date — use invoice doc_nos as proxy for date filtering + dedup.
-  // If an invoice doc_no is missing from bc_invoices_raw, its lines need uploading too.
-  var allInvoices = loadTableBySchema_('BC_INVOICES') || [];
-  var existingInvoiceKeys = fetchExistingBcInvoiceKeys_(cutoffDate);
-
-  var missingDocNos = {};
-  allInvoices.forEach(function(r) {
-    var date = parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE) || '';
-    if (date < cutoffDate) return;
-    var docNo = String(r.DOCUMENT_NO || '').trim();
-    if (docNo && !existingInvoiceKeys[docNo]) missingDocNos[docNo] = true;
-  });
-
-  var missingCount = Object.keys(missingDocNos).length;
-  Logger.log('[BC_LINES_CHUNK] Invoice doc_nos missing from Supabase: ' + missingCount);
-
-  if (!missingCount) {
-    Logger.log('[BC_LINES_CHUNK] All invoices already in Supabase — no lines to upload.');
-    return { ok: true, done: true, uploaded: 0, total: allLines.length };
-  }
-
-  var newLines = allLines.filter(function(r) {
-    return missingDocNos[String(r.DOCUMENT_NO || '').trim()];
-  });
-
-  Logger.log('[BC_LINES_CHUNK] Lines to upload: ' + newLines.length + ' (for ' + missingCount + ' missing invoices)');
-
-  var chunk = newLines.slice(0, ROWS_PER_RUN);
-  var out = upsertBcLinesToSupabase_(chunk);
-  var remaining = newLines.length - chunk.length;
-
-  Logger.log('[BC_LINES_CHUNK] Uploaded: ' + out.uploaded + (remaining ? ' — ' + remaining + ' remaining.' : ' — done.'));
-  return { ok: true, done: remaining === 0, uploaded: out.uploaded, remaining: remaining, total: allLines.length };
-}
-
-/************************************************************
- * POST-IMPORT SYNC — run after each BC Excel import
- * Chains all 4 BC tables with dedup. Safe to run repeatedly.
- ************************************************************/
-
-function runPostBcImportSync_v1() {
-  Logger.log('[BC_POST_IMPORT] Starting post-import sync...');
-  var results = {};
-  var runId = null;
-  try { runId = startIngestionRun_('scheduledBcSync_v1', 'bc', { trigger_type: 'manual' }); } catch (_) {}
-
-  try {
-    results.customers = backfillBcCustomersToSupabase_v1({ force: false });
-    Logger.log('[BC_POST_IMPORT] Customers done: uploaded=' + (results.customers.uploaded || 0));
-  } catch (e) {
-    results.customers = { error: e.message };
-    Logger.log('[BC_POST_IMPORT] Customers ERROR: ' + e.message);
-  }
-
-  try {
-    results.invoices = runBcInvoicesChunkedBackfill_v1({ lookbackDays: 365 });
-    Logger.log('[BC_POST_IMPORT] Invoices done: uploaded=' + results.invoices.uploaded + ', remaining=' + (results.invoices.remaining || 0));
-  } catch (e) {
-    results.invoices = { error: e.message };
-    Logger.log('[BC_POST_IMPORT] Invoices ERROR: ' + e.message);
-  }
-
-  try {
-    results.creditInvoices = runBcCreditInvoicesChunkedBackfill_v1({ lookbackDays: 365 });
-    Logger.log('[BC_POST_IMPORT] Credit invoices done: uploaded=' + results.creditInvoices.uploaded + ', remaining=' + (results.creditInvoices.remaining || 0));
-  } catch (e) {
-    results.creditInvoices = { error: e.message };
-    Logger.log('[BC_POST_IMPORT] Credit invoices ERROR: ' + e.message);
-  }
-
-  try {
-    results.lines = runBcLinesChunkedBackfill_v1({ lookbackDays: 365 });
-    Logger.log('[BC_POST_IMPORT] Lines done: uploaded=' + results.lines.uploaded + ', remaining=' + (results.lines.remaining || 0));
-  } catch (e) {
-    results.lines = { error: e.message };
-    Logger.log('[BC_POST_IMPORT] Lines ERROR: ' + e.message);
-  }
-
-  var anyRemaining =
-    (results.invoices && results.invoices.remaining > 0) ||
-    (results.creditInvoices && results.creditInvoices.remaining > 0) ||
-    (results.lines && results.lines.remaining > 0);
-
-  Logger.log('[BC_POST_IMPORT] Done. Run again if remaining > 0. Results: ' + JSON.stringify(results));
-  try { if (runId) finishIngestionRun_(runId, 'success', null, results); } catch (_) {}
-  return { ok: true, runAgain: anyRemaining, results: results };
-}
-
-function resetBcLinesFullBackfillCursor_v1() {
-  setBcSyncState_({ linesFullCursor: 0 });
-  return { ok: true };
 }
 
 /************************************************************
@@ -2110,7 +1555,8 @@ function parseBcXlsxRows_(data, schemaKey) {
   return rows;
 }
 
-function processBcDrop_v1() {
+function processBcDrop_v1(opts) {
+  var force = !!(opts && opts.force);
   var cfg = loadConfig_();
   var dropFolderId = String((cfg.SETTINGS || {}).BC_DROP_FOLDER_ID || '').trim();
   if (!dropFolderId) {
@@ -2218,25 +1664,24 @@ function processBcDrop_v1() {
         newRows = allRows;
 
       } else if (item.schemaKey === 'BC_INVOICES') {
-        newRows = allRows.filter(function(r) {
+        newRows = force ? allRows : allRows.filter(function(r) {
           return !existingInvoiceKeys[String(r.DOCUMENT_NO || '').trim()];
         });
-        Logger.log('[BC_DROP] New invoices: ' + newRows.length + ' / ' + allRows.length);
+        Logger.log('[BC_DROP] Invoices: ' + newRows.length + ' / ' + allRows.length + (force ? ' (force)' : ' new'));
         result = newRows.length ? upsertBcInvoicesToSupabase_(newRows) : { uploaded: 0 };
 
       } else if (item.schemaKey === 'BC_CREDIT_INVOICES') {
-        newRows = allRows.filter(function(r) {
+        newRows = force ? allRows : allRows.filter(function(r) {
           return !existingCreditKeys[String(r.DOCUMENT_NO || '').trim()];
         });
-        Logger.log('[BC_DROP] New credits: ' + newRows.length + ' / ' + allRows.length);
+        Logger.log('[BC_DROP] Credits: ' + newRows.length + ' / ' + allRows.length + (force ? ' (force)' : ' new'));
         result = newRows.length ? upsertBcCreditInvoicesToSupabase_(newRows) : { uploaded: 0 };
 
       } else {
-        // BC_LINES: upload lines for invoices not already in Supabase
-        newRows = allRows.filter(function(r) {
+        newRows = force ? allRows : allRows.filter(function(r) {
           return !existingInvoiceKeys[String(r.DOCUMENT_NO || '').trim()];
         });
-        Logger.log('[BC_DROP] New lines: ' + newRows.length + ' / ' + allRows.length);
+        Logger.log('[BC_DROP] Lines: ' + newRows.length + ' / ' + allRows.length + (force ? ' (force)' : ' new'));
         result = newRows.length ? upsertBcLinesToSupabase_(newRows) : { uploaded: 0 };
       }
 
@@ -2266,6 +1711,10 @@ function processBcDrop_v1() {
 
   Logger.log('[BC_DROP] Done. Processed: ' + processed.length + ', Errors: ' + errors.length);
   return { ok: status !== 'error', processed: processed, errors: errors };
+}
+
+function processBcDropForce_v1() {
+  return processBcDrop_v1({ force: true });
 }
 
 /************************************************************
@@ -4914,21 +4363,6 @@ function auditTriggers_v1() {
   return { total: triggers.length, byHandler: counts, triggers: rows };
 }
 
-function installRunPostBcImportSyncTrigger_v1() {
-  var fn = 'runPostBcImportSync_v1';
-  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
-    return t.getHandlerFunction() === fn;
-  });
-  if (existing.length) {
-    Logger.log('[BC_POST_IMPORT][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
-    return { created: false, existing: existing.length };
-  }
-  ScriptApp.newTrigger(fn).timeBased().everyDays(1).atHour(7).nearMinute(20).create();
-  ScriptApp.newTrigger(fn).timeBased().everyDays(1).atHour(13).nearMinute(20).create();
-  Logger.log('[BC_POST_IMPORT][INFO] Created 2 triggers for ' + fn + ' (~07:20 and ~13:20)');
-  return { created: true, schedule: 'twice daily at ~07:20 and ~13:20' };
-}
-
 function installScheduledGa4SyncTrigger_v1() {
   var fn = 'scheduledGa4Sync_v1';
   var existing = ScriptApp.getProjectTriggers().filter(function(t) {
@@ -4949,7 +4383,6 @@ function resetRecommendedTimeTriggers_v1() {
     'runDailySanityChecks_v1',
     'scheduledReferenceSync_v1',
     'scheduledMagentoSync_v1',
-    'runPostBcImportSync_v1',
     'scheduledGa4Sync_v1',
     'scheduledCludoSync_v1',
     'scheduledCustomerAnalysisSync_v1',
@@ -4966,7 +4399,6 @@ function resetRecommendedTimeTriggers_v1() {
     installDailySanityChecksTrigger_v1(),
     installScheduledReferenceSyncTrigger_v1(),
     installScheduledMagentoSyncTrigger_v1(),
-    installRunPostBcImportSyncTrigger_v1(),
     installScheduledGa4SyncTrigger_v1(),
     installWeeklyDigestTrigger_v1()
   ];

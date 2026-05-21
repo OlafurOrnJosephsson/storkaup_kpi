@@ -65,7 +65,7 @@ function onOpen() {
       ui.createMenu('BC Sync')
         .addItem('🔍 Kíktu á BC headers (diagnóstic)', 'menu_diagnoseBcDropHeaders')
         .addItem('📂 Importa BC skrár úr Drive Drop', 'menu_processBcDrop')
-        .addItem('▶ Sync BC → Supabase (after manual import)', 'menu_runPostBcImportSync')
+        .addItem('🔄 Force re-upload allra BC skráa', 'menu_processBcDropForce')
     )
     .addSubMenu(
       ui.createMenu('Admin')
@@ -375,19 +375,25 @@ function menu_processBcDrop() {
   SpreadsheetApp.getUi().alert('BC Drive Drop\n\n' + lines.join('\n'));
 }
 
-function menu_runPostBcImportSync() {
-  if (typeof runPostBcImportSync_v1 !== 'function') {
-    throw new Error('runPostBcImportSync_v1() not found. Ensure core/utils.js is deployed.');
+function menu_processBcDropForce() {
+  if (typeof processBcDropForce_v1 !== 'function') {
+    throw new Error('processBcDropForce_v1() not found. Ensure core/utils.js is deployed.');
   }
-  var out = runPostBcImportSync_v1();
-  var r = out.results || {};
-  var lines = [
-    'Customers: ' + ((r.customers && r.customers.error) ? 'ERROR' : (r.customers && r.customers.uploaded || 0) + ' uploaded'),
-    'Invoices: ' + ((r.invoices && r.invoices.error) ? 'ERROR' : (r.invoices && r.invoices.uploaded || 0) + ' uploaded' + (r.invoices && r.invoices.remaining > 0 ? ' (' + r.invoices.remaining + ' remaining)' : '')),
-    'Credit invoices: ' + ((r.creditInvoices && r.creditInvoices.error) ? 'ERROR' : (r.creditInvoices && r.creditInvoices.uploaded || 0) + ' uploaded'),
-    'Lines: ' + ((r.lines && r.lines.error) ? 'ERROR' : (r.lines && r.lines.uploaded || 0) + ' uploaded' + (r.lines && r.lines.remaining > 0 ? ' (' + r.lines.remaining + ' remaining — run again)' : ''))
-  ].join('\n');
-  SpreadsheetApp.getUi().alert('BC → Supabase sync complete\n\n' + lines + (out.runAgain ? '\n\n⚠ Run again to upload remaining rows.' : ''));
+  var ui = SpreadsheetApp.getUi();
+  var confirm = ui.alert(
+    'Force re-upload',
+    'Þetta re-uploaðar ALLAR BC skrár úr Drop möppunni og uppfærir existing rows í Supabase.\n\nHalda áfram?',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (confirm !== ui.Button.OK) return;
+  toast_('🔄 Force re-upload BC skráa...', 'KPI CORE');
+  var out = processBcDropForce_v1();
+  var lines = (out.processed || []).map(function(p) {
+    return '✅ ' + p.file + ': ' + (p.uploaded || 0) + ' uploaded';
+  }).concat((out.errors || []).map(function(e) {
+    return '❌ ' + e.file + ': ' + e.error;
+  }));
+  SpreadsheetApp.getUi().alert('Force re-upload lokið\n\n' + lines.join('\n'));
 }
 
 function menu_clearCustomerAnalysis() {

@@ -10,3 +10,6 @@ build/
 
 # Logs
 *.log
+
+# BC Drop — local staging folder for BC exports (not committed)
+bc_drop/

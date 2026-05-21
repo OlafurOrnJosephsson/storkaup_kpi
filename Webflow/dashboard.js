@@ -854,6 +854,76 @@
       });
   }
 
+  function fetchDayOrders(day) {
+    var container = document.querySelector("[data-day-orders-list]") || document.querySelector("[data-day-orders]");
+    if (!container) return Promise.resolve();
+
+    var cfg = getCfg();
+    var apiKey = cfg.publishableKey || "";
+    if (!cfg.supabaseUrl || !apiKey) return Promise.resolve();
+
+    var limit = parseInt(
+      container.getAttribute("data-day-orders-limit") ||
+      document.body.getAttribute("data-day-orders-limit") || "10", 10
+    );
+
+    var rpcUrl = cfg.supabaseUrl + "/rest/v1/rpc/get_day_orders";
+
+    return fetch(rpcUrl, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": apiKey,
+        "Authorization": "Bearer " + apiKey,
+        "Content-Profile": "public"
+      },
+      body: JSON.stringify({ p_day: day, p_limit: limit })
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("get_day_orders HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (rows) {
+        rows = Array.isArray(rows) ? rows : [];
+
+        // Remove only previously rendered rows, keep static content (title etc.)
+        container.querySelectorAll("[data-day-order-row], [data-day-orders-empty]")
+          .forEach(function (el) { el.remove(); });
+
+        if (!rows.length) {
+          var empty = document.createElement("p");
+          empty.setAttribute("data-day-orders-empty", "");
+          empty.textContent = "Engar pantanir fundust.";
+          container.appendChild(empty);
+          return;
+        }
+
+        rows.forEach(function (row) {
+          var time = row.purchase_date
+            ? new Date(row.purchase_date).toLocaleTimeString("is-IS", { hour: "2-digit", minute: "2-digit" })
+            : "";
+          var name = row.customer_name || "Óþekktur";
+          var cid  = row.customer_id  || "";
+          var amt  = row.subtotal_excl != null
+            ? Number(row.subtotal_excl).toLocaleString("is-IS", { maximumFractionDigits: 0 }) + " kr"
+            : "";
+
+          var el = document.createElement("div");
+          el.setAttribute("data-day-order-row", "");
+          el.innerHTML =
+            "<span data-day-order-time>" + time + "</span>" +
+            "<span data-day-order-name>" + name + "</span>" +
+            "<span data-day-order-cid>" + cid + "</span>" +
+            "<span data-day-order-amount>" + amt + "</span>";
+          container.appendChild(el);
+        });
+      })
+      .catch(function (err) {
+        log("fetchDayOrders failed:", err);
+      });
+  }
+
   function fetchMonth(month) {
     var targetMonth = month || getCurrentMonthKey();
     var cfg = getCfg();
@@ -1383,6 +1453,7 @@
         var next = normalizeDay(dayPicker.value);
         selectedDay = next || getTodayIso();
         fetchDay(selectedDay);
+        fetchDayOrders(selectedDay);
       });
     } else if (dayMode === "live") {
       selectedDay = getTodayIso();
@@ -1397,6 +1468,7 @@
       if (dayMode === "live") selectedDay = getTodayIso();
       fetchMonth(month);
       fetchDay(selectedDay || getTodayIso());
+      fetchDayOrders(selectedDay || getTodayIso());
     });
 
     document.addEventListener("click", function (ev) {
@@ -1422,6 +1494,7 @@
     Promise.allSettled([
       fetchMonth(initialMonth),
       fetchDay(selectedDay || getTodayIso()),
+      fetchDayOrders(selectedDay || getTodayIso()),
       fetchWeekdayComparisonGrid(true),
       fetchKlaviyoAttributionSummary(),
       fetchBcSyncStatus(),
@@ -1437,6 +1510,7 @@
       setCurrentMonthLabel(month);
       fetchMonth(month);
       fetchDay(selectedDay || getTodayIso());
+      fetchDayOrders(selectedDay || getTodayIso());
       fetchKlaviyoAttributionSummary();
       fetchBcSyncStatus();
       fetchWebBookingReconciliationSummary();
