@@ -887,8 +887,11 @@
       .then(function (rows) {
         rows = Array.isArray(rows) ? rows : [];
 
-        // Remove only previously rendered rows, keep static content (title etc.)
-        container.querySelectorAll("[data-day-order-row], [data-day-orders-empty]")
+        // Grab the template row (first [data-day-order-row]) before clearing
+        var tmpl = container.querySelector("[data-day-order-row]");
+        if (tmpl) tmpl.style.display = "none";
+
+        container.querySelectorAll("[data-day-order-row]:not([data-day-order-template]), [data-day-orders-empty]")
           .forEach(function (el) { el.remove(); });
 
         if (!rows.length) {
@@ -909,13 +912,17 @@
             ? Number(row.subtotal_excl).toLocaleString("is-IS", { maximumFractionDigits: 0 }) + " kr"
             : "";
 
-          var el = document.createElement("div");
-          el.setAttribute("data-day-order-row", "");
-          el.innerHTML =
-            "<span data-day-order-time>" + time + "</span>" +
-            "<span data-day-order-name>" + name + "</span>" +
-            "<span data-day-order-cid>" + cid + "</span>" +
-            "<span data-day-order-amount>" + amt + "</span>";
+          if (!tmpl) return;
+          var el = tmpl.cloneNode(true);
+          el.style.display = "";
+          var t = el.querySelector("[data-day-order-time]");
+          var n = el.querySelector("[data-day-order-name]");
+          var c = el.querySelector("[data-day-order-cid]");
+          var a = el.querySelector("[data-day-order-amount]");
+          if (t) t.textContent = time;
+          if (n) n.textContent = name;
+          if (c) c.textContent = cid;
+          if (a) a.textContent = amt;
           container.appendChild(el);
         });
       })
