@@ -904,7 +904,7 @@
 
         rows.forEach(function (row) {
           var time = row.purchase_date
-            ? new Date(row.purchase_date).toLocaleTimeString("is-IS", { hour: "2-digit", minute: "2-digit" })
+            ? new Date(row.purchase_date).toLocaleTimeString("is-IS", { hour: "2-digit", minute: "2-digit", hour12: false })
             : "";
           var name = row.customer_name || "Óþekktur";
           var cid  = row.customer_id  || "";
