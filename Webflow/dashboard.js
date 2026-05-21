@@ -887,11 +887,11 @@
       .then(function (rows) {
         rows = Array.isArray(rows) ? rows : [];
 
-        // Grab the template row (first [data-day-order-row]) before clearing
-        var tmpl = container.querySelector("[data-day-order-row]");
+        // Template is the Webflow-designed row; rendered clones are marked data-day-order-rendered
+        var tmpl = container.querySelector("[data-day-order-row]:not([data-day-order-rendered])");
         if (tmpl) tmpl.style.display = "none";
 
-        container.querySelectorAll("[data-day-order-row]:not([data-day-order-template]), [data-day-orders-empty]")
+        container.querySelectorAll("[data-day-order-rendered], [data-day-orders-empty]")
           .forEach(function (el) { el.remove(); });
 
         if (!rows.length) {
@@ -901,6 +901,8 @@
           container.appendChild(empty);
           return;
         }
+
+        if (!tmpl) return;
 
         rows.forEach(function (row) {
           var time = row.purchase_date
@@ -912,8 +914,8 @@
             ? Number(row.subtotal_excl).toLocaleString("is-IS", { maximumFractionDigits: 0 }) + " kr"
             : "";
 
-          if (!tmpl) return;
           var el = tmpl.cloneNode(true);
+          el.setAttribute("data-day-order-rendered", "");
           el.style.display = "";
           var t = el.querySelector("[data-day-order-time]");
           var n = el.querySelector("[data-day-order-name]");
