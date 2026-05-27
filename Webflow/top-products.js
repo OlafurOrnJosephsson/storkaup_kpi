@@ -565,6 +565,80 @@
 
   // --- End product drawer ---
 
+  // --- Product search ---
+
+  var _searchTimer = null;
+
+  async function fetchSearchProducts(query, daysBack) {
+    return fetchJson("/rest/v1/rpc/search_products", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, headers()),
+      body: JSON.stringify({ p_query: query, p_days_back: daysBack, p_limit: 50 })
+    });
+  }
+
+  function renderProductRows(moduleEl, rows) {
+    var protoInfo = resolvePrototype(moduleEl, "product-row", "product-row");
+    renderRows(moduleEl, "products", protoInfo, rows, function (n, row) {
+      var f1 = n.querySelector('[data-field="product_name"]');
+      var f2 = n.querySelector('[data-field="sku"]');
+      var f3 = n.querySelector('[data-field="orders"]') || n.querySelector('[data-field="total_orders"]');
+      var f4 = n.querySelector('[data-field="revenue_excl"]') || n.querySelector('[data-field="total_revenue_excl"]');
+      if (f1) f1.textContent = row.product_name || "";
+      if (f2) f2.textContent = row.sku          || "";
+      if (f3) f3.textContent = fmtInt(row.orders);
+      if (f4) f4.textContent = fmtISK(row.revenue_excl);
+    });
+  }
+
+  function wireSearch(moduleEl) {
+    var input = moduleEl.querySelector('[data-input="product-search"]');
+    if (!input) return;
+
+    input.addEventListener("input", function () {
+      clearTimeout(_searchTimer);
+      var query = input.value.trim();
+
+      if (!query) {
+        // back to top products
+        var list = moduleEl.querySelector('[data-list="products"]');
+        if (list) list.innerHTML = "";
+        loadProducts(moduleEl, {
+          kind: "period",
+          value: moduleEl.getAttribute("data-period") || "30d"
+        }).catch(console.error);
+        return;
+      }
+
+      if (query.length < 2) return;
+
+      _searchTimer = setTimeout(function () {
+        var daysBack = PERIOD_TO_DAYS[moduleEl.getAttribute("data-period")] || 365;
+        var list = moduleEl.querySelector('[data-list="products"]');
+        if (list) list.textContent = "Leita...";
+
+        fetchSearchProducts(query, daysBack)
+          .then(function (rows) {
+            rows = (rows || []).map(function (r) {
+              return {
+                sku:          r.sku,
+                product_name: r.product_name,
+                orders:       r.orders,
+                revenue_excl: r.revenue_excl
+              };
+            });
+            renderProductRows(moduleEl, rows);
+          })
+          .catch(function (err) {
+            if (list) list.textContent = "Villa við leit.";
+            console.error(err);
+          });
+      }, 300);
+    });
+  }
+
+  // --- End product search ---
+
   function wireProductsModule(moduleEl) {
     moduleEl.setAttribute("data-period", moduleEl.getAttribute("data-period") || "30d");
     moduleEl.setAttribute("data-source", moduleEl.getAttribute("data-source") || "combined");
@@ -617,6 +691,7 @@
       }
     });
 
+    wireSearch(moduleEl);
     loadProducts(moduleEl, { kind: "period", value: moduleEl.getAttribute("data-period") }).catch(console.error);
   }
 
