@@ -414,8 +414,27 @@
     });
   }
 
+  function sortRows(rows, field, dir) {
+    return rows.slice().sort(function (a, b) {
+      var av = a[field], bv = b[field];
+      var isNum = typeof av === "number" || typeof bv === "number" || !isNaN(Number(av));
+      if (isNum) { av = Number(av) || 0; bv = Number(bv) || 0; }
+      else { av = String(av || "").toLowerCase(); bv = String(bv || "").toLowerCase(); }
+      if (av < bv) return dir === "asc" ? -1 : 1;
+      if (av > bv) return dir === "asc" ? 1 : -1;
+      return 0;
+    });
+  }
+
+  function updateSortIndicators(panel, group, field, dir) {
+    panel.querySelectorAll('[data-sort-group="' + group + '"] [data-sort]').forEach(function (el) {
+      var f = el.getAttribute("data-sort");
+      el.setAttribute("data-sort-active", f === field ? dir : "");
+    });
+  }
+
   function renderDrawerRows(panel, listAttr, protoAttr, rows, mapFn) {
-    var list = panel.querySelector('[data-list="' + listAttr + '"]');
+    var list  = panel.querySelector('[data-list="' + listAttr + '"]');
     var proto = panel.querySelector('[data-prototype="' + protoAttr + '"]');
     if (!list) return;
     list.innerHTML = "";
@@ -429,6 +448,34 @@
       n.style.display = "";
       mapFn(n, row);
       list.appendChild(n);
+    });
+  }
+
+  function renderBuyers(panel, rows) {
+    renderDrawerRows(panel, "buyers", "buyer-row", rows, function (n, row) {
+      var f1 = n.querySelector('[data-field="customer_name"]');
+      var f2 = n.querySelector('[data-field="orders"]');
+      var f3 = n.querySelector('[data-field="qty_total"]');
+      var f4 = n.querySelector('[data-field="revenue_excl"]');
+      if (f1) f1.textContent = row.customer_name || row.customer_no || "";
+      if (f2) f2.textContent = fmtInt(row.orders);
+      if (f3) f3.textContent = fmtInt(row.qty_total);
+      if (f4) f4.textContent = fmtISK(row.revenue_excl);
+    });
+  }
+
+  function renderTransactions(panel, rows) {
+    renderDrawerRows(panel, "transactions", "transaction-row", rows, function (n, row) {
+      var f1 = n.querySelector('[data-field="booking_date"]');
+      var f2 = n.querySelector('[data-field="document_no"]');
+      var f3 = n.querySelector('[data-field="customer_name"]');
+      var f4 = n.querySelector('[data-field="qty"]');
+      var f5 = n.querySelector('[data-field="amount_excl"]');
+      if (f1) f1.textContent = row.booking_date   || "";
+      if (f2) f2.textContent = row.document_no    || "";
+      if (f3) f3.textContent = row.customer_name  || "";
+      if (f4) f4.textContent = fmtInt(row.qty);
+      if (f5) f5.textContent = fmtISK(row.amount_excl);
     });
   }
 
@@ -446,6 +493,15 @@
     if (buyersList) buyersList.textContent = "Hleður...";
     if (txList)     txList.textContent     = "";
 
+    // Reset sort state
+    panel.__drawerData = { buyers: [], transactions: [] };
+    panel.__drawerSort = {
+      buyers:       { field: "revenue_excl", dir: "desc" },
+      transactions: { field: "booking_date", dir: "desc" }
+    };
+    updateSortIndicators(panel, "buyers",       "revenue_excl", "desc");
+    updateSortIndicators(panel, "transactions", "booking_date", "desc");
+
     panel.style.display = "";
     document.body.style.overflow = "hidden";
 
@@ -456,32 +512,11 @@
         fetchProductBuyers(normSku, daysBack),
         fetchProductTransactions(normSku, daysBack)
       ]);
-      var buyers       = results[0] || [];
-      var transactions = results[1] || [];
+      panel.__drawerData.buyers       = results[0] || [];
+      panel.__drawerData.transactions = results[1] || [];
 
-      renderDrawerRows(panel, "buyers", "buyer-row", buyers, function (n, row) {
-        var f1 = n.querySelector('[data-field="customer_name"]');
-        var f2 = n.querySelector('[data-field="orders"]');
-        var f3 = n.querySelector('[data-field="qty_total"]');
-        var f4 = n.querySelector('[data-field="revenue_excl"]');
-        if (f1) f1.textContent = row.customer_name || row.customer_no || "";
-        if (f2) f2.textContent = fmtInt(row.orders);
-        if (f3) f3.textContent = fmtInt(row.qty_total);
-        if (f4) f4.textContent = fmtISK(row.revenue_excl);
-      });
-
-      renderDrawerRows(panel, "transactions", "transaction-row", transactions, function (n, row) {
-        var f1 = n.querySelector('[data-field="booking_date"]');
-        var f2 = n.querySelector('[data-field="document_no"]');
-        var f3 = n.querySelector('[data-field="customer_name"]');
-        var f4 = n.querySelector('[data-field="qty"]');
-        var f5 = n.querySelector('[data-field="amount_excl"]');
-        if (f1) f1.textContent = row.booking_date || "";
-        if (f2) f2.textContent = row.document_no  || "";
-        if (f3) f3.textContent = row.customer_name || "";
-        if (f4) f4.textContent = fmtInt(row.qty);
-        if (f5) f5.textContent = fmtISK(row.amount_excl);
-      });
+      renderBuyers(panel, sortRows(panel.__drawerData.buyers, "revenue_excl", "desc"));
+      renderTransactions(panel, sortRows(panel.__drawerData.transactions, "booking_date", "desc"));
     } catch (err) {
       if (buyersList) buyersList.textContent = "Villa við að sækja gögn.";
       console.error(err);
@@ -498,12 +533,33 @@
   function wireDrawer() {
     var panel = getDrawer();
     if (!panel) return;
+
     var overlay  = panel.querySelector("[data-panel-overlay]");
     var closeBtn = panel.querySelector("[data-panel-close]");
     if (overlay)  overlay.addEventListener("click", closeProductDrawer);
     if (closeBtn) closeBtn.addEventListener("click", closeProductDrawer);
+
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") closeProductDrawer();
+    });
+
+    panel.addEventListener("click", function (e) {
+      var sortEl = e.target.closest("[data-sort]");
+      if (!sortEl) return;
+      var groupEl = sortEl.closest("[data-sort-group]");
+      if (!groupEl) return;
+      var group = groupEl.getAttribute("data-sort-group");
+      var field = sortEl.getAttribute("data-sort");
+      var state = panel.__drawerSort && panel.__drawerSort[group];
+      if (!state) return;
+      var dir = (state.field === field && state.dir === "desc") ? "asc" : "desc";
+      state.field = field;
+      state.dir   = dir;
+      var data = panel.__drawerData && panel.__drawerData[group] || [];
+      var sorted = sortRows(data, field, dir);
+      updateSortIndicators(panel, group, field, dir);
+      if (group === "buyers")       renderBuyers(panel, sorted);
+      if (group === "transactions") renderTransactions(panel, sorted);
     });
   }
 

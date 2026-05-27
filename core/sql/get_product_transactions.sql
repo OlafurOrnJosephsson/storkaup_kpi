@@ -11,9 +11,9 @@ create or replace function public.get_product_transactions(
 )
 language sql stable security definer as $$
   select
-    coalesce(i.booking_date, i.order_date)                                 as booking_date,
+    coalesce(i.booking_date, i.order_date)                                    as booking_date,
     l.document_no::text,
-    coalesce(nullif(trim(i.customer_name), ''), i.customer_no)::text       as customer_name,
+    coalesce(nullif(trim(i.company_name), ''), i.company_id)::text            as customer_name,
     l.qty::numeric,
     l.amount_excl::numeric
   from raw.bc_lines_raw l
