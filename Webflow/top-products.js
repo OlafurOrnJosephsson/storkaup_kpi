@@ -390,6 +390,125 @@
     }
   }
 
+  // --- Product drawer ---
+
+  var _drawerEl = null;
+  function getDrawer() {
+    if (!_drawerEl) _drawerEl = document.querySelector('[data-panel="product-detail"]');
+    return _drawerEl;
+  }
+
+  async function fetchProductBuyers(sku, daysBack) {
+    return fetchJson("/rest/v1/rpc/get_product_buyers", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, headers()),
+      body: JSON.stringify({ p_sku: sku, p_days_back: daysBack })
+    });
+  }
+
+  async function fetchProductTransactions(sku, daysBack) {
+    return fetchJson("/rest/v1/rpc/get_product_transactions", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, headers()),
+      body: JSON.stringify({ p_sku: sku, p_days_back: daysBack, p_limit: 200 })
+    });
+  }
+
+  function renderDrawerRows(panel, listAttr, protoAttr, rows, mapFn) {
+    var list = panel.querySelector('[data-list="' + listAttr + '"]');
+    var proto = panel.querySelector('[data-prototype="' + protoAttr + '"]');
+    if (!list) return;
+    list.innerHTML = "";
+    if (!rows.length) {
+      list.textContent = "Engar niðurstöður.";
+      return;
+    }
+    rows.forEach(function (row) {
+      var n = proto ? proto.cloneNode(true) : document.createElement("div");
+      n.removeAttribute("data-prototype");
+      n.style.display = "";
+      mapFn(n, row);
+      list.appendChild(n);
+    });
+  }
+
+  async function openProductDrawer(sku, productName, daysBack) {
+    var panel = getDrawer();
+    if (!panel) return;
+
+    var nameEl = panel.querySelector('[data-field="product-name"]');
+    var skuEl  = panel.querySelector('[data-field="product-sku"]');
+    if (nameEl) nameEl.textContent = productName || sku;
+    if (skuEl)  skuEl.textContent  = sku;
+
+    var buyersList = panel.querySelector('[data-list="buyers"]');
+    var txList     = panel.querySelector('[data-list="transactions"]');
+    if (buyersList) buyersList.textContent = "Hleður...";
+    if (txList)     txList.textContent     = "";
+
+    panel.style.display = "";
+    document.body.style.overflow = "hidden";
+
+    var normSku = normalizeSkuForLookup(sku);
+
+    try {
+      var results = await Promise.all([
+        fetchProductBuyers(normSku, daysBack),
+        fetchProductTransactions(normSku, daysBack)
+      ]);
+      var buyers       = results[0] || [];
+      var transactions = results[1] || [];
+
+      renderDrawerRows(panel, "buyers", "buyer-row", buyers, function (n, row) {
+        var f1 = n.querySelector('[data-field="customer_name"]');
+        var f2 = n.querySelector('[data-field="orders"]');
+        var f3 = n.querySelector('[data-field="qty_total"]');
+        var f4 = n.querySelector('[data-field="revenue_excl"]');
+        if (f1) f1.textContent = row.customer_name || row.customer_no || "";
+        if (f2) f2.textContent = fmtInt(row.orders);
+        if (f3) f3.textContent = fmtInt(row.qty_total);
+        if (f4) f4.textContent = fmtISK(row.revenue_excl);
+      });
+
+      renderDrawerRows(panel, "transactions", "transaction-row", transactions, function (n, row) {
+        var f1 = n.querySelector('[data-field="booking_date"]');
+        var f2 = n.querySelector('[data-field="document_no"]');
+        var f3 = n.querySelector('[data-field="customer_name"]');
+        var f4 = n.querySelector('[data-field="qty"]');
+        var f5 = n.querySelector('[data-field="amount_excl"]');
+        if (f1) f1.textContent = row.booking_date || "";
+        if (f2) f2.textContent = row.document_no  || "";
+        if (f3) f3.textContent = row.customer_name || "";
+        if (f4) f4.textContent = fmtInt(row.qty);
+        if (f5) f5.textContent = fmtISK(row.amount_excl);
+      });
+    } catch (err) {
+      if (buyersList) buyersList.textContent = "Villa við að sækja gögn.";
+      console.error(err);
+    }
+  }
+
+  function closeProductDrawer() {
+    var panel = getDrawer();
+    if (!panel) return;
+    panel.style.display = "none";
+    document.body.style.overflow = "";
+  }
+
+  function wireDrawer() {
+    var panel = getDrawer();
+    if (!panel) return;
+    var overlay  = panel.querySelector("[data-panel-overlay]");
+    var closeBtn = panel.querySelector("[data-panel-close]");
+    if (overlay)  overlay.addEventListener("click", closeProductDrawer);
+    if (closeBtn) closeBtn.addEventListener("click", closeProductDrawer);
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeProductDrawer();
+    });
+  }
+
+  // --- End product drawer ---
+
   function wireProductsModule(moduleEl) {
     moduleEl.setAttribute("data-period", moduleEl.getAttribute("data-period") || "30d");
     moduleEl.setAttribute("data-source", moduleEl.getAttribute("data-source") || "combined");
@@ -422,6 +541,23 @@
         var days = Number(input && input.value);
         if (!days || days < 1) return;
         loadProducts(moduleEl, { kind: "days", value: days }).catch(console.error);
+        return;
+      }
+
+      var productsList = moduleEl.querySelector('[data-list="products"]');
+      if (productsList && productsList.contains(e.target)) {
+        var rowEl = e.target.closest('[data-list="products"] > *');
+        if (rowEl) {
+          var skuEl  = rowEl.querySelector('[data-field="sku"]');
+          var nameEl = rowEl.querySelector('[data-field="product_name"]');
+          var sku    = skuEl  ? skuEl.textContent.trim()  : "";
+          var name   = nameEl ? nameEl.textContent.trim() : "";
+          if (sku) {
+            var daysBack = PERIOD_TO_DAYS[moduleEl.getAttribute("data-period")] || 365;
+            openProductDrawer(sku, name, daysBack).catch(console.error);
+          }
+        }
+        return;
       }
     });
 
@@ -456,6 +592,8 @@
   }
 
   function init() {
+    wireDrawer();
+
     var productsModule = document.querySelector('[data-module="top-products"]');
     if (productsModule) wireProductsModule(productsModule);
 
