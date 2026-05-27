@@ -1466,10 +1466,23 @@
       var key = fill.getAttribute("data-fill-from");
 
       if (upgrade === "arc-blue" || upgrade === "arc-amber") {
+        var color = upgrade.replace("arc-", "");
+
+        var wrap = document.createElement("div");
+        wrap.className = "arc-meter-wrap arc-meter-wrap--" + color;
+
         var arc = document.createElement("div");
-        arc.className = "arc-meter arc-meter--" + upgrade.replace("arc-", "");
+        arc.className = "arc-meter arc-meter--" + color;
         arc.setAttribute("data-fill-from", key);
-        meter.parentNode.insertBefore(arc, meter);
+
+        var label = document.createElement("span");
+        label.className = "arc-meter-label";
+        label.setAttribute("data-metric", key);
+        label.textContent = "-";
+
+        wrap.appendChild(arc);
+        wrap.appendChild(label);
+        meter.parentNode.insertBefore(wrap, meter);
         meter.style.display = "none";
 
       } else if (upgrade === "pill") {
