@@ -183,8 +183,25 @@
     document.querySelectorAll(".meter-fill[data-fill-from]").forEach(function (fill) {
       var key = fill.getAttribute("data-fill-from");
       var p = values[key];
-      var clamped = Math.max(0, Math.min(100, p == null ? 0 : p));
-      fill.style.width = clamped + "%";
+      var raw = (p == null || !Number.isFinite(Number(p))) ? 0 : Number(p);
+
+      if (fill.classList.contains("meter-fill--overflow")) {
+        // Overflow bar: scale 0–140% into full track width, split gradient at 100% mark
+        var capped = Math.max(0, Math.min(140, raw));
+        fill.style.width = (capped / 140 * 100) + "%";
+        fill.style.setProperty("--overflow-split",
+          (capped > 0 ? Math.min(100 / capped * 100, 100) : 100) + "%");
+      } else {
+        fill.style.width = Math.max(0, Math.min(100, raw)) + "%";
+      }
+    });
+
+    // Arc meters: CSS conic-gradient driven by --fill-pct (0–100)
+    document.querySelectorAll(".arc-meter[data-fill-from]").forEach(function (arc) {
+      var key = arc.getAttribute("data-fill-from");
+      var p = values[key];
+      var raw = (p == null || !Number.isFinite(Number(p))) ? 0 : Number(p);
+      arc.style.setProperty("--fill-pct", Math.max(0, Math.min(100, raw)));
     });
   }
 
@@ -1441,8 +1458,32 @@
       });
   }
 
+  function applyMeterUpgrades() {
+    document.querySelectorAll(".meter[data-upgrade]").forEach(function (meter) {
+      var upgrade = meter.getAttribute("data-upgrade");
+      var fill = meter.querySelector("[data-fill-from]");
+      if (!fill) return;
+      var key = fill.getAttribute("data-fill-from");
+
+      if (upgrade === "arc-blue" || upgrade === "arc-amber") {
+        var arc = document.createElement("div");
+        arc.className = "arc-meter arc-meter--" + upgrade.replace("arc-", "");
+        arc.setAttribute("data-fill-from", key);
+        meter.parentNode.insertBefore(arc, meter);
+        meter.style.display = "none";
+
+      } else if (upgrade === "pill") {
+        var card = meter.closest(".webapp-item");
+        var metricEl = card && card.querySelector('[data-metric="' + key + '"]');
+        if (metricEl) metricEl.classList.add("delta-pill");
+        meter.style.display = "none";
+      }
+    });
+  }
+
   function init() {
     populateMonthDropdown();
+    applyMeterUpgrades();
     var items = document.querySelectorAll(".dashboard-date-item[data-month]");
     var hasMetrics = !!document.querySelector("[data-metric]");
     var dayPicker = document.querySelector("input[data-day-picker], [data-day-picker] input[type='date'], input[type='date'][data-day-picker]");
