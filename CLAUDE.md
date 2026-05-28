@@ -94,10 +94,10 @@ Title rules (V3, from SEO review Apr 2025):
 
 Update these whenever Webflow custom code changes:
 
-- Webflow deploy rev (`data-storkaup-rev`): `67add6d`
-- `Webflow/dashboard.js`: `67add6d`
+- Webflow deploy rev (`data-storkaup-rev`): `de078fb`
+- `Webflow/dashboard.js`: `de078fb`
 - `Webflow/website-dashboard.js`: `9d75dcb`
-- `Webflow/dashboard-theme.css`: `5b5d8a8`
+- `Webflow/dashboard-theme.css`: `de078fb`
 - `Webflow/customer-profiles.js`: `59f0cda`
 
 jsDelivr URL pattern: `https://cdn.jsdelivr.net/gh/OlafurOrnJosephsson/storkaup_kpi@<commit>/Webflow/<file>.js`
