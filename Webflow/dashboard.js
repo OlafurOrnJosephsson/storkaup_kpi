@@ -107,7 +107,13 @@
   function setDigitalAdoptionVisualState(score100) {
     var band = digitalScoreBand(score100);
     var card = document.querySelector('[data-kpi="digital-adoption"]');
-    if (card) card.setAttribute("data-score-band", band);
+    if (!card) return;
+    card.setAttribute("data-score-band", band);
+    if (!conicSupported()) {
+      var bandColors = { good: "#c4e08c", warn: "#fdc65d", bad: "#c23340" };
+      var svgFill = card.querySelector(".arc-meter--score-band .arc-svg-fill");
+      if (svgFill) svgFill.setAttribute("stroke", bandColors[band] || "#8077fa");
+    }
   }
 
   function applyDigitalAdoptionMetrics(month, firstTimeWebBuyersPct) {
@@ -212,7 +218,13 @@
       var key = arc.getAttribute("data-fill-from");
       var p = values[key];
       var raw = (p == null || !Number.isFinite(Number(p))) ? 0 : Number(p);
-      arc.style.setProperty("--fill-pct", Math.max(0, Math.min(100, raw)));
+      var v = Math.max(0, Math.min(100, raw));
+      if (arc.getAttribute("data-svg-arc")) {
+        var f = arc.querySelector(".arc-svg-fill");
+        if (f) f.setAttribute("stroke-dasharray", v + "," + (100 - v));
+      } else {
+        arc.style.setProperty("--fill-pct", v);
+      }
     });
 
     // Split arc meters: two segments on the wrap (data-seg-a / data-seg-b)
@@ -224,8 +236,18 @@
       var pA = values[keyA]; var pB = values[keyB];
       var rawA = (pA == null || !Number.isFinite(Number(pA))) ? 0 : Math.max(0, Math.min(100, Number(pA)));
       var rawB = (pB == null || !Number.isFinite(Number(pB))) ? 0 : Math.max(0, Math.min(100, Number(pB)));
-      arc.style.setProperty("--pct-a", rawA);
-      arc.style.setProperty("--pct-b", rawB);
+      if (wrap.getAttribute("data-svg-arc")) {
+        var fA = arc.querySelector(".arc-svg-fill-a");
+        var fB = arc.querySelector(".arc-svg-fill-b");
+        if (fA) fA.setAttribute("stroke-dasharray", rawA + "," + (100 - rawA));
+        if (fB) {
+          fB.setAttribute("stroke-dasharray", rawB + "," + (100 - rawB));
+          fB.setAttribute("transform", "rotate(" + (rawA * 3.6) + ",18,18)");
+        }
+      } else {
+        arc.style.setProperty("--pct-a", rawA);
+        arc.style.setProperty("--pct-b", rawB);
+      }
     });
   }
 
@@ -1518,26 +1540,66 @@
     });
   }
 
-  function hideMeterArcsIfUnsupported() {
-    var supported = typeof CSS !== "undefined" && CSS.supports
-      ? CSS.supports("background", "conic-gradient(red 0%, blue 100%)")
-      : (function () {
-          try {
-            var el = document.createElement("div");
-            el.style.background = "conic-gradient(red 0%, blue 100%)";
-            return !!el.style.background;
-          } catch (e) { return false; }
-        })();
-    if (!supported) {
-      document.querySelectorAll(".arc-meter").forEach(function (el) {
-        el.style.display = "none";
-      });
-    }
+  // ── SVG arc fallback (Samsung TV / browsers without conic-gradient) ─────────
+  var _svgNS = "http://www.w3.org/2000/svg";
+  var _conicOk = null;
+
+  function conicSupported() {
+    if (_conicOk !== null) return _conicOk;
+    try {
+      _conicOk = (typeof CSS !== "undefined" && CSS.supports)
+        ? CSS.supports("background", "conic-gradient(red 0%,blue 100%)")
+        : (function () { var e = document.createElement("div"); e.style.background = "conic-gradient(red 0%,blue 100%)"; return !!e.style.background; })();
+    } catch (e) { _conicOk = false; }
+    return _conicOk;
+  }
+
+  function _svgCircle(stroke, dasharray) {
+    var c = document.createElementNS(_svgNS, "circle");
+    c.setAttribute("cx", "18"); c.setAttribute("cy", "18"); c.setAttribute("r", "15.9155");
+    c.setAttribute("fill", "none"); c.setAttribute("stroke-width", "3.5");
+    c.setAttribute("stroke", stroke);
+    c.setAttribute("stroke-dasharray", dasharray);
+    return c;
+  }
+
+  function _svgWrap(children) {
+    var svg = document.createElementNS(_svgNS, "svg");
+    svg.setAttribute("viewBox", "0 0 36 36");
+    svg.style.cssText = "position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible";
+    children.forEach(function (c) { svg.appendChild(c); });
+    return svg;
+  }
+
+  function applyArcFallbacks() {
+    if (conicSupported()) return;
+    // Single arcs
+    document.querySelectorAll(".arc-meter[data-fill-from]").forEach(function (arcEl) {
+      var color = arcEl.classList.contains("arc-meter--amber") ? "#fdc65d" : "#8077fa";
+      var track = _svgCircle("#e9e9e9", "100,100");
+      var fill  = _svgCircle(color, "0,100");
+      fill.setAttribute("stroke-linecap", "round");
+      fill.classList.add("arc-svg-fill");
+      arcEl.appendChild(_svgWrap([track, fill]));
+      arcEl.removeAttribute("style");
+      arcEl.setAttribute("data-svg-arc", "1");
+    });
+    // Split arcs
+    document.querySelectorAll(".arc-meter-wrap[data-seg-a]").forEach(function (wrapEl) {
+      var arcEl = wrapEl.querySelector(".arc-meter");
+      if (!arcEl) return;
+      var track = _svgCircle("#e9e9e9", "100,100");
+      var fillA = _svgCircle("#8077fa", "0,100"); fillA.setAttribute("stroke-linecap", "round"); fillA.classList.add("arc-svg-fill-a");
+      var fillB = _svgCircle("#c4e08c", "0,100"); fillB.setAttribute("stroke-linecap", "round"); fillB.classList.add("arc-svg-fill-b");
+      arcEl.appendChild(_svgWrap([track, fillA, fillB]));
+      arcEl.removeAttribute("style");
+      wrapEl.setAttribute("data-svg-arc", "1");
+    });
   }
 
   function init() {
     populateMonthDropdown();
-    hideMeterArcsIfUnsupported();
+    applyArcFallbacks();
     applyMeterUpgrades();
     var items = document.querySelectorAll(".dashboard-date-item[data-month]");
     var hasMetrics = !!document.querySelector("[data-metric]");
