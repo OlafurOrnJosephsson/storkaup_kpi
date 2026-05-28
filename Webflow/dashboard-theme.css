@@ -709,8 +709,8 @@ input[type="text"].is-invalid {
     var(--arc-color, var(--blue, #10069f)) calc(var(--fill-pct, 0) * 1%),
     var(--light-gray-border, #e9e9e9)      calc(var(--fill-pct, 0) * 1%)
   );
-  -webkit-mask: radial-gradient(circle, transparent 72%, black 72%);
-  mask: radial-gradient(circle, transparent 72%, black 72%);
+  -webkit-mask: radial-gradient(circle, transparent 72%, black 72%) !important;
+  mask: radial-gradient(circle, transparent 72%, black 72%) !important;
   transform: rotate(-90deg);
 }
 
