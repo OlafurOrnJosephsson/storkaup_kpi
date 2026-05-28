@@ -162,7 +162,7 @@ input.flatpickr-input.input.form-control.active {
 .flatpickr-current-month input.cur-year:hover {
 background: transparent;
 }
-.flatpickr-current-month span.cur-month {}
+
 .flatpickr-current-month span.cur-month:hover {background:transparent;}
 .flatpickr-current-month input.cur-year::-webkit-outer-spin-button,
 .flatpickr-current-month input.cur-year::-webkit-inner-spin-button {
@@ -699,16 +699,14 @@ input[type="text"].is-invalid {
 /* ── Arc meter ───────────────────────────────────────────────────── */
 
 .arc-meter-wrap {
-  position: relative;
-  width: 120px;
-  height: 120px;
+  position: relative;  
   flex-shrink: 0;
 }
 
 .arc-meter {
   position: absolute;
   inset: 0;
-  border-radius: 0 !important;
+  border-radius: 50% !important;
   background: conic-gradient(
     var(--arc-color, var(--blue, #10069f)) calc(var(--fill-pct, 0) * 1%),
     var(--light-gray-border, #e9e9e9)      calc(var(--fill-pct, 0) * 1%)
