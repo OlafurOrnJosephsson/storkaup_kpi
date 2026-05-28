@@ -697,11 +697,11 @@ input[type="text"].is-invalid {
 .diverge-pos { background: var(--success-dark, #257b17); opacity: 1; }
 
 /* ── Arc meter ───────────────────────────────────────────────────── */
-.arc-meter-wrap {
-  
-}
 
-.arc-meter {  
+
+.arc-meter {
+  position: absolute;
+  inset: 0;
   background: conic-gradient(
     var(--arc-color, var(--blue, #10069f)) calc(var(--fill-pct, 0) * 1%),
     var(--light-gray-border, #e9e9e9)      calc(var(--fill-pct, 0) * 1%)
