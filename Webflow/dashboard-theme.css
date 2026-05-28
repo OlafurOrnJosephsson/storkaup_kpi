@@ -730,6 +730,14 @@ input[type="text"].is-invalid {
 .arc-meter-wrap--blue  { --arc-label-color: var(--blue, #10069f); }
 .arc-meter-wrap--amber { --arc-label-color: var(--orange, #e5920a); }
 
+/* score-band variant — arc + label color follow data-score-band on ancestor */
+[data-score-band="good"] .arc-meter--score-band       { --arc-color: var(--success-dark, #257b17); }
+[data-score-band="warn"] .arc-meter--score-band       { --arc-color: var(--orange, #e5920a); }
+[data-score-band="bad"]  .arc-meter--score-band       { --arc-color: var(--error-dark, #c23340); }
+[data-score-band="good"] .arc-meter-wrap--score-band  { --arc-label-color: var(--success-dark, #257b17); }
+[data-score-band="warn"] .arc-meter-wrap--score-band  { --arc-label-color: var(--orange, #e5920a); }
+[data-score-band="bad"]  .arc-meter-wrap--score-band  { --arc-label-color: var(--error-dark, #c23340); }
+
 /* ── Split donut (two segments, e.g. Vefur vs BC) ───────────────── */
 .arc-seg-a-label { color: var(--seg-a-color, var(--blue, #10069f)); font-weight: 600; }
 .arc-seg-b-label { color: var(--seg-b-color, var(--success-dark, #257b17)); font-weight: 600; }
