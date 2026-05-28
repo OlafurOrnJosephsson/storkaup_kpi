@@ -698,19 +698,10 @@ input[type="text"].is-invalid {
 
 /* ── Arc meter ───────────────────────────────────────────────────── */
 .arc-meter-wrap {
-  position: relative;
-  width: 120px;
-  height: 120px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  
 }
 
-.arc-meter {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
+.arc-meter {  
   background: conic-gradient(
     var(--arc-color, var(--blue, #10069f)) calc(var(--fill-pct, 0) * 1%),
     var(--light-gray-border, #e9e9e9)      calc(var(--fill-pct, 0) * 1%)
@@ -722,12 +713,7 @@ input[type="text"].is-invalid {
 
 .arc-meter-label {
   position: relative;
-  z-index: 1;
-  font-family: var(--primary-font, "Sf Pro Text", Arial, sans-serif);
-  font-size: 1.15rem;
-  font-weight: 700;
-  line-height: 1;
-  text-align: center;
+  z-index: 1; 
   color: var(--arc-label-color, var(--blue, #10069f));
 }
 
