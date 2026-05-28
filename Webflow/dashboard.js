@@ -456,8 +456,8 @@
     setText("day-avg-revenue-excl-weekday-12w", formatNumber(b.avgRevenueExclWeekday12w));
     setText("day-avg-revenue-incl-weekday-12w", formatNumber(b.avgRevenueInclWeekday12w));
     setText("day-avg-weekday-12w-sample-days", toNumberSafe(b.sampleDaysWeekday12w));
-    setText("day-vs-avg-orders-weekday-12w-pct", pct(b.paceOrdersPctWeekday12w));
-    setText("day-vs-avg-revenue-excl-weekday-12w-pct", pct(b.paceRevenueExclPctWeekday12w));
+    setSignedMetric("day-vs-avg-orders-weekday-12w-pct", (b.paceOrdersPctWeekday12w || 0) - 1);
+    setSignedMetric("day-vs-avg-revenue-excl-weekday-12w-pct", (b.paceRevenueExclPctWeekday12w || 0) - 1);
   }
 
   function applyDayAdvancedMetrics(row) {
@@ -474,8 +474,8 @@
     setText("day-aov-excl", formatNumber(row.aov_excl));
     setText("day-avg-orders-weekday-12w", toNumberSafe(avgOrdersWeekday12w));
     setText("day-avg-revenue-excl-weekday-12w", formatNumber(avgRevenueExclWeekday12w));
-    setText("day-vs-avg-orders-weekday-12w-pct", pct(paceOrdersWeekday12w));
-    setText("day-vs-avg-revenue-excl-weekday-12w-pct", pct(paceRevenueExclWeekday12w));
+    setSignedMetric("day-vs-avg-orders-weekday-12w-pct", paceOrdersWeekday12w - 1);
+    setSignedMetric("day-vs-avg-revenue-excl-weekday-12w-pct", paceRevenueExclWeekday12w - 1);
     var bcOrdersBase = toNumberSafe(row.bc_invoices_day_orders);
     var bcRevenueBase = toNumberSafe(row.bc_invoices_day_revenue_excl);
     var bcCreditsOrders = toNumberSafe(row.bc_credits_day_orders);

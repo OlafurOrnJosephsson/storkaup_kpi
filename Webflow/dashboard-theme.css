@@ -772,3 +772,12 @@ input[type="text"].is-invalid {
 [data-score-band="good"] .delta-pill { background: var(--_colors---green50,  #f0fdf4); }
 [data-score-band="warn"] .delta-pill { background: var(--_colors---orange50, #fffbeb); }
 [data-score-band="bad"]  .delta-pill { background: var(--_colors---red50,    #fef2f2); }
+
+/* pace pill — is-pos/is-neg on the metric span drives arrow + color + background */
+.delta-pill .is-pos::before { content: "▲\00a0"; }
+.delta-pill .is-neg::before { content: "▼\00a0"; }
+.delta-pill .is-pos { color: var(--success-dark, #257b17); }
+.delta-pill .is-neg { color: var(--error-dark, #c23340); }
+.delta-pill .is-flat { color: var(--black-700, #5b5b5b); }
+.delta-pill:has(.is-pos) { background: var(--_colors---green50,  #f0fdf4); }
+.delta-pill:has(.is-neg) { background: var(--_colors---red50,    #fef2f2); }
