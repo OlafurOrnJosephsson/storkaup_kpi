@@ -692,14 +692,21 @@ input[type="text"].is-invalid {
   background-color: var(--_colors---red100);
 }
 
+/* ── Chart palette ───────────────────────────────────────────────── */
+:root {
+  --chart-blue:   #8077fa;
+  --chart-green:  #c4e08c;
+  --chart-orange: #fdc65d;
+}
+
 /* ── Diverge bars ────────────────────────────────────────────────── */
-.diverge-neg { background: var(--blue, #10069f); opacity: 0.8; }
-.diverge-pos { background: var(--success-dark, #257b17); opacity: 1; }
+.diverge-neg { background: var(--chart-blue); opacity: 0.9; }
+.diverge-pos { background: var(--chart-green); opacity: 1; }
 
 /* ── Arc meter ───────────────────────────────────────────────────── */
 
 .arc-meter-wrap {
-  position: relative;  
+  position: relative;
   flex-shrink: 0;
 }
 
@@ -708,45 +715,44 @@ input[type="text"].is-invalid {
   inset: 0;
   border-radius: 50% !important;
   background: conic-gradient(
-    var(--arc-color, var(--blue, #10069f)) calc(var(--fill-pct, 0) * 1%),
-    var(--light-gray-border, #e9e9e9)      calc(var(--fill-pct, 0) * 1%)
+    var(--arc-color, var(--chart-blue)) calc(var(--fill-pct, 0) * 1%),
+    var(--light-gray-border, #e9e9e9)   calc(var(--fill-pct, 0) * 1%)
   );
   -webkit-mask: radial-gradient(circle closest-side, transparent 72%, black 72%) !important;
   mask: radial-gradient(circle closest-side, transparent 72%, black 72%) !important;
-  
 }
 
 .arc-meter-label {
   position: relative;
-  z-index: 1; 
-  color: var(--arc-label-color, var(--blue, #10069f));
+  z-index: 1;
+  color: var(--arc-label-color, var(--chart-blue));
 }
 
 /* arc fill color — on the arc div itself */
-.arc-meter--blue  { --arc-color: var(--blue, #10069f); }
-.arc-meter--amber { --arc-color: var(--orange, #e5920a); }
+.arc-meter--blue  { --arc-color: var(--chart-blue); }
+.arc-meter--amber { --arc-color: var(--chart-orange); }
 
 /* label color — on the wrap so it cascades down to the label */
-.arc-meter-wrap--blue  { --arc-label-color: var(--blue, #10069f); }
-.arc-meter-wrap--amber { --arc-label-color: var(--orange, #e5920a); }
+.arc-meter-wrap--blue  { --arc-label-color: var(--chart-blue); }
+.arc-meter-wrap--amber { --arc-label-color: var(--chart-orange); }
 
 /* score-band variant — arc + label color follow data-score-band on ancestor */
-[data-score-band="good"] .arc-meter--score-band       { --arc-color: var(--success-dark, #257b17); }
-[data-score-band="warn"] .arc-meter--score-band       { --arc-color: var(--orange, #e5920a); }
+[data-score-band="good"] .arc-meter--score-band       { --arc-color: var(--chart-green); }
+[data-score-band="warn"] .arc-meter--score-band       { --arc-color: var(--chart-orange); }
 [data-score-band="bad"]  .arc-meter--score-band       { --arc-color: var(--error-dark, #c23340); }
-[data-score-band="good"] .arc-meter-wrap--score-band  { --arc-label-color: var(--success-dark, #257b17); }
-[data-score-band="warn"] .arc-meter-wrap--score-band  { --arc-label-color: var(--orange, #e5920a); }
+[data-score-band="good"] .arc-meter-wrap--score-band  { --arc-label-color: var(--chart-green); }
+[data-score-band="warn"] .arc-meter-wrap--score-band  { --arc-label-color: var(--chart-orange); }
 [data-score-band="bad"]  .arc-meter-wrap--score-band  { --arc-label-color: var(--error-dark, #c23340); }
 
 /* ── Split donut (two segments, e.g. Vefur vs BC) ───────────────── */
-.arc-seg-a-label { color: var(--seg-a-color, var(--blue, #10069f)); font-weight: 600; }
-.arc-seg-b-label { color: var(--seg-b-color, var(--success-dark, #257b17)); font-weight: 600; }
+.arc-seg-a-label { color: var(--seg-a-color, var(--chart-blue)); font-weight: 600; }
+.arc-seg-b-label { color: var(--seg-b-color, var(--chart-green)); font-weight: 600; }
 
 .arc-meter--split {
   background: conic-gradient(
-    var(--seg-a-color, var(--blue, #10069f))          calc(var(--pct-a, 0) * 1%),
-    var(--seg-b-color, var(--success-dark, #257b17))  calc(var(--pct-a, 0) * 1%) calc((var(--pct-a, 0) + var(--pct-b, 0)) * 1%),
-    var(--light-gray-border, #e9e9e9)                 calc((var(--pct-a, 0) + var(--pct-b, 0)) * 1%)
+    var(--seg-a-color, var(--chart-blue))   calc(var(--pct-a, 0) * 1%),
+    var(--seg-b-color, var(--chart-green))  calc(var(--pct-a, 0) * 1%) calc((var(--pct-a, 0) + var(--pct-b, 0)) * 1%),
+    var(--light-gray-border, #e9e9e9)       calc((var(--pct-a, 0) + var(--pct-b, 0)) * 1%)
   );
 }
 
