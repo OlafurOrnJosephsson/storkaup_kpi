@@ -731,6 +731,9 @@ input[type="text"].is-invalid {
 .arc-meter-wrap--amber { --arc-label-color: var(--orange, #e5920a); }
 
 /* ── Split donut (two segments, e.g. Vefur vs BC) ───────────────── */
+.arc-seg-a-label { color: var(--seg-a-color, var(--blue, #10069f)); font-weight: 600; }
+.arc-seg-b-label { color: var(--seg-b-color, var(--success-dark, #257b17)); font-weight: 600; }
+
 .arc-meter--split {
   background: conic-gradient(
     var(--seg-a-color, var(--blue, #10069f))          calc(var(--pct-a, 0) * 1%),
