@@ -692,6 +692,10 @@ input[type="text"].is-invalid {
   background-color: var(--_colors---red100);
 }
 
+/* ── Diverge bars ────────────────────────────────────────────────── */
+.diverge-neg { background: var(--blue, #10069f); opacity: 0.8; }
+.diverge-pos { background: var(--success-dark, #257b17); opacity: 1; }
+
 /* ── Arc meter ───────────────────────────────────────────────────── */
 .arc-meter-wrap {
   position: relative;
