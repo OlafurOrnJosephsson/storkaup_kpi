@@ -698,6 +698,9 @@ input[type="text"].is-invalid {
 
 /* ── Arc meter ───────────────────────────────────────────────────── */
 
+.arc-meter-wrap {
+  position: relative;
+}
 
 .arc-meter {
   position: absolute;
