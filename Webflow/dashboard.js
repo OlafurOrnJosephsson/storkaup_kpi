@@ -1566,7 +1566,7 @@
   function _svgWrap(children) {
     var svg = document.createElementNS(_svgNS, "svg");
     svg.setAttribute("viewBox", "0 0 36 36");
-    svg.style.cssText = "position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible";
+    svg.style.cssText = "position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible";
     children.forEach(function (c) { svg.appendChild(c); });
     return svg;
   }

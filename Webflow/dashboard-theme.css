@@ -712,7 +712,7 @@ input[type="text"].is-invalid {
 
 .arc-meter {
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   border-radius: 50% !important;
   background: conic-gradient(
     var(--arc-color, var(--chart-blue)) calc(var(--fill-pct, 0) * 1%),
