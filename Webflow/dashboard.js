@@ -135,9 +135,19 @@
     setText("digital-adoption-webshare-pct", pct(webShare));
     setText("digital-adoption-selfserve-pct", pct(selfServe));
     setText("digital-adoption-newcustomers-norm-pct", pct(normalizedNewWeb));
+    setText("month-new-web-customers-norm-pct", pct(normalizedNewWeb));
 
     setDigitalAdoptionVisualState(score100);
     applyDigitalAdoptionDisclaimer();
+
+    var newWebBand = normalizedNewWeb > 0.8 ? "good" : normalizedNewWeb >= 0.6 ? "warn" : "bad";
+    var newWebCard = document.querySelector('[data-kpi="new-web-customers"]');
+    if (newWebCard) newWebCard.setAttribute("data-score-band", newWebBand);
+    if (!conicSupported()) {
+      var bandColors = { good: "#c4e08c", warn: "#fdc65d", bad: "#c23340" };
+      var svgFill = newWebCard && newWebCard.querySelector(".arc-meter--score-band .arc-svg-fill");
+      if (svgFill) svgFill.setAttribute("stroke", bandColors[newWebBand] || "#8077fa");
+    }
   }
 
   function parsePercent(text) {
