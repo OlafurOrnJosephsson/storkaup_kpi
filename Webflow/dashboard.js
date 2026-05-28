@@ -1518,8 +1518,26 @@
     });
   }
 
+  function hideMeterArcsIfUnsupported() {
+    var supported = typeof CSS !== "undefined" && CSS.supports
+      ? CSS.supports("background", "conic-gradient(red 0%, blue 100%)")
+      : (function () {
+          try {
+            var el = document.createElement("div");
+            el.style.background = "conic-gradient(red 0%, blue 100%)";
+            return !!el.style.background;
+          } catch (e) { return false; }
+        })();
+    if (!supported) {
+      document.querySelectorAll(".arc-meter").forEach(function (el) {
+        el.style.display = "none";
+      });
+    }
+  }
+
   function init() {
     populateMonthDropdown();
+    hideMeterArcsIfUnsupported();
     applyMeterUpgrades();
     var items = document.querySelectorAll(".dashboard-date-item[data-month]");
     var hasMetrics = !!document.querySelector("[data-metric]");
