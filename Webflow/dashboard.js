@@ -86,8 +86,17 @@
     return 0.10; // 10% new web customer rate == full score contribution
   }
 
+  function getDigitalAdoptionWebshareTarget() {
+    var fromBody = document.body
+      ? Number(document.body.getAttribute("data-digital-adoption-webshare-target"))
+      : NaN;
+    if (Number.isFinite(fromBody) && fromBody > 0) return fromBody;
+    return 0.50; // 50% web revenue share == full score contribution
+  }
+
   function getDigitalAdoptionDisclaimerText() {
-    return "Skor 0-100 byggt á vefsölu (50%), sjálfsafgreiðslu (30%) og nýjum vefviðskiptavinum m.v. "
+    return "Skor 0-100 byggt á vefsölu m.v. " + pct(getDigitalAdoptionWebshareTarget())
+      + " markmið (50%), sjálfsafgreiðslu (30%) og nýjum vefviðskiptavinum m.v. "
       + pct(getDigitalAdoptionTargetPct()) + " markmið (20%).";
   }
 
@@ -104,13 +113,15 @@
   function applyDigitalAdoptionMetrics(month, firstTimeWebBuyersPct) {
     if (!month) return;
 
+    var webshareTarget = getDigitalAdoptionWebshareTarget();
     var webShare = clamp01(month.webRevenuePct);
+    var normalizedWebShare = clamp01(webshareTarget > 0 ? (webShare / webshareTarget) : 0);
     var selfServe = clamp01(month.selfServePct);
     var targetPct = getDigitalAdoptionTargetPct();
     var newWebPct = clamp01(firstTimeWebBuyersPct);
     var normalizedNewWeb = clamp01(targetPct > 0 ? (newWebPct / targetPct) : 0);
 
-    var score01 = (webShare * 0.5) + (selfServe * 0.3) + (normalizedNewWeb * 0.2);
+    var score01 = (normalizedWebShare * 0.5) + (selfServe * 0.3) + (normalizedNewWeb * 0.2);
     var score100 = Math.round(clamp01(score01) * 100);
 
     setText("digital-adoption-score", score100 + " / 100");
