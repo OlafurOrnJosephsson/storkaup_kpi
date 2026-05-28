@@ -203,6 +203,19 @@
       var raw = (p == null || !Number.isFinite(Number(p))) ? 0 : Number(p);
       arc.style.setProperty("--fill-pct", Math.max(0, Math.min(100, raw)));
     });
+
+    // Split arc meters: two segments on the wrap (data-seg-a / data-seg-b)
+    document.querySelectorAll(".arc-meter-wrap[data-seg-a]").forEach(function (wrap) {
+      var arc = wrap.querySelector(".arc-meter");
+      if (!arc) return;
+      var keyA = wrap.getAttribute("data-seg-a");
+      var keyB = wrap.getAttribute("data-seg-b") || "";
+      var pA = values[keyA]; var pB = values[keyB];
+      var rawA = (pA == null || !Number.isFinite(Number(pA))) ? 0 : Math.max(0, Math.min(100, Number(pA)));
+      var rawB = (pB == null || !Number.isFinite(Number(pB))) ? 0 : Math.max(0, Math.min(100, Number(pB)));
+      arc.style.setProperty("--pct-a", rawA);
+      arc.style.setProperty("--pct-b", rawB);
+    });
   }
 
   function updateDiverging(values) {

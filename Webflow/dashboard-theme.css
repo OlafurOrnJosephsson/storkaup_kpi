@@ -713,7 +713,7 @@ input[type="text"].is-invalid {
   );
   -webkit-mask: radial-gradient(circle closest-side, transparent 72%, black 72%) !important;
   mask: radial-gradient(circle closest-side, transparent 72%, black 72%) !important;
-  transform: rotate(-90deg);
+  
 }
 
 .arc-meter-label {
@@ -729,6 +729,15 @@ input[type="text"].is-invalid {
 /* label color — on the wrap so it cascades down to the label */
 .arc-meter-wrap--blue  { --arc-label-color: var(--blue, #10069f); }
 .arc-meter-wrap--amber { --arc-label-color: var(--orange, #e5920a); }
+
+/* ── Split donut (two segments, e.g. Vefur vs BC) ───────────────── */
+.arc-meter--split {
+  background: conic-gradient(
+    var(--seg-a-color, var(--blue, #10069f))          calc(var(--pct-a, 0) * 1%),
+    var(--seg-b-color, var(--success-dark, #257b17))  calc(var(--pct-a, 0) * 1%) calc((var(--pct-a, 0) + var(--pct-b, 0)) * 1%),
+    var(--light-gray-border, #e9e9e9)                 calc((var(--pct-a, 0) + var(--pct-b, 0)) * 1%)
+  );
+}
 
 /* ── Delta pill ──────────────────────────────────────────────────── */
 .delta-pill {
