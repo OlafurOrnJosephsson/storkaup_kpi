@@ -486,7 +486,7 @@
     setText("day-avg-revenue-excl-weekday-12w", formatNumber(avgRevenueExclWeekday12w));
     setSignedMetric("day-vs-avg-orders-weekday-12w-pct", paceOrdersWeekday12w - 1);
     setSignedMetric("day-vs-avg-revenue-excl-weekday-12w-pct", paceRevenueExclWeekday12w - 1);
-    updateDayContext_(row.orders, paceOrdersWeekday12w - 1);
+    updateDayContext_(row.orders, paceOrdersWeekday12w - 1, row.weekday_hourly_avg_series);
     var bcOrdersBase = toNumberSafe(row.bc_invoices_day_orders);
     var bcRevenueBase = toNumberSafe(row.bc_invoices_day_revenue_excl);
     var bcCreditsOrders = toNumberSafe(row.bc_credits_day_orders);
@@ -858,23 +858,37 @@
   // ── Day context badge + hourly sparkline ─────────────────────────────────
   var _dayTooltipOpen = false;
 
-  function getDayContextBadge_(hour, deltaDec) {
-    if (hour < 10) return { text: "Dagurinn er ungur", suppress: true };
-    if (hour < 12) return { text: "Sala í gangi", suppress: false };
-    if (hour >= 16) return { text: "Dagurinn að ljúka", suppress: false };
+  function getCumulativeHourThreshold_(series, targetPct) {
+    if (!Array.isArray(series) || !series.length) return null;
+    var total = series.reduce(function (s, h) { return s + (h.orders || 0); }, 0);
+    if (!total) return null;
+    var cum = 0;
+    for (var i = 0; i < series.length; i++) {
+      cum += series[i].orders || 0;
+      if (cum / total >= targetPct) return series[i].hour;
+    }
+    return series[series.length - 1].hour;
+  }
+
+  function getDayContextBadge_(hour, deltaDec, thresholds) {
+    var t = thresholds || { suppress: 10, late: 16 };
+    if (hour < t.suppress) return { text: "Dagurinn er ungur", suppress: true };
+    if (hour < t.suppress + 2) return { text: "Sala í gangi", suppress: false };
+    if (hour >= t.late) return { text: "Dagurinn að ljúka", suppress: false };
     if (deltaDec > 0.3) return { text: "Sterk dagssala", suppress: false };
     if (deltaDec < -0.3) return { text: "Hægur dagur", suppress: false };
     return { text: null, suppress: false };
   }
 
-  function getDayTooltipText_(hour) {
-    if (hour < 10) return "Sala hefst venjulega um 8–9. Samanburður við meðaltal gefur betri mynd eftir kl. 10.";
-    if (hour < 12) return "Annasamt tímabil hefst venjulega kl. 10–13. Samanburður er að verða áreiðanlegri.";
-    if (hour < 16) return "Venjulega koma 40–50% daglegra pantana fyrir hádegi. Góð staða ef yfir meðaltali.";
-    return "Sala eftir 17:00 er venjulega lítil. Þetta er nánast lokaniðurstaðan.";
+  function getDayTooltipText_(hour, thresholds) {
+    var t = thresholds || { suppress: 10, late: 16 };
+    if (hour < t.suppress) return "Sala hefst venjulega um kl. " + t.suppress + ". Samanburður við meðaltal gefur betri mynd þegar líður á daginn.";
+    if (hour < t.suppress + 2) return "Annasamt tímabil er að hefjast. Samanburður er að verða áreiðanlegri.";
+    if (hour < t.late) return "Meirihluti daglegra pantana kemur fyrir kl. " + t.late + ". Góð staða ef yfir meðaltali.";
+    return "Sala eftir kl. " + t.late + " er venjulega lítil. Þetta er nánast lokaniðurstaðan.";
   }
 
-  function updateDayContext_(dayOrders, deltaDec) {
+  function updateDayContext_(dayOrders, deltaDec, series) {
     var badge = document.querySelector("[data-day-context-badge]");
     var deltaRow = document.querySelector("[data-day-delta-row]");
     var tooltipEl = document.querySelector("[data-day-tooltip]");
@@ -885,11 +899,16 @@
       if (deltaRow) deltaRow.style.visibility = "";
       return;
     }
-    var ctx = getDayContextBadge_(hour, deltaDec);
+    var thresholds = series && series.length ? {
+      suppress: getCumulativeHourThreshold_(series, 0.10) || 10,
+      late:     getCumulativeHourThreshold_(series, 0.80) || 16
+    } : null;
+    var ctx = getDayContextBadge_(hour, deltaDec, thresholds);
     if (ctx.text) { badge.textContent = ctx.text; badge.style.display = ""; }
     else { badge.style.display = "none"; }
     if (deltaRow) deltaRow.style.visibility = ctx.suppress ? "hidden" : "";
-    if (tooltipEl && !_dayTooltipOpen) tooltipEl.textContent = getDayTooltipText_(hour);
+    if (tooltipEl && !_dayTooltipOpen) tooltipEl.textContent = getDayTooltipText_(hour, thresholds);
+    badge._thresholds = thresholds;
   }
 
   function initDayContextBadge_() {
@@ -900,7 +919,7 @@
       var tooltipEl = document.querySelector("[data-day-tooltip]");
       if (!tooltipEl) return;
       _dayTooltipOpen = !_dayTooltipOpen;
-      if (_dayTooltipOpen) tooltipEl.textContent = getDayTooltipText_(new Date().getHours());
+      if (_dayTooltipOpen) tooltipEl.textContent = getDayTooltipText_(new Date().getHours(), badge._thresholds);
       tooltipEl.style.display = _dayTooltipOpen ? "" : "none";
     });
   }
