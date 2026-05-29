@@ -915,6 +915,9 @@
     var badge = document.querySelector("[data-day-context-badge]");
     if (!badge || badge.getAttribute("data-ctx-init")) return;
     badge.setAttribute("data-ctx-init", "1");
+    badge.style.display = "none";
+    var tooltipInit = document.querySelector("[data-day-tooltip]");
+    if (tooltipInit) tooltipInit.style.display = "none";
     badge.addEventListener("click", function () {
       var tooltipEl = document.querySelector("[data-day-tooltip]");
       if (!tooltipEl) return;
