@@ -872,11 +872,11 @@
 
   function getDayContextBadge_(hour, deltaDec, thresholds) {
     var t = thresholds || { suppress: 10, late: 16 };
-    if (hour < t.suppress) return { text: "Dagurinn er ungur", suppress: true };
-    if (hour < t.suppress + 2) return { text: "Sala í gangi", suppress: false };
-    if (hour >= t.late) return { text: "Dagurinn að ljúka", suppress: false };
-    if (deltaDec > 0.3) return { text: "Sterk dagssala", suppress: false };
-    if (deltaDec < -0.3) return { text: "Hægur dagur", suppress: false };
+    if (hour < t.suppress) return { text: "Anda djúpt, dagurinn rétt að byrja!", suppress: true };
+    if (hour < t.suppress + 2) return { text: "Vefsalan virðist vera að komast í gang í dag!", suppress: false };
+    if (hour >= t.late) return { text: "Lítur út fyrir að vefsalan sé að ljúka í dag", suppress: false };
+    if (deltaDec > 0.3) return { text: "Lítur út fyrir að vefsalan sé í góðri sveiflu þessa stundina!", suppress: false };
+    if (deltaDec < -0.3) return { text: "Vefsalan hefur nú verið í rólegri kantinum í dag!", suppress: false };
     return { text: null, suppress: false };
   }
 
