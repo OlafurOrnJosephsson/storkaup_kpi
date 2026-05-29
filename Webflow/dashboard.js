@@ -486,6 +486,7 @@
     setText("day-avg-revenue-excl-weekday-12w", formatNumber(avgRevenueExclWeekday12w));
     setSignedMetric("day-vs-avg-orders-weekday-12w-pct", paceOrdersWeekday12w - 1);
     setSignedMetric("day-vs-avg-revenue-excl-weekday-12w-pct", paceRevenueExclWeekday12w - 1);
+    updateDayContext_(row.orders, paceOrdersWeekday12w - 1);
     var bcOrdersBase = toNumberSafe(row.bc_invoices_day_orders);
     var bcRevenueBase = toNumberSafe(row.bc_invoices_day_revenue_excl);
     var bcCreditsOrders = toNumberSafe(row.bc_credits_day_orders);
@@ -854,6 +855,84 @@
     }
   }
 
+  // ── Day context badge + hourly sparkline ─────────────────────────────────
+  var _dayTooltipOpen = false;
+
+  function getDayContextBadge_(hour, deltaDec) {
+    if (hour < 10) return { text: "Dagurinn er ungur", suppress: true };
+    if (hour < 12) return { text: "Sala í gangi", suppress: false };
+    if (hour >= 16) return { text: "Dagurinn að ljúka", suppress: false };
+    if (deltaDec > 0.3) return { text: "Sterk dagssala", suppress: false };
+    if (deltaDec < -0.3) return { text: "Hægur dagur", suppress: false };
+    return { text: null, suppress: false };
+  }
+
+  function getDayTooltipText_(hour) {
+    if (hour < 10) return "Sala hefst venjulega um 8–9. Samanburður við meðaltal gefur betri mynd eftir kl. 10.";
+    if (hour < 12) return "Annasamt tímabil hefst venjulega kl. 10–13. Samanburður er að verða áreiðanlegri.";
+    if (hour < 16) return "Venjulega koma 40–50% daglegra pantana fyrir hádegi. Góð staða ef yfir meðaltali.";
+    return "Sala eftir 17:00 er venjulega lítil. Þetta er nánast lokaniðurstaðan.";
+  }
+
+  function updateDayContext_(dayOrders, deltaDec) {
+    var badge = document.querySelector("[data-day-context-badge]");
+    var deltaRow = document.querySelector("[data-day-delta-row]");
+    var tooltipEl = document.querySelector("[data-day-tooltip]");
+    if (!badge) return;
+    var hour = new Date().getHours();
+    if (dayOrders == null || !Number.isFinite(Number(dayOrders))) {
+      badge.style.display = "none";
+      if (deltaRow) deltaRow.style.visibility = "";
+      return;
+    }
+    var ctx = getDayContextBadge_(hour, deltaDec);
+    if (ctx.text) { badge.textContent = ctx.text; badge.style.display = ""; }
+    else { badge.style.display = "none"; }
+    if (deltaRow) deltaRow.style.visibility = ctx.suppress ? "hidden" : "";
+    if (tooltipEl && !_dayTooltipOpen) tooltipEl.textContent = getDayTooltipText_(hour);
+  }
+
+  function initDayContextBadge_() {
+    var badge = document.querySelector("[data-day-context-badge]");
+    if (!badge || badge.getAttribute("data-ctx-init")) return;
+    badge.setAttribute("data-ctx-init", "1");
+    badge.addEventListener("click", function () {
+      var tooltipEl = document.querySelector("[data-day-tooltip]");
+      if (!tooltipEl) return;
+      _dayTooltipOpen = !_dayTooltipOpen;
+      if (_dayTooltipOpen) tooltipEl.textContent = getDayTooltipText_(new Date().getHours());
+      tooltipEl.style.display = _dayTooltipOpen ? "" : "none";
+    });
+  }
+
+  function renderHourlySparkline_(rows) {
+    var chart = document.querySelector("[data-day-sparkline]");
+    if (!chart) return;
+    var counts = new Array(24).fill(0);
+    rows.forEach(function (row) {
+      if (!row.purchase_date) return;
+      var h = new Date(row.purchase_date).getHours();
+      if (h >= 0 && h < 24) counts[h]++;
+    });
+    var maxCount = Math.max.apply(null, counts) || 1;
+    var curHour = new Date().getHours();
+    var LABELS = { 0: "00", 6: "06", 12: "12", 18: "18" };
+    chart.innerHTML = "";
+    counts.forEach(function (count, h) {
+      var col = document.createElement("div");
+      col.className = "hsp-col";
+      var bar = document.createElement("div");
+      bar.className = "hsp-bar " + (h < curHour ? "hsp-past" : h === curHour ? "hsp-current" : "hsp-future");
+      bar.style.height = (count === 0 ? 2 : Math.max(2, Math.round((count / maxCount) * 40))) + "px";
+      var lbl = document.createElement("div");
+      lbl.className = "hsp-label";
+      lbl.textContent = LABELS[h] || "";
+      col.appendChild(bar);
+      col.appendChild(lbl);
+      chart.appendChild(col);
+    });
+  }
+
   function fetchDay(dayKey) {
     var cfg = getCfg();
     var apiKey = cfg.publishableKey || "";
@@ -1000,6 +1079,7 @@
           if (a) a.textContent = amt;
           container.appendChild(el);
         });
+        renderHourlySparkline_(rows);
       })
       .catch(function (err) {
         log("fetchDayOrders failed:", err);
@@ -1611,6 +1691,7 @@
     populateMonthDropdown();
     applyArcFallbacks();
     applyMeterUpgrades();
+    initDayContextBadge_();
     var items = document.querySelectorAll(".dashboard-date-item[data-month]");
     var hasMetrics = !!document.querySelector("[data-metric]");
     var dayPicker = document.querySelector("input[data-day-picker], [data-day-picker] input[type='date'], input[type='date'][data-day-picker]");
