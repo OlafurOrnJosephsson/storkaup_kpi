@@ -487,6 +487,7 @@
     setSignedMetric("day-vs-avg-orders-weekday-12w-pct", paceOrdersWeekday12w - 1);
     setSignedMetric("day-vs-avg-revenue-excl-weekday-12w-pct", paceRevenueExclWeekday12w - 1);
     updateDayContext_(row.orders, paceOrdersWeekday12w - 1, row.weekday_hourly_avg_series);
+    renderHourlySparkline_(row.hourly_series || []);
     var bcOrdersBase = toNumberSafe(row.bc_invoices_day_orders);
     var bcRevenueBase = toNumberSafe(row.bc_invoices_day_revenue_excl);
     var bcCreditsOrders = toNumberSafe(row.bc_credits_day_orders);
@@ -931,10 +932,15 @@
     var chart = document.querySelector("[data-day-sparkline]");
     if (!chart) return;
     var counts = new Array(24).fill(0);
+    // Accepts both raw order rows {purchase_date} and pre-grouped series {hour, orders}
     rows.forEach(function (row) {
-      if (!row.purchase_date) return;
-      var h = new Date(row.purchase_date).getHours();
-      if (h >= 0 && h < 24) counts[h]++;
+      if (row.hour != null) {
+        var h = Number(row.hour);
+        if (h >= 0 && h < 24) counts[h] = row.orders || 0;
+      } else if (row.purchase_date) {
+        var h = new Date(row.purchase_date).getHours();
+        if (h >= 0 && h < 24) counts[h]++;
+      }
     });
     var maxCount = Math.max.apply(null, counts) || 1;
     var curHour = new Date().getHours();
