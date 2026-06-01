@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Mánaðaryfirlit — Preview</title>
+
+<style>
+/* ═══════════════════════════════════════════════════════════
+   DESIGN TOKENS — gildin koma úr Webflow/dashboard-theme.css
+   Breyttu hér til að uppfæra alla liti í einu.
+   (Email clients styðja ekki var() beint — bakað inn í GAS
+    buildMonthlyDigestHtml_ þegar preview er klárt.)
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --sk-blue:           #10069f;
+  --sk-blue-bg:        #f5f6ff;
+  --sk-black:          #282828;
+  --sk-black-700:      #5b5b5b;
+  --sk-border:         #e9e9e9;
+  --sk-white:          #ffffff;
+  --sk-success:        #257b17;
+  --sk-error:          #c23340;
+  --sk-green-50:       #eaf3de;
+  --sk-green-text:     #3B6D11;
+  --sk-header-bg:      #1a1a6e;
+  --sk-header-sub:     #b0b8e0;
+}
+
+body { margin: 40px; background: #f0f0f0; }
+
+.sk-email {
+  max-width: 600px;
+  margin: 0 auto;
+  font-family: "SF Pro Text", Arial, sans-serif;
+  font-size: 14px;
+  color: var(--sk-black);
+}
+
+.sk-header {
+  background: var(--sk-white);
+  border: 1px solid var(--sk-border);
+  border-bottom: none;
+  padding: 28px 32px;
+  border-radius: 8px 8px 0 0;
+}
+
+.sk-body {
+  background: var(--sk-white);
+  border: 1px solid var(--sk-border);
+  border-top: none;
+  padding: 28px 32px;
+}
+
+.sk-footer {
+  background: #f5f5f5;
+  border: 1px solid var(--sk-border);
+  border-top: none;
+  padding: 16px 32px;
+  border-radius: 0 0 8px 8px;
+}
+
+.sk-divider { border: none; border-top: 1px solid var(--sk-border); margin: 20px 0; }
+
+.sk-lbl {
+  margin: 0 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--sk-black-700);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.sk-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sk-kpi {
+  background: var(--sk-blue-bg);
+  border: 1px solid var(--sk-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.sk-kpi-lbl { font-size: 11px; color: var(--sk-black-700); margin: 0 0 4px; }
+.sk-kpi-val { font-size: 22px; font-weight: 700; color: var(--sk-blue); margin: 0 0 4px; }
+
+/* Web-share highlight cards (North Star) */
+.sk-share {
+  background: var(--sk-blue);
+  border-radius: 8px;
+  padding: 16px 18px;
+  color: #fff;
+}
+.sk-share-lbl { font-size: 11px; color: var(--sk-header-sub); margin: 0 0 4px; }
+.sk-share-val { font-size: 26px; font-weight: 700; color: #fff; margin: 0; }
+
+.up  { font-size: 12px; color: var(--sk-success); font-weight: 600; }
+.dn  { font-size: 12px; color: var(--sk-error);   font-weight: 600; }
+.ne  { font-size: 12px; color: var(--sk-black-700); }
+
+.sk-list {
+  background: var(--sk-blue-bg);
+  border: 1px solid var(--sk-border);
+  border-radius: 8px;
+  padding: 4px 16px;
+  margin-bottom: 10px;
+}
+.sk-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+  color: var(--sk-black);
+}
+.sk-row:last-child { border-bottom: none; }
+
+.sk-badge {
+  background: var(--sk-green-50);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--sk-green-text);
+  font-weight: 600;
+}
+.sk-new {
+  display: inline-block;
+  background: var(--sk-green-50);
+  color: var(--sk-green-text);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.sk-note { font-size: 11px; color: #999; margin: 2px 0 0; line-height: 1.5; }
+
+.sk-btn {
+  display: inline-block;
+  background: var(--sk-blue);
+  color: var(--sk-white) !important;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+</style>
+</head>
+<body>
+
+<div class="sk-email">
+
+  <!-- HEADER -->
+  <div class="sk-header">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div>
+        <img src="https://images.prismic.io/storkaup/agbVeKYofJOwHQ9Y_klavyio-storkauplogo.jpg" alt="Stórkaup" style="height:64px; width:auto;">
+        <div style="color:var(--sk-black-700); font-size:13px; margin-top:6px;">Mánaðaryfirlit</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="color:var(--sk-blue); font-size:13px; font-weight:600;">maí 2026</div>
+        <div style="color:var(--sk-black-700); font-size:11px; margin-top:2px;">vs apríl 2026</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BODY -->
+  <div class="sk-body">
+    <div style="font-size:18px; margin-top:4px; margin-bottom:8px; font-weight:600;">Yfirlit yfir maí 2026</div>
+    <p style="margin:0 0 12px; color:#444; line-height:1.6; font-size:13px;">
+      Yfirlit yfir maí 2026 hjá Stórkaup. Allar tölur eru sjálfvirkt sóttar úr kerfinu.
+    </p>
+    <p style="margin:0 0 20px; font-size:13px; background:var(--sk-blue-bg); border:1px solid var(--sk-border); border-radius:6px; padding:10px 14px; color:var(--sk-black-700);">
+      Aðgangsorð: <strong style="color:var(--sk-black);">Stortkaup_2026</strong>
+    </p>
+
+    <!-- SALA -->
+    <p class="sk-lbl">Sala</p>
+    <div class="sk-grid">
+      <div class="sk-kpi">
+        <p class="sk-kpi-lbl">BC velta mánaðar</p>
+        <p class="sk-kpi-val">48,6 m.kr.</p>
+        <span class="up">↑ 6,1% vs fyrri mánuð</span>
+      </div>
+      <div class="sk-kpi">
+        <p class="sk-kpi-lbl">BC pantanir</p>
+        <p class="sk-kpi-val">712</p>
+        <span class="dn">↓ 2,4% vs fyrri mánuð</span>
+      </div>
+      <div class="sk-kpi">
+        <p class="sk-kpi-lbl">Vefvelta mánaðar</p>
+        <p class="sk-kpi-val">17,7 m.kr.</p>
+        <span class="up">↑ 11,3% vs fyrri mánuð</span>
+      </div>
+      <div class="sk-kpi">
+        <p class="sk-kpi-lbl">Vefpantanir</p>
+        <p class="sk-kpi-val">208</p>
+        <span class="up">↑ 9,5% vs fyrri mánuð</span>
+      </div>
+    </div>
+
+    <hr class="sk-divider">
+
+    <!-- VEFHLUTFALL (North Star) -->
+    <p class="sk-lbl">Vefhlutfall af heildarsölu (BC nettó)</p>
+    <div class="sk-grid">
+      <div class="sk-share">
+        <p class="sk-share-lbl">Vefpantanir % af heildarsölu</p>
+        <p class="sk-share-val">29,2%</p>
+      </div>
+      <div class="sk-share">
+        <p class="sk-share-lbl">Vefsala % af heildarsölu</p>
+        <p class="sk-share-val">36,4%</p>
+      </div>
+    </div>
+    <p class="sk-note">BC tölur uppfærast eftir á (innheimtu-lag); endanlegt mánaðarhlutfall er staðfest í Power BI. BC gögn síðast uppfærð: 2026-05-31.</p>
+
+    <hr class="sk-divider">
+
+    <!-- NÝIR VIÐSKIPTAVINIR -->
+    <p class="sk-lbl">Nýir viðskiptavinir mánaðar</p>
+    <div class="sk-list">
+      <div class="sk-row">
+        <span style="font-weight:600;">Kaffi &amp; Kaffitar ehf. <span class="sk-new">Nýr</span></span>
+        <span style="color:#3B6D11; font-size:12px;">Fyrsta pöntun: 145.200 kr.</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Veitingastaðurinn Grillið <span class="sk-new">Nýr</span></span>
+        <span style="color:#3B6D11; font-size:12px;">Fyrsta pöntun: 98.750 kr.</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Heilsulind ehf. <span class="sk-new">Nýr</span></span>
+        <span style="color:#3B6D11; font-size:12px;">Fyrsta pöntun: 62.100 kr.</span>
+      </div>
+    </div>
+    <div class="sk-badge">
+      18 nýir viðskiptavinir í maí 2026 — 14 í apríl 2026
+    </div>
+
+    <hr class="sk-divider">
+
+    <!-- STÆRSTU VIÐSKIPTAVINIR -->
+    <p class="sk-lbl">Stærstu viðskiptavinir mánaðar (vefur)</p>
+    <div class="sk-list">
+      <div class="sk-row">
+        <span style="font-weight:600;">Sómi ehf.</span>
+        <span style="color:#1a1a6e; font-weight:600;">2,4 m.kr.</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Matar Kompanít ehf.</span>
+        <span style="color:#1a1a6e; font-weight:600;">1,3 m.kr.</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Hótel Hvolsvöllur</span>
+        <span style="color:#1a1a6e; font-weight:600;">932.091 kr.</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Kaffitár ehf.</span>
+        <span style="color:#1a1a6e; font-weight:600;">741.500 kr.</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Bakaríið Sandholt</span>
+        <span style="color:#1a1a6e; font-weight:600;">618.220 kr.</span>
+      </div>
+    </div>
+
+    <hr class="sk-divider">
+
+    <!-- VINSÆLUSTU VÖRUR -->
+    <p class="sk-lbl">Vinsælustu vörur (síðustu 30 daga)</p>
+    <div class="sk-list">
+      <div class="sk-row">
+        <span style="font-weight:600;">Kókómjólk 250ml (27 stk)</span>
+        <span style="color:#1a1a6e; font-weight:600;">1,1 m.kr.</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Klút­ar fjölnota 40x38 (rúlla)</span>
+        <span style="color:#1a1a6e; font-weight:600;">842.000 kr.</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Kaffibaunir Rommi 1kg</span>
+        <span style="color:#1a1a6e; font-weight:600;">614.300 kr.</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Einnota hanskar nítríl (100 stk)</span>
+        <span style="color:#1a1a6e; font-weight:600;">512.900 kr.</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Salernispappír 2-laga (36 rúllur)</span>
+        <span style="color:#1a1a6e; font-weight:600;">448.100 kr.</span>
+      </div>
+    </div>
+
+    <hr class="sk-divider">
+
+    <!-- RUN-RATE (birtist aðeins ef sent er nokkrum dögum inn í mánuðinn) -->
+    <p class="sk-lbl">Þessi mánuður hingað til (9 af 30 dögum)</p>
+    <div class="sk-grid">
+      <div class="sk-kpi">
+        <p class="sk-kpi-lbl">Vefpantanir hingað til</p>
+        <p class="sk-kpi-val">64</p>
+        <span class="ne">spá mánaðar: 213</span>
+      </div>
+      <div class="sk-kpi">
+        <p class="sk-kpi-lbl">Vefvelta hingað til</p>
+        <p class="sk-kpi-val">5,4 m.kr.</p>
+        <span class="ne">spá: 18,0 m.kr.</span>
+      </div>
+    </div>
+    <p class="sk-note">Spá er einföld hlutfallsleg framreikning (run-rate) og er aðeins til viðmiðunar.</p>
+
+    <hr class="sk-divider">
+
+    <!-- CTA -->
+    <div style="text-align:center; padding:8px 0 4px;">
+      <a class="sk-btn" href="https://storkaup.webflow.io/kpi/dashboard">
+        Sjá allar tölur á mælaborðinu
+      </a>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div class="sk-footer">
+    <p style="margin:0; font-size:11px; color:#888;">
+      Stórkaup ehf. · Sent sjálfvirkt 1. hvers mánaðar ·
+      <a href="https://storkaup.webflow.io/kpi/dashboard" style="color:#888;">storkaup.webflow.io</a>
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

@@ -53,6 +53,8 @@ function onOpen() {
     .addSubMenu(
       ui.createMenu('Email')
         .addItem('Senda vikulegt yfirlit', 'menu_sendWelcomeEmail')
+        .addItem('Senda mánaðaryfirlit', 'menu_sendMonthlyDigest')
+        .addItem('TEST — mánaðaryfirlit (bara á mig)', 'menu_testMonthlyDigest')
         .addSeparator()
         .addItem('Rafræn — senda redirect póst', 'menu_sendRafraenRedirect')
         .addItem('Rafræn — TEST redirect póst', 'menu_testRafraenRedirect')

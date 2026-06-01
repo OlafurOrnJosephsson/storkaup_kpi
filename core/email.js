@@ -2,6 +2,7 @@
 
 var EMAIL_LOG_ = '[EMAIL]';
 var ICE_MONTHS_ = ['jan.', 'feb.', 'mar.', 'apr.', 'maí', 'jún.', 'júl.', 'ágú.', 'sep.', 'okt.', 'nóv.', 'des.'];
+var ICE_MONTHS_FULL_ = ['janúar', 'febrúar', 'mars', 'apríl', 'maí', 'júní', 'júlí', 'ágúst', 'september', 'október', 'nóvember', 'desember'];
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -396,6 +397,345 @@ function installWeeklyDigestTrigger_v1() {
   return { created: true, schedule: 'MONDAY.atHour(8).nearMinute(0)' };
 }
 
+// ── Scheduled monthly digest ──────────────────────────────────────────────────
+
+function scheduledMonthlyDigest() {
+  var startedAt = new Date();
+  Logger.log(EMAIL_LOG_ + '[INFO] Started scheduledMonthlyDigest at ' + startedAt.toISOString());
+
+  var result = { startedAt: startedAt.toISOString(), sent: false };
+  try {
+    // Previous full calendar month relative to today (Iceland = UTC+0)
+    var prevMonthStart = new Date(Date.UTC(startedAt.getUTCFullYear(), startedAt.getUTCMonth() - 1, 1));
+    var monthStartIso = digestIso_(prevMonthStart);
+
+    var stats = fetchMonthlyDigestStats_(monthStartIso);
+    var recipients = getDigestRecipients_();
+
+    if (!recipients.length) {
+      Logger.log(EMAIL_LOG_ + '[WARN] No DIGEST_EMAILS configured; skipping');
+      result.reason = 'no_recipients';
+      return result;
+    }
+
+    var subject = 'Mánaðaryfirlit — ' + digestMonthLabel_(stats.month);
+
+    GmailApp.sendEmail(recipients.join(','), subject, buildMonthlyDigestPlain_(stats), {
+      htmlBody: buildMonthlyDigestHtml_(stats),
+      from: 'vefur@storkaup.is',
+      name: 'Stórkaup ehf'
+    });
+
+    result.sent = true;
+    result.recipients = recipients.length;
+    result.monthStart = monthStartIso;
+    result.finishedAt = new Date().toISOString();
+    Logger.log(EMAIL_LOG_ + '[INFO] Completed scheduledMonthlyDigest: ' + JSON.stringify(result));
+    return result;
+  } catch (e) {
+    result.error = { message: e.message || String(e), stack: e.stack || '' };
+    result.finishedAt = new Date().toISOString();
+    try { notifyTriggerFailure_('scheduledMonthlyDigest', e, result); } catch (_) {}
+    Logger.log(EMAIL_LOG_ + '[ERROR] scheduledMonthlyDigest failed: ' + JSON.stringify(result));
+    throw e;
+  }
+}
+
+// ── Menu: send monthly digest now ─────────────────────────────────────────────
+
+function menu_sendMonthlyDigest() {
+  var ui = SpreadsheetApp.getUi();
+  var defaultRcpts = getDigestRecipients_().join(', ');
+  var resp = ui.prompt(
+    'Mánaðaryfirlit',
+    'Senda á (aðskilið með kommu):',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  var input = String(resp.getResponseText() || defaultRcpts).trim() || defaultRcpts;
+  var rcpts = input.split(/[;,]/).map(function(s) { return s.trim(); }).filter(Boolean);
+  if (!rcpts.length) { ui.alert('Ekkert gilt netfang.'); return; }
+
+  toast_('Sendi mánaðaryfirlit...', 'Email');
+  var now = new Date();
+  var prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  var stats = fetchMonthlyDigestStats_(digestIso_(prevMonthStart));
+  var subject = 'Mánaðaryfirlit — ' + digestMonthLabel_(stats.month);
+  GmailApp.sendEmail(rcpts.join(','), subject, buildMonthlyDigestPlain_(stats), {
+    htmlBody: buildMonthlyDigestHtml_(stats),
+    from: 'vefur@storkaup.is',
+    name: 'Stórkaup ehf'
+  });
+  toast_('Sent til ' + rcpts.join(', '), 'Email');
+}
+
+// Safe test — sends the monthly digest only to oj@storkaup.is (no risk of mailing all staff).
+function menu_testMonthlyDigest() {
+  var to = 'oj@storkaup.is';
+  toast_('Sendi TEST mánaðaryfirlit til ' + to + '...', 'Email');
+  var now = new Date();
+  var prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  var stats = fetchMonthlyDigestStats_(digestIso_(prevMonthStart));
+  var subject = 'TEST — Mánaðaryfirlit — ' + digestMonthLabel_(stats.month);
+  GmailApp.sendEmail(to, subject, buildMonthlyDigestPlain_(stats), {
+    htmlBody: buildMonthlyDigestHtml_(stats),
+    from: 'vefur@storkaup.is',
+    name: 'Stórkaup ehf'
+  });
+  toast_('TEST sent til ' + to, 'Email');
+}
+
+// ── Data fetch: monthly ───────────────────────────────────────────────────────
+
+function fetchMonthlyDigestStats_(monthStartIso) {
+  var raw = callSupabaseRpc_('monthly_digest_stats', { p_month_start: monthStartIso });
+  var parsed = safeJsonParse_(raw, null);
+  if (Array.isArray(parsed) && parsed.length) return parsed[0];
+  return parsed || {};
+}
+
+// ── HTML: monthly digest ──────────────────────────────────────────────────────
+
+function buildMonthlyDigestHtml_(s) {
+  var monthLabel = digestMonthLabel_(s.month);
+  var prevLabel  = digestMonthLabel_(s.prev_month);
+
+  var bcNetRev     = emailNum_(s.bc_net_revenue_excl);
+  var bcNetOrd     = emailNum_(s.bc_net_orders);
+  var webRev       = emailNum_(s.web_revenue_excl);
+  var webOrd       = emailNum_(s.web_orders);
+  var prevBcNetRev = emailNum_(s.prev_bc_net_revenue_excl);
+  var prevBcNetOrd = emailNum_(s.prev_bc_net_orders);
+  var prevWebRev   = emailNum_(s.prev_web_revenue_excl);
+  var prevWebOrd   = emailNum_(s.prev_web_orders);
+
+  var newCust     = emailNum_(s.new_customers);
+  var prevNewCust = emailNum_(s.prev_new_customers);
+  var newCustList = emailParseArr_(s.new_customers_list);
+  var topCust     = emailParseArr_(s.top_customers);
+  var topProd     = emailParseArr_(s.top_products);
+
+  var rr = s.runrate || {};
+  var rrDaysElapsed = emailNum_(rr.days_elapsed);
+  var rrMtdOrders   = emailNum_(rr.mtd_orders);
+  var showRunRate   = rrDaysElapsed >= 5 && rrMtdOrders > 0;
+
+  var newCustRows = newCustList.length
+    ? newCustList.map(function(c) {
+        return '<div class="sk-row">'
+          + '<span style="font-weight:600;">' + emailEsc_(c.name || '?')
+          + ' <span class="sk-new">Nýr</span></span>'
+          + '<span style="color:#3B6D11;font-size:12px;">Fyrsta pöntun: '
+          + emailIskShort_(c.revenue) + '</span></div>';
+      }).join('')
+    : '<div class="sk-row"><span style="color:#888;">Engir nýir viðskiptavinir þennan mánuð.</span></div>';
+
+  var topRows = topCust.length
+    ? topCust.map(function(c) {
+        return '<div class="sk-row">'
+          + '<span style="font-weight:600;">' + emailEsc_(c.name || '?') + '</span>'
+          + '<span style="color:#1a1a6e;font-weight:600;">' + emailIskShort_(c.revenue_excl) + '</span>'
+          + '</div>';
+      }).join('')
+    : '<div class="sk-row"><span style="color:#888;">–</span></div>';
+
+  var prodRows = topProd.length
+    ? topProd.map(function(p) {
+        return '<div class="sk-row">'
+          + '<span style="font-weight:600;">' + emailEsc_(p.name || '?') + '</span>'
+          + '<span style="color:#1a1a6e;font-weight:600;">' + emailIskShort_(p.revenue_excl) + '</span>'
+          + '</div>';
+      }).join('')
+    : '<div class="sk-row"><span style="color:#888;">–</span></div>';
+
+  var CSS = '<style>'
+    + '.sk-email{max-width:600px;margin:0 auto;font-family:Arial,sans-serif;font-size:14px;color:#1a1a2e}'
+    + '.sk-header{background:#f5f6ff;border:1px solid #e9e9e9;border-bottom:none;padding:28px 32px;border-radius:8px 8px 0 0}'
+    + '.sk-body{background:#fff;border:1px solid #e0e0e0;border-top:none;padding:28px 32px}'
+    + '.sk-footer{background:#f5f5f5;border:1px solid #e0e0e0;border-top:none;padding:16px 32px;border-radius:0 0 8px 8px}'
+    + '.sk-divider{border:none;border-top:1px solid #e8e8e8;margin:20px 0}'
+    + '.sk-lbl{margin:0 0 12px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.8px}'
+    + '.sk-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}'
+    + '.sk-kpi{background:#f8f8fb;border:1px solid #e8e8e8;border-radius:8px;padding:14px 16px}'
+    + '.sk-kpi-lbl{font-size:11px;color:#888;margin:0 0 4px}'
+    + '.sk-kpi-val{font-size:22px;font-weight:700;color:#1a1a6e;margin:0 0 4px}'
+    + '.sk-share{background:#10069f;border-radius:8px;padding:16px 18px;color:#fff}'
+    + '.sk-share-lbl{font-size:11px;color:#b0b8e0;margin:0 0 4px}'
+    + '.sk-share-val{font-size:26px;font-weight:700;color:#fff;margin:0}'
+    + '.up{font-size:12px;color:#1a7a4a;font-weight:600}'
+    + '.dn{font-size:12px;color:#c0392b;font-weight:600}'
+    + '.ne{font-size:12px;color:#888}'
+    + '.sk-list{background:#f8f8fb;border:1px solid #e8e8e8;border-radius:8px;padding:4px 16px;margin-bottom:10px}'
+    + '.sk-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px}'
+    + '.sk-row:last-child{border-bottom:none}'
+    + '.sk-badge{background:#eaf3de;border-radius:6px;padding:10px 14px;font-size:12px;color:#3B6D11;font-weight:600}'
+    + '.sk-new{display:inline-block;background:#eaf3de;color:#3B6D11;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:6px;vertical-align:middle}'
+    + '.sk-note{font-size:11px;color:#999;margin:2px 0 0;line-height:1.5}'
+    + '.sk-btn{display:inline-block;background:#1a1a6e;color:#fff!important;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none}'
+    + '</style>';
+
+  function kpi(label, value, pctHtml) {
+    return '<div class="sk-kpi">'
+      + '<p class="sk-kpi-lbl">' + label + '</p>'
+      + '<p class="sk-kpi-val">' + value + '</p>'
+      + pctHtml + '</div>';
+  }
+  function share(label, value) {
+    return '<div class="sk-share">'
+      + '<p class="sk-share-lbl">' + label + '</p>'
+      + '<p class="sk-share-val">' + value + '</p></div>';
+  }
+
+  var runRateHtml = '';
+  if (showRunRate) {
+    runRateHtml = '<p class="sk-lbl">Þessi mánuður hingað til ('
+      + rrDaysElapsed + ' af ' + emailNum_(rr.days_in_month) + ' dögum)</p>'
+      + '<div class="sk-grid">'
+      + kpi('Vefpantanir hingað til', String(rrMtdOrders),
+          (rr.projected_orders != null ? '<span class="ne">spá mánaðar: ' + emailNum_(rr.projected_orders) + '</span>' : '<span class="ne">–</span>'))
+      + kpi('Vefvelta hingað til', emailIskShort_(emailNum_(rr.mtd_revenue_excl)),
+          (rr.projected_revenue_excl != null ? '<span class="ne">spá: ' + emailIskShort_(emailNum_(rr.projected_revenue_excl)) + '</span>' : '<span class="ne">–</span>'))
+      + '</div>'
+      + '<p class="sk-note">Spá er einföld hlutfallsleg framreikning (run-rate) og er aðeins til viðmiðunar.</p>'
+      + '<hr class="sk-divider">';
+  }
+
+  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">' + CSS + '</head><body>'
+    + '<div class="sk-email">'
+
+    // Header
+    + '<div class="sk-header">'
+    + '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+    + '<div>'
+    + '<div style="font-size:22px;font-weight:700;color:#282828;letter-spacing:0.5px;">STÓRKAUP</div>'
+    + '<div style="color:#5b5b5b;font-size:13px;margin-top:4px;">Mánaðaryfirlit</div>'
+    + '</div>'
+    + '<div style="text-align:right;">'
+    + '<div style="color:#10069f;font-size:13px;font-weight:600;">' + monthLabel + '</div>'
+    + '<div style="color:#5b5b5b;font-size:11px;margin-top:2px;">vs ' + prevLabel + '</div>'
+    + '</div></div></div>'
+
+    // Body
+    + '<div class="sk-body">'
+    + '<p style="margin:0 0 12px;color:#444;line-height:1.6;font-size:13px;">Yfirlit yfir ' + monthLabel + ' hjá Stórkaup. Allar tölur eru sjálfvirkt sóttar úr kerfinu.</p>'
+    + '<p style="margin:0 0 20px;font-size:13px;background:#f5f6ff;border:1px solid #e9e9e9;border-radius:6px;padding:10px 14px;color:#5b5b5b;">Aðgangsorð: <strong style="color:#282828;">Stortkaup_2026</strong></p>'
+
+    // Sala
+    + '<p class="sk-lbl">Sala</p>'
+    + '<div class="sk-grid">'
+    + kpi('BC velta mánaðar', emailIskShort_(bcNetRev), emailPctSpan_(bcNetRev, prevBcNetRev, 'fyrri mánuð'))
+    + kpi('BC pantanir',      String(bcNetOrd),          emailPctSpan_(bcNetOrd, prevBcNetOrd, 'fyrri mánuð'))
+    + kpi('Vefvelta mánaðar', emailIskShort_(webRev),   emailPctSpan_(webRev,   prevWebRev,   'fyrri mánuð'))
+    + kpi('Vefpantanir',      String(webOrd),            emailPctSpan_(webOrd,   prevWebOrd,   'fyrri mánuð'))
+    + '</div>'
+    + '<hr class="sk-divider">'
+
+    // Vefhlutfall (North Star)
+    + '<p class="sk-lbl">Vefhlutfall af heildarsölu (BC nettó)</p>'
+    + '<div class="sk-grid">'
+    + share('Vefpantanir % af heildarsölu', emailPctVal_(s.web_orders_pct))
+    + share('Vefsala % af heildarsölu',     emailPctVal_(s.web_revenue_pct))
+    + '</div>'
+    + '<p class="sk-note">BC tölur uppfærast eftir á (innheimtu-lag); endanlegt mánaðarhlutfall er staðfest í Power BI. BC gögn síðast uppfærð: ' + emailEsc_(s.bc_as_of || '?') + '.</p>'
+    + '<hr class="sk-divider">'
+
+    // Nýir viðskiptavinir
+    + '<p class="sk-lbl">Nýir viðskiptavinir mánaðar</p>'
+    + '<div class="sk-list">' + newCustRows + '</div>'
+    + '<div class="sk-badge">' + newCust + ' nýir viðskiptavinir í ' + monthLabel + ' — ' + prevNewCust + ' í ' + prevLabel + '</div>'
+    + '<hr class="sk-divider">'
+
+    // Stærstu viðskiptavinir
+    + '<p class="sk-lbl">Stærstu viðskiptavinir mánaðar (vefur)</p>'
+    + '<div class="sk-list">' + topRows + '</div>'
+    + '<hr class="sk-divider">'
+
+    // Vinsælustu vörur
+    + '<p class="sk-lbl">Vinsælustu vörur (síðustu 30 daga)</p>'
+    + '<div class="sk-list">' + prodRows + '</div>'
+    + '<hr class="sk-divider">'
+
+    // Run-rate (conditional)
+    + runRateHtml
+
+    // CTA
+    + '<div style="text-align:center;padding:8px 0 4px;">'
+    + '<a class="sk-btn" href="https://storkaup.webflow.io/kpi/dashboard">Sjá allar tölur á mælaborðinu</a>'
+    + '</div>'
+    + '</div>' // sk-body
+
+    // Footer
+    + '<div class="sk-footer">'
+    + '<p style="margin:0;font-size:11px;color:#888;">Stórkaup ehf. &middot; Sent sjálfvirkt 1. hvers mánaðar &middot; '
+    + '<a href="https://storkaup.webflow.io/kpi/dashboard" style="color:#888;">storkaup.webflow.io</a></p>'
+    + '</div>'
+
+    + '</div></body></html>';
+
+  return html;
+}
+
+// ── Plain-text fallback: monthly ──────────────────────────────────────────────
+
+function buildMonthlyDigestPlain_(s) {
+  var monthLabel = digestMonthLabel_(s.month);
+  var lines = [
+    'Mánaðaryfirlit — ' + monthLabel, '',
+    'SALA (vs ' + digestMonthLabel_(s.prev_month) + ')',
+    'BC velta  : ' + emailIskShort_(emailNum_(s.bc_net_revenue_excl)) + ' (án VSK)',
+    'BC pant.  : ' + emailNum_(s.bc_net_orders),
+    'Vefvelta  : ' + emailIskShort_(emailNum_(s.web_revenue_excl)) + ' (án VSK)',
+    'Vefpant.  : ' + emailNum_(s.web_orders), '',
+    'VEFHLUTFALL AF HEILDARSÖLU (BC nettó)',
+    'Vefpantanir % : ' + emailPctVal_(s.web_orders_pct),
+    'Vefsala %     : ' + emailPctVal_(s.web_revenue_pct),
+    '(BC uppfærist eftir á — endanlegt í Power BI; BC síðast: ' + (s.bc_as_of || '?') + ')', '',
+    'NÝIR VIÐSKIPTAVINIR',
+    'Í ' + monthLabel + ' : ' + emailNum_(s.new_customers),
+    'Í ' + digestMonthLabel_(s.prev_month) + ' : ' + emailNum_(s.prev_new_customers)
+  ];
+  emailParseArr_(s.new_customers_list).forEach(function(c, i) {
+    lines.push((i + 1) + '. ' + (c.name || '?') + ' — ' + emailIskShort_(c.revenue));
+  });
+  lines.push('', 'STÆRSTU VIÐSKIPTAVINIR (vefur)');
+  emailParseArr_(s.top_customers).forEach(function(c, i) {
+    lines.push((i + 1) + '. ' + (c.name || '?') + ' — ' + emailIskShort_(c.revenue_excl));
+  });
+  lines.push('', 'VINSÆLUSTU VÖRUR (síðustu 30 daga)');
+  emailParseArr_(s.top_products).forEach(function(p, i) {
+    lines.push((i + 1) + '. ' + (p.name || '?') + ' — ' + emailIskShort_(p.revenue_excl));
+  });
+  var rr = s.runrate || {};
+  if (emailNum_(rr.days_elapsed) >= 5 && emailNum_(rr.mtd_orders) > 0) {
+    lines.push('', 'ÞESSI MÁNUÐUR HINGAÐ TIL (' + emailNum_(rr.days_elapsed) + '/' + emailNum_(rr.days_in_month) + ' dagar)',
+      'Vefpantanir : ' + emailNum_(rr.mtd_orders) + (rr.projected_orders != null ? ' (spá: ' + emailNum_(rr.projected_orders) + ')' : ''),
+      'Vefvelta    : ' + emailIskShort_(emailNum_(rr.mtd_revenue_excl)) + (rr.projected_revenue_excl != null ? ' (spá: ' + emailIskShort_(emailNum_(rr.projected_revenue_excl)) + ')' : ''));
+  }
+  lines.push('', 'Aðgangsorð: Stortkaup_2026', 'KPI: https://storkaup.webflow.io/kpi/dashboard');
+  return lines.join('\n');
+}
+
+// ── Trigger installer: monthly ────────────────────────────────────────────────
+
+function installMonthlyDigestTrigger_v1() {
+  var fn = 'scheduledMonthlyDigest';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log(EMAIL_LOG_ + '[INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .onMonthDay(1)
+    .atHour(8)
+    .nearMinute(0)
+    .create();
+  Logger.log(EMAIL_LOG_ + '[INFO] Created monthly digest trigger (1st of month at ~08:00 UTC)');
+  return { created: true, schedule: 'onMonthDay(1).atHour(8).nearMinute(0)' };
+}
+
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
 function digestIso_(d) {
@@ -415,6 +755,15 @@ function digestPeriodLabel_(ws, we, showYear) {
     return d1 + '.–' + d2 + '. ' + ICE_MONTHS_[m2] + ySuffix;
   }
   return d1 + '. ' + ICE_MONTHS_[m1] + ' – ' + d2 + '. ' + ICE_MONTHS_[m2] + ySuffix;
+}
+
+// 'YYYY-MM' -> 'maí 2026' (full Icelandic month name)
+function digestMonthLabel_(ym) {
+  if (!ym) return '?';
+  var parts = String(ym).split('-');
+  var mi = parseInt(parts[1], 10) - 1;
+  if (isNaN(mi) || mi < 0 || mi > 11) return String(ym);
+  return ICE_MONTHS_FULL_[mi] + ' ' + parts[0];
 }
 
 function digestDateIce_(d) {
@@ -448,13 +797,21 @@ function emailIskShort_(v) {
 // Alias used by plain-text fallback
 function fmtIsk_(v) { return emailIskShort_(v); }
 
-function emailPctSpan_(current, prev) {
+function emailPctSpan_(current, prev, label) {
+  label = label || 'síðasta vika';
   if (!prev || prev === 0) return '<span class="ne">–</span>';
   var p = ((current - prev) / Math.abs(prev)) * 100;
   var abs = Math.abs(p).toFixed(1).replace('.', ',');
   return p >= 0
-    ? '<span class="up">↑ ' + abs + '% vs síðasta vika</span>'
-    : '<span class="dn">↓ ' + abs + '% vs síðasta vika</span>';
+    ? '<span class="up">↑ ' + abs + '% vs ' + label + '</span>'
+    : '<span class="dn">↓ ' + abs + '% vs ' + label + '</span>';
+}
+
+// Format a 0..1 fraction as an Icelandic percentage, e.g. 0.364 -> "36,4%"
+function emailPctVal_(v) {
+  var n = Number(v);
+  if (isNaN(n)) return '–';
+  return (n * 100).toFixed(1).replace('.', ',') + '%';
 }
 
 function emailEsc_(str) {
