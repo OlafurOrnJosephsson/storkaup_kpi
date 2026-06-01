@@ -220,8 +220,8 @@ function buildWeeklyDigestHtml_(s) {
     + '<div class="sk-header">'
     + '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
     + '<div>'
-    + '<div style="font-size:22px;font-weight:700;color:#282828;letter-spacing:0.5px;">STÓRKAUP</div>'
-    + '<div style="color:#5b5b5b;font-size:13px;margin-top:4px;">Vikulegt yfirlit</div>'
+    + emailLogoImg_()
+    + '<div style="color:#5b5b5b;font-size:13px;margin-top:6px;">Vikulegt yfirlit</div>'
     + '</div>'
     + '<div style="text-align:right;">'
     + '<div style="color:#10069f;font-size:13px;font-weight:600;">' + period + '</div>'
@@ -607,8 +607,8 @@ function buildMonthlyDigestHtml_(s) {
     + '<div class="sk-header">'
     + '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
     + '<div>'
-    + '<div style="font-size:22px;font-weight:700;color:#282828;letter-spacing:0.5px;">STÓRKAUP</div>'
-    + '<div style="color:#5b5b5b;font-size:13px;margin-top:4px;">Mánaðaryfirlit</div>'
+    + emailLogoImg_()
+    + '<div style="color:#5b5b5b;font-size:13px;margin-top:6px;">Mánaðaryfirlit</div>'
     + '</div>'
     + '<div style="text-align:right;">'
     + '<div style="color:#10069f;font-size:13px;font-weight:600;">' + monthLabel + '</div>'
@@ -812,6 +812,11 @@ function emailPctVal_(v) {
   var n = Number(v);
   if (isNaN(n)) return '–';
   return (n * 100).toFixed(1).replace('.', ',') + '%';
+}
+
+// Stórkaup logo <img> for email headers (same asset as umsókn/rafræn templates)
+function emailLogoImg_() {
+  return '<img src="https://images.prismic.io/storkaup/agbVeKYofJOwHQ9Y_klavyio-storkauplogo.jpg" alt="Stórkaup" style="height:64px;width:auto;">';
 }
 
 function emailEsc_(str) {
