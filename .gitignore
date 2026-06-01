@@ -13,3 +13,6 @@ build/
 
 # BC Drop — local staging folder for BC exports (not committed)
 bc_drop/
+
+# Security review — confidential; repo is public (jsDelivr), keep out of git
+SECURITY_REVIEW.md
