@@ -915,8 +915,7 @@
     var ctx = getDayContextBadge_(hour, deltaDec, thresholds);
     if (ctx.text) { badge.textContent = ctx.text; badge.style.display = ""; }
     else { badge.style.display = "none"; }
-    var deltaPill = deltaRow && deltaRow.querySelector(".delta-pill");
-    if (deltaPill) deltaPill.style.visibility = ctx.suppress ? "hidden" : "";
+    if (deltaRow) deltaRow.style.visibility = "";
     if (tooltipEl && !_dayTooltipOpen) tooltipEl.textContent = getDayTooltipText_(hour, thresholds);
     badge._thresholds = thresholds;
   }
