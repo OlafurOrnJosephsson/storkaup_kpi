@@ -488,12 +488,11 @@ function buildMonthlyDigestHtml_(s) {
   var monthLabel = digestMonthLabel_(s.month);
   var prevLabel  = digestMonthLabel_(s.prev_month);
 
-  var bcNetRev     = emailNum_(s.bc_net_revenue_excl);
-  var bcNetOrd     = emailNum_(s.bc_net_orders);
+  // BC fields (incl. web-share %) intentionally not shown — monthly digest is
+  // pure web-sales data while BC ingestion is on hold (pending DataBricks/Power BI).
+  // Web-share of total BC sales returns when DataBricks is the governed source.
   var webRev       = emailNum_(s.web_revenue_excl);
   var webOrd       = emailNum_(s.web_orders);
-  var prevBcNetRev = emailNum_(s.prev_bc_net_revenue_excl);
-  var prevBcNetOrd = emailNum_(s.prev_bc_net_orders);
   var prevWebRev   = emailNum_(s.prev_web_revenue_excl);
   var prevWebOrd   = emailNum_(s.prev_web_orders);
 
@@ -602,23 +601,12 @@ function buildMonthlyDigestHtml_(s) {
     + '<p style="margin:0 0 12px;color:#444;line-height:1.6;font-size:13px;">Yfirlit yfir helstu tölur mánaðarins hjá Stórkaup. Allar tölur eru sjálfvirkt sóttar úr kerfinu.</p>'
     + '<p style="margin:0 0 20px;font-size:13px;background:#f5f6ff;border:1px solid #e9e9e9;border-radius:6px;padding:10px 14px;color:#5b5b5b;">Aðgangsorð: <strong style="color:#282828;">Stortkaup_2026</strong></p>'
 
-    // Sala
-    + '<p class="sk-lbl">Sala</p>'
+    // Vefsala
+    + '<p class="sk-lbl">Vefsala</p>'
     + '<div class="sk-grid">'
-    + kpi('BC velta mánaðar', emailIskShort_(bcNetRev), emailPctSpan_(bcNetRev, prevBcNetRev, 'fyrri mánuð'))
-    + kpi('BC pantanir',      String(bcNetOrd),          emailPctSpan_(bcNetOrd, prevBcNetOrd, 'fyrri mánuð'))
     + kpi('Vefvelta mánaðar', emailIskShort_(webRev),   emailPctSpan_(webRev,   prevWebRev,   'fyrri mánuð'))
     + kpi('Vefpantanir',      String(webOrd),            emailPctSpan_(webOrd,   prevWebOrd,   'fyrri mánuð'))
     + '</div>'
-    + '<hr class="sk-divider">'
-
-    // Vefhlutfall (North Star)
-    + '<p class="sk-lbl">Vefhlutfall af heildarsölu (BC nettó)</p>'
-    + '<div class="sk-grid">'
-    + share('Vefpantanir % af heildarsölu', emailPctVal_(s.web_orders_pct))
-    + share('Vefsala % af heildarsölu',     emailPctVal_(s.web_revenue_pct))
-    + '</div>'
-    + '<p class="sk-note">BC tölur uppfærast eftir á (innheimtu-lag); endanlegt mánaðarhlutfall er staðfest í Power BI. BC gögn síðast uppfærð: ' + emailEsc_(s.bc_as_of || '?') + '.</p>'
     + '<hr class="sk-divider">'
 
     // Nýir viðskiptavinir
@@ -663,15 +651,9 @@ function buildMonthlyDigestPlain_(s) {
   var monthLabel = digestMonthLabel_(s.month);
   var lines = [
     'Mánaðaryfirlit — ' + monthLabel, '',
-    'SALA (vs ' + digestMonthLabel_(s.prev_month) + ')',
-    'BC velta  : ' + emailIskShort_(emailNum_(s.bc_net_revenue_excl)) + ' (án VSK)',
-    'BC pant.  : ' + emailNum_(s.bc_net_orders),
+    'VEFSALA (vs ' + digestMonthLabel_(s.prev_month) + ')',
     'Vefvelta  : ' + emailIskShort_(emailNum_(s.web_revenue_excl)) + ' (án VSK)',
     'Vefpant.  : ' + emailNum_(s.web_orders), '',
-    'VEFHLUTFALL AF HEILDARSÖLU (BC nettó)',
-    'Vefpantanir % : ' + emailPctVal_(s.web_orders_pct),
-    'Vefsala %     : ' + emailPctVal_(s.web_revenue_pct),
-    '(BC uppfærist eftir á — endanlegt í Power BI; BC síðast: ' + (s.bc_as_of || '?') + ')', '',
     'NÝIR VIÐSKIPTAVINIR',
     'Í ' + monthLabel + ' : ' + emailNum_(s.new_customers),
     'Í ' + digestMonthLabel_(s.prev_month) + ' : ' + emailNum_(s.prev_new_customers)
