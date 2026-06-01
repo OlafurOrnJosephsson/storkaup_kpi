@@ -186,7 +186,7 @@ function buildWeeklyDigestHtml_(s) {
 
   var CSS = '<style>'
     + '.sk-email{max-width:600px;margin:0 auto;font-family:Arial,sans-serif;font-size:14px;color:#1a1a2e}'
-    + '.sk-header{background:#f5f6ff;border:1px solid #e9e9e9;border-bottom:none;padding:28px 32px;border-radius:8px 8px 0 0}'
+    + '.sk-header{background:#ffffff;border:1px solid #e9e9e9;border-bottom:none;padding:28px 32px;border-radius:8px 8px 0 0}'
     + '.sk-body{background:#fff;border:1px solid #e0e0e0;border-top:none;padding:28px 32px}'
     + '.sk-footer{background:#f5f5f5;border:1px solid #e0e0e0;border-top:none;padding:16px 32px;border-radius:0 0 8px 8px}'
     + '.sk-divider{border:none;border-top:1px solid #e8e8e8;margin:20px 0}'
@@ -284,7 +284,7 @@ function buildWeeklyDigestHtml_(s) {
 function buildWelcomeEmailHtml_() {
   var CSS = '<style>'
     + '.sk-email{max-width:600px;margin:0 auto;font-family:Arial,sans-serif;font-size:14px;color:#1a1a2e}'
-    + '.sk-header{background:#f5f6ff;border:1px solid #e9e9e9;border-bottom:none;padding:28px 32px;border-radius:8px 8px 0 0}'
+    + '.sk-header{background:#ffffff;border:1px solid #e9e9e9;border-bottom:none;padding:28px 32px;border-radius:8px 8px 0 0}'
     + '.sk-body{background:#fff;border:1px solid #e0e0e0;border-top:none;padding:28px 32px}'
     + '.sk-footer{background:#f5f5f5;border:1px solid #e0e0e0;border-top:none;padding:16px 32px;border-radius:0 0 8px 8px}'
     + '.sk-card{border:1px solid #e8e8e8;border-radius:8px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;background:#fafafa}'
@@ -550,7 +550,7 @@ function buildMonthlyDigestHtml_(s) {
 
   var CSS = '<style>'
     + '.sk-email{max-width:600px;margin:0 auto;font-family:Arial,sans-serif;font-size:14px;color:#1a1a2e}'
-    + '.sk-header{background:#f5f6ff;border:1px solid #e9e9e9;border-bottom:none;padding:28px 32px;border-radius:8px 8px 0 0}'
+    + '.sk-header{background:#ffffff;border:1px solid #e9e9e9;border-bottom:none;padding:28px 32px;border-radius:8px 8px 0 0}'
     + '.sk-body{background:#fff;border:1px solid #e0e0e0;border-top:none;padding:28px 32px}'
     + '.sk-footer{background:#f5f5f5;border:1px solid #e0e0e0;border-top:none;padding:16px 32px;border-radius:0 0 8px 8px}'
     + '.sk-divider{border:none;border-top:1px solid #e8e8e8;margin:20px 0}'
