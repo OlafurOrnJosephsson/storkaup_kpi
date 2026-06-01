@@ -883,10 +883,10 @@
 
   function getDayTooltipText_(hour, thresholds) {
     var t = thresholds || { suppress: 10, late: 16 };
-    if (hour < t.suppress) return "Sala hefst venjulega um kl. " + t.suppress + ". Samanburður við meðaltal gefur betri mynd þegar líður á daginn.";
-    if (hour < t.suppress + 2) return "Annasamt tímabil er að hefjast. Samanburður er að verða áreiðanlegri.";
-    if (hour < t.late) return "Meirihluti daglegra pantana kemur fyrir kl. " + t.late + ". Góð staða ef yfir meðaltali.";
-    return "Sala eftir kl. " + t.late + " er venjulega lítil. Þetta er nánast lokaniðurstaðan.";
+    if (hour < t.suppress) return "Vefsalan hefst venjulega um kl. " + t.suppress + ". Samanburður við meðaltal gefur betri mynd þegar líður á daginn.";
+    if (hour < t.suppress + 2) return "Vefsalan virðist vera að fara í gang. Samanburður verður þvi áreiðanlegri í kjölfarið.";
+    if (hour < t.late) return "Meirihluti daglegra vefpantana koma fyrir kl. " + t.late + ". Samanburður við meðaltal er því að mestu kominn í gagnið, þó stundum sé hægt að sjá vísbendingar um dagsferilinn mun fyrr.";
+    return "Vefsala eftir kl. " + t.late + " er venjulega lítil. Mögulega er þetta lokastaðan í dag.";
   }
 
   function updateDayContext_(dayOrders, deltaDec, series) {
@@ -1199,6 +1199,16 @@
         applyDigitalAdoptionMetrics(data.month, firstTimeWebBuyersPct);
 
         var values = buildMetricMap();
+        // Inject arc-driving metrics directly from raw data — avoids DOM round-trip
+        // mismatch and ensures arcs update correctly when switching months.
+        var m = data.month;
+        if (m.webRevenuePct   != null) values["month-webrev-pct"]        = m.webRevenuePct   * 100;
+        if (m.webOrdersPct    != null) values["month-weborders-pct"]     = m.webOrdersPct    * 100;
+        if (m.rolling30WebRevenuePct  != null) values["rolling30-webrev-pct"]     = m.rolling30WebRevenuePct  * 100;
+        if (m.rolling30WebOrdersPct   != null) values["rolling30-weborders-pct"]  = m.rolling30WebOrdersPct   * 100;
+        if (m.selfServePct    != null) values["month-selfserve-pct"]     = m.selfServePct    * 100;
+        if (m.aovWebPct       != null) values["month-aov-web-pct"]       = m.aovWebPct       * 100;
+        if (m.aovBcPct        != null) values["month-aov-bc-pct"]        = m.aovBcPct        * 100;
         updateMeters(values);
         updateDiverging(values);
       })
