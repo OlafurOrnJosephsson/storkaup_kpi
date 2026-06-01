@@ -1215,10 +1215,11 @@
         if (m.rolling30WebRevenuePct  != null) values["rolling30-webrev-pct"]     = m.rolling30WebRevenuePct  * 100;
         if (m.rolling30WebOrdersPct   != null) values["rolling30-weborders-pct"]  = m.rolling30WebOrdersPct   * 100;
 
-        // Webrev goal progress — normalized against 50% target (configurable via data-webrev-goal-target on body)
+        // Web goal progress — normalized against 50% target (configurable via data-webrev-goal-target on body)
+        // Uses rolling30WebOrdersPct (web orders share) as it better reflects digital adoption
         var webrevTarget = getWebrevGoalTarget_();
-        var webrevNorm = m.rolling30WebRevenuePct != null
-          ? Math.max(0, Math.min(1, m.rolling30WebRevenuePct / webrevTarget)) : null;
+        var webrevNorm = m.rolling30WebOrdersPct != null
+          ? Math.max(0, Math.min(1, m.rolling30WebOrdersPct / webrevTarget)) : null;
         if (webrevNorm != null) {
           values["webrev-goal-norm-pct"] = webrevNorm * 100;
           setText("webrev-goal-norm-pct", pct(webrevNorm));
