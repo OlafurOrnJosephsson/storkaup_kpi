@@ -149,12 +149,10 @@ function buildWeeklyDigestHtml_(s) {
   var period     = ws && we      ? digestPeriodLabel_(ws,     we,      true)  : '?';
   var prevPeriod = prevWs && prevWe ? digestPeriodLabel_(prevWs, prevWe, false) : '?';
 
-  var bcNetRev      = emailNum_(s.bc_net_revenue_excl);
-  var bcNetOrd      = emailNum_(s.bc_net_orders);
+  // BC fields intentionally not shown — weekly digest is pure web-sales data
+  // (BC ingestion on hold pending DataBricks/Power BI).
   var webRev        = emailNum_(s.web_revenue_excl);
   var webOrd        = emailNum_(s.web_orders);
-  var prevBcNetRev  = emailNum_(s.prev_bc_net_revenue_excl);
-  var prevBcNetOrd  = emailNum_(s.prev_bc_net_orders);
   var prevWebRev    = emailNum_(s.prev_web_revenue_excl);
   var prevWebOrd    = emailNum_(s.prev_web_orders);
 
@@ -227,11 +225,9 @@ function buildWeeklyDigestHtml_(s) {
     + '<p style="margin:0 0 12px;color:#444;line-height:1.6;font-size:13px;">Yfirlit yfir helstu tölur vikunnar hjá Stórkaup. Allar tölur eru sjálfvirkt sóttar úr kerfinu.</p>'
     + '<p style="margin:0 0 20px;font-size:13px;background:#f5f6ff;border:1px solid #e9e9e9;border-radius:6px;padding:10px 14px;color:#5b5b5b;">Aðgangsorð: <strong style="color:#282828;">Stortkaup_2026</strong></p>'
 
-    // Sala
-    + '<p class="sk-lbl">Sala</p>'
+    // Vefsala
+    + '<p class="sk-lbl">Vefsala</p>'
     + '<div class="sk-grid">'
-    + kpi('BC velta vikuna',   emailIskShort_(bcNetRev),  emailPctSpan_(bcNetRev,  prevBcNetRev))
-    + kpi('BC pantanir',       String(bcNetOrd),           emailPctSpan_(bcNetOrd,  prevBcNetOrd))
     + kpi('Vefvelta vikuna',   emailIskShort_(webRev),    emailPctSpan_(webRev,    prevWebRev))
     + kpi('Vefpantanir',       String(webOrd),             emailPctSpan_(webOrd,    prevWebOrd))
     + '</div>'
@@ -344,9 +340,7 @@ function buildWeeklyDigestPlain_(s) {
 
   var lines = [
     'Vikulegt yfirlit — ' + period, '',
-    'SALA',
-    'BC velta  : ' + emailIskShort_(emailNum_(s.bc_net_revenue_excl)) + ' (án VSK)',
-    'BC pant.  : ' + emailNum_(s.bc_net_orders),
+    'VEFSALA',
     'Vefvelta  : ' + emailIskShort_(emailNum_(s.web_revenue_excl)) + ' (án VSK)',
     'Vefpant.  : ' + emailNum_(s.web_orders), '',
     'NÝIR VIÐSKIPTAVINIR',
