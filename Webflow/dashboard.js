@@ -86,6 +86,14 @@
     return 0.10; // 10% new web customer rate == full score contribution
   }
 
+  function getWebrevGoalTarget_() {
+    var fromBody = document.body
+      ? Number(document.body.getAttribute("data-webrev-goal-target"))
+      : NaN;
+    if (Number.isFinite(fromBody) && fromBody > 0) return fromBody;
+    return 0.50; // 50% web revenue share = full score
+  }
+
   function getDigitalAdoptionWebshareTarget() {
     var fromBody = document.body
       ? Number(document.body.getAttribute("data-digital-adoption-webshare-target"))
@@ -1206,6 +1214,23 @@
         if (m.webOrdersPct    != null) values["month-weborders-pct"]     = m.webOrdersPct    * 100;
         if (m.rolling30WebRevenuePct  != null) values["rolling30-webrev-pct"]     = m.rolling30WebRevenuePct  * 100;
         if (m.rolling30WebOrdersPct   != null) values["rolling30-weborders-pct"]  = m.rolling30WebOrdersPct   * 100;
+
+        // Webrev goal progress — normalized against 50% target (configurable via data-webrev-goal-target on body)
+        var webrevTarget = getWebrevGoalTarget_();
+        var webrevNorm = m.rolling30WebRevenuePct != null
+          ? Math.max(0, Math.min(1, m.rolling30WebRevenuePct / webrevTarget)) : null;
+        if (webrevNorm != null) {
+          values["webrev-goal-norm-pct"] = webrevNorm * 100;
+          setText("webrev-goal-norm-pct", pct(webrevNorm));
+          var webrevBand = webrevNorm > 0.8 ? "good" : webrevNorm >= 0.6 ? "warn" : "bad";
+          var webrevCard = document.querySelector('[data-kpi="webrev-goal"]');
+          if (webrevCard) webrevCard.setAttribute("data-score-band", webrevBand);
+          if (!conicSupported()) {
+            var bandColors = { good: "#c4e08c", warn: "#fdc65d", bad: "#c23340" };
+            var svgFill = webrevCard && webrevCard.querySelector(".arc-meter--score-band .arc-svg-fill");
+            if (svgFill) svgFill.setAttribute("stroke", bandColors[webrevBand] || "#8077fa");
+          }
+        }
         if (m.selfServePct    != null) values["month-selfserve-pct"]     = m.selfServePct    * 100;
         if (m.aovWebPct       != null) values["month-aov-web-pct"]       = m.aovWebPct       * 100;
         if (m.aovBcPct        != null) values["month-aov-bc-pct"]        = m.aovBcPct        * 100;
