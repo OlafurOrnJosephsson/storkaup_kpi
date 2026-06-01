@@ -151,11 +151,7 @@
 
 ## Current Production Pins
 
-Update these whenever Webflow custom code is changed.
-
-- Webflow deploy rev (both bootstrap `data-storkaup-rev`): `627e802`
-- `Webflow/dashboard-theme.css`: `2b272cd`
-- Trigger schedule baseline: `ab2931a`
+Production pins now live in a single source of truth: **`CLAUDE.md` → Current production pins**. Update them there whenever Webflow custom code changes (and update the jsDelivr commit in Webflow custom code).
 
 ## Weekly Review Checklist
 

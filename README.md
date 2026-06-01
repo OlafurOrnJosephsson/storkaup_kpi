@@ -27,15 +27,12 @@ GAS + Webflow source repo for Storkaup KPI.
 Use commit-pinned jsDelivr URLs in Webflow custom code:
 - `https://cdn.jsdelivr.net/gh/OlafurOrnJosephsson/storkaup_kpi@<commit>/Webflow/<file>.js`
 
-Current known-good pins:
-- `Webflow/customer-profiles.js`: `59f0cda`
-- Parent/child profile aggregation baseline: `ab0aafd`
-- Parent/child last-orders merge: `ca32334`
+Current pin values live in a single source of truth: **`CLAUDE.md` → Current production pins**.
 
 When updating Webflow scripts:
 1. Commit and push to `main`
 2. Update pinned commit IDs in Webflow custom code
-3. Update this section in `README.md` and `NEXT_TASKS.md`
+3. Update the pins section in `CLAUDE.md`
 4. Hard refresh and smoke-test dashboard + customer profiles
 
 ## Quick Safety Checks
