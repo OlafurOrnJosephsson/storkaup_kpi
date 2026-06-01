@@ -605,19 +605,13 @@ function buildMonthlyDigestHtml_(s) {
 
     // Header
     + '<div class="sk-header">'
-    + '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
-    + '<div>'
     + emailLogoImg_()
-    + '<div style="color:#5b5b5b;font-size:13px;margin-top:6px;">Mánaðaryfirlit</div>'
     + '</div>'
-    + '<div style="text-align:right;">'
-    + '<div style="color:#10069f;font-size:13px;font-weight:600;">' + monthLabel + '</div>'
-    + '<div style="color:#5b5b5b;font-size:11px;margin-top:2px;">vs ' + prevLabel + '</div>'
-    + '</div></div></div>'
 
     // Body
     + '<div class="sk-body">'
-    + '<p style="margin:0 0 12px;color:#444;line-height:1.6;font-size:13px;">Yfirlit yfir ' + monthLabel + ' hjá Stórkaup. Allar tölur eru sjálfvirkt sóttar úr kerfinu.</p>'
+    + '<div style="font-size:18px;font-weight:700;color:#282828;margin:4px 0 10px;">Mánaðaryfirlit — ' + monthLabel + '</div>'
+    + '<p style="margin:0 0 12px;color:#444;line-height:1.6;font-size:13px;">Yfirlit yfir helstu tölur mánaðarins hjá Stórkaup. Allar tölur eru sjálfvirkt sóttar úr kerfinu.</p>'
     + '<p style="margin:0 0 20px;font-size:13px;background:#f5f6ff;border:1px solid #e9e9e9;border-radius:6px;padding:10px 14px;color:#5b5b5b;">Aðgangsorð: <strong style="color:#282828;">Stortkaup_2026</strong></p>'
 
     // Sala
