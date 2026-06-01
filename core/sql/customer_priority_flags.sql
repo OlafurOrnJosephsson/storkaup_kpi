@@ -393,8 +393,16 @@ $function$;
 grant select on table raw.customer_priority_flags_raw to authenticated, anon;
 grant all privileges on table raw.customer_priority_flags_raw to service_role;
 
+-- READ functions: anon still allowed (reads remain open pending auth migration)
 grant execute on function api.get_customer_priority_flags() to authenticated, anon, service_role;
-grant execute on function api.set_customer_priority_flag(text, text, text, text) to authenticated, anon, service_role;
-grant execute on function api.assign_customer_priority_rep(text, text) to authenticated, anon, service_role;
 grant execute on function api.get_active_sales_reps() to authenticated, anon, service_role;
-grant execute on function api.bulk_set_customer_priority_flags(text[], text, text) to authenticated, anon, service_role;
+
+-- WRITE functions: anon/PUBLIC revoked (security review 2026-06-01). Mutating RPCs
+-- must not be callable via the public sb_publishable key. Restore requires
+-- authenticated access (Supabase Auth + RLS). See security_revoke_anon_writes.sql.
+revoke execute on function api.set_customer_priority_flag(text, text, text, text)   from public, anon;
+grant  execute on function api.set_customer_priority_flag(text, text, text, text)   to authenticated, service_role;
+revoke execute on function api.assign_customer_priority_rep(text, text)             from public, anon;
+grant  execute on function api.assign_customer_priority_rep(text, text)             to authenticated, service_role;
+revoke execute on function api.bulk_set_customer_priority_flags(text[], text, text) from public, anon;
+grant  execute on function api.bulk_set_customer_priority_flags(text[], text, text) to authenticated, service_role;
