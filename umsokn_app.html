@@ -249,7 +249,9 @@ tr.done td { opacity: 0.4; }
     Umsókn um viðskipti <span class="tab-badge" id="badge-umsokn">0</span>
   </div>
 </div>
-  <div style="padding-right:24px;">
+  <div style="padding-right:24px; display:flex; align-items:center; gap:12px;">
+    <span id="refresh-status" style="font-size:12px; color:#888;"></span>
+    <button class="btn btn-ghost" id="refresh-btn" onclick="loadData(false)">↻ Endurhlaða</button>
     <button class="btn btn-ghost" id="sync-btn" onclick="syncMagento()">⟳ Samstilla</button>
   </div>
 </div>
@@ -316,16 +318,41 @@ function switchTab(name) {
 
 // ── Load data ──────────────────────────────────────────────────────────────
 
-function loadData() {
-  run('webapp_getApplications').then(function(data) {
+var lastDataSig = null;   // signature of last rendered data — skip re-render when unchanged
+var busy = false;         // a long op (Magento sync) is running — pause polling
+
+function fmtClock(d) {
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+function setRefreshStatus(text) {
+  var el = document.getElementById('refresh-status');
+  if (el) el.textContent = text || '';
+}
+
+// silent=true → background poll: no spinner, and only re-render if the data
+// actually changed (avoids flicker / scroll jumps while the user is reading).
+function loadData(silent) {
+  if (!silent) document.getElementById('loading').style.display = '';
+  setRefreshStatus(silent ? '' : 'Sæki…');
+  return run('webapp_getApplications').then(function(data) {
+    var sig = JSON.stringify(data);
+    var changed = sig !== lastDataSig;
+    lastDataSig = sig;
     appData = data;
     document.getElementById('loading').style.display = 'none';
-    renderRafraen(data.rafraen || []);
-    renderUmsokn(data.umsokn  || []);
     document.getElementById('tab-umsokn').style.display = '';
+    if (changed || !silent) {
+      renderRafraen(data.rafraen || []);
+      renderUmsokn(data.umsokn  || []);
+    }
+    setRefreshStatus('Uppfært ' + fmtClock(new Date()));
+    if (silent && changed) showToast('Listinn uppfærður — nýjar/breyttar umsóknir');
   }).catch(function(err) {
-    document.getElementById('loading').innerHTML =
-      '<span style="color:#c23340;">Villa við að sækja gögn: ' + (err.message || err) + '</span>';
+    if (!silent) {
+      document.getElementById('loading').innerHTML =
+        '<span style="color:#c23340;">Villa við að sækja gögn: ' + (err.message || err) + '</span>';
+    }
+    setRefreshStatus('Villa við uppfærslu');
   });
 }
 
@@ -574,23 +601,41 @@ function syncMagento() {
   var btn = document.getElementById('sync-btn');
   btn.disabled = true;
   btn.textContent = '⟳ Samstilli…';
+  busy = true;
   run('syncMagentoCustomers')
     .then(function() {
       showToast('Samstilling lokið — hleð gögn að nýju');
       btn.disabled = false;
       btn.textContent = '⟳ Samstilla';
+      busy = false;
       loadData();
     })
     .catch(function(e) {
       showToast('Villa við samstillingu: ' + (e.message || e), true);
       btn.disabled = false;
       btn.textContent = '⟳ Samstilla';
+      busy = false;
     });
 }
 
-// ── Init ───────────────────────────────────────────────────────────────────
+// ── Init + auto-refresh ──────────────────────────────────────────────────────
+
+// Background poll for new applications. Skipped when the tab is hidden, a modal
+// is open, or a long op (sync) is running — so it never interrupts an action.
+var POLL_MS = 45000;
+function canPoll() {
+  return !document.hidden
+    && !busy
+    && !document.getElementById('modal').classList.contains('open');
+}
 
 loadData();
+setInterval(function() { if (canPoll()) loadData(true); }, POLL_MS);
+
+// Catch up immediately when the user returns to the tab.
+document.addEventListener('visibilitychange', function() {
+  if (canPoll()) loadData(true);
+});
 </script>
 </body>
 </html>
