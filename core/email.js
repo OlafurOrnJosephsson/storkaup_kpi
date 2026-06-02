@@ -940,3 +940,159 @@ function emailParseArr_(v) {
   }
   return [];
 }
+
+// ── Cache-clearing troubleshooting email (support tool) ───────────────────────
+// After a storkaup.is update some customers get a stale browser/edge cache and
+// hit login or product-browsing issues. This generates a pre-written, two-language
+// troubleshooting email so the support team can answer those quickly instead of
+// handling each one ad hoc. Internal tooling — not a customer-facing dashboard.
+
+// Single content model → both plain text and HTML are derived from this, so the
+// two renderings can never drift apart.
+function cacheEmailContent_(lang) {
+  var l = (String(lang || 'is').toLowerCase() === 'en') ? 'en' : 'is';
+  if (l === 'en') {
+    return {
+      lang: 'en',
+      subject: 'Having trouble logging in to Storkaup.is? Try this first',
+      greeting: function (name) { return 'Hi ' + (name || 'there') + ','; },
+      intro: 'Thank you for reaching out. After a recent update to our website, your browser may be holding on to an older version of the site — this can sometimes cause issues with login or browsing products.',
+      stepsLead: 'This is usually fixed in a few simple steps:',
+      steps: [
+        'Close your browser completely (not just the tab)',
+        'Reopen your browser',
+        'Go to www.storkaup.is and try again'
+      ],
+      clearLead: "If that doesn't work, clear your browser cache:",
+      clearItems: [
+        'Chrome / Edge: Ctrl + Shift + Delete → check "Cached images" and "Cookies" → Clear data',
+        'Firefox: Ctrl + Shift + Delete → check "Cache" → Clear',
+        'Mac (all browsers): ⌘ + Shift + Delete'
+      ],
+      afterClear: 'After clearing: close the browser, reopen it, and try logging in again.',
+      persists: "If the issue persists after these steps, please don't hesitate to reach out and we'll take a closer look.",
+      signoff: 'Best regards,',
+      senderFallback: '[Your name]',
+      company: 'Stórkaup'
+    };
+  }
+  return {
+    lang: 'is',
+    subject: 'Vandræði með innskráningu á Stórkaup.is? Prófaðu þetta',
+    greeting: function (name) { return name ? 'Halló ' + name + ',' : 'Halló,'; },
+    intro: 'Takk fyrir að hafa samband. Þegar við uppfærum vefinn getur vafrinn þinn stundum haldið í gamlar upplýsingar sem geta valdið vandræðum við innskráningu eða vöruskoðun.',
+    stepsLead: 'Þetta er yfirleitt auðveldlega lagað með þessum skrefum:',
+    steps: [
+      'Lokaðu vafranum alveg (ekki bara flipann)',
+      'Opnaðu vafrann aftur',
+      'Farðu á www.storkaup.is og reyndu aftur'
+    ],
+    clearLead: 'Ef það hjálpar ekki:',
+    clearItems: [
+      'Chrome / Edge: Ctrl + Shift + Delete → hakaðu við "Skyndiminni" og "Vafrakökur" → Hreinsa',
+      'Firefox: Ctrl + Shift + Delete → hakaðu við "Skyndiminni" → Hreinsa',
+      'Mac (allir vafrar): ⌘ + Shift + Delete'
+    ],
+    afterClear: 'Eftir hreinsun: lokaðu vafranum, opnaðu aftur og reyndu innskráningu.',
+    persists: 'Ef vandinn er enn til staðar eftir þetta, vinsamlegast hafðu samband og við förum yfir málið með þér.',
+    signoff: 'Kveðja,',
+    senderFallback: '[Nafn þitt]',
+    company: 'Stórkaup'
+  };
+}
+
+// Pure generator: returns { subject, body } as plain text.
+//   lang         'is' | 'en'  (anything other than 'en' is treated as Icelandic)
+//   customerName recipient first name (optional — greeting degrades gracefully)
+//   senderName   support agent name for the sign-off (optional — placeholder kept)
+function generateCacheEmail_(lang, customerName, senderName) {
+  var c = cacheEmailContent_(lang);
+  var name = String(customerName || '').trim();
+  var sender = String(senderName || '').trim() || c.senderFallback;
+
+  var steps = c.steps.map(function (s, i) { return (i + 1) + '. ' + s; }).join('\n');
+  var clearItems = c.clearItems.map(function (s) { return '• ' + s; }).join('\n');
+
+  var body = c.greeting(name) + '\n\n'
+    + c.intro + '\n\n'
+    + c.stepsLead + '\n\n'
+    + steps + '\n\n'
+    + c.clearLead + '\n'
+    + clearItems + '\n\n'
+    + c.afterClear + '\n\n'
+    + c.persists + '\n\n'
+    + c.signoff + '\n'
+    + sender + '\n'
+    + c.company;
+
+  return { subject: c.subject, body: body };
+}
+
+// On-brand HTML version (same wrapper as the Umsókn emails) for actually sending.
+function buildCacheEmailHtml_(lang, customerName, senderName) {
+  var c = cacheEmailContent_(lang);
+  var name = String(customerName || '').trim();
+  var sender = String(senderName || '').trim() || c.senderFallback;
+
+  var steps = c.steps.map(function (s) {
+    return '<li style="margin:0 0 6px;line-height:1.6;">' + emailEsc_(s) + '</li>';
+  }).join('');
+  var clearItems = c.clearItems.map(function (s) {
+    return '<li style="margin:0 0 6px;line-height:1.6;">' + emailEsc_(s) + '</li>';
+  }).join('');
+
+  return umsokn_wrap_(
+    '<p style="margin:0 0 12px;font-size:15px;font-weight:600;">' + emailEsc_(c.greeting(name)) + '</p>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">' + emailEsc_(c.intro) + '</p>'
+    + '<p style="margin:0 0 8px;line-height:1.6;">' + emailEsc_(c.stepsLead) + '</p>'
+    + '<ol style="margin:0 0 16px;padding-left:20px;">' + steps + '</ol>'
+    + '<p style="margin:0 0 8px;line-height:1.6;">' + emailEsc_(c.clearLead) + '</p>'
+    + '<ul style="margin:0 0 16px;padding-left:20px;">' + clearItems + '</ul>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">' + emailEsc_(c.afterClear) + '</p>'
+    + '<p style="margin:0 0 0;line-height:1.6;">' + emailEsc_(c.persists) + '</p>'
+    + '<hr class="sk-divider">'
+    + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">' + emailEsc_(c.signoff)
+    + '<br>' + emailEsc_(sender) + '<br>' + emailEsc_(c.company) + '</p>'
+  );
+}
+
+// ── Menu: send cache-help email to a customer ─────────────────────────────────
+function menu_sendCacheHelpEmail() {
+  var ui = SpreadsheetApp.getUi();
+
+  var langResp = ui.prompt(
+    'Cache-hjálp tölvupóstur',
+    'Tungumál? Sláðu inn "is" (íslenska) eða "en" (enska):',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (langResp.getSelectedButton() !== ui.Button.OK) return;
+  var lang = (String(langResp.getResponseText() || 'is').trim().toLowerCase() === 'en') ? 'en' : 'is';
+
+  var toResp = ui.prompt('Cache-hjálp tölvupóstur', 'Netfang viðtakanda:', ui.ButtonSet.OK_CANCEL);
+  if (toResp.getSelectedButton() !== ui.Button.OK) return;
+  var to = String(toResp.getResponseText() || '').trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) { ui.alert('Ógilt netfang.'); return; }
+
+  var nameResp = ui.prompt('Cache-hjálp tölvupóstur', 'Nafn viðtakanda (má sleppa):', ui.ButtonSet.OK_CANCEL);
+  if (nameResp.getSelectedButton() !== ui.Button.OK) return;
+  var customerName = String(nameResp.getResponseText() || '').trim();
+
+  var senderResp = ui.prompt('Cache-hjálp tölvupóstur', 'Nafn þitt (undirskrift):', ui.ButtonSet.OK_CANCEL);
+  if (senderResp.getSelectedButton() !== ui.Button.OK) return;
+  var senderName = String(senderResp.getResponseText() || '').trim();
+
+  var email = generateCacheEmail_(lang, customerName, senderName);
+  var confirm = ui.alert(
+    'Senda á ' + to + '?',
+    'Efni: ' + email.subject + '\n\n' + email.body,
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (confirm !== ui.Button.OK) return;
+
+  GmailApp.sendEmail(to, email.subject, email.body, {
+    htmlBody: buildCacheEmailHtml_(lang, customerName, senderName),
+    from: 'vefur@storkaup.is',
+    name: 'Stórkaup ehf'
+  });
+  toast_('Cache-hjálp póstur sendur til ' + to, 'Email');
+}

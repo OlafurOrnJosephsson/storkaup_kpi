@@ -62,6 +62,9 @@ function onOpen() {
         .addSeparator()
         .addItem('Umsókn — athuga BC stöðu', 'menu_checkUmsokn_BC')
         .addItem('Umsókn — senda email', 'menu_sendUmsokn_Email')
+        .addSeparator()
+        .addItem('Cache-hjálp — finna viðskiptavin og senda', 'menu_sendCacheHelpToCustomer')
+        .addItem('Cache-hjálp — slá inn netfang (is/en)', 'menu_sendCacheHelpEmail')
     )
     .addSubMenu(
       ui.createMenu('BC Sync')

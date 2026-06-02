@@ -911,6 +911,53 @@
         }, 2600);
     }
 
+    // Sends the cache-clearing troubleshooting email to the selected customer via
+    // the GAS web app (browsers can't run GmailApp). We pass customer_id, not an
+    // address — the server resolves the real contact email. Degrades gracefully:
+    // if gasWebAppUrl is unconfigured or the call fails, the dashboard is untouched.
+    async function sendCacheHelpForSelected_(root, lang) {
+        var p = state.selected;
+        if (!p || !p.customer_id) { showActionToast_("Enginn viðskiptavinur valinn.", "error"); return; }
+
+        var gasUrl = cfg.gasWebAppUrl;
+        if (!gasUrl) { showActionToast_("Cache-hjálp er ekki uppsett (vantar gasWebAppUrl).", "error"); return; }
+
+        var l = String(lang || "is").toLowerCase() === "en" ? "en" : "is";
+        var langLabel = l === "en" ? "ensku" : "íslensku";
+        var who = p.customer_name || p.customer_id;
+        if (!window.confirm("Senda cache-hjálp póst (" + langLabel + ") á " + who + "?\n\nPósturinn fer á skráð netfang viðskiptavinarins."))
+            return;
+
+        showActionToast_("Sendi cache-hjálp…", "info");
+        try {
+            // text/plain avoids a CORS preflight against the GAS web app.
+            var res = await fetch(gasUrl, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                redirect: "follow",
+                body: JSON.stringify({
+                    action: "send_cache_email",
+                    key: cfg.gasKey || "",
+                    customer_id: p.customer_id,
+                    lang: l
+                })
+            });
+            var out = await res.json();
+            if (out && out.ok) {
+                showActionToast_("Cache-hjálp send á " + out.sentTo, "success");
+            } else if (out && out.error === "no_email") {
+                showActionToast_("Ekkert netfang skráð fyrir þennan viðskiptavin.", "error");
+            } else if (out && out.error === "Unauthorized") {
+                showActionToast_("Cache-hjálp: óheimilt (rangur lykill).", "error");
+            } else {
+                showActionToast_("Sending mistókst" + (out && out.error ? ": " + out.error : "") + ".", "error");
+            }
+        } catch (err) {
+            console.error(err);
+            showActionToast_("Sending mistókst (net).", "error");
+        }
+    }
+
     async function setSelectedPriorityStatus_(root, status) {
         if (!state.selected) return;
         var payload = {
@@ -1972,6 +2019,17 @@
                     setPriorityFeedback_(root, "Villa við að aftengja sölumann.");
                     showActionToast_("Villa við að aftengja sölumann.", "error");
                 }
+                return;
+            }
+
+            var cacheHelp = e.target.closest('[data-action="send-cache-help"]');
+            if (cacheHelp) {
+                e.preventDefault();
+                if (cacheHelp.getAttribute("data-disabled") === "true" || cacheHelp.getAttribute("aria-disabled") === "true") {
+                    return;
+                }
+                var cacheLang = String(cacheHelp.getAttribute("data-lang") || "is").toLowerCase() === "en" ? "en" : "is";
+                await sendCacheHelpForSelected_(root, cacheLang);
                 return;
             }
 

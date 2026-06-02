@@ -374,6 +374,167 @@ function loadCustomerLookup_() {
 
 
 /************************************************************
+ * Cache-help email — customer lookup + send
+ *
+ * Looks a customer up in MAGENTO_CUSTOMERS by email / ID / name /
+ * company, resolves their real contact address, and sends the
+ * cache-clearing troubleshooting email (see generateCacheEmail_ /
+ * buildCacheEmailHtml_ in email.js). Kept server-side in GAS so it
+ * sends via GmailApp from vefur@storkaup.is — no browser endpoint.
+ ************************************************************/
+
+// Returns up to `limit` matches: { id, name, email, company } where email is
+// the best contact address (real_email preferred over the Magento login email).
+function findCustomersForCacheEmail_(term, limit) {
+  const needle = String(term || '').toLowerCase().trim();
+  if (!needle) return [];
+  limit = limit || 15;
+
+  const CONFIG = loadConfig_();
+  const ss = SpreadsheetApp.openById(CONFIG.SHEET_IDS.CUSTOMERS);
+  const sh = ss.getSheetByName(MAGENTO_CUSTOMERS_SHEET_NAME);
+  if (!sh) return [];
+
+  const data = sh.getDataRange().getValues();
+  if (data.length < 2) return [];
+
+  const idx = {};
+  data[0].forEach((h, i) => { idx[h] = i; });
+
+  const out = [];
+  for (let i = 1; i < data.length && out.length < limit; i++) {
+    const r = data[i];
+    const id      = String(r[idx['ID']]          || '').trim();
+    const name    = String(r[idx['Name']]        || '').trim();
+    const login   = String(r[idx['Email']]       || '').trim();
+    const real    = String(r[idx['Real Email']]  || '').trim();
+    const company = String(r[idx['Company Name']] || '').trim();
+    const email   = real || login;          // prefer the real contact address
+    if (!email) continue;                   // can't email without an address
+
+    const hay = (id + ' ' + name + ' ' + login + ' ' + real + ' ' + company).toLowerCase();
+    if (hay.indexOf(needle) === -1) continue;
+
+    out.push({ id: id, name: name, email: email, company: company });
+  }
+  return out;
+}
+
+// First name for a friendlier greeting; falls back to company, then ''.
+function cacheEmailGreetingName_(match) {
+  const nm = String((match && match.name) || '').trim();
+  if (nm) return nm.split(/\s+/)[0];
+  return String((match && match.company) || '').trim();
+}
+
+// Resolve a customer's contact email from a dashboard customer_id. The dashboard
+// customer_id is kennitala-based (see customer_last_orders.sql — matched on
+// national_id, family key = first 10 digits), NOT the Magento entity ID. So we
+// match the normalised National ID column here. Returns { email, name, company }
+// or null. Prefers a row that has a Real Email over the Magento login email.
+function resolveCustomerForCacheEmailById_(customerId) {
+  const norm = String(customerId || '').replace(/\D/g, '');
+  if (!norm) return null;
+  const famKey = norm.length > 10 ? norm.slice(0, 10) : norm;
+
+  const CONFIG = loadConfig_();
+  const ss = SpreadsheetApp.openById(CONFIG.SHEET_IDS.CUSTOMERS);
+  const sh = ss.getSheetByName(MAGENTO_CUSTOMERS_SHEET_NAME);
+  if (!sh) return null;
+  const data = sh.getDataRange().getValues();
+  if (data.length < 2) return null;
+
+  const idx = {};
+  data[0].forEach((h, i) => { idx[h] = i; });
+
+  let best = null;
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    const natId = String(r[idx['National ID']] || '').replace(/\D/g, '');
+    if (!natId) continue;
+    const rowKey = natId.length > 10 ? natId.slice(0, 10) : natId;
+    if (rowKey !== famKey && natId !== norm) continue;
+
+    const login = String(r[idx['Email']] || '').trim();
+    const real  = String(r[idx['Real Email']] || '').trim();
+    const email = real || login;
+    if (!email) continue;
+
+    const cand = {
+      email   : email,
+      name    : String(r[idx['Name']]         || '').trim(),
+      company : String(r[idx['Company Name']]  || '').trim(),
+      hasReal : !!real
+    };
+    if (!best || (cand.hasReal && !best.hasReal)) best = cand;
+    if (best && best.hasReal) break;   // a real contact address is good enough
+  }
+  return best;
+}
+
+function menu_sendCacheHelpToCustomer() {
+  const ui = SpreadsheetApp.getUi();
+
+  // 1) Find the customer
+  const searchResp = ui.prompt(
+    'Cache-hjálp — finna viðskiptavin',
+    'Leitaðu eftir netfangi, ID, nafni eða fyrirtæki:',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (searchResp.getSelectedButton() !== ui.Button.OK) return;
+  const term = String(searchResp.getResponseText() || '').trim();
+  if (!term) { ui.alert('Engin leit slegin inn.'); return; }
+
+  const matches = findCustomersForCacheEmail_(term, 15);
+  if (!matches.length) { ui.alert('Enginn viðskiptavinur með netfang fannst fyrir „' + term + '“.'); return; }
+
+  // 2) Pick one if several
+  let chosen = matches[0];
+  if (matches.length > 1) {
+    const list = matches.map(function(m, i) {
+      const who = (m.name || m.company || '(nafnlaus)') + ' — ' + m.email + (m.id ? ' [' + m.id + ']' : '');
+      return (i + 1) + '. ' + who;
+    }).join('\n');
+    const pickResp = ui.prompt(
+      matches.length + ' niðurstöður — veldu númer',
+      list + '\n\nSláðu inn númer (1–' + matches.length + '):',
+      ui.ButtonSet.OK_CANCEL
+    );
+    if (pickResp.getSelectedButton() !== ui.Button.OK) return;
+    const n = parseInt(String(pickResp.getResponseText() || '').trim(), 10);
+    if (!(n >= 1 && n <= matches.length)) { ui.alert('Ógilt númer.'); return; }
+    chosen = matches[n - 1];
+  }
+
+  // 3) Language + sender
+  const langResp = ui.prompt('Cache-hjálp', 'Tungumál? "is" eða "en":', ui.ButtonSet.OK_CANCEL);
+  if (langResp.getSelectedButton() !== ui.Button.OK) return;
+  const lang = (String(langResp.getResponseText() || 'is').trim().toLowerCase() === 'en') ? 'en' : 'is';
+
+  const senderResp = ui.prompt('Cache-hjálp', 'Nafn þitt (undirskrift):', ui.ButtonSet.OK_CANCEL);
+  if (senderResp.getSelectedButton() !== ui.Button.OK) return;
+  const senderName = String(senderResp.getResponseText() || '').trim();
+
+  // 4) Build, confirm, send
+  const greetName = cacheEmailGreetingName_(chosen);
+  const email = generateCacheEmail_(lang, greetName, senderName);
+  const confirm = ui.alert(
+    'Senda á ' + (chosen.name || chosen.company || chosen.email) + '?',
+    'Til: ' + chosen.email + '\nEfni: ' + email.subject + '\n\n' + email.body,
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (confirm !== ui.Button.OK) return;
+
+  GmailApp.sendEmail(chosen.email, email.subject, email.body, {
+    htmlBody: buildCacheEmailHtml_(lang, greetName, senderName),
+    from: 'vefur@storkaup.is',
+    name: 'Stórkaup ehf'
+  });
+  toast_('Cache-hjálp póstur sendur til ' + chosen.email, 'Email');
+}
+
+
+/************************************************************
  * Move completed applications from MAIN → LOKID
  * Runs after syncMagentoCustomers — moves rows where email
  * or kennitala exists in MAGENTO_CUSTOMERS.

@@ -14,6 +14,45 @@ function doGet(e) {
   return jsonResponse_({ error: 'Unknown action' });
 }
 
+// POST endpoint. Browser dashboards can't run GmailApp, so the cache-help send
+// is triggered here. Note: the request carries customer_id (not a raw "to"
+// address) — the server resolves the address from MAGENTO_CUSTOMERS, so this
+// endpoint can only ever email an existing customer, never an arbitrary address.
+function doPost(e) {
+  var body = {};
+  try { body = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (_) {}
+  var action = String(body.action || '');
+  if (action === 'send_cache_email') {
+    return jsonResponse_(sendCacheEmailViaApi_(body));
+  }
+  return jsonResponse_({ error: 'Unknown action' });
+}
+
+function sendCacheEmailViaApi_(body) {
+  var cfg = loadConfig_();
+  if (!isApiKeyValid_(cfg, body.key)) return { error: 'Unauthorized' };
+
+  var customerId = String(body.customer_id || '').trim();
+  if (!customerId) return { error: 'missing_customer_id' };
+  var lang = (String(body.lang || 'is').toLowerCase() === 'en') ? 'en' : 'is';
+
+  var match = resolveCustomerForCacheEmailById_(customerId);
+  if (!match || !match.email) {
+    return { error: 'no_email', message: 'Ekkert netfang skráð fyrir þennan viðskiptavin.' };
+  }
+
+  var greetName = (match.name ? match.name.split(/\s+/)[0] : match.company) || '';
+  var senderName = (lang === 'en') ? 'Storkaup Web Team' : 'Vefteymi Stórkaups';
+  var email = generateCacheEmail_(lang, greetName, senderName);
+
+  GmailApp.sendEmail(match.email, email.subject, email.body, {
+    htmlBody: buildCacheEmailHtml_(lang, greetName, senderName),
+    from: 'vefur@storkaup.is',
+    name: 'Stórkaup ehf'
+  });
+  return { ok: true, sentTo: match.email };
+}
+
 function getDashboardMetrics_(e) {
   var cfg = loadConfig_();
   var providedKey = e && e.parameter ? e.parameter.key : '';
@@ -285,7 +324,7 @@ function jsonResponse_(obj) {
 
   try {
     out.setHeader('Access-Control-Allow-Origin', '*');
-    out.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    out.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   } catch (e) {
     // setHeader er stundum ekki stutt í sumum Apps Script contexts – þá bara ignora
   }
