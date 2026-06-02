@@ -427,27 +427,29 @@ function cacheEmailGreetingName_(match) {
   return String((match && match.company) || '').trim();
 }
 
-// Resolve a customer's contact email from a dashboard customer_id. The dashboard
+// Lists every user (Magento account) under a dashboard customer_id. The dashboard
 // customer_id is kennitala-based (see customer_last_orders.sql — matched on
-// national_id, family key = first 10 digits), NOT the Magento entity ID. So we
-// match the normalised National ID column here. Returns { email, name, company }
-// or null. Prefers a row that has a Real Email over the Magento login email.
-function resolveCustomerForCacheEmailById_(customerId) {
+// national_id, family key = first 10 digits), NOT the Magento entity ID — and one
+// kennitala can have several user logins. So we return ALL matching users and let
+// support pick the actual person, rather than guessing one. Returns [{ name, email }]
+// de-duplicated by email (Real Email preferred over the Magento login email).
+function listCustomerUsersForCacheEmail_(customerId) {
   const norm = String(customerId || '').replace(/\D/g, '');
-  if (!norm) return null;
+  if (!norm) return [];
   const famKey = norm.length > 10 ? norm.slice(0, 10) : norm;
 
   const CONFIG = loadConfig_();
   const ss = SpreadsheetApp.openById(CONFIG.SHEET_IDS.CUSTOMERS);
   const sh = ss.getSheetByName(MAGENTO_CUSTOMERS_SHEET_NAME);
-  if (!sh) return null;
+  if (!sh) return [];
   const data = sh.getDataRange().getValues();
-  if (data.length < 2) return null;
+  if (data.length < 2) return [];
 
   const idx = {};
   data[0].forEach((h, i) => { idx[h] = i; });
 
-  let best = null;
+  const seen = {};
+  const out = [];
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
     const natId = String(r[idx['National ID']] || '').replace(/\D/g, '');
@@ -459,17 +461,13 @@ function resolveCustomerForCacheEmailById_(customerId) {
     const real  = String(r[idx['Real Email']] || '').trim();
     const email = real || login;
     if (!email) continue;
+    const key = email.toLowerCase();
+    if (seen[key]) continue;
+    seen[key] = true;
 
-    const cand = {
-      email   : email,
-      name    : String(r[idx['Name']]         || '').trim(),
-      company : String(r[idx['Company Name']]  || '').trim(),
-      hasReal : !!real
-    };
-    if (!best || (cand.hasReal && !best.hasReal)) best = cand;
-    if (best && best.hasReal) break;   // a real contact address is good enough
+    out.push({ name: String(r[idx['Name']] || '').trim(), email: email });
   }
-  return best;
+  return out;
 }
 
 function menu_sendCacheHelpToCustomer() {

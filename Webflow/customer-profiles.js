@@ -911,10 +911,25 @@
         }, 2600);
     }
 
-    // Sends the cache-clearing troubleshooting email to the selected customer via
-    // the GAS web app (browsers can't run GmailApp). We pass customer_id, not an
-    // address — the server resolves the real contact email. Degrades gracefully:
-    // if gasWebAppUrl is unconfigured or the call fails, the dashboard is untouched.
+    // Shared POST to the GAS web app. text/plain avoids a CORS preflight; the key
+    // is attached server-side-style here so callers don't repeat it.
+    async function cacheHelpPost_(gasUrl, payload) {
+        payload.key = cfg.gasKey || "";
+        var res = await fetch(gasUrl, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            redirect: "follow",
+            body: JSON.stringify(payload)
+        });
+        return await res.json();
+    }
+
+    // Sends the cache-clearing troubleshooting email via the GAS web app (browsers
+    // can't run GmailApp). A customer (kennitala) can have several user logins, so
+    // we first list the users, let support pick the actual person, then send to
+    // that address. The server re-verifies the address belongs to the customer.
+    // Degrades gracefully: if gasWebAppUrl is unset or a call fails, the dashboard
+    // is untouched.
     async function sendCacheHelpForSelected_(root, lang) {
         var p = state.selected;
         if (!p || !p.customer_id) { showActionToast_("Enginn viðskiptavinur valinn.", "error"); return; }
@@ -923,30 +938,53 @@
         if (!gasUrl) { showActionToast_("Cache-hjálp er ekki uppsett (vantar gasWebAppUrl).", "error"); return; }
 
         var l = String(lang || "is").toLowerCase() === "en" ? "en" : "is";
+
+        // 1) Who can we send to under this customer?
+        var listOut;
+        try {
+            listOut = await cacheHelpPost_(gasUrl, { action: "list_cache_recipients", customer_id: p.customer_id });
+        } catch (err) {
+            console.error(err); showActionToast_("Náði ekki í notendur (net).", "error"); return;
+        }
+        if (!listOut || listOut.error) {
+            showActionToast_("Villa við að sækja notendur" + (listOut && listOut.error ? ": " + listOut.error : "") + ".", "error");
+            return;
+        }
+        var users = listOut.users || [];
+        if (!users.length) { showActionToast_("Ekkert netfang skráð fyrir þennan viðskiptavin.", "error"); return; }
+
+        // 2) Pick the recipient (auto if only one)
+        var chosen;
+        if (users.length === 1) {
+            chosen = users[0];
+        } else {
+            var msg = "Veldu viðtakanda fyrir " + (p.customer_name || p.customer_id) + ":\n\n"
+                + users.map(function(u, i) { return (i + 1) + ". " + (u.name || "(nafnlaus)") + " — " + u.email; }).join("\n")
+                + "\n\nSláðu inn númer (1–" + users.length + "):";
+            var pick = window.prompt(msg);
+            if (pick === null) return;
+            var n = parseInt(String(pick).trim(), 10);
+            if (!(n >= 1 && n <= users.length)) { showActionToast_("Ógilt númer.", "error"); return; }
+            chosen = users[n - 1];
+        }
+
+        // 3) Confirm + send
         var langLabel = l === "en" ? "ensku" : "íslensku";
-        var who = p.customer_name || p.customer_id;
-        if (!window.confirm("Senda cache-hjálp póst (" + langLabel + ") á " + who + "?\n\nPósturinn fer á skráð netfang viðskiptavinarins."))
+        if (!window.confirm("Senda cache-hjálp (" + langLabel + ") á:\n" + (chosen.name ? chosen.name + " " : "") + "<" + chosen.email + "> ?"))
             return;
 
         showActionToast_("Sendi cache-hjálp…", "info");
         try {
-            // text/plain avoids a CORS preflight against the GAS web app.
-            var res = await fetch(gasUrl, {
-                method: "POST",
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
-                redirect: "follow",
-                body: JSON.stringify({
-                    action: "send_cache_email",
-                    key: cfg.gasKey || "",
-                    customer_id: p.customer_id,
-                    lang: l
-                })
+            var out = await cacheHelpPost_(gasUrl, {
+                action: "send_cache_email",
+                customer_id: p.customer_id,
+                to: chosen.email,
+                lang: l
             });
-            var out = await res.json();
             if (out && out.ok) {
                 showActionToast_("Cache-hjálp send á " + out.sentTo, "success");
-            } else if (out && out.error === "no_email") {
-                showActionToast_("Ekkert netfang skráð fyrir þennan viðskiptavin.", "error");
+            } else if (out && out.error === "recipient_not_in_customer") {
+                showActionToast_("Netfang tilheyrir ekki þessum viðskiptavin.", "error");
             } else if (out && out.error === "Unauthorized") {
                 showActionToast_("Cache-hjálp: óheimilt (rangur lykill).", "error");
             } else {
