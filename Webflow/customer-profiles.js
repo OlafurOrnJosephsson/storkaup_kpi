@@ -924,53 +924,126 @@
         return await res.json();
     }
 
-    // Sends the cache-clearing troubleshooting email via the GAS web app (browsers
-    // can't run GmailApp). A customer (kennitala) can have several user logins, so
-    // we first list the users, let support pick the actual person, then send to
-    // that address. The server re-verifies the address belongs to the customer.
-    // Degrades gracefully: if gasWebAppUrl is unset or a call fails, the dashboard
-    // is untouched.
-    async function sendCacheHelpForSelected_(root, lang) {
+    function cacheHelpEsc_(s) {
+        return String(s == null ? "" : s)
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    // Finds (or creates) the inline panel that holds the user list, placed right
+    // after the cache-help button group so it appears in the profile.
+    function ensureCacheHelpPanel_(root, btn) {
+        var panel = root.querySelector('[data-cache-help-panel]');
+        if (panel) return panel;
+        panel = document.createElement("div");
+        panel.setAttribute("data-cache-help-panel", "1");
+        panel.setAttribute("data-open", "0");
+        panel.style.display = "none";
+        var anchor = btn && (btn.closest("[data-cache-help-group]") || btn.parentNode);
+        if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(panel, anchor.nextSibling);
+        else root.appendChild(panel);
+        return panel;
+    }
+
+    function renderCacheHelpUsers_(users) {
+        var rows = users.map(function(u) {
+            var name = u.name || "(nafnlaus)";
+            var email = u.email || "";
+            var hay = (name + " " + email).toLowerCase();
+            var btn = function(lang, label, bg, color, border) {
+                return '<button type="button" data-action="cache-help-send"'
+                    + ' data-lang="' + lang + '"'
+                    + ' data-email="' + cacheHelpEsc_(email) + '"'
+                    + ' data-name="' + cacheHelpEsc_(name) + '"'
+                    + ' style="padding:5px 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;'
+                    + 'background:' + bg + ';color:' + color + ';border:' + border + ';">' + label + '</button>';
+            };
+            return '<div data-cache-help-row data-search="' + cacheHelpEsc_(hay) + '"'
+                + ' style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-bottom:1px solid #eee;">'
+                + '<div style="min-width:0;">'
+                + '<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cacheHelpEsc_(name) + '</div>'
+                + '<div style="color:#666;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cacheHelpEsc_(email) + '</div>'
+                + '</div>'
+                + '<div style="display:flex;gap:6px;flex-shrink:0;">'
+                + btn("is", "IS", "#10069f", "#fff", "none")
+                + btn("en", "EN", "#fff", "#10069f", "1px solid #10069f")
+                + '</div></div>';
+        }).join("");
+        return ''
+            + '<div style="margin-top:10px;border:1px solid #e9e9e9;border-radius:8px;overflow:hidden;">'
+            + '<div style="padding:8px 10px;font-weight:600;background:#f7f7f7;border-bottom:1px solid #e9e9e9;">'
+            + 'Veldu notanda — senda cache-hjálp (IS/EN)</div>'
+            + '<div style="padding:8px 10px;border-bottom:1px solid #e9e9e9;">'
+            + '<input type="text" data-cache-help-search placeholder="Leita…" '
+            + 'style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;"></div>'
+            + '<div data-cache-help-rows style="max-height:280px;overflow:auto;">' + rows + '</div>'
+            + '</div>';
+    }
+
+    // Loads the users under the selected customer and renders them inline. Browsers
+    // can't run GmailApp, so this hits the GAS web app. Degrades gracefully: if
+    // gasWebAppUrl is unset or a call fails, the dashboard is untouched.
+    async function toggleCacheHelpPanel_(root, btn) {
         var p = state.selected;
         if (!p || !p.customer_id) { showActionToast_("Enginn viðskiptavinur valinn.", "error"); return; }
-
         var gasUrl = cfg.gasWebAppUrl;
         if (!gasUrl) { showActionToast_("Cache-hjálp er ekki uppsett (vantar gasWebAppUrl).", "error"); return; }
 
-        var l = String(lang || "is").toLowerCase() === "en" ? "en" : "is";
-
-        // 1) Who can we send to under this customer?
-        var listOut;
-        try {
-            listOut = await cacheHelpPost_(gasUrl, { action: "list_cache_recipients", customer_id: p.customer_id });
-        } catch (err) {
-            console.error(err); showActionToast_("Náði ekki í notendur (net).", "error"); return;
-        }
-        if (!listOut || listOut.error) {
-            showActionToast_("Villa við að sækja notendur" + (listOut && listOut.error ? ": " + listOut.error : "") + ".", "error");
+        var panel = ensureCacheHelpPanel_(root, btn);
+        if (panel.getAttribute("data-open") === "1") {
+            panel.style.display = "none";
+            panel.setAttribute("data-open", "0");
             return;
         }
-        var users = listOut.users || [];
-        if (!users.length) { showActionToast_("Ekkert netfang skráð fyrir þennan viðskiptavin.", "error"); return; }
+        panel.innerHTML = '<div style="padding:10px 4px;color:#666;">Sæki notendur…</div>';
+        panel.style.display = "block";
+        panel.setAttribute("data-open", "1");
 
-        // 2) Pick the recipient (auto if only one)
-        var chosen;
-        if (users.length === 1) {
-            chosen = users[0];
-        } else {
-            var msg = "Veldu viðtakanda fyrir " + (p.customer_name || p.customer_id) + ":\n\n"
-                + users.map(function(u, i) { return (i + 1) + ". " + (u.name || "(nafnlaus)") + " — " + u.email; }).join("\n")
-                + "\n\nSláðu inn númer (1–" + users.length + "):";
-            var pick = window.prompt(msg);
-            if (pick === null) return;
-            var n = parseInt(String(pick).trim(), 10);
-            if (!(n >= 1 && n <= users.length)) { showActionToast_("Ógilt númer.", "error"); return; }
-            chosen = users[n - 1];
+        var out;
+        try {
+            out = await cacheHelpPost_(gasUrl, { action: "list_cache_recipients", customer_id: p.customer_id });
+        } catch (err) {
+            console.error(err);
+            panel.innerHTML = '<div style="padding:10px 4px;color:#b42318;">Náði ekki í notendur (net).</div>';
+            return;
+        }
+        if (!out || out.error) {
+            panel.innerHTML = '<div style="padding:10px 4px;color:#b42318;">Villa: ' + cacheHelpEsc_((out && out.error) || "óþekkt") + '</div>';
+            return;
+        }
+        var users = out.users || [];
+        if (!users.length) {
+            panel.innerHTML = '<div style="padding:10px 4px;color:#b42318;">Ekkert netfang skráð fyrir þennan viðskiptavin.</div>';
+            return;
         }
 
-        // 3) Confirm + send
+        panel.innerHTML = renderCacheHelpUsers_(users);
+        var search = panel.querySelector("[data-cache-help-search]");
+        if (search) {
+            search.addEventListener("input", function() {
+                var q = this.value.toLowerCase().trim();
+                panel.querySelectorAll("[data-cache-help-row]").forEach(function(row) {
+                    var hay = row.getAttribute("data-search") || "";
+                    row.style.display = (!q || hay.indexOf(q) !== -1) ? "" : "none";
+                });
+            });
+            search.focus();
+        }
+    }
+
+    // Sends to one chosen user. The server re-verifies the address belongs to the
+    // customer, so passing data-email from the rendered row stays safe.
+    async function sendCacheHelpToUser_(root, email, name, lang) {
+        var p = state.selected;
+        if (!p || !p.customer_id) { showActionToast_("Enginn viðskiptavinur valinn.", "error"); return; }
+        var gasUrl = cfg.gasWebAppUrl;
+        if (!gasUrl) { showActionToast_("Cache-hjálp er ekki uppsett (vantar gasWebAppUrl).", "error"); return; }
+
+        email = String(email || "").trim();
+        if (!email) { showActionToast_("Ekkert netfang valið.", "error"); return; }
+        var l = String(lang || "is").toLowerCase() === "en" ? "en" : "is";
         var langLabel = l === "en" ? "ensku" : "íslensku";
-        if (!window.confirm("Senda cache-hjálp (" + langLabel + ") á:\n" + (chosen.name ? chosen.name + " " : "") + "<" + chosen.email + "> ?"))
+        if (!window.confirm("Senda cache-hjálp (" + langLabel + ") á:\n" + (name ? name + " " : "") + "<" + email + "> ?"))
             return;
 
         showActionToast_("Sendi cache-hjálp…", "info");
@@ -978,7 +1051,7 @@
             var out = await cacheHelpPost_(gasUrl, {
                 action: "send_cache_email",
                 customer_id: p.customer_id,
-                to: chosen.email,
+                to: email,
                 lang: l
             });
             if (out && out.ok) {
@@ -2060,14 +2133,25 @@
                 return;
             }
 
-            var cacheHelp = e.target.closest('[data-action="send-cache-help"]');
+            var cacheHelp = e.target.closest('[data-action="cache-help"]');
             if (cacheHelp) {
                 e.preventDefault();
                 if (cacheHelp.getAttribute("data-disabled") === "true" || cacheHelp.getAttribute("aria-disabled") === "true") {
                     return;
                 }
-                var cacheLang = String(cacheHelp.getAttribute("data-lang") || "is").toLowerCase() === "en" ? "en" : "is";
-                await sendCacheHelpForSelected_(root, cacheLang);
+                await toggleCacheHelpPanel_(root, cacheHelp);
+                return;
+            }
+
+            var cacheSend = e.target.closest('[data-action="cache-help-send"]');
+            if (cacheSend) {
+                e.preventDefault();
+                await sendCacheHelpToUser_(
+                    root,
+                    cacheSend.getAttribute("data-email"),
+                    cacheSend.getAttribute("data-name"),
+                    cacheSend.getAttribute("data-lang")
+                );
                 return;
             }
 
