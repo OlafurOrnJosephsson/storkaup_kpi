@@ -428,11 +428,12 @@ function cacheEmailGreetingName_(match) {
 }
 
 // Lists every user (Magento account) under a dashboard customer_id. The dashboard
-// customer_id is kennitala-based (see customer_last_orders.sql — matched on
-// national_id, family key = first 10 digits), NOT the Magento entity ID — and one
-// kennitala can have several user logins. So we return ALL matching users and let
-// support pick the actual person, rather than guessing one. Returns [{ name, email }]
-// de-duplicated by email (Real Email preferred over the Magento login email).
+// customer_id is a kennitala (see customer_last_orders.sql). For a COMPANY customer
+// that kennitala is the company's — which lives in the Company ID column, while each
+// user row's National ID is that person's own kennitala. For an individual-in-business
+// the customer_id IS their National ID. So we match against BOTH columns and return
+// ALL matching users, letting support pick the actual person rather than guessing one.
+// Returns [{ name, email }] de-duplicated by email (Real Email preferred over login).
 function listCustomerUsersForCacheEmail_(customerId) {
   const norm = String(customerId || '').replace(/\D/g, '');
   if (!norm) return [];
@@ -448,14 +449,19 @@ function listCustomerUsersForCacheEmail_(customerId) {
   const idx = {};
   data[0].forEach((h, i) => { idx[h] = i; });
 
+  const matchesCustomer = function(rawId) {
+    const v = String(rawId || '').replace(/\D/g, '');
+    if (!v) return false;
+    const k = v.length > 10 ? v.slice(0, 10) : v;
+    return v === norm || k === famKey;
+  };
+
   const seen = {};
   const out = [];
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
-    const natId = String(r[idx['National ID']] || '').replace(/\D/g, '');
-    if (!natId) continue;
-    const rowKey = natId.length > 10 ? natId.slice(0, 10) : natId;
-    if (rowKey !== famKey && natId !== norm) continue;
+    // Company customer → matches via Company ID; individual → via National ID.
+    if (!matchesCustomer(r[idx['Company ID']]) && !matchesCustomer(r[idx['National ID']])) continue;
 
     const login = String(r[idx['Email']] || '').trim();
     const real  = String(r[idx['Real Email']] || '').trim();
