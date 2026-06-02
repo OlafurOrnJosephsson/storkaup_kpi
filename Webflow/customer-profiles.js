@@ -936,6 +936,7 @@
         var panel = root.querySelector('[data-cache-help-panel]');
         if (panel) return panel;
         panel = document.createElement("div");
+        panel.className = "cp-cachehelp";
         panel.setAttribute("data-cache-help-panel", "1");
         panel.setAttribute("data-open", "0");
         panel.style.display = "none";
@@ -950,33 +951,27 @@
             var name = u.name || "(nafnlaus)";
             var email = u.email || "";
             var hay = (name + " " + email).toLowerCase();
-            var btn = function(lang, label, bg, color, border) {
+            var btn = function(lang, label, mod) {
                 return '<button type="button" data-action="cache-help-send"'
                     + ' data-lang="' + lang + '"'
                     + ' data-email="' + cacheHelpEsc_(email) + '"'
                     + ' data-name="' + cacheHelpEsc_(name) + '"'
-                    + ' style="padding:5px 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;'
-                    + 'background:' + bg + ';color:' + color + ';border:' + border + ';">' + label + '</button>';
+                    + ' class="cp-cachehelp__btn cp-cachehelp__btn--' + mod + '">' + label + '</button>';
             };
-            return '<div data-cache-help-row data-search="' + cacheHelpEsc_(hay) + '"'
-                + ' style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-bottom:1px solid #eee;">'
-                + '<div style="min-width:0;">'
-                + '<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cacheHelpEsc_(name) + '</div>'
-                + '<div style="color:#666;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cacheHelpEsc_(email) + '</div>'
+            return '<div data-cache-help-row data-search="' + cacheHelpEsc_(hay) + '" class="cp-cachehelp__row">'
+                + '<div class="cp-cachehelp__who">'
+                + '<div class="cp-cachehelp__name">' + cacheHelpEsc_(name) + '</div>'
+                + '<div class="cp-cachehelp__email">' + cacheHelpEsc_(email) + '</div>'
                 + '</div>'
-                + '<div style="display:flex;gap:6px;flex-shrink:0;">'
-                + btn("is", "IS", "#10069f", "#fff", "none")
-                + btn("en", "EN", "#fff", "#10069f", "1px solid #10069f")
-                + '</div></div>';
+                + '<div class="cp-cachehelp__actions">' + btn("is", "IS", "is") + btn("en", "EN", "en") + '</div>'
+                + '</div>';
         }).join("");
         return ''
-            + '<div style="margin-top:10px;border:1px solid #e9e9e9;border-radius:8px;overflow:hidden;">'
-            + '<div style="padding:8px 10px;font-weight:600;background:#f7f7f7;border-bottom:1px solid #e9e9e9;">'
-            + 'Veldu notanda — senda cache-hjálp (IS/EN)</div>'
-            + '<div style="padding:8px 10px;border-bottom:1px solid #e9e9e9;">'
-            + '<input type="text" data-cache-help-search placeholder="Leita…" '
-            + 'style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;"></div>'
-            + '<div data-cache-help-rows style="max-height:280px;overflow:auto;">' + rows + '</div>'
+            + '<div class="cp-cachehelp__box">'
+            + '<div class="cp-cachehelp__head">Veldu notanda — senda cache-hjálp (IS/EN)</div>'
+            + '<div class="cp-cachehelp__searchwrap">'
+            + '<input type="text" data-cache-help-search placeholder="Leita…" class="cp-cachehelp__search"></div>'
+            + '<div data-cache-help-rows class="cp-cachehelp__rows">' + rows + '</div>'
             + '</div>';
     }
 
@@ -995,7 +990,7 @@
             panel.setAttribute("data-open", "0");
             return;
         }
-        panel.innerHTML = '<div style="padding:10px 4px;color:#666;">Sæki notendur…</div>';
+        panel.innerHTML = '<div class="cp-cachehelp__msg">Sæki notendur…</div>';
         panel.style.display = "block";
         panel.setAttribute("data-open", "1");
 
@@ -1004,16 +999,16 @@
             out = await cacheHelpPost_(gasUrl, { action: "list_cache_recipients", customer_id: p.customer_id });
         } catch (err) {
             console.error(err);
-            panel.innerHTML = '<div style="padding:10px 4px;color:#b42318;">Náði ekki í notendur (net).</div>';
+            panel.innerHTML = '<div class="cp-cachehelp__msg cp-cachehelp__msg--error">Náði ekki í notendur (net).</div>';
             return;
         }
         if (!out || out.error) {
-            panel.innerHTML = '<div style="padding:10px 4px;color:#b42318;">Villa: ' + cacheHelpEsc_((out && out.error) || "óþekkt") + '</div>';
+            panel.innerHTML = '<div class="cp-cachehelp__msg cp-cachehelp__msg--error">Villa: ' + cacheHelpEsc_((out && out.error) || "óþekkt") + '</div>';
             return;
         }
         var users = out.users || [];
         if (!users.length) {
-            panel.innerHTML = '<div style="padding:10px 4px;color:#b42318;">Ekkert netfang skráð fyrir þennan viðskiptavin.</div>';
+            panel.innerHTML = '<div class="cp-cachehelp__msg cp-cachehelp__msg--error">Ekkert netfang skráð fyrir þennan viðskiptavin.</div>';
             return;
         }
 
