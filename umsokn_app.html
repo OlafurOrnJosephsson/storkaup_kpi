@@ -316,6 +316,13 @@ function switchTab(name) {
   });
 }
 
+// Re-apply the currently active tab — used after (re)rendering so a refresh/poll
+// keeps the tabs separated instead of showing both tab contents at once.
+function applyActiveTab() {
+  var t = document.querySelector('.tab.active');
+  switchTab(t ? t.dataset.tab : 'umsokn');
+}
+
 // ── Load data ──────────────────────────────────────────────────────────────
 
 var lastDataSig = null;   // signature of last rendered data — skip re-render when unchanged
@@ -340,11 +347,11 @@ function loadData(silent) {
     lastDataSig = sig;
     appData = data;
     document.getElementById('loading').style.display = 'none';
-    document.getElementById('tab-umsokn').style.display = '';
     if (changed || !silent) {
       renderRafraen(data.rafraen || []);
       renderUmsokn(data.umsokn  || []);
     }
+    applyActiveTab();
     setRefreshStatus('Uppfært ' + fmtClock(new Date()));
     if (silent && changed) showToast('Listinn uppfærður — nýjar/breyttar umsóknir');
   }).catch(function(err) {

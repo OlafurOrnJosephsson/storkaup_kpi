@@ -114,8 +114,25 @@ function webapp_batchBcLookup_(kennitolur) {
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
+// Re-find a row's current physical index by matching the email column. rowIndex
+// from the client can be stale (the list refreshes / rows shift), so trusting it
+// for deleteRow risks deleting the wrong row or none. Returns -1 if not found.
+function webapp_findRowIndexByEmail_(sheet, emailHeader, email) {
+  var target = String(email || '').trim().toLowerCase();
+  if (!target || !sheet || sheet.getLastRow() < 2) return -1;
+  var headers  = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var emailIdx = headers.indexOf(emailHeader);
+  if (emailIdx === -1) return -1;
+  var col = sheet.getRange(2, emailIdx + 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < col.length; i++) {
+    if (String(col[i][0] || '').trim().toLowerCase() === target) return i + 2;
+  }
+  return -1;
+}
+
 function webapp_sendRafraenRedirect(rowData) {
   var cfg     = loadConfig_();
+  var src     = APP_SOURCES.find(function(s) { return s.key === 'RAFRAEN_INNSKRANING'; });
   var sheetId = cfg.SHEETS.RAFRAEN_INNSKRANING.ID;
   var ss      = SpreadsheetApp.openById(sheetId);
   var sheet   = ss.getSheets()[0];
@@ -128,15 +145,19 @@ function webapp_sendRafraenRedirect(rowData) {
     { htmlBody: buildRafraenRedirectHtml_(rowData.name, rowData.company), from: 'vefur@storkaup.is', name: 'Stórkaup ehf' }
   );
 
-  var dest = ss.getSheetByName('Framsent');
-  if (!dest) {
-    dest = ss.insertSheet('Framsent');
-    dest.appendRow(headers);
-    dest.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e8e8e8');
+  // Archive + remove by re-found index so a stale rowIndex can't miss the row.
+  var idx = webapp_findRowIndexByEmail_(sheet, src.emailHeader, rowData.email);
+  if (idx > 0) {
+    var dest = ss.getSheetByName('Framsent');
+    if (!dest) {
+      dest = ss.insertSheet('Framsent');
+      dest.appendRow(headers);
+      dest.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e8e8e8');
+    }
+    dest.appendRow(sheet.getRange(idx, 1, 1, headers.length).getValues()[0]);
+    sheet.deleteRow(idx);
   }
-  dest.appendRow(sheet.getRange(rowData.rowIndex, 1, 1, headers.length).getValues()[0]);
-  sheet.deleteRow(rowData.rowIndex);
-  return { ok: true };
+  return { ok: true, removed: idx > 0 };
 }
 
 function webapp_saveCreditScore(rowIndex, score) {
@@ -183,17 +204,20 @@ function webapp_sendUmsokn_Email(rowData, templateId) {
   var ss      = SpreadsheetApp.openById(cfg.SHEETS.UMSOKN_VIDSKIPTI.ID);
   var sheet   = ss.getSheetByName(src.mainTab);
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var rowVals = sheet.getRange(rowData.rowIndex, 1, 1, headers.length).getValues()[0];
 
-  var destNames = ['Ekkert VSK', 'Þarf lánshæfismat', 'Staðgreiðsla'];
-  var destName  = destNames[tid];
-  var dest = ss.getSheetByName(destName);
-  if (!dest) {
-    dest = ss.insertSheet(destName);
-    dest.appendRow(headers);
-    dest.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e8e8e8');
+  // Re-find by email so a stale rowIndex can't archive/delete the wrong row.
+  var idx = webapp_findRowIndexByEmail_(sheet, src.emailHeader, rowData.email);
+  if (idx > 0) {
+    var rowVals = sheet.getRange(idx, 1, 1, headers.length).getValues()[0];
+    var destNames = ['Ekkert VSK', 'Þarf lánshæfismat', 'Staðgreiðsla'];
+    var dest = ss.getSheetByName(destNames[tid]);
+    if (!dest) {
+      dest = ss.insertSheet(destNames[tid]);
+      dest.appendRow(headers);
+      dest.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e8e8e8');
+    }
+    dest.appendRow(rowVals);
+    sheet.deleteRow(idx);
   }
-  dest.appendRow(rowVals);
-  sheet.deleteRow(rowData.rowIndex);
-  return { ok: true };
+  return { ok: true, removed: idx > 0 };
 }
