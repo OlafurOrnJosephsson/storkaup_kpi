@@ -956,21 +956,21 @@ function cacheEmailContent_(lang) {
       lang: 'en',
       subject: 'Having trouble logging in to Storkaup.is? Try this first',
       greeting: function (name) { return 'Hi ' + (name || 'there') + ','; },
-      intro: 'Thank you for reaching out. After a recent update to our website, your browser may be holding on to an older version of the site — this can sometimes cause issues with login or browsing products.',
-      stepsLead: 'This is usually fixed in a few simple steps:',
+      intro: 'Thank you for contacting us. When we update the website, your browser sometimes stores old information, which can interfere with logging in or viewing products.',
+      stepsLead: 'This can usually be resolved quickly with these steps:',
       steps: [
-        'Close your browser completely (not just the tab)',
-        'Reopen your browser',
-        'Go to www.storkaup.is and try again'
+        'Close your browser completely (not just the tab).',
+        'Reopen the browser.',
+        'Go to www.storkaup.is and try again.'
       ],
-      clearLead: "If that doesn't work, clear your browser cache:",
+      clearLead: "If that doesn't work:",
       clearItems: [
-        'Chrome / Edge: Ctrl + Shift + Delete → check "Cached images" and "Cookies" → Clear data',
-        'Firefox: Ctrl + Shift + Delete → check "Cache" → Clear',
+        'Chrome / Edge: Ctrl + Shift + Delete → tick “Cached images and files” and “Cookies and other site data” → Clear data',
+        'Firefox: Ctrl + Shift + Delete → tick “Cache” → Clear Now',
         'Mac (all browsers): ⌘ + Shift + Delete'
       ],
-      afterClear: 'After clearing: close the browser, reopen it, and try logging in again.',
-      persists: "If the issue persists after these steps, please don't hesitate to reach out and we'll take a closer look.",
+      afterClear: 'After doing this: Close the browser, reopen it, and try to log in.',
+      persists: "If it still doesn't work, please let us know so we can look into it further with you.",
       signoff: 'Best regards,',
       senderFallback: '[Your name]',
       company: 'Stórkaup'
@@ -980,21 +980,21 @@ function cacheEmailContent_(lang) {
     lang: 'is',
     subject: 'Vandræði með innskráningu á Stórkaup.is? Prófaðu þetta',
     greeting: function (name) { return name ? 'Halló ' + name + ',' : 'Halló,'; },
-    intro: 'Takk fyrir að hafa samband. Þegar við uppfærum vefinn getur vafrinn þinn stundum haldið í gamlar upplýsingar sem geta valdið vandræðum við innskráningu eða vöruskoðun.',
-    stepsLead: 'Þetta er yfirleitt auðveldlega lagað með þessum skrefum:',
+    intro: 'Takk fyrir að heyra í okkur. Þegar við uppfærum vefinn á vafrinn það stundum til að geyma gamlar upplýsingar, sem getur truflað innskráningu eða vöruskoðun.',
+    stepsLead: 'Það er yfirleitt fljótlegt að leysa þetta með þessum skrefum:',
     steps: [
-      'Lokaðu vafranum alveg (ekki bara flipann)',
-      'Opnaðu vafrann aftur',
-      'Farðu á www.storkaup.is og reyndu aftur'
+      'Lokaðu vafranum alveg (ekki bara flipanum).',
+      'Opnaðu vafrann aftur.',
+      'Farðu á www.storkaup.is og reyndu aftur.'
     ],
-    clearLead: 'Ef það hjálpar ekki:',
+    clearLead: 'Ef það dugir ekki til:',
     clearItems: [
-      'Chrome / Edge: Ctrl + Shift + Delete → hakaðu við "Skyndiminni" og "Vafrakökur" → Hreinsa',
-      'Firefox: Ctrl + Shift + Delete → hakaðu við "Skyndiminni" → Hreinsa',
+      'Chrome / Edge: Ctrl + Shift + Delete → hakaðu við „Skyndiminni“ og „Vafrakökur“ → Hreinsa gögn',
+      'Firefox: Ctrl + Shift + Delete → hakaðu við „Skyndiminni“ → Hreinsa',
       'Mac (allir vafrar): ⌘ + Shift + Delete'
     ],
-    afterClear: 'Eftir hreinsun: lokaðu vafranum, opnaðu aftur og reyndu innskráningu.',
-    persists: 'Ef vandinn er enn til staðar eftir þetta, vinsamlegast hafðu samband og við förum yfir málið með þér.',
+    afterClear: 'Að þessu loknu: Lokaðu vafranum, opnaðu hann aftur og reyndu að skrá þig inn.',
+    persists: 'Ef þetta virkar samt ekki skaltu endilega láta okkur vita svo við getum skoðað málið nánar með þér.',
     signoff: 'Kveðja,',
     senderFallback: '[Nafn þitt]',
     company: 'Stórkaup'
