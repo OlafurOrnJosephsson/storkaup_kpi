@@ -946,6 +946,13 @@
         return panel;
     }
 
+    // Drop the email panel so it can't leak the previously selected customer's
+    // users. Called when a new profile is opened — it rebuilds fresh on next click.
+    function resetCacheHelpPanel_(root) {
+        var panel = root && root.querySelector("[data-cache-help-panel]");
+        if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+    }
+
     function renderCacheHelpLangOptions_(langs, selected) {
         return (langs && langs.length ? langs : ["is"]).map(function(l) {
             var label = l === "en" ? "Enska" : (l === "is" ? "Íslenska" : l);
@@ -2201,6 +2208,7 @@
             var open = e.target.closest('[data-action="open-profile"]');
             if (open) {
                 e.preventDefault();
+                resetCacheHelpPanel_(root);
                 var id = open.getAttribute("data-customer-id");
                 var selectedRaw = state.customers.find(function(c) { return String(c.customer_id) === String(id); }) || null;
                 state.selected = buildSelectedProfile(selectedRaw, state.customers, state.profileScope);
