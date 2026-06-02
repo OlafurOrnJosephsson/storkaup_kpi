@@ -22,14 +22,22 @@ function doPost(e) {
   var body = {};
   try { body = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (_) {}
   var action = String(body.action || '');
-  if (action === 'list_cache_recipients') return jsonResponse_(listCacheRecipientsViaApi_(body));
-  if (action === 'send_cache_email')      return jsonResponse_(sendCacheEmailViaApi_(body));
+  if (action === 'list_templates')      return jsonResponse_(listTemplatesViaApi_(body));
+  if (action === 'list_recipients')     return jsonResponse_(listRecipientsViaApi_(body));
+  if (action === 'send_template_email') return jsonResponse_(sendTemplateEmailViaApi_(body));
   return jsonResponse_({ error: 'Unknown action' });
 }
 
-// Returns the users (Magento accounts) under a customer so the dashboard can let
-// support pick the actual recipient — one kennitala can have several logins.
-function listCacheRecipientsViaApi_(body) {
+// Templates available to send — from the registry in email.js (single source).
+function listTemplatesViaApi_(body) {
+  var cfg = loadConfig_();
+  if (!isApiKeyValid_(cfg, body.key)) return { error: 'Unauthorized' };
+  return { ok: true, templates: emailTemplateList_() };
+}
+
+// Users (Magento accounts) under a customer, so the dashboard can let support pick
+// the actual recipient — one kennitala can have several logins. Template-agnostic.
+function listRecipientsViaApi_(body) {
   var cfg = loadConfig_();
   if (!isApiKeyValid_(cfg, body.key)) return { error: 'Unauthorized' };
   var customerId = String(body.customer_id || '').trim();
@@ -37,18 +45,23 @@ function listCacheRecipientsViaApi_(body) {
   return { ok: true, users: listCustomerUsersForCacheEmail_(customerId) };
 }
 
-function sendCacheEmailViaApi_(body) {
+function sendTemplateEmailViaApi_(body) {
   var cfg = loadConfig_();
   if (!isApiKeyValid_(cfg, body.key)) return { error: 'Unauthorized' };
+
+  var templates = emailTemplates_();
+  var tmpl = templates[String(body.template || '')];
+  if (!tmpl) return { error: 'unknown_template' };
 
   var customerId = String(body.customer_id || '').trim();
   if (!customerId) return { error: 'missing_customer_id' };
   var to = String(body.to || '').trim().toLowerCase();
   if (!to) return { error: 'missing_recipient' };
-  var lang = (String(body.lang || 'is').toLowerCase() === 'en') ? 'en' : 'is';
+  var lang = String(body.lang || tmpl.langs[0]).toLowerCase();
+  if (tmpl.langs.indexOf(lang) === -1) lang = tmpl.langs[0];
 
-  // The client chooses the recipient now, but we still verify the address belongs
-  // to this customer — so the endpoint can never be used to email an arbitrary one.
+  // The client chooses the recipient, but we still verify the address belongs to
+  // this customer — so the endpoint can never be used to email an arbitrary one.
   var users = listCustomerUsersForCacheEmail_(customerId);
   var match = null;
   for (var i = 0; i < users.length; i++) {
@@ -57,11 +70,11 @@ function sendCacheEmailViaApi_(body) {
   if (!match) return { error: 'recipient_not_in_customer' };
 
   var greetName = (match.name ? match.name.split(/\s+/)[0] : '') || '';
-  var senderName = (lang === 'en') ? 'Storkaup Web Team' : 'Vefteymi Stórkaups';
-  var email = generateCacheEmail_(lang, greetName, senderName);
+  var senderName = (tmpl.sender && tmpl.sender[lang]) || '';
+  var built = tmpl.build(lang, { name: greetName, sender: senderName });
 
-  GmailApp.sendEmail(match.email, email.subject, email.body, {
-    htmlBody: buildCacheEmailHtml_(lang, greetName, senderName),
+  GmailApp.sendEmail(match.email, built.subject, built.plain, {
+    htmlBody: built.html,
     from: 'vefur@storkaup.is',
     name: 'Stórkaup ehf'
   });

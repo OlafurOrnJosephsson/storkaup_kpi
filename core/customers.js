@@ -476,12 +476,30 @@ function listCustomerUsersForCacheEmail_(customerId) {
   return out;
 }
 
-function menu_sendCacheHelpToCustomer() {
+// Generic "send a templated email to a customer" flow, driven by the registry in
+// email.js (emailTemplates_). Pick template → find customer → pick user → language
+// → confirm → send. Adding a template makes it appear here automatically.
+function menu_sendTemplateEmail() {
   const ui = SpreadsheetApp.getUi();
 
-  // 1) Find the customer
+  // 1) Pick template
+  const templates = emailTemplateList_();
+  if (!templates.length) { ui.alert('Engin template skilgreind.'); return; }
+  let tmplMeta = templates[0];
+  if (templates.length > 1) {
+    const tlist = templates.map(function(t, i) {
+      return (i + 1) + '. ' + t.label + ' (' + t.langs.join('/') + ')';
+    }).join('\n');
+    const tResp = ui.prompt('Veldu template', tlist + '\n\nSláðu inn númer (1–' + templates.length + '):', ui.ButtonSet.OK_CANCEL);
+    if (tResp.getSelectedButton() !== ui.Button.OK) return;
+    const tn = parseInt(String(tResp.getResponseText() || '').trim(), 10);
+    if (!(tn >= 1 && tn <= templates.length)) { ui.alert('Ógilt númer.'); return; }
+    tmplMeta = templates[tn - 1];
+  }
+
+  // 2) Find the customer
   const searchResp = ui.prompt(
-    'Cache-hjálp — finna viðskiptavin',
+    'Senda póst — finna viðskiptavin',
     'Leitaðu eftir netfangi, ID, nafni eða fyrirtæki:',
     ui.ButtonSet.OK_CANCEL
   );
@@ -492,7 +510,7 @@ function menu_sendCacheHelpToCustomer() {
   const matches = findCustomersForCacheEmail_(term, 15);
   if (!matches.length) { ui.alert('Enginn viðskiptavinur með netfang fannst fyrir „' + term + '“.'); return; }
 
-  // 2) Pick one if several
+  // 3) Pick one if several
   let chosen = matches[0];
   if (matches.length > 1) {
     const list = matches.map(function(m, i) {
@@ -510,31 +528,34 @@ function menu_sendCacheHelpToCustomer() {
     chosen = matches[n - 1];
   }
 
-  // 3) Language + sender
-  const langResp = ui.prompt('Cache-hjálp', 'Tungumál? "is" eða "en":', ui.ButtonSet.OK_CANCEL);
-  if (langResp.getSelectedButton() !== ui.Button.OK) return;
-  const lang = (String(langResp.getResponseText() || 'is').trim().toLowerCase() === 'en') ? 'en' : 'is';
+  // 4) Language (constrained to the template's supported langs)
+  let lang = tmplMeta.langs[0];
+  if (tmplMeta.langs.length > 1) {
+    const langResp = ui.prompt('Tungumál', 'Tungumál (' + tmplMeta.langs.join('/') + '):', ui.ButtonSet.OK_CANCEL);
+    if (langResp.getSelectedButton() !== ui.Button.OK) return;
+    const lreq = String(langResp.getResponseText() || tmplMeta.langs[0]).trim().toLowerCase();
+    lang = tmplMeta.langs.indexOf(lreq) !== -1 ? lreq : tmplMeta.langs[0];
+  }
 
-  const senderResp = ui.prompt('Cache-hjálp', 'Nafn þitt (undirskrift):', ui.ButtonSet.OK_CANCEL);
-  if (senderResp.getSelectedButton() !== ui.Button.OK) return;
-  const senderName = String(senderResp.getResponseText() || '').trim();
-
-  // 4) Build, confirm, send
+  // 5) Build via registry, confirm, send
+  const tmpl = emailTemplates_()[tmplMeta.id];
   const greetName = cacheEmailGreetingName_(chosen);
-  const email = generateCacheEmail_(lang, greetName, senderName);
+  const senderName = (tmpl.sender && tmpl.sender[lang]) || '';
+  const built = tmpl.build(lang, { name: greetName, sender: senderName });
+
   const confirm = ui.alert(
-    'Senda á ' + (chosen.name || chosen.company || chosen.email) + '?',
-    'Til: ' + chosen.email + '\nEfni: ' + email.subject + '\n\n' + email.body,
+    'Senda „' + tmplMeta.label + '“ á ' + (chosen.name || chosen.company || chosen.email) + '?',
+    'Til: ' + chosen.email + '\nEfni: ' + built.subject + '\n\n' + built.plain,
     ui.ButtonSet.OK_CANCEL
   );
   if (confirm !== ui.Button.OK) return;
 
-  GmailApp.sendEmail(chosen.email, email.subject, email.body, {
-    htmlBody: buildCacheEmailHtml_(lang, greetName, senderName),
+  GmailApp.sendEmail(chosen.email, built.subject, built.plain, {
+    htmlBody: built.html,
     from: 'vefur@storkaup.is',
     name: 'Stórkaup ehf'
   });
-  toast_('Cache-hjálp póstur sendur til ' + chosen.email, 'Email');
+  toast_('Póstur („' + tmplMeta.label + '“) sendur til ' + chosen.email, 'Email');
 }
 
 

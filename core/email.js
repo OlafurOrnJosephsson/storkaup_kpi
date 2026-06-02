@@ -1096,3 +1096,111 @@ function menu_sendCacheHelpEmail() {
   });
   toast_('Cache-hjálp póstur sendur til ' + to, 'Email');
 }
+
+// ── Email template registry ───────────────────────────────────────────────────
+// Single source of truth for the templated customer emails the dashboard / Sheets
+// can send. ADD A TEMPLATE = add one entry here (label, langs, sender, build).
+// Everything else — the Webflow picker, the web app endpoints, the Sheets menu —
+// discovers it automatically.
+//
+//   build(lang, vars) -> { subject, plain, html }   where vars = { name, sender }
+function emailTemplates_() {
+  return {
+    cache_help: {
+      label: 'Cache-hjálp (innskráning / vafri)',
+      langs: ['is', 'en'],
+      sender: { is: 'Vefteymi Stórkaups', en: 'Storkaup Web Team' },
+      build: function (lang, vars) {
+        var p = generateCacheEmail_(lang, vars.name, vars.sender);
+        return { subject: p.subject, plain: p.body, html: buildCacheEmailHtml_(lang, vars.name, vars.sender) };
+      }
+    },
+
+    // ── DUMMY / PLACEHOLDER ──────────────────────────────────────────────────
+    // Fill in real copy when sales delivers it: just edit DUMMY_TEMPLATE_CONTENT_
+    // below (subject, greeting, paragraphs, optional bullets). Keep both 'is' and
+    // 'en', or drop 'en' from langs if you only want Icelandic.
+    dummy: {
+      label: 'Sýnishorn (drög — fyllist út)',
+      langs: ['is', 'en'],
+      sender: { is: 'Söluteymi Stórkaups', en: 'Storkaup Sales Team' },
+      build: function (lang, vars) {
+        return buildGenericEmail_(lang, DUMMY_TEMPLATE_CONTENT_, vars);
+      }
+    }
+  };
+}
+
+// Template metadata for pickers: [{ id, label, langs }].
+function emailTemplateList_() {
+  var t = emailTemplates_();
+  return Object.keys(t).map(function (id) {
+    return { id: id, label: t[id].label, langs: t[id].langs };
+  });
+}
+
+// Builds { subject, plain, html } for a "simple" template described by a content
+// model: greeting + paragraphs + optional bullets + signoff. Reuse this for most
+// new templates; only write a custom build() (like cache_help) when the layout is
+// unusual. Same on-brand HTML wrapper as the other emails.
+function buildGenericEmail_(lang, content, vars) {
+  var l = (String(lang || 'is').toLowerCase() === 'en') ? 'en' : 'is';
+  var c = content[l] || content.is;
+  var name = String((vars && vars.name) || '').trim();
+  var sender = String((vars && vars.sender) || '').trim() || (c.senderFallback || '');
+  var paras = c.paragraphs || [];
+  var bullets = c.bullets || [];
+  var company = c.company || 'Stórkaup';
+
+  var plain = c.greeting(name) + '\n\n'
+    + paras.join('\n\n')
+    + (bullets.length ? '\n\n' + bullets.map(function (b) { return '• ' + b; }).join('\n') : '')
+    + '\n\n' + c.signoff + '\n' + sender + '\n' + company;
+
+  var parasHtml = paras.map(function (p) {
+    return '<p style="margin:0 0 12px;line-height:1.6;">' + emailEsc_(p) + '</p>';
+  }).join('');
+  var bulletsHtml = bullets.length
+    ? '<ul style="margin:0 0 16px;padding-left:20px;">'
+      + bullets.map(function (b) { return '<li style="margin:0 0 6px;line-height:1.6;">' + emailEsc_(b) + '</li>'; }).join('')
+      + '</ul>'
+    : '';
+
+  var html = umsokn_wrap_(
+    '<p style="margin:0 0 12px;font-size:15px;font-weight:600;">' + emailEsc_(c.greeting(name)) + '</p>'
+    + parasHtml
+    + bulletsHtml
+    + '<hr class="sk-divider">'
+    + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">' + emailEsc_(c.signoff)
+    + '<br>' + emailEsc_(sender) + '<br>' + emailEsc_(company) + '</p>'
+  );
+
+  return { subject: c.subject, plain: plain, html: html };
+}
+
+// EDIT THIS to fill in the dummy template. Add/remove paragraphs and bullets freely;
+// `bullets: []` means no bullet list. greeting() receives the recipient's first name.
+var DUMMY_TEMPLATE_CONTENT_ = {
+  is: {
+    subject: '[FYLLA ÚT] Efni á íslensku',
+    greeting: function (name) { return name ? 'Halló ' + name + ',' : 'Halló,'; },
+    paragraphs: [
+      '[FYLLA ÚT] Fyrsta efnisgrein á íslensku.',
+      '[FYLLA ÚT] Önnur efnisgrein ef við á.'
+    ],
+    bullets: [],
+    signoff: 'Kveðja,',
+    company: 'Stórkaup'
+  },
+  en: {
+    subject: '[FILL IN] English subject',
+    greeting: function (name) { return 'Hi ' + (name || 'there') + ','; },
+    paragraphs: [
+      '[FILL IN] First paragraph in English.',
+      '[FILL IN] Second paragraph if needed.'
+    ],
+    bullets: [],
+    signoff: 'Best regards,',
+    company: 'Stórkaup'
+  }
+};

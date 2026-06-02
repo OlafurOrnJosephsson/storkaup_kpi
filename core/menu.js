@@ -63,7 +63,7 @@ function onOpen() {
         .addItem('Umsókn — athuga BC stöðu', 'menu_checkUmsokn_BC')
         .addItem('Umsókn — senda email', 'menu_sendUmsokn_Email')
         .addSeparator()
-        .addItem('Cache-hjálp — finna viðskiptavin og senda', 'menu_sendCacheHelpToCustomer')
+        .addItem('Senda template póst — finna viðskiptavin', 'menu_sendTemplateEmail')
         .addItem('Cache-hjálp — slá inn netfang (is/en)', 'menu_sendCacheHelpEmail')
     )
     .addSubMenu(

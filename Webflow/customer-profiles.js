@@ -946,43 +946,60 @@
         return panel;
     }
 
-    function renderCacheHelpUsers_(users) {
+    function renderCacheHelpLangOptions_(langs, selected) {
+        return (langs && langs.length ? langs : ["is"]).map(function(l) {
+            var label = l === "en" ? "Enska" : (l === "is" ? "Íslenska" : l);
+            return '<option value="' + cacheHelpEsc_(l) + '"' + (l === selected ? " selected" : "") + '>' + label + '</option>';
+        }).join("");
+    }
+
+    function renderCacheHelpPanel_(templates, users) {
+        var tmplOpts = templates.map(function(t) {
+            return '<option value="' + cacheHelpEsc_(t.id) + '" data-langs="' + cacheHelpEsc_((t.langs || []).join(",")) + '">'
+                + cacheHelpEsc_(t.label) + '</option>';
+        }).join("");
+        var firstLangs = (templates[0] && templates[0].langs) || ["is"];
+
         var rows = users.map(function(u) {
             var name = u.name || "(nafnlaus)";
             var email = u.email || "";
             var hay = (name + " " + email).toLowerCase();
-            var btn = function(lang, label, mod) {
-                return '<button type="button" data-action="cache-help-send"'
-                    + ' data-lang="' + lang + '"'
-                    + ' data-email="' + cacheHelpEsc_(email) + '"'
-                    + ' data-name="' + cacheHelpEsc_(name) + '"'
-                    + ' class="cp-cachehelp__btn cp-cachehelp__btn--' + mod + '">' + label + '</button>';
-            };
             return '<div data-cache-help-row data-search="' + cacheHelpEsc_(hay) + '" class="cp-cachehelp__row">'
                 + '<div class="cp-cachehelp__who">'
                 + '<div class="cp-cachehelp__name">' + cacheHelpEsc_(name) + '</div>'
                 + '<div class="cp-cachehelp__email">' + cacheHelpEsc_(email) + '</div>'
                 + '</div>'
-                + '<div class="cp-cachehelp__actions">' + btn("is", "IS", "is") + btn("en", "EN", "en") + '</div>'
-                + '</div>';
+                + '<div class="cp-cachehelp__actions">'
+                + '<button type="button" data-action="cache-help-send"'
+                + ' data-email="' + cacheHelpEsc_(email) + '" data-name="' + cacheHelpEsc_(name) + '"'
+                + ' class="cp-cachehelp__btn cp-cachehelp__btn--is">Senda</button>'
+                + '</div></div>';
         }).join("");
+
         return ''
             + '<div class="cp-cachehelp__box">'
-            + '<div class="cp-cachehelp__head">Veldu notanda — senda cache-hjálp (IS/EN)</div>'
+            + '<div class="cp-cachehelp__head">Senda tölvupóst</div>'
+            + '<div class="cp-cachehelp__controls">'
+            +   '<label class="cp-cachehelp__field"><span>Template</span>'
+            +   '<select data-cache-help-template class="cp-cachehelp__select">' + tmplOpts + '</select></label>'
+            +   '<label class="cp-cachehelp__field"><span>Tungumál</span>'
+            +   '<select data-cache-help-lang class="cp-cachehelp__select">' + renderCacheHelpLangOptions_(firstLangs, firstLangs[0]) + '</select></label>'
+            + '</div>'
             + '<div class="cp-cachehelp__searchwrap">'
             + '<input type="text" data-cache-help-search placeholder="Leita…" class="cp-cachehelp__search"></div>'
             + '<div data-cache-help-rows class="cp-cachehelp__rows">' + rows + '</div>'
             + '</div>';
     }
 
-    // Loads the users under the selected customer and renders them inline. Browsers
-    // can't run GmailApp, so this hits the GAS web app. Degrades gracefully: if
-    // gasWebAppUrl is unset or a call fails, the dashboard is untouched.
+    // Loads the available templates + the users under the selected customer and
+    // renders them inline. Browsers can't run GmailApp, so this hits the GAS web
+    // app. Degrades gracefully: if gasWebAppUrl is unset or a call fails, the
+    // dashboard is untouched.
     async function toggleCacheHelpPanel_(root, btn) {
         var p = state.selected;
         if (!p || !p.customer_id) { showActionToast_("Enginn viðskiptavinur valinn.", "error"); return; }
         var gasUrl = cfg.gasWebAppUrl;
-        if (!gasUrl) { showActionToast_("Cache-hjálp er ekki uppsett (vantar gasWebAppUrl).", "error"); return; }
+        if (!gasUrl) { showActionToast_("Tölvupóstur er ekki uppsettur (vantar gasWebAppUrl).", "error"); return; }
 
         var panel = ensureCacheHelpPanel_(root, btn);
         if (panel.getAttribute("data-open") === "1") {
@@ -990,29 +1007,51 @@
             panel.setAttribute("data-open", "0");
             return;
         }
-        panel.innerHTML = '<div class="cp-cachehelp__msg">Sæki notendur…</div>';
+        panel.innerHTML = '<div class="cp-cachehelp__msg">Sæki gögn…</div>';
         panel.style.display = "block";
         panel.setAttribute("data-open", "1");
 
-        var out;
+        var tmplOut, usersOut;
         try {
-            out = await cacheHelpPost_(gasUrl, { action: "list_cache_recipients", customer_id: p.customer_id });
+            var results = await Promise.all([
+                cacheHelpPost_(gasUrl, { action: "list_templates" }),
+                cacheHelpPost_(gasUrl, { action: "list_recipients", customer_id: p.customer_id })
+            ]);
+            tmplOut = results[0]; usersOut = results[1];
         } catch (err) {
             console.error(err);
-            panel.innerHTML = '<div class="cp-cachehelp__msg cp-cachehelp__msg--error">Náði ekki í notendur (net).</div>';
+            panel.innerHTML = '<div class="cp-cachehelp__msg cp-cachehelp__msg--error">Náði ekki í gögn (net).</div>';
             return;
         }
-        if (!out || out.error) {
-            panel.innerHTML = '<div class="cp-cachehelp__msg cp-cachehelp__msg--error">Villa: ' + cacheHelpEsc_((out && out.error) || "óþekkt") + '</div>';
+        if (!tmplOut || tmplOut.error || !usersOut || usersOut.error) {
+            var e = (tmplOut && tmplOut.error) || (usersOut && usersOut.error) || "óþekkt";
+            panel.innerHTML = '<div class="cp-cachehelp__msg cp-cachehelp__msg--error">Villa: ' + cacheHelpEsc_(e) + '</div>';
             return;
         }
-        var users = out.users || [];
+        var templates = tmplOut.templates || [];
+        var users = usersOut.users || [];
+        if (!templates.length) {
+            panel.innerHTML = '<div class="cp-cachehelp__msg cp-cachehelp__msg--error">Engin template skilgreind.</div>';
+            return;
+        }
         if (!users.length) {
             panel.innerHTML = '<div class="cp-cachehelp__msg cp-cachehelp__msg--error">Ekkert netfang skráð fyrir þennan viðskiptavin.</div>';
             return;
         }
 
-        panel.innerHTML = renderCacheHelpUsers_(users);
+        panel.innerHTML = renderCacheHelpPanel_(templates, users);
+
+        // Keep the language options in sync with the chosen template.
+        var tmplSel = panel.querySelector("[data-cache-help-template]");
+        var langSel = panel.querySelector("[data-cache-help-lang]");
+        if (tmplSel && langSel) {
+            tmplSel.addEventListener("change", function() {
+                var opt = this.options[this.selectedIndex];
+                var langs = String(opt && opt.getAttribute("data-langs") || "is").split(",").filter(Boolean);
+                langSel.innerHTML = renderCacheHelpLangOptions_(langs, langs[0]);
+            });
+        }
+
         var search = panel.querySelector("[data-cache-help-search]");
         if (search) {
             search.addEventListener("input", function() {
@@ -1022,39 +1061,49 @@
                     row.style.display = (!q || hay.indexOf(q) !== -1) ? "" : "none";
                 });
             });
-            search.focus();
         }
     }
 
-    // Sends to one chosen user. The server re-verifies the address belongs to the
+    // Sends the selected template to one chosen user. Template + language are read
+    // from the panel selects. The server re-verifies the address belongs to the
     // customer, so passing data-email from the rendered row stays safe.
-    async function sendCacheHelpToUser_(root, email, name, lang) {
+    async function sendCacheHelpToUser_(root, email, name) {
         var p = state.selected;
         if (!p || !p.customer_id) { showActionToast_("Enginn viðskiptavinur valinn.", "error"); return; }
         var gasUrl = cfg.gasWebAppUrl;
-        if (!gasUrl) { showActionToast_("Cache-hjálp er ekki uppsett (vantar gasWebAppUrl).", "error"); return; }
+        if (!gasUrl) { showActionToast_("Tölvupóstur er ekki uppsettur (vantar gasWebAppUrl).", "error"); return; }
 
         email = String(email || "").trim();
         if (!email) { showActionToast_("Ekkert netfang valið.", "error"); return; }
-        var l = String(lang || "is").toLowerCase() === "en" ? "en" : "is";
-        var langLabel = l === "en" ? "ensku" : "íslensku";
-        if (!window.confirm("Senda cache-hjálp (" + langLabel + ") á:\n" + (name ? name + " " : "") + "<" + email + "> ?"))
+
+        var panel = root.querySelector("[data-cache-help-panel]");
+        var tmplSel = panel && panel.querySelector("[data-cache-help-template]");
+        var langSel = panel && panel.querySelector("[data-cache-help-lang]");
+        var template = tmplSel ? tmplSel.value : "";
+        var lang = langSel ? langSel.value : "is";
+        var tmplLabel = tmplSel ? (tmplSel.options[tmplSel.selectedIndex] || {}).text || template : template;
+        if (!template) { showActionToast_("Veldu template.", "error"); return; }
+
+        if (!window.confirm('Senda "' + tmplLabel + '" (' + String(lang).toUpperCase() + ") á:\n" + (name ? name + " " : "") + "<" + email + "> ?"))
             return;
 
-        showActionToast_("Sendi cache-hjálp…", "info");
+        showActionToast_("Sendi tölvupóst…", "info");
         try {
             var out = await cacheHelpPost_(gasUrl, {
-                action: "send_cache_email",
+                action: "send_template_email",
+                template: template,
                 customer_id: p.customer_id,
                 to: email,
-                lang: l
+                lang: lang
             });
             if (out && out.ok) {
-                showActionToast_("Cache-hjálp send á " + out.sentTo, "success");
+                showActionToast_("Sent á " + out.sentTo, "success");
             } else if (out && out.error === "recipient_not_in_customer") {
                 showActionToast_("Netfang tilheyrir ekki þessum viðskiptavin.", "error");
+            } else if (out && out.error === "unknown_template") {
+                showActionToast_("Óþekkt template.", "error");
             } else if (out && out.error === "Unauthorized") {
-                showActionToast_("Cache-hjálp: óheimilt (rangur lykill).", "error");
+                showActionToast_("Óheimilt (rangur lykill).", "error");
             } else {
                 showActionToast_("Sending mistókst" + (out && out.error ? ": " + out.error : "") + ".", "error");
             }
@@ -2144,8 +2193,7 @@
                 await sendCacheHelpToUser_(
                     root,
                     cacheSend.getAttribute("data-email"),
-                    cacheSend.getAttribute("data-name"),
-                    cacheSend.getAttribute("data-lang")
+                    cacheSend.getAttribute("data-name")
                 );
                 return;
             }
