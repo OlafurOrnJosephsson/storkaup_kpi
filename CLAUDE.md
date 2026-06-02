@@ -97,8 +97,8 @@ Title rules (V3, from SEO review Apr 2025):
 - Webflow deploy rev (`data-storkaup-rev`): `de078fb`
 - `Webflow/dashboard.js`: `de078fb`
 - `Webflow/website-dashboard.js`: `9d75dcb`
-- `Webflow/dashboard-theme.css`: `de078fb`  <!-- ⚠️ verify: NEXT_TASKS.md previously listed 2b272cd; recent commits (0b6ef8e) changed theme.css — confirm which commit is live in Webflow and update this line -->
-- `Webflow/customer-profiles.js`: `59f0cda`
+- `Webflow/dashboard-theme.css`: `9f7cadb`
+- `Webflow/customer-profiles.js`: `2c973ae`
 - Trigger schedule baseline: `ab2931a`
 - Parent/child profile aggregation baseline: `ab0aafd`
 - Parent/child last-orders merge: `ca32334`
