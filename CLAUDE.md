@@ -98,7 +98,7 @@ Title rules (V3, from SEO review Apr 2025):
 - `Webflow/dashboard.js`: `de078fb`
 - `Webflow/website-dashboard.js`: `9d75dcb`
 - `Webflow/dashboard-theme.css`: `9f7cadb`
-- `Webflow/customer-profiles.js`: `2c973ae`
+- `Webflow/customer-profiles.js`: `2d2ec9b`
 - Trigger schedule baseline: `ab2931a`
 - Parent/child profile aggregation baseline: `ab0aafd`
 - Parent/child last-orders merge: `ca32334`
