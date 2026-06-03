@@ -994,7 +994,7 @@ function cacheEmailContent_(lang) {
       'Mac (allir vafrar): ⌘ + Shift + Delete'
     ],
     afterClear: 'Að þessu loknu: Lokaðu vafranum, opnaðu hann aftur og reyndu að skrá þig inn.',
-    persists: 'Ef þetta virkar samt ekki skaltu endilega láta okkur vita svo við getum skoðað málið nánar með þér.',
+    persists: 'Ef þetta virkar samt ekki máttu endilega láta okkur vita svo við getum skoðað málið nánar með þér.',
     signoff: 'Kveðja,',
     senderFallback: '[Nafn þitt]',
     company: 'Stórkaup'
@@ -1116,16 +1116,14 @@ function emailTemplates_() {
       }
     },
 
-    // ── DUMMY / PLACEHOLDER ──────────────────────────────────────────────────
-    // Fill in real copy when sales delivers it: just edit DUMMY_TEMPLATE_CONTENT_
-    // below (subject, greeting, paragraphs, optional bullets). Keep both 'is' and
-    // 'en', or drop 'en' from langs if you only want Icelandic.
-    dummy: {
-      label: 'Sýnishorn (drög — fyllist út)',
-      langs: ['is', 'en'],
-      sender: { is: 'Söluteymi Stórkaups', en: 'Storkaup Sales Team' },
+    // Order received but the customer's account is closed — ask them to contact
+    // accounting to open it. Icelandic only for now.
+    locked_account: {
+      label: 'Pöntun — reikningur lokaður',
+      langs: ['is'],
+      sender: { is: '' },   // signs "Bestu kveðjur, / Stórkaup" (no person line)
       build: function (lang, vars) {
-        return buildGenericEmail_(lang, DUMMY_TEMPLATE_CONTENT_, vars);
+        return buildGenericEmail_(lang, LOCKED_ACCOUNT_CONTENT_, vars);
       }
     }
   };
@@ -1155,7 +1153,7 @@ function buildGenericEmail_(lang, content, vars) {
   var plain = c.greeting(name) + '\n\n'
     + paras.join('\n\n')
     + (bullets.length ? '\n\n' + bullets.map(function (b) { return '• ' + b; }).join('\n') : '')
-    + '\n\n' + c.signoff + '\n' + sender + '\n' + company;
+    + '\n\n' + c.signoff + (sender ? '\n' + sender : '') + '\n' + company;
 
   var parasHtml = paras.map(function (p) {
     return '<p style="margin:0 0 12px;line-height:1.6;">' + emailEsc_(p) + '</p>';
@@ -1172,35 +1170,29 @@ function buildGenericEmail_(lang, content, vars) {
     + bulletsHtml
     + '<hr class="sk-divider">'
     + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">' + emailEsc_(c.signoff)
-    + '<br>' + emailEsc_(sender) + '<br>' + emailEsc_(company) + '</p>'
+    + (sender ? '<br>' + emailEsc_(sender) : '') + '<br>' + emailEsc_(company) + '</p>'
   );
 
   return { subject: c.subject, plain: plain, html: html };
 }
 
-// EDIT THIS to fill in the dummy template. Add/remove paragraphs and bullets freely;
-// `bullets: []` means no bullet list. greeting() receives the recipient's first name.
-var DUMMY_TEMPLATE_CONTENT_ = {
+// Content for the locked-account template. greeting() receives the recipient's
+// first name. The two contact lines are paragraphs so they render in order.
+var LOCKED_ACCOUNT_CONTENT_ = {
   is: {
-    subject: '[FYLLA ÚT] Efni á íslensku',
-    greeting: function (name) { return name ? 'Halló ' + name + ',' : 'Halló,'; },
+    subject: 'Pöntun móttekin – reikningur lokaður',
+    greeting: function (name) { return name ? 'Kæri/Kæra ' + name + ',' : 'Kæri viðskiptavinur,'; },
     paragraphs: [
-      '[FYLLA ÚT] Fyrsta efnisgrein á íslensku.',
-      '[FYLLA ÚT] Önnur efnisgrein ef við á.'
+      'Við höfum móttekið pöntun ykkar og þökkum fyrir traust ykkar.',
+      'Þar sem viðskiptareikningur ykkar er að svo stöddu lokaður verður pöntunin ekki send í afgreiðsluferli að svo stöddu.',
+      'Til að opna reikninginn og koma pöntuninni í ferli, vinsamlegast hafið samband við okkur:',
+      '📞 Sími: 515-1500',
+      '✉️ Tölvupóstur: bokhald@storkaup.is',
+      'Eftir að málið hefur verið leyst mun pöntunin ykkar fara sjálfkrafa í afgreiðslu á lager og afhendingu.',
+      'Við biðjumst velvirðingar á þessum óþægindum og hlökkum til að geta þjónað ykkur.'
     ],
     bullets: [],
-    signoff: 'Kveðja,',
-    company: 'Stórkaup'
-  },
-  en: {
-    subject: '[FILL IN] English subject',
-    greeting: function (name) { return 'Hi ' + (name || 'there') + ','; },
-    paragraphs: [
-      '[FILL IN] First paragraph in English.',
-      '[FILL IN] Second paragraph if needed.'
-    ],
-    bullets: [],
-    signoff: 'Best regards,',
+    signoff: 'Bestu kveðjur,',
     company: 'Stórkaup'
   }
 };
