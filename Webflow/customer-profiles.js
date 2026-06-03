@@ -1428,8 +1428,18 @@
             var tpIcon = togglePriorityBtn.querySelector(".icon1x1");
             var tpLabel = togglePriorityBtn.querySelector("[data-label]");
             togglePriorityBtn.classList.toggle("is-current", isPriority);
-            if (tpIcon) tpIcon.innerHTML = isPriority ? STAR_FILLED_SVG : STAR_OUTLINE_SVG;
+            if (tpIcon) {
+                tpIcon.setAttribute("data-icon", "priority-toggle");
+                tpIcon.innerHTML = isPriority ? STAR_FILLED_SVG : STAR_OUTLINE_SVG;
+            }
             if (tpLabel) tpLabel.textContent = isPriority ? "Taka af forgangslista" : "Setja á forgangslista";
+        }
+
+        var profilePanel = root.querySelector('[data-panel="customer-profile"]');
+        var profileWebshopEl = profilePanel && profilePanel.querySelector('[data-field="webshop_active"]');
+        if (profileWebshopEl) {
+            profileWebshopEl.textContent = formatWebshopStatusLabel_(!!p.webshop_active);
+            profileWebshopEl.setAttribute("data-status", p.webshop_active ? "active" : "inactive");
         }
 
         syncAssignRepCtaState_(root);

@@ -394,31 +394,17 @@ span.flatpickr-weekday {
   display: none !important;
 }
 
-[data-panel="customer-profile"] [data-action="set-priority"],
-[data-panel="customer-profile"] [data-action="set-nonpriority"] {
+[data-panel="customer-profile"] [data-action="toggle-priority"] {
   transition: opacity 120ms ease, transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
 }
 
-[data-panel="customer-profile"] [data-action="set-priority"].is-current {
+[data-panel="customer-profile"] [data-action="toggle-priority"].is-current {
   border-color: var(--success-dark) !important;
   background-color: var(--_colors---green50) !important;
 }
 
-[data-panel="customer-profile"] [data-action="set-nonpriority"].is-current {
-  border-color: var(--error-dark) !important;
-  background-color: var(--_colors---red50) !important;
-}
-
-[data-panel="customer-profile"] [data-action="set-priority"].is-disabled,
-[data-panel="customer-profile"] [data-action="set-priority"][aria-disabled="true"],
-[data-panel="customer-profile"] [data-action="set-nonpriority"].is-disabled,
-[data-panel="customer-profile"] [data-action="set-nonpriority"][aria-disabled="true"] {
-  opacity: 0.4 !important;
-  cursor: not-allowed !important;
-  pointer-events: none !important;
-  box-shadow: none !important;
-  filter: saturate(0.7);
-  color:var(--black)
+[data-panel="customer-profile"] [data-action="toggle-priority"].is-current [data-icon="priority-toggle"] {
+  color: var(--success-dark) !important;
 }
 
 [data-panel="customer-profile"] [data-action="assign-rep"],
