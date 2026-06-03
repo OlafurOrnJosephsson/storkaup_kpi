@@ -1584,10 +1584,17 @@
             status: "open"
         };
 
-        var res = await fetch(URL + "/rest/v1/sales_tasks", {
+        // Writes go through a SECURITY DEFINER RPC (anon has no direct write on
+        // the table — RLS blocks it). See core/sql/security_lockdown_v2.sql.
+        var res = await fetch(URL + "/rest/v1/rpc/create_sales_task", {
             method: "POST",
-            headers: Object.assign({ "Content-Type": "application/json", Prefer: "return=representation" }, headers("api")),
-            body: JSON.stringify(payload)
+            headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+            body: JSON.stringify({
+                p_customer_id: payload.customer_id,
+                p_customer_name: payload.customer_name,
+                p_priority: payload.priority,
+                p_reason: payload.reason
+            })
         });
 
         var msgEl = root.querySelector('[data-bind="task-feedback"]');
@@ -1803,10 +1810,11 @@
         var id = String(taskId || "").trim();
         if (!id) return;
 
-        var res = await fetch(URL + "/rest/v1/sales_tasks?id=eq." + encodeURIComponent(id), {
-            method: "PATCH",
-            headers: Object.assign({ "Content-Type": "application/json", Prefer: "return=representation" }, headers("api")),
-            body: JSON.stringify({ status: "done" })
+        // Status change via SECURITY DEFINER RPC (anon has no direct UPDATE).
+        var res = await fetch(URL + "/rest/v1/rpc/complete_sales_task", {
+            method: "POST",
+            headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+            body: JSON.stringify({ p_id: id })
         });
         if (!res.ok) throw new Error(await res.text());
         return res.json();
