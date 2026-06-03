@@ -768,6 +768,20 @@ input[type="text"].is-invalid {
 .delta-pill:has(.is-pos) { background: var(--_colors---green50,  #f0fdf4); }
 .delta-pill:has(.is-neg) { background: var(--_colors---red50,    #fef2f2); }
 
+/* ── pct-up / pct-down / pct-flat — same look as delta-pill ─────────────── */
+.pct-up, .pct-down, .pct-flat {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.pct-up   { color: var(--success-dark, #257b17); background: var(--_colors---green50, #f0fdf4); }
+.pct-down { color: var(--error-dark,   #c23340); background: var(--_colors---red50,   #fef2f2); }
+.pct-flat { color: var(--black-700,    #5b5b5b); background: var(--_colors---gray50,  #f7f7f7); }
+
 /* ── Day context badge + sparkline ──────────────────────────────────────── */
 
 
