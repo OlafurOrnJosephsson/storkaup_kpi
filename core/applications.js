@@ -104,9 +104,18 @@ function doPost(e) {
 
     // Initialise headers if sheet is brand new
     if (sh.getLastRow() === 0) {
-      const headers = ['Submitted At'].concat(fields.map(f => f.title));
+      const headers = ['Submitted At'].concat(fields.map(f => f.title)).concat(['_token']);
       sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
       sh.setFrozenRows(1);
+    }
+
+    // Back-fill _token column if it was missing from an older sheet
+    {
+      const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      if (!h.includes('_token')) {
+        const newCol = sh.getLastColumn() + 1;
+        sh.getRange(1, newCol).setValue('_token').setFontWeight('bold');
+      }
     }
 
     const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
@@ -297,6 +306,22 @@ function cleanApplicationSheets_() {
 
     Logger.log(`✅ cleanApplicationSheets_: ${src.label} — ${numRows} rows processed`);
   });
+}
+
+
+/************************************************************
+ * Manual sync — menu entry point
+ * Moves completed applications (email/kt match in Magento) to LOKID.
+ * No longer called automatically — must be triggered manually or via
+ * a dedicated time-based trigger if desired.
+ ************************************************************/
+function menu_samstillaUmsoknar() {
+  pruneCompletedApplications_();
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    'Samstilling lokið. Sjá Logger fyrir niðurstöður.',
+    '⇄ Umsóknir samstilltar',
+    6
+  );
 }
 
 

@@ -287,7 +287,6 @@ function syncMagentoCustomers() {
   });
 
   props.setProperty(MAGENTO_CUSTOMERS_LAST_SYNC_KEY,new Date().toISOString());
-  pruneCompletedApplications_();
 
   Logger.log(`✅ Customers synced. New: ${newCount}, Updated: ${updatedCount}`);
 }

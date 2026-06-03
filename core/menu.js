@@ -20,6 +20,8 @@ function onOpen() {
     .addItem('Fetch Web Orders (NEWWEB)', 'menu_refreshNEWWEB')
     .addItem('Build Sales Rep Onboarding', 'menu_buildSalesRepOnboarding')
     .addSeparator()
+    .addItem('⇄ Samstilla umsóknir', 'menu_samstillaUmsoknar')
+    .addSeparator()
     .addSubMenu(
       ui.createMenu('Sales Tools')
         .addItem('Build Daily', 'menu_buildSalesDaily')
