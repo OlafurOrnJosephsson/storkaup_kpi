@@ -1425,13 +1425,10 @@
 
         var togglePriorityBtn = root.querySelector('[data-action="toggle-priority"]');
         if (togglePriorityBtn) {
-            var tpIcon = togglePriorityBtn.querySelector(".icon1x1");
+            var tpIcon = togglePriorityBtn.querySelector('[data-icon="priority-toggle"]') || togglePriorityBtn.querySelector(".icon1x1");
             var tpLabel = togglePriorityBtn.querySelector("[data-label]");
             togglePriorityBtn.classList.toggle("is-current", isPriority);
-            if (tpIcon) {
-                tpIcon.setAttribute("data-icon", "priority-toggle");
-                tpIcon.innerHTML = isPriority ? STAR_FILLED_SVG : STAR_OUTLINE_SVG;
-            }
+            if (tpIcon) tpIcon.innerHTML = isPriority ? STAR_FILLED_SVG : STAR_OUTLINE_SVG;
             if (tpLabel) tpLabel.textContent = isPriority ? "Taka af forgangslista" : "Setja á forgangslista";
         }
 
@@ -1442,7 +1439,18 @@
             profileWebshopEl.setAttribute("data-status", p.webshop_active ? "active" : "inactive");
         }
 
+        var bandEls = root.querySelectorAll('[data-bind-band="lhfs"]');
+        var band = lhfsBand_(p.lhfs_label);
+        bandEls.forEach(function(el) { el.setAttribute("data-score-band", band); });
+
         syncAssignRepCtaState_(root);
+    }
+
+    function lhfsBand_(label) {
+        var s = String(label || "").toLowerCase().trim();
+        if (s === "very high" || s === "high") return "good";
+        if (s === "medium") return "warn";
+        return "bad";
     }
 
     function syncAssignRepCtaState_(root) {
@@ -1697,27 +1705,25 @@
     }
 
     function renderLastOrders(root, rows) {
-        var all = rows || [];
-        var webRows = all.filter(function(r) { return String(r.source || "").toLowerCase() !== "bc"; });
-        var bcRows = all.filter(function(r) { return String(r.source || "").toLowerCase() === "bc"; });
+        var all = (rows || []).slice().sort(function(a, b) {
+            return new Date(b.purchase_date || 0) - new Date(a.purchase_date || 0);
+        });
 
-        var webList = root.querySelector('[data-list="last-orders-web"]');
-        var bcList = root.querySelector('[data-list="last-orders-bc"]');
-        var webProto = resolveProto(root, "last-order-row-web") || resolveProto(root, "last-order-row");
-        var bcProto =
-            resolveProto(root, "last-order-row-bc") ||
-            resolveProto(root, "last-order-row-web") ||
-            resolveProto(root, "last-order-row");
-
-        if (webList && bcList) {
-            renderLastOrderRows(webList, webProto, webRows);
-            renderLastOrderRows(bcList, bcProto, bcRows);
+        var unifiedList = root.querySelector('[data-list="last-orders"]');
+        if (unifiedList) {
+            var unifiedProto = resolveProto(root, "last-order-row");
+            renderLastOrderRows(unifiedList, unifiedProto, all);
             return;
         }
 
-        var legacyList = root.querySelector('[data-list="last-orders"]');
-        var legacyProto = resolveProto(root, "last-order-row");
-        renderLastOrderRows(legacyList, legacyProto, all);
+        var webRows = all.filter(function(r) { return String(r.source || "").toLowerCase() !== "bc"; });
+        var bcRows = all.filter(function(r) { return String(r.source || "").toLowerCase() === "bc"; });
+        var webList = root.querySelector('[data-list="last-orders-web"]');
+        var bcList = root.querySelector('[data-list="last-orders-bc"]');
+        var webProto = resolveProto(root, "last-order-row-web") || resolveProto(root, "last-order-row");
+        var bcProto = resolveProto(root, "last-order-row-bc") || resolveProto(root, "last-order-row-web") || resolveProto(root, "last-order-row");
+        renderLastOrderRows(webList, webProto, webRows);
+        renderLastOrderRows(bcList, bcProto, bcRows);
     }
 
     function renderAssignRepControls_(root) {
@@ -2266,14 +2272,19 @@
             if (gen) {
                 e.preventDefault();
                 if (!state.selected || !state.selected.customer_id) return;
+                if (gen.getAttribute("data-loading") === "true") return;
 
-                var rows = await generateList(getSelectedQueryCustomerId());
-                var skuMap = await fetchCategoriesForSkus(rows.map(function(r) { return r.sku; }));
-                state.shoppingRows = rows.map(function(r) {
-                    return Object.assign({}, r, { category: skuMap[String(r.sku || "").trim()] || "Óflokkað" });
-                });
-
-                applyShoppingFilters(root);
+                gen.setAttribute("data-loading", "true");
+                try {
+                    var rows = await generateList(getSelectedQueryCustomerId());
+                    var skuMap = await fetchCategoriesForSkus(rows.map(function(r) { return r.sku; }));
+                    state.shoppingRows = rows.map(function(r) {
+                        return Object.assign({}, r, { category: skuMap[String(r.sku || "").trim()] || "Óflokkað" });
+                    });
+                    applyShoppingFilters(root);
+                } finally {
+                    gen.removeAttribute("data-loading");
+                }
                 return;
             }
 

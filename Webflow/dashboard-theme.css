@@ -768,6 +768,21 @@ input[type="text"].is-invalid {
 .delta-pill:has(.is-pos) { background: var(--_colors---green50,  #f0fdf4); }
 .delta-pill:has(.is-neg) { background: var(--_colors---red50,    #fef2f2); }
 
+/* ── LHFS score band — set data-score-band on container via JS ───────────── */
+[data-bind-band="lhfs"][data-score-band="good"] { color: var(--success-dark, #257b17); }
+[data-bind-band="lhfs"][data-score-band="warn"]  { color: var(--chart-orange, #f59e0b); }
+[data-bind-band="lhfs"][data-score-band="bad"]   { color: var(--error-dark,   #c23340); }
+
+/* ── Shopping list generate — spin icon while loading ────────────────────── */
+[data-action="generate-shopping-list"][data-loading="true"] {
+  pointer-events: none;
+  opacity: 0.6;
+}
+[data-action="generate-shopping-list"][data-loading="true"] svg {
+  animation: storkaupSpin 0.9s linear infinite;
+  transform-origin: center;
+}
+
 /* ── pct-up / pct-down / pct-flat — same look as delta-pill ─────────────── */
 .pct-up, .pct-down, .pct-flat {
   display: inline-flex;
