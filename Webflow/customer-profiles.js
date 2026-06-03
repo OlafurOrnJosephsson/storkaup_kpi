@@ -30,6 +30,8 @@
     var CUSTOMER_CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutes
     var PRIORITY_FLAGS_CACHE_KEY = "storkaup:customer_priority_flags:v1";
     var PRIORITY_FLAGS_CACHE_TTL_MS = 1000 * 60 * 10; // 10 minutes
+    var STAR_OUTLINE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star-icon lucide-star"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>';
+    var STAR_FILLED_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star-icon lucide-star"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>';
 
     function headers(profile) {
         var h = { apikey: KEY, Authorization: "Bearer " + KEY };
@@ -1419,25 +1421,15 @@
         });
 
         var priorityStatus = String(p.manual_priority_status || "").trim().toLowerCase();
-        var setPriorityBtn = root.querySelector('[data-action="set-priority"]');
-        var setNonPriorityBtn = root.querySelector('[data-action="set-nonpriority"]');
         var isPriority = priorityStatus === "priority";
-        var isNonPriority = priorityStatus === "nonpriority";
 
-        if (setPriorityBtn) {
-            if ("disabled" in setPriorityBtn) setPriorityBtn.disabled = isPriority;
-            setPriorityBtn.setAttribute("aria-disabled", isPriority ? "true" : "false");
-            setPriorityBtn.setAttribute("data-disabled", isPriority ? "true" : "false");
-            setPriorityBtn.classList.toggle("is-disabled", isPriority);
-            setPriorityBtn.classList.toggle("is-current", isPriority);
-        }
-
-        if (setNonPriorityBtn) {
-            if ("disabled" in setNonPriorityBtn) setNonPriorityBtn.disabled = isNonPriority;
-            setNonPriorityBtn.setAttribute("aria-disabled", isNonPriority ? "true" : "false");
-            setNonPriorityBtn.setAttribute("data-disabled", isNonPriority ? "true" : "false");
-            setNonPriorityBtn.classList.toggle("is-disabled", isNonPriority);
-            setNonPriorityBtn.classList.toggle("is-current", isNonPriority);
+        var togglePriorityBtn = root.querySelector('[data-action="toggle-priority"]');
+        if (togglePriorityBtn) {
+            var tpIcon = togglePriorityBtn.querySelector(".icon1x1");
+            var tpLabel = togglePriorityBtn.querySelector("[data-label]");
+            togglePriorityBtn.classList.toggle("is-current", isPriority);
+            if (tpIcon) tpIcon.innerHTML = isPriority ? STAR_FILLED_SVG : STAR_OUTLINE_SVG;
+            if (tpLabel) tpLabel.textContent = isPriority ? "Taka af forgangslista" : "Setja á forgangslista";
         }
 
         syncAssignRepCtaState_(root);
@@ -2123,34 +2115,17 @@
                 return;
             }
 
-            var setPriority = e.target.closest('[data-action="set-priority"]');
-            if (setPriority) {
+            var togglePriority = e.target.closest('[data-action="toggle-priority"]');
+            if (togglePriority) {
                 e.preventDefault();
-                if (setPriority.getAttribute("data-disabled") === "true" || setPriority.getAttribute("aria-disabled") === "true") {
-                    return;
-                }
+                var curStatus = String(state.selected && state.selected.manual_priority_status || "").trim().toLowerCase();
+                var newStatus = curStatus === "priority" ? "nonpriority" : "priority";
                 try {
-                    await setSelectedPriorityStatus_(root, "priority");
-                } catch (priorityErr) {
-                    console.error(priorityErr);
+                    await setSelectedPriorityStatus_(root, newStatus);
+                } catch (togglePriorityErr) {
+                    console.error(togglePriorityErr);
                     setPriorityFeedback_(root, "Villa við að vista forgang.");
                     showActionToast_("Villa við að vista forgang.", "error");
-                }
-                return;
-            }
-
-            var setNonPriority = e.target.closest('[data-action="set-nonpriority"]');
-            if (setNonPriority) {
-                e.preventDefault();
-                if (setNonPriority.getAttribute("data-disabled") === "true" || setNonPriority.getAttribute("aria-disabled") === "true") {
-                    return;
-                }
-                try {
-                    await setSelectedPriorityStatus_(root, "nonpriority");
-                } catch (nonPriorityErr) {
-                    console.error(nonPriorityErr);
-                    setPriorityFeedback_(root, "Villa við að vista stöðu.");
-                    showActionToast_("Villa við að vista stöðu.", "error");
                 }
                 return;
             }
