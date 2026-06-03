@@ -17,3 +17,4 @@ bc_drop/
 # Security review — confidential; repo is public (jsDelivr), keep out of git
 SECURITY_REVIEW.md
 SECURITY_RESPONSE.md
+POWERBI_DATABRICKS_GAP.md
