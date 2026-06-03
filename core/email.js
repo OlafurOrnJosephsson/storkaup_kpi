@@ -1186,8 +1186,8 @@ var LOCKED_ACCOUNT_CONTENT_ = {
       'Við höfum móttekið pöntun ykkar og þökkum fyrir traust ykkar.',
       'Þar sem viðskiptareikningur ykkar er að svo stöddu lokaður verður pöntunin ekki send í afgreiðsluferli að svo stöddu.',
       'Til að opna reikninginn og koma pöntuninni í ferli, vinsamlegast hafið samband við okkur:',
-      '📞 Sími: 515-1500',
-      '✉️ Tölvupóstur: bokhald@storkaup.is',
+      'Sími: 515-1500',
+      'Tölvupóstur: bokhald@storkaup.is',
       'Eftir að málið hefur verið leyst mun pöntunin ykkar fara sjálfkrafa í afgreiðslu á lager og afhendingu.',
       'Við biðjumst velvirðingar á þessum óþægindum og hlökkum til að geta þjónað ykkur.'
     ],
