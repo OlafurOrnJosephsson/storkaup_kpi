@@ -390,7 +390,10 @@ begin
 end;
 $function$;
 
-grant select on table raw.customer_priority_flags_raw to authenticated, anon;
+-- NOTE: anon intentionally NOT granted — anon reads via the SECURITY DEFINER
+-- function api.get_customer_priority_flags() (owner-exempt from RLS), never the
+-- raw table directly. Re-applying this file must not re-open anon access.
+grant select on table raw.customer_priority_flags_raw to authenticated;
 grant all privileges on table raw.customer_priority_flags_raw to service_role;
 
 -- READ functions: anon still allowed (reads remain open pending auth migration)
