@@ -174,6 +174,11 @@ function webapp_saveCreditScore(rowIndex, score) {
   return { ok: true };
 }
 
+function webapp_pruneApplications() {
+  pruneCompletedApplications_();
+  return { ok: true };
+}
+
 function webapp_markUmsokn_Done(rowData) {
   var cfg   = loadConfig_();
   var src   = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });

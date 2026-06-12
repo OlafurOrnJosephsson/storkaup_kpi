@@ -610,6 +610,7 @@ function syncMagento() {
   btn.textContent = '⟳ Samstilli…';
   busy = true;
   run('syncMagentoCustomers')
+    .then(function() { return run('webapp_pruneApplications'); })
     .then(function() {
       showToast('Samstilling lokið — hleð gögn að nýju');
       btn.disabled = false;
