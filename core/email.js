@@ -127,6 +127,29 @@ function menu_sendWelcomeEmail() {
   }
 }
 
+// TEST: send the web-onboarding template to an arbitrary address (bypasses the
+// customer-recipient verification used by the dashboard send) so you can preview
+// it on yourself. Prompts for address (default oj@storkaup.is) and language.
+function menu_testOnboardingEmail() {
+  var ui = SpreadsheetApp.getUi();
+  var resp = ui.prompt('TEST — onboarding póstur', 'Netfang (sjálfgefið oj@storkaup.is):', ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  var to = String(resp.getResponseText() || '').trim() || 'oj@storkaup.is';
+
+  var langResp = ui.prompt('Tungumál', 'is eða en (sjálfgefið is):', ui.ButtonSet.OK_CANCEL);
+  if (langResp.getSelectedButton() !== ui.Button.OK) return;
+  var lang = String(langResp.getResponseText() || 'is').trim().toLowerCase() === 'en' ? 'en' : 'is';
+
+  var tmpl = emailTemplates_().web_onboarding;
+  var built = tmpl.build(lang, { name: '', sender: (tmpl.sender && tmpl.sender[lang]) || '' });
+  GmailApp.sendEmail(to, built.subject, built.plain, {
+    htmlBody: built.html,
+    from: 'vefur@storkaup.is',
+    name: 'Stórkaup ehf'
+  });
+  toast_('Onboarding prufu-póstur (' + lang + ') sendur til ' + to, 'Email');
+}
+
 // ── Data fetch ────────────────────────────────────────────────────────────────
 
 function fetchWeeklyDigestStats_(weekStartIso) {
@@ -1125,6 +1148,17 @@ function emailTemplates_() {
       build: function (lang, vars) {
         return buildGenericEmail_(lang, LOCKED_ACCOUNT_CONTENT_, vars);
       }
+    },
+
+    // Customer has a web-shop account but has never ordered online — nudge them
+    // to place their first web order. Sent from the web activation view.
+    web_onboarding: {
+      label: 'Vef-onboarding (byrja að panta)',
+      langs: ['is', 'en'],
+      sender: { is: 'Vefteymi Stórkaups', en: 'Storkaup Web Team' },
+      build: function (lang, vars) {
+        return buildGenericEmail_(lang, WEB_ONBOARDING_CONTENT_, vars);
+      }
     }
   };
 }
@@ -1193,6 +1227,47 @@ var LOCKED_ACCOUNT_CONTENT_ = {
     ],
     bullets: [],
     signoff: 'Bestu kveðjur,',
+    company: 'Stórkaup'
+  }
+};
+
+// Content for the web-onboarding template. greeting() receives the recipient's
+// first name. paragraphs render first, then the 3-step bullets, then signoff.
+var WEB_ONBOARDING_CONTENT_ = {
+  is: {
+    subject: 'Þú átt aðgang að vefverslun Stórkaups — byrjaðu að panta',
+    greeting: function (name) { return name ? 'Kæri/Kæra ' + name + ',' : 'Kæri viðskiptavinur,'; },
+    paragraphs: [
+      'Þú átt nú þegar aðgang að vefverslun Stórkaups — en hefur ekki enn nýtt hann. Við viljum gera þér eins auðvelt og hægt er að panta þegar þér hentar.',
+      'Í vefversluninni sérðu þitt verð og fyrri pantanir, og getur endurpantað á örfáum sekúndum — allan sólarhringinn, án þess að bíða eftir símtali eða tölvupósti.',
+      'Ef þú manst ekki aðgangsorðið eða þarft aðstoð, svaraðu þessum pósti eða hringdu í 515-1500 og við hjálpum þér af stað.',
+      'Svona byrjarðu í þremur skrefum:'
+    ],
+    bullets: [
+      'Farðu á storkaup.is og skráðu þig inn',
+      'Finndu vörurnar þínar eða notaðu fyrri pantanir',
+      'Settu í körfu og staðfestu — það er allt og sumt'
+    ],
+    signoff: 'Bestu kveðjur,',
+    senderFallback: 'Vefteymi Stórkaups',
+    company: 'Stórkaup'
+  },
+  en: {
+    subject: 'You have a Stórkaup web shop account — start ordering',
+    greeting: function (name) { return name ? 'Dear ' + name + ',' : 'Dear customer,'; },
+    paragraphs: [
+      'You already have access to the Stórkaup web shop — but you have not used it yet. We want to make ordering as easy as possible, whenever it suits you.',
+      'Online you can see your prices and previous orders, and reorder in seconds — around the clock, with no waiting for a phone call or email.',
+      'If you have forgotten your password or need a hand, just reply to this email or call 515-1500 and we will get you started.',
+      'Here is how to start, in three steps:'
+    ],
+    bullets: [
+      'Go to storkaup.is and log in',
+      'Find your products or use your previous orders',
+      'Add to cart and confirm — that is it'
+    ],
+    signoff: 'Best regards,',
+    senderFallback: 'Storkaup Web Team',
     company: 'Stórkaup'
   }
 };

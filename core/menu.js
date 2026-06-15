@@ -67,6 +67,7 @@ function onOpen() {
         .addSeparator()
         .addItem('Senda template póst — finna viðskiptavin', 'menu_sendTemplateEmail')
         .addItem('Cache-hjálp — slá inn netfang (is/en)', 'menu_sendCacheHelpEmail')
+        .addItem('TEST — onboarding póstur (slá inn netfang)', 'menu_testOnboardingEmail')
     )
     .addSubMenu(
       ui.createMenu('BC Sync')
