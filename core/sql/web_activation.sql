@@ -182,7 +182,7 @@ security definer
 set search_path to 'api', 'raw', 'public'
 as $fn$
   with a as (
-    select * from api.get_web_activation(false, null)
+    select * from api.get_web_activation(true, null)
   )
   select
     count(*) filter (where last_web_order_at >= (current_date - interval '90 days')),
@@ -191,6 +191,26 @@ as $fn$
     count(*) filter (where state = 'lapsing'),
     count(*) filter (where state = 'lapsed')
   from a;
+$fn$;
+
+-- ---------------------------------------------------------------------------
+-- Per-state counts, computed server-side so they are NOT subject to the
+-- PostgREST 1000-row response cap (the client must not count by fetching all
+-- rows — large states get silently truncated). Drives the filter chips.
+-- ---------------------------------------------------------------------------
+drop function if exists api.web_activation_state_counts(boolean);
+create or replace function api.web_activation_state_counts(
+  p_only_with_account boolean default true
+)
+returns table (state text, n bigint)
+language sql
+stable
+security definer
+set search_path to 'api', 'raw', 'public'
+as $fn$
+  select state, count(*)::bigint
+  from api.get_web_activation(p_only_with_account, null)
+  group by state;
 $fn$;
 
 -- ---------------------------------------------------------------------------
@@ -228,6 +248,7 @@ $fn$;
 
 -- Read grants mirror the existing priority-flag read RPCs (anon stays open
 -- pending Supabase Auth Phase 3; these expose no BC financials).
-grant execute on function api.get_web_activation(boolean, text[]) to authenticated, anon, service_role;
+grant execute on function api.get_web_activation(boolean, text[])  to authenticated, anon, service_role;
 grant execute on function api.web_activation_kpis()                to authenticated, anon, service_role;
+grant execute on function api.web_activation_state_counts(boolean) to authenticated, anon, service_role;
 grant execute on function api.web_activation_by_rep()              to authenticated, anon, service_role;

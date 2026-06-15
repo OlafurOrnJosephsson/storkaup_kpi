@@ -21,7 +21,7 @@
     var KEY = cfg.publishableKey;
     if (!URL || !KEY) return console.error("[activation] Missing STORKAUP_CONFIG");
 
-    var MAX_RENDERED = 200;
+    var MAX_RENDERED = 800;
 
     // never_ordered + lapsing + lapsed are the actionable targets; active/activating
     // shown for context. Order drives chip order.
@@ -35,7 +35,9 @@
     var STATE_LABEL = STATES.reduce(function(m, s) { m[s.key] = s.label; return m; }, {});
 
     var state = {
-        rows: [],
+        rows: [],            // rows for the currently active state only (per-state fetch)
+        rowsByState: {},     // cache: stateKey -> rows[]
+        counts: {},          // server-side per-state counts (not truncated)
         kpis: null,
         reps: [],
         activeState: "never_ordered",
@@ -97,16 +99,30 @@
     }
 
     // ----- data ---------------------------------------------------------------
-    async function loadAll() {
-        var calls = [
-            rpc("get_web_activation", { p_only_with_account: true, p_states: null }),
-            rpc("web_activation_kpis", {}),
+    // Counts + KPIs come from server-side aggregates (no 1000-row cap). The list
+    // is fetched ONE STATE AT A TIME so each response stays well under the cap.
+    async function loadAggregates() {
+        var out = await Promise.all([
+            rpc("web_activation_state_counts", { p_only_with_account: true }).catch(function() { return []; }),
+            rpc("web_activation_kpis", {}).catch(function() { return []; }),
             rpc("get_active_sales_reps", {}).catch(function() { return []; })
-        ];
-        var out = await Promise.all(calls);
-        state.rows = Array.isArray(out[0]) ? out[0] : [];
+        ]);
+        var counts = {};
+        (Array.isArray(out[0]) ? out[0] : []).forEach(function(c) { counts[c.state] = Number(c.n) || 0; });
+        state.counts = counts;
         state.kpis = (Array.isArray(out[1]) && out[1][0]) || null;
         state.reps = Array.isArray(out[2]) ? out[2] : [];
+    }
+
+    async function loadState(stateKey) {
+        if (state.rowsByState[stateKey]) {
+            state.rows = state.rowsByState[stateKey];
+            return;
+        }
+        var rows = await rpc("get_web_activation", { p_only_with_account: true, p_states: [stateKey] });
+        rows = Array.isArray(rows) ? rows : [];
+        state.rowsByState[stateKey] = rows;
+        state.rows = rows;
     }
 
     // ----- render -------------------------------------------------------------
@@ -119,12 +135,15 @@
 
     function renderKpis(root) {
         var k = state.kpis || {};
+        var c = state.counts || {};
         var wrap = root.querySelector("[data-act-kpis]");
         if (!wrap) return;
+        // never/lapsing/lapsed mirror the chip counts exactly (same population);
+        // web-active + new-this-month are the extra leading indicators.
         wrap.innerHTML =
-            kpiCard("Aldrei pantað", fmtInt(k.account_never_ordered)) +
-            kpiCard("Að dofna", fmtInt(k.lapsing_30_to_90d)) +
-            kpiCard("Dottinn út", fmtInt(k.lapsed_over_90d)) +
+            kpiCard("Aldrei pantað", fmtInt(c.never_ordered)) +
+            kpiCard("Að dofna", fmtInt(c.lapsing)) +
+            kpiCard("Dottinn út", fmtInt(c.lapsed)) +
             kpiCard("Vef-virkir (90d)", fmtInt(k.web_active_90d)) +
             kpiCard("Nýir í mánuðinum", fmtInt(k.new_web_customers_mtd));
     }
@@ -132,13 +151,11 @@
     function renderChips(root) {
         var wrap = root.querySelector("[data-act-chips]");
         if (!wrap) return;
-        var counts = {};
-        state.rows.forEach(function(r) { counts[r.state] = (counts[r.state] || 0) + 1; });
         wrap.innerHTML = STATES.map(function(s) {
             var on = s.key === state.activeState;
             return '<a href="#" data-act-chip="' + s.key + '" class="cp-chip"'
                 + (on ? ' data-active="1" style="font-weight:600"' : '') + '>'
-                + '<div>' + esc(s.label) + ' (' + (counts[s.key] || 0) + ')</div></a>';
+                + '<div>' + esc(s.label) + ' (' + (state.counts[s.key] || 0) + ')</div></a>';
         }).join("");
     }
 
@@ -192,8 +209,8 @@
     function renderList(root) {
         var list = root.querySelector("[data-act-list]");
         if (!list) return;
-        var rows = state.rows.filter(function(r) { return r.state === state.activeState; });
-        // never_ordered first has no order recency; others sort by most-recently-quiet.
+        var rows = state.rows.slice(); // already the active state (per-state fetch)
+        // never_ordered has no order recency; others sort by most-recently-quiet.
         rows.sort(function(a, b) {
             return (b.days_since_last_order || 0) - (a.days_since_last_order || 0)
                 || String(a.company_name || "").localeCompare(String(b.company_name || ""));
@@ -203,12 +220,6 @@
             ? '<div class="text-size-tiny" style="padding:8px 16px;color:#888">Sýni ' + shown.length + ' af ' + rows.length + ' — þrengdu með leit/flokki.</div>'
             : "";
         list.innerHTML = note + shown.map(rowHtml).join("");
-    }
-
-    function renderAll(root) {
-        renderKpis(root);
-        renderChips(root);
-        renderList(root);
     }
 
     function rowByKey(key) {
@@ -382,7 +393,12 @@
                 state.activeState = chip.getAttribute("data-act-chip");
                 state.selectedKey = null;
                 renderChips(root);
-                renderList(root);
+                var listEl = root.querySelector("[data-act-list]");
+                if (listEl) listEl.innerHTML = '<div class="text-size-tiny" style="padding:16px;color:#888">Sæki…</div>';
+                loadState(state.activeState).then(function() { renderList(root); }).catch(function(e) {
+                    console.error("[activation]", e);
+                    if (listEl) listEl.innerHTML = '<div class="text-size-tiny" style="padding:16px;color:#c23340">Náði ekki í lista.</div>';
+                });
                 return;
             }
             var open = ev.target.closest("[data-act-open]");
@@ -431,8 +447,11 @@
         wire(root);
         root.setAttribute("aria-busy", "true");
         try {
-            await loadAll();
-            renderAll(root);
+            await loadAggregates();
+            renderKpis(root);
+            renderChips(root);
+            await loadState(state.activeState);
+            renderList(root);
         } catch (e) {
             console.error("[activation]", e);
             var list = root.querySelector("[data-act-list]");
