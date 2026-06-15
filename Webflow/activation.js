@@ -34,6 +34,17 @@
     ];
     var STATE_LABEL = STATES.reduce(function(m, s) { m[s.key] = s.label; return m; }, {});
 
+    // Columns shown in the list (and the header). num=true → numeric sort.
+    var COLS = [
+        { key: "company_name",          label: "Nafn",          first: true },
+        { key: "customer_key",          label: "KT" },
+        { key: "state",                 label: "Staða" },
+        { key: "web_orders_count",      label: "Vefpantanir",   num: true },
+        { key: "days_since_last_order", label: "Síðan síðasta", num: true },
+        { key: "priority_status",       label: "Forgangur" },
+        { key: "assigned_rep_name_norm", label: "Sölumaður" }
+    ];
+
     var state = {
         rows: [],            // rows for the currently active state only (per-state fetch)
         rowsByState: {},     // cache: stateKey -> rows[]
@@ -41,7 +52,9 @@
         kpis: null,
         reps: [],
         activeState: "never_ordered",
-        selectedKey: null
+        selectedKey: null,
+        sortKey: "days_since_last_order",
+        sortDir: "desc"
     };
 
     // ----- shared helpers (mirror customer-profiles.js) -----------------------
@@ -206,20 +219,43 @@
             + '</div>';
     }
 
+    function headerHtml() {
+        return '<div class="cp-row cp-row-prioritylist" data-act-head style="background:#fafafa;border-bottom:1px solid #e9e9e9">'
+            + COLS.map(function(c) {
+                var active = c.key === state.sortKey;
+                var arrow = active ? (state.sortDir === "asc" ? " ↑" : " ↓") : "";
+                var cls = "flex" + (c.first ? " gap--5rem" : "");
+                return '<div class="' + cls + '">'
+                    + '<div class="kpi-product-list-header sort" data-sort="' + c.key + '"'
+                    + ' style="cursor:pointer' + (active ? ";font-weight:600" : "") + '">'
+                    + esc(c.label) + arrow + '</div></div>';
+            }).join("")
+            + '</div>';
+    }
+
+    function cmpRows(a, b) {
+        var k = state.sortKey, dir = state.sortDir === "asc" ? 1 : -1;
+        if (k === "web_orders_count" || k === "days_since_last_order") {
+            var an = Number(a[k]); if (isNaN(an)) an = -Infinity;
+            var bn = Number(b[k]); if (isNaN(bn)) bn = -Infinity;
+            if (an !== bn) return (an - bn) * dir;
+            return String(a.company_name || "").localeCompare(String(b.company_name || ""));
+        }
+        var as = String(a[k] == null ? "" : a[k]).toLowerCase();
+        var bs = String(b[k] == null ? "" : b[k]).toLowerCase();
+        return as.localeCompare(bs, "is") * dir;
+    }
+
     function renderList(root) {
         var list = root.querySelector("[data-act-list]");
         if (!list) return;
         var rows = state.rows.slice(); // already the active state (per-state fetch)
-        // never_ordered has no order recency; others sort by most-recently-quiet.
-        rows.sort(function(a, b) {
-            return (b.days_since_last_order || 0) - (a.days_since_last_order || 0)
-                || String(a.company_name || "").localeCompare(String(b.company_name || ""));
-        });
+        rows.sort(cmpRows);
         var shown = rows.slice(0, MAX_RENDERED);
         var note = rows.length > shown.length
-            ? '<div class="text-size-tiny" style="padding:8px 16px;color:#888">Sýni ' + shown.length + ' af ' + rows.length + ' — þrengdu með leit/flokki.</div>'
+            ? '<div class="text-size-tiny" style="padding:8px 16px;color:#888">Sýni ' + shown.length + ' af ' + rows.length + ' — þrengdu með flokki.</div>'
             : "";
-        list.innerHTML = note + shown.map(rowHtml).join("");
+        list.innerHTML = headerHtml() + note + shown.map(rowHtml).join("");
     }
 
     function rowByKey(key) {
@@ -387,6 +423,19 @@
     // ----- events -------------------------------------------------------------
     function wire(root) {
         root.addEventListener("click", function(ev) {
+            var sortEl = ev.target.closest("[data-sort]");
+            if (sortEl) {
+                ev.preventDefault();
+                var key = sortEl.getAttribute("data-sort");
+                if (state.sortKey === key) {
+                    state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+                } else {
+                    state.sortKey = key;
+                    state.sortDir = (key === "web_orders_count" || key === "days_since_last_order") ? "desc" : "asc";
+                }
+                renderList(root);
+                return;
+            }
             var chip = ev.target.closest("[data-act-chip]");
             if (chip) {
                 ev.preventDefault();
