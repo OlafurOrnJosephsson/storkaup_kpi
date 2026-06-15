@@ -35,6 +35,7 @@ function buildCustomerAnalysis() {
   const bcInvoices     = loadBCInvoices_();                       // BC sölureikningar (samantekt)
   const bcInvoiceLines = loadBCInvoiceLines_(productCategoryMap); // BC línur (SKU + flokkar)
   const webMap         = loadNEWWEBLines_();                      // NEWWEB (Magento) sölulínur
+  const magentoNames   = loadMagentoCompanyNameMap_();            // fallback nafn (vef-kúnnar án BC-master)
 
   // 3) Sameina alla Customer ID
   const idCollector = {};
@@ -56,7 +57,8 @@ function buildCustomerAnalysis() {
       bcInvoices[id],
       bcInvoiceLines[id],
       webMap[id],
-      productLookup
+      productLookup,
+      magentoNames
     );
     if (row) rows.push(row);
   });
@@ -142,14 +144,20 @@ function addIdsFromMap_(collector, map) {
 /************************************************************
  * 🔨 BUILD ONE CUSTOMER ANALYSIS ROW
  ************************************************************/
-function buildCustomerAnalysisRow_(id, bcCust, bcInv, bcLines, web, productLookup) {
+function buildCustomerAnalysisRow_(id, bcCust, bcInv, bcLines, web, productLookup, magentoNames) {
   // Skoppum línu ef við höfum bókstaflega ekkert um þennan kúnna
   if (!bcCust && !bcInv && !web) return null;
 
   const empty = '';
 
-  // 🔹 BC master info
-  const customerName = (bcCust && bcCust.companyName) || '';
+  // 🔹 BC master info — fall back to Magento company name for web customers that
+  //    have no BC master record (BC ingest is frozen, so its master never gains
+  //    newer web-only customers).
+  const mNames = magentoNames || {};
+  const customerName = (bcCust && bcCust.companyName)
+    || mNames[id]
+    || mNames[String(id).replace(/\D/g, '')]
+    || '';
   const phone        = (bcCust && bcCust.phone) || '';
   const creditLimit  = (bcCust && bcCust.creditLimit) || 0;
 
@@ -466,6 +474,35 @@ function loadNEWWEBLines_() {
   });
 
   return out;
+}
+
+
+/********* MAGENTO_CUSTOMERS → company_id / national_id → company name *********/
+// Fallback name source for web customers absent from the (now frozen) BC master.
+// Keyed by both the raw id and its digit-only form so it matches whatever
+// customer_id shape the BC/web join produced.
+function loadMagentoCompanyNameMap_() {
+  const cfg = loadConfig_();
+  const ssId = (cfg.SHEET_IDS && cfg.SHEET_IDS.CUSTOMERS)
+    || (cfg.SHEETS && cfg.SHEETS.CUSTOMERS && cfg.SHEETS.CUSTOMERS.ID);
+  if (!ssId) return {};
+
+  const rows = loadSheetObjects_(ssId, 'MAGENTO_CUSTOMERS');
+  if (!rows || !rows.length) return {};
+
+  const map = {};
+  rows.forEach(r => {
+    const name = String(r['Company Name'] || r['Name'] || '').trim();
+    if (!name) return;
+    [r['Company ID'], r['National ID']].forEach(raw => {
+      const v = String(raw || '').trim();
+      if (!v) return;
+      if (!map[v]) map[v] = name;
+      const digits = v.replace(/\D/g, '');
+      if (digits && !map[digits]) map[digits] = name;
+    });
+  });
+  return map;
 }
 
 
