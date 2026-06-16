@@ -38,13 +38,17 @@
     // row fills full width (inline style beats the class). Same order as COLS.
     var GRID = "grid-template-columns:1.6fr 1.1fr 1fr .7fr 1fr .9fr 1.2fr";
 
+    // Row expand/collapse chevrons (lucide). chevron-right = closed, down = open.
+    var CHEVRON_RIGHT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right-icon lucide-chevron-right"><path d="m9 18 6-6-6-6"/></svg>';
+    var CHEVRON_DOWN = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down-icon lucide-chevron-down"><path d="m6 9 6 6 6-6"/></svg>';
+
     // Columns shown in the list (and the header). num=true → numeric sort.
     var COLS = [
         { key: "company_name",          label: "Nafn",          first: true },
         { key: "customer_key",          label: "KT" },
         { key: "state",                 label: "Staða" },
-        { key: "web_orders_count",      label: "Vefpantanir",   num: true },
-        { key: "days_since_last_order", label: "Síðan síðasta", num: true },
+        { key: "web_orders_count",      label: "Fj. vefpantana",   num: true },
+        { key: "days_since_last_order", label: "Síðasta pöntun", num: true },
         { key: "priority_status",       label: "Forgangur" },
         { key: "assigned_rep_name_norm", label: "Sölumaður" }
     ];
@@ -194,7 +198,7 @@
         var html = '<div class="cp-row cp-row-prioritylist" style="' + GRID + '" data-act-row="' + esc(r.customer_key) + '">'
             + '<div class="flex gap--5rem">'
             +   '<a href="#" data-act-open="' + esc(r.customer_key) + '" class="cp-action-btn w-inline-block">'
-            +     '<div class="text-size-tiny">' + (isSel ? "▾" : "▸") + '</div></a>'
+            +     '<div class="icon1x1 w-embed">' + (isSel ? CHEVRON_DOWN : CHEVRON_RIGHT) + '</div></a>'
             +   '<div class="text-size-tiny">' + esc(r.company_name || r.customer_key) + '</div>'
             + '</div>'
             + '<div class="flex"><div class="text-size-tiny text-weight-normal">' + esc(r.customer_key) + '</div></div>'
@@ -214,7 +218,7 @@
             + '<div class="flex gap--5rem" style="flex-wrap:wrap;align-items:center">'
             +   '<button type="button" data-act="flag" class="cp-cachehelp__btn cp-cachehelp__btn--is">'
             +     (inForgang ? "Úr forgangi −" : "Í forgang +") + '</button>'
-            +   '<select data-act="rep" class="cp-cachehelp__select" style="max-width:220px">' + repOptions(r.assigned_rep_name_norm) + '</select>'
+            +   '<select data-act="rep" class="cp-rep-select" style="max-width:220px">' + repOptions(r.assigned_rep_name_norm) + '</select>'
             +   '<button type="button" data-act="email" class="cp-cachehelp__btn cp-cachehelp__btn--is">Senda onboarding-póst</button>'
             + '</div>'
             + '<div data-act-feedback class="text-size-tiny" style="margin-top:6px;color:#555"></div>'
@@ -496,7 +500,9 @@
         return ''
             + '<h1 class="cp-heading">Virkjun á vef</h1>'
             + '<div class="cp-chips" data-act-kpis></div>'
+             + '<div class="padding-1rem"></div>'
             + '<div class="cp-chips" data-act-chips></div>'
+            + '<div class="padding-1rem"></div>'
             + '<div class="cp-grid"><div class="cp-sidebar">'
             +   '<div data-act-head></div>'           // cp-list-head (sibling of the list, like Forgangslisti)
             +   '<div class="cp-list extended" data-act-list></div>'
