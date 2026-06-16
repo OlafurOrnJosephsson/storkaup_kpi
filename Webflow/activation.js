@@ -219,16 +219,20 @@
             + '</div>';
     }
 
+    // Mirrors the Forgangslisti header markup exactly (cp-list-head prioritylist +
+    // kpi-product-list-header cells, with is-sort-active/is-asc|is-desc for the
+    // active column) so the native Webflow header styling applies. The classes
+    // live in the Webflow site CSS, not dashboard-theme.css.
     function headerHtml() {
-        return '<div class="cp-row cp-row-prioritylist" data-act-head style="background:#fafafa;border-bottom:1px solid #e9e9e9">'
+        return '<div class="cp-list-head prioritylist">'
             + COLS.map(function(c) {
                 var active = c.key === state.sortKey;
-                var arrow = active ? (state.sortDir === "asc" ? " ↑" : " ↓") : "";
-                var cls = "flex" + (c.first ? " gap--5rem" : "");
+                var cls = "flex" + (c.first ? " gap--25rem" : "");
+                var hcls = "kpi-product-list-header sort"
+                    + (active ? " is-sort-active " + (state.sortDir === "asc" ? "is-asc" : "is-desc") : "");
                 return '<div class="' + cls + '">'
-                    + '<div class="kpi-product-list-header sort" data-sort="' + c.key + '"'
-                    + ' style="cursor:pointer' + (active ? ";font-weight:600" : "") + '">'
-                    + esc(c.label) + arrow + '</div></div>';
+                    + '<div class="' + hcls + '" data-sort="' + c.key + '" style="cursor:pointer">'
+                    + esc(c.label) + '</div></div>';
             }).join("")
             + '</div>';
     }
@@ -246,6 +250,11 @@
         return as.localeCompare(bs, "is") * dir;
     }
 
+    function renderHeader(root) {
+        var h = root.querySelector("[data-act-head]");
+        if (h) h.innerHTML = headerHtml();
+    }
+
     function renderList(root) {
         var list = root.querySelector("[data-act-list]");
         if (!list) return;
@@ -255,7 +264,7 @@
         var note = rows.length > shown.length
             ? '<div class="text-size-tiny" style="padding:8px 16px;color:#888">Sýni ' + shown.length + ' af ' + rows.length + ' — þrengdu með flokki.</div>'
             : "";
-        list.innerHTML = headerHtml() + note + shown.map(rowHtml).join("");
+        list.innerHTML = note + shown.map(rowHtml).join("");
     }
 
     function rowByKey(key) {
@@ -433,6 +442,7 @@
                     state.sortKey = key;
                     state.sortDir = (key === "web_orders_count" || key === "days_since_last_order") ? "desc" : "asc";
                 }
+                renderHeader(root);
                 renderList(root);
                 return;
             }
@@ -485,6 +495,7 @@
             + '<h1 class="cp-heading">Virkjun á vef</h1>'
             + '<div class="cp-chips" data-act-kpis></div>'
             + '<div class="cp-chips" data-act-chips></div>'
+            + '<div data-act-head></div>'             // cp-list-head rendered here (sibling of the list)
             + '<div class="cp-list extended" data-act-list></div>';
     }
 
@@ -499,6 +510,7 @@
             await loadAggregates();
             renderKpis(root);
             renderChips(root);
+            renderHeader(root);
             await loadState(state.activeState);
             renderList(root);
         } catch (e) {
