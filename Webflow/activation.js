@@ -34,6 +34,10 @@
     ];
     var STATE_LABEL = STATES.reduce(function(m, s) { m[s.key] = s.label; return m; }, {});
 
+    // Override the Webflow .prioritylist 10-col template with our 7 columns so the
+    // row fills full width (inline style beats the class). Same order as COLS.
+    var GRID = "grid-template-columns:1.6fr 1.1fr 1fr .7fr 1fr .9fr 1.2fr";
+
     // Columns shown in the list (and the header). num=true → numeric sort.
     var COLS = [
         { key: "company_name",          label: "Nafn",          first: true },
@@ -166,8 +170,7 @@
         if (!wrap) return;
         wrap.innerHTML = STATES.map(function(s) {
             var on = s.key === state.activeState;
-            return '<a href="#" data-act-chip="' + s.key + '" class="cp-chip"'
-                + (on ? ' data-active="1" style="font-weight:600"' : '') + '>'
+            return '<a href="#" data-act-chip="' + s.key + '" class="cp-chip' + (on ? ' is-active' : '') + '">'
                 + '<div>' + esc(s.label) + ' (' + (state.counts[s.key] || 0) + ')</div></a>';
         }).join("");
     }
@@ -188,7 +191,7 @@
         var rep = r.assigned_rep_name_norm || "-";
         var prio = r.priority_status === "priority" ? "Forgangur"
                  : (r.priority_status === "nonpriority" ? "Ekki forgangur" : "-");
-        var html = '<div class="cp-row cp-row-prioritylist" data-act-row="' + esc(r.customer_key) + '">'
+        var html = '<div class="cp-row cp-row-prioritylist" style="' + GRID + '" data-act-row="' + esc(r.customer_key) + '">'
             + '<div class="flex gap--5rem">'
             +   '<a href="#" data-act-open="' + esc(r.customer_key) + '" class="cp-action-btn w-inline-block">'
             +     '<div class="text-size-tiny">' + (isSel ? "▾" : "▸") + '</div></a>'
@@ -224,15 +227,14 @@
     // active column) so the native Webflow header styling applies. The classes
     // live in the Webflow site CSS, not dashboard-theme.css.
     function headerHtml() {
-        return '<div class="cp-list-head prioritylist">'
+        return '<div class="cp-list-head prioritylist" style="' + GRID + '">'
             + COLS.map(function(c) {
                 var active = c.key === state.sortKey;
+                var arrow = active ? (state.sortDir === "asc" ? " ↑" : " ↓") : "";
                 var cls = "flex" + (c.first ? " gap--25rem" : "");
-                var hcls = "kpi-product-list-header sort"
-                    + (active ? " is-sort-active " + (state.sortDir === "asc" ? "is-asc" : "is-desc") : "");
                 return '<div class="' + cls + '">'
-                    + '<div class="' + hcls + '" data-sort="' + c.key + '" style="cursor:pointer">'
-                    + esc(c.label) + '</div></div>';
+                    + '<div class="kpi-product-list-header sort" data-sort="' + c.key + '">'
+                    + esc(c.label) + arrow + '</div></div>';
             }).join("")
             + '</div>';
     }
@@ -495,14 +497,17 @@
             + '<h1 class="cp-heading">Virkjun á vef</h1>'
             + '<div class="cp-chips" data-act-kpis></div>'
             + '<div class="cp-chips" data-act-chips></div>'
-            + '<div data-act-head></div>'             // cp-list-head rendered here (sibling of the list)
-            + '<div class="cp-list extended" data-act-list></div>';
+            + '<div class="cp-grid"><div class="cp-sidebar">'
+            +   '<div data-act-head></div>'           // cp-list-head (sibling of the list, like Forgangslisti)
+            +   '<div class="cp-list extended" data-act-list></div>'
+            + '</div></div>';
     }
 
     // ----- init ---------------------------------------------------------------
     async function init() {
         var root = document.querySelector('[data-module="web-activation"]');
         if (!root) return;
+        root.classList.add("customer-profiles-module"); // page padding to match the Forgangslisti
         root.innerHTML = shell();
         wire(root);
         root.setAttribute("aria-busy", "true");
