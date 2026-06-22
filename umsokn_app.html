@@ -60,6 +60,7 @@ body {
   padding: 1px 7px;
   border-radius: 10px;
   margin-left: 6px;
+  min-height:1rem;min-width:1rem;
 }
 .tab.active .tab-badge { background: var(--sk-blue-bg); color: var(--sk-blue); }
 
@@ -416,6 +417,18 @@ function setRefreshStatus(text) {
 
 // silent=true → background poll: no spinner, and only re-render if the data
 // actually changed (avoids flicker / scroll jumps while the user is reading).
+// Tell the embedding Webflow page the current pending total so the nav badge
+// updates instantly (no refresh). Reads the live tab badges — accurate after
+// both a data load and an optimistic action removal.
+function notifyParentPending() {
+  try {
+    if (!window.parent || window.parent === window) return;
+    var raf = parseInt((document.getElementById('badge-rafraen') || {}).textContent, 10) || 0;
+    var ums = parseInt((document.getElementById('badge-umsokn') || {}).textContent, 10) || 0;
+    window.parent.postMessage({ type: 'storkaup:pending', total: raf + ums }, '*');
+  } catch (e) {}
+}
+
 function loadData(silent) {
   if (!silent) document.getElementById('loading').style.display = '';
   setRefreshStatus(silent ? '' : 'Sæki…');
@@ -432,6 +445,7 @@ function loadData(silent) {
     applyActiveTab();
     setRefreshStatus('Uppfært ' + fmtClock(new Date()));
     if (silent && changed) showToast('Listinn uppfærður — nýjar/breyttar umsóknir');
+    notifyParentPending();
   }).catch(function(err) {
     if (!silent) {
       document.getElementById('loading').innerHTML =
@@ -515,6 +529,7 @@ function confirmRafraen(i) {
             if (el) el.remove();
             var left = document.querySelectorAll('#tab-rafraen tbody tr:not(.done)').length;
             document.getElementById('badge-rafraen').textContent = left;
+            notifyParentPending();
           }, 600);
           showToast('Póstur sendur til ' + r.email);
         })
@@ -597,6 +612,7 @@ function confirmDone(i) {
             appData.umsokn[i]._done = true;
             var left = appData.umsokn.filter(function(x) { return x && !x._done; }).length;
             document.getElementById('badge-umsokn').textContent = left;
+            notifyParentPending();
           }, 600);
           showToast(esc(r.company || r.email) + ' fært í "BC til - stofnað"');
         })
@@ -626,6 +642,7 @@ function confirmUmsokn(i) {
             appData.umsokn[i]._done = true;
             var left = appData.umsokn.filter(function(x) { return x && !x._done; }).length;
             document.getElementById('badge-umsokn').textContent = left;
+            notifyParentPending();
             }, 600);
           appData.umsokn.forEach(function(x) { if (x && x.rowIndex > r.rowIndex) x.rowIndex--; });
           showToast('Póstur sendur til ' + r.email);

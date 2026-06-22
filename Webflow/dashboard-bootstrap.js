@@ -32,6 +32,19 @@
       refresh();
     }
     setInterval(function () { if (!document.hidden) refresh(); }, 300000); // 5 mín
+
+    // Instant update: the embedded umsokn app posts its current total after every
+    // load/action, so the badge changes without a page refresh.
+    window.addEventListener("message", function (e) {
+      var d = e && e.data;
+      if (d && d.type === "storkaup:pending" && typeof d.total !== "undefined") {
+        paint(Number(d.total) || 0);
+      }
+    });
+    // Catch up when returning to the tab.
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) refresh();
+    });
   })();
 
   if (document.body && String(document.body.getAttribute("data-dashboard-type") || "").trim().toLowerCase() === "website") return;
