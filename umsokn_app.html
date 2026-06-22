@@ -242,6 +242,24 @@ tr.done td { opacity: 0.4; }
 .bc-web-inactive { background: #fff3cd; color: #856404; }
 .bc-web-active   { background: #d4edda; color: #155724; }
 
+/* ── Cell sub-content, badges, header (used by the generated rows) ── */
+.cell-sub       { font-size: 11px; color: #5b5b5b; }
+.cell-sub-mt    { font-size: 11px; color: #5b5b5b; margin-top: 4px; }
+.cell-kt        { font-size: 11px; color: #10069f; font-family: monospace; text-decoration: none; }
+.cell-kt-muted  { font-size: 11px; color: #888; font-family: monospace; }
+.badge-person   { display: inline-block; margin-top: 4px; background: #fff3cd; color: #856404; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
+.pay-badge      { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.pay-badge--acc  { background: #e8eaff; color: #10069f; }
+.pay-badge--cash { background: #f0f0f0; color: #555; }
+.score-cell     { white-space: nowrap; }
+.err-text       { color: #c23340; }
+
+.app-header           { border-bottom: 1px solid #e9e9e9; background: #fff; }
+.app-header__row      { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-right: 16px; }
+.app-header .tabs     { border-bottom: none; flex: 1; min-width: 0; }
+.app-header__actions  { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.refresh-status       { font-size: 11px; color: #888; }
+
 /* ── Mobile: töflur verða spjöld (card layout) ── */
 @media (max-width: 640px) {
   .content { padding: 12px 16px; }
@@ -287,9 +305,9 @@ tr.done td { opacity: 0.4; }
 </head>
 <body>
 
-<div style="border-bottom:1px solid #e9e9e9; background:#fff;">
-  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding-right:16px;">
-    <div class="tabs" style="border-bottom:none; flex:1; min-width:0;">
+<div class="app-header">
+  <div class="app-header__row">
+    <div class="tabs">
       <div class="tab" data-tab="rafraen" onclick="switchTab('rafraen')">
         Rafræn <span class="tab-badge" id="badge-rafraen">0</span>
       </div>
@@ -297,8 +315,8 @@ tr.done td { opacity: 0.4; }
         Umsóknir <span class="tab-badge" id="badge-umsokn">0</span>
       </div>
     </div>
-    <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
-      <span id="refresh-status" style="font-size:11px; color:#888;"></span>
+    <div class="app-header__actions">
+      <span id="refresh-status" class="refresh-status"></span>
       <button class="btn btn-ghost" id="refresh-btn" onclick="loadData(false)">↻</button>
       <button class="btn btn-ghost" id="sync-btn" onclick="syncMagento()">⟳ Samstilla</button>
     </div>
@@ -406,7 +424,7 @@ function loadData(silent) {
   }).catch(function(err) {
     if (!silent) {
       document.getElementById('loading').innerHTML =
-        '<span style="color:#c23340;">Villa við að sækja gögn: ' + (err.message || err) + '</span>';
+        '<span class="err-text">Villa við að sækja gögn: ' + (err.message || err) + '</span>';
     }
     setRefreshStatus('Villa við uppfærslu');
   });
@@ -428,15 +446,15 @@ function renderRafraen(rows) {
       + '<td class="date-cell hide-mobile" data-label="Dags.">' + fmtDate(r.date) + '</td>'
       + '<td data-label="Fyrirtæki">'
         + '<div class="company-cell">' + esc(r.company) + '</div>'
-        + (r.companyKt ? '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" style="font-size:11px;color:#10069f;font-family:monospace;text-decoration:none;">' + esc(r.companyKt) + '</a>' : '')
+        + (r.companyKt ? '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" class="cell-kt">' + esc(r.companyKt) + '</a>' : '')
       + '</td>'
       + '<td class="name-cell" data-label="Nafn">'
         + '<div>' + esc(r.name) + '</div>'
-        + (r.personKt ? '<div style="font-size:11px;color:#888;font-family:monospace;">' + esc(r.personKt) + '</div>' : '')
+        + (r.personKt ? '<div class="cell-kt-muted">' + esc(r.personKt) + '</div>' : '')
       + '</td>'
       + '<td class="email-cell" data-label="Netfang">'
         + esc(r.email)
-        + (r.phone ? '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.phone) + '</div>' : '')
+        + (r.phone ? '<div class="cell-sub">' + esc(r.phone) + '</div>' : '')
       + '</td>'
       + '<td data-label="BC staða">' + bcBadge(r.bcFound, r.bcWebshopActive) + '</td>'
       + '<td class="action-cell" data-label="Aðgerð">'
@@ -510,25 +528,25 @@ function renderUmsokn(rows) {
       + '<td class="date-cell hide-mobile" data-label="Dags.">' + fmtDate(r.date) + '</td>'
       + '<td data-label="Fyrirtæki">'
         + '<div class="company-cell">' + esc(r.company) + '</div>'
-        + '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" style="font-size:11px;color:#10069f;font-family:monospace;text-decoration:none;">' + esc(r.companyKt) + '</a>'
-        + (r.companyEmail ? '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.companyEmail) + '</div>' : '')
-        + ((r.address || r.city) ? '<div style="font-size:11px;color:#5b5b5b;">' + esc([r.address, r.city, r.postal].filter(Boolean).join(', ')) + '</div>' : '')
+        + '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" class="cell-kt">' + esc(r.companyKt) + '</a>'
+        + (r.companyEmail ? '<div class="cell-sub">' + esc(r.companyEmail) + '</div>' : '')
+        + ((r.address || r.city) ? '<div class="cell-sub">' + esc([r.address, r.city, r.postal].filter(Boolean).join(', ')) + '</div>' : '')
       + '</td>'
       + '<td class="name-cell" data-label="Nafn">'
         + '<div>' + esc(r.name) + '</div>'
-        + (r.email   ? '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.email) + '</div>' : '')
-        + (r.personKt ? '<div style="font-size:11px;color:#888;font-family:monospace;">' + esc(r.personKt) + '</div>' : '')
-        + (r.phone   ? '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.phone) + '</div>' : '')
+        + (r.email   ? '<div class="cell-sub">' + esc(r.email) + '</div>' : '')
+        + (r.personKt ? '<div class="cell-kt-muted">' + esc(r.personKt) + '</div>' : '')
+        + (r.phone   ? '<div class="cell-sub">' + esc(r.phone) + '</div>' : '')
       + '</td>'
       + '<td class="payment-cell hide-mobile" data-label="Greiðsla">'
         + paymentBadge(r.payment)
-        + (r.billingInfo ? '<div style="font-size:11px;color:#5b5b5b;margin-top:4px;">' + esc(r.billingInfo) + '</div>' : '')
+        + (r.billingInfo ? '<div class="cell-sub-mt">' + esc(r.billingInfo) + '</div>' : '')
       + '</td>'
       + '<td data-label="BC staða">'
         + bcBadge(r.bcFound, r.bcWebshopActive)
-        + (isPersonalKt(r.companyKt) ? '<br><span style="display:inline-block;margin-top:4px;background:#fff3cd;color:#856404;font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;">Einstaklingur</span>' : '')
+        + (isPersonalKt(r.companyKt) ? '<br><span class="badge-person">Einstaklingur</span>' : '')
       + '</td>'
-      + '<td class="hide-mobile" data-label="Skor" style="white-space:nowrap;">'
+      + '<td class="hide-mobile score-cell" data-label="Skor">'
         + '<input class="score-input" id="score-' + i + '" type="number" min="1" max="10" placeholder="1-10" value="' + esc(r.creditScore) + '" onchange="onScoreChange(' + i + ')" />'
         + '<div id="score-badge-' + i + '">' + scoreBadge(r.creditScore) + '</div>'
       + '</td>'
@@ -558,7 +576,7 @@ function confirmDone(i) {
   openModal(
     'Merkja sem klárað',
     instructions,
-    '<strong>' + esc(r.company || r.email) + '</strong>' + (r.companyKt ? '<br><span style="font-size:12px;color:#5b5b5b;">' + esc(r.companyKt) + '</span>' : ''),
+    '<strong>' + esc(r.company || r.email) + '</strong>' + (r.companyKt ? '<br><span class="cell-sub">' + esc(r.companyKt) + '</span>' : ''),
     function() {
       run('webapp_markUmsokn_Done', [{ rowIndex: r.rowIndex, email: r.email }])
         .then(function() {
@@ -651,8 +669,8 @@ function bcBadge(found, webshopActive) {
 function paymentBadge(p) {
   if (!p) return '—';
   if (p.toLowerCase().indexOf('reiknings') >= 0)
-    return '<span style="background:#e8eaff;color:#10069f;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">Reikningur</span>';
-  return '<span style="background:#f0f0f0;color:#555;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">' + esc(p) + '</span>';
+    return '<span class="pay-badge pay-badge--acc">Reikningur</span>';
+  return '<span class="pay-badge pay-badge--cash">' + esc(p) + '</span>';
 }
 
 // ── Modal ──────────────────────────────────────────────────────────────────
@@ -713,7 +731,7 @@ function syncMagento() {
 
 // Background poll for new applications. Skipped when the tab is hidden, a modal
 // is open, or a long op (sync) is running — so it never interrupts an action.
-var POLL_MS = 180000;  // 3 mín — umsóknir koma sjaldan; handvirkt Endurhlaða + focus-catch-up duga inn á milli
+var POLL_MS = 900000;  // 15 mín — ~10 umsóknir/dag; handvirkt Endurhlaða + focus-catch-up duga inn á milli
 function canPoll() {
   return !document.hidden
     && !busy
