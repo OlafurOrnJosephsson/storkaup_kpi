@@ -5,19 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Stórkaup — Umsóknir</title>
 <style>
+/* ── Brand tokens — speglar Webflow brand (--blue=#10069f o.s.frv.).
+   Breyttu þema HÉR á einum stað. ── */
+:root {
+  --sk-blue:    #10069f;   /* Webflow --blue */
+  --sk-blue-bg: #e8eaff;   /* blár blær (badge/pill bakgrunnur) */
+  --sk-border:  #e9e9e9;   /* Webflow --light-gray-border */
+  --sk-text:    #282828;   /* Webflow --black */
+  --sk-muted:   #5b5b5b;   /* Webflow --black-700 */
+  --sk-font:    "SF Pro Text", -apple-system, Arial, sans-serif;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: "SF Pro Text", -apple-system, Arial, sans-serif;
+  font-family: var(--sk-font);
   font-size: 14px;
   background:transparent;
-  color: #282828;
+  color: var(--sk-text);
 }
 
 /* ── Tabs ── */
 .tabs {
   background:transparent;
-  border-bottom: 1px solid #e9e9e9;
+  border-bottom: 1px solid var(--sk-border);
   padding: 0;
   display: flex;
   gap: 0;
@@ -33,40 +44,40 @@ body {
   cursor: pointer;
   font-size: 13px;
   font-weight: 400;
-  color: #282828;
+  color: var(--sk-text);
   border-bottom: 2px solid transparent;
   transition: all 0.15s;
   user-select: none;
 }
-.tab:hover { color: #282828; }
-.tab.active { color: #10069f; border-bottom-color: #10069f; font-weight: 700; }
+.tab:hover { color: var(--sk-text); }
+.tab.active { color: var(--sk-blue); border-bottom-color: var(--sk-blue); font-weight: 700; }
 .tab-badge {
   display: inline-block;
   background: #f0f0f0;
-  color: #5b5b5b;
+  color: var(--sk-muted);
   font-size: 11px;
   font-weight: 600;
   padding: 1px 7px;
   border-radius: 10px;
   margin-left: 6px;
 }
-.tab.active .tab-badge { background: #e8eaff; color: #10069f; }
+.tab.active .tab-badge { background: var(--sk-blue-bg); color: var(--sk-blue); }
 
 /* ── Content ── */
-.content { padding: 24px 32px; }
+.content { padding: 24px 0px; }
 
 /* ── Loading ── */
 .loading {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #5b5b5b;
+  color: var(--sk-muted);
   padding: 40px 0;
 }
 .spinner {
   width: 20px; height: 20px;
-  border: 2px solid #e9e9e9;
-  border-top-color: #10069f;
+  border: 2px solid var(--sk-border);
+  border-top-color: var(--sk-blue);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -76,7 +87,7 @@ body {
 .empty {
   text-align: center;
   padding: 48px 0;
-  color: #5b5b5b;
+  color: var(--sk-muted);
 }
 .empty-icon { font-size: 32px; margin-bottom: 8px; }
 .empty p { font-size: 13px; }
@@ -84,7 +95,7 @@ body {
 /* ── Table ── */
 .table-wrap {
   background: #fff;
-  border: 1px solid #e9e9e9;
+  border: 1px solid var(--sk-border);
   border-radius: 8px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -96,10 +107,10 @@ th {
   text-align: left;
   font-size: 11px;
   font-weight: 700;
-  color: #5b5b5b;
+  color: var(--sk-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  border-bottom: 1px solid #e9e9e9;
+  border-bottom: 1px solid var(--sk-border);
 }
 td {
   padding: 12px 14px;
@@ -109,11 +120,11 @@ td {
 tr:last-child td { border-bottom: none; }
 tr.done td { opacity: 0.4; }
 
-.date-cell { color: #5b5b5b; font-size: 12px; white-space: nowrap; }
+.date-cell { color: var(--sk-muted); font-size: 12px; white-space: nowrap; }
 .company-cell { font-weight: 600; }
-.kt-cell { color: #5b5b5b; font-size: 12px; font-family: monospace; }
+.kt-cell { color: var(--sk-muted); font-size: 12px; font-family: monospace; }
 .name-cell { }
-.email-cell { color: #5b5b5b; font-size: 12px; }
+.email-cell { color: var(--sk-muted); font-size: 12px; }
 .payment-cell { font-size: 12px; }
 
 /* ── BC badge ── */
@@ -145,23 +156,23 @@ tr.done td { opacity: 0.4; }
 }
 .btn:hover { opacity: 0.85; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn-primary { background: #10069f; color: #fff; }
+.btn-primary { background: var(--sk-blue); color: #fff; }
 .btn-ghost {
-  background: #f5f5f5; color: #282828;
-  border: 1px solid #e9e9e9;
+  background: #f5f5f5; color: var(--sk-text);
+  border: 1px solid var(--sk-border);
 }
 
 /* ── Credit score input ── */
 .score-input {
   width: 52px;
   padding: 4px 6px;
-  border: 1px solid #e9e9e9;
+  border: 1px solid var(--sk-border);
   border-radius: 6px;
   font-size: 13px;
   text-align: center;
   background: #fff;
 }
-.score-input:focus { outline: 2px solid #10069f; }
+.score-input:focus { outline: 2px solid var(--sk-blue); }
 .score-badge {
   display: inline-block;
   font-size: 12px;
@@ -179,14 +190,14 @@ tr.done td { opacity: 0.4; }
 .template-select {
   font-size: 12px;
   padding: 5px 8px;
-  border: 1px solid #e9e9e9;
+  border: 1px solid var(--sk-border);
   border-radius: 6px;
   background: #fff;
-  color: #282828;
+  color: var(--sk-text);
   cursor: pointer;
   margin-right: 6px;
 }
-.template-select:focus { outline: 2px solid #10069f; }
+.template-select:focus { outline: 2px solid var(--sk-blue); }
 
 /* ── Modal ── */
 .modal-overlay {
@@ -210,7 +221,7 @@ tr.done td { opacity: 0.4; }
 .modal p { color: #444; line-height: 1.6; margin-bottom: 6px; font-size: 13px; }
 .modal-info {
   background: #f5f6ff;
-  border: 1px solid #e9e9e9;
+  border: 1px solid var(--sk-border);
   border-radius: 6px;
   padding: 10px 14px;
   margin: 14px 0;
@@ -223,7 +234,7 @@ tr.done td { opacity: 0.4; }
 .toast {
   position: fixed;
   bottom: 24px; right: 24px;
-  background: #282828;
+  background: var(--sk-text);
   color: #fff;
   padding: 12px 18px;
   border-radius: 8px;
@@ -243,18 +254,18 @@ tr.done td { opacity: 0.4; }
 .bc-web-active   { background: #d4edda; color: #155724; }
 
 /* ── Cell sub-content, badges, header (used by the generated rows) ── */
-.cell-sub       { font-size: 11px; color: #5b5b5b; }
-.cell-sub-mt    { font-size: 11px; color: #5b5b5b; margin-top: 4px; }
-.cell-kt        { font-size: 11px; color: #10069f; font-family: monospace; text-decoration: none; }
+.cell-sub       { font-size: 11px; color: var(--sk-muted); }
+.cell-sub-mt    { font-size: 11px; color: var(--sk-muted); margin-top: 4px; }
+.cell-kt        { font-size: 11px; color: var(--sk-blue); font-family: monospace; text-decoration: none; }
 .cell-kt-muted  { font-size: 11px; color: #888; font-family: monospace; }
 .badge-person   { display: inline-block; margin-top: 4px; background: #fff3cd; color: #856404; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
 .pay-badge      { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-.pay-badge--acc  { background: #e8eaff; color: #10069f; }
+.pay-badge--acc  { background: var(--sk-blue-bg); color: var(--sk-blue); }
 .pay-badge--cash { background: #f0f0f0; color: #555; }
 .score-cell     { white-space: nowrap; }
 .err-text       { color: #c23340; }
 
-.app-header           { border-bottom: 1px solid #e9e9e9; background: #fff; }
+.app-header           { border-bottom: 1px solid var(--sk-border); background: #fff; }
 .app-header__row      { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-right: 16px; }
 .app-header .tabs     { border-bottom: none; flex: 1; min-width: 0; }
 .app-header__actions  { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -271,7 +282,7 @@ tr.done td { opacity: 0.4; }
   thead { display: none; }
 
   tbody tr {
-    border: 1px solid #e9e9e9;
+    border: 1px solid var(--sk-border);
     border-radius: 10px;
     background: #fff;
     margin-bottom: 12px;
