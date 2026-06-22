@@ -1,5 +1,39 @@
 (function () {
   if (typeof window === "undefined" || typeof document === "undefined") return;
+
+  // ── Pending-applications nav badge ────────────────────────────────────────
+  // Runs on EVERY page (before the website early-return below) so the count
+  // shows site-wide. Populates [data-storkaup-pending] from the GAS web app;
+  // hidden when zero. Degrades silently if gasWebAppUrl is unset or the call fails.
+  (function () {
+    function paint(n) {
+      var els = document.querySelectorAll("[data-storkaup-pending]");
+      for (var i = 0; i < els.length; i += 1) {
+        els[i].textContent = n > 0 ? String(n) : "";
+        els[i].style.display = n > 0 ? "" : "none";
+      }
+    }
+    function refresh() {
+      var cfg = window.STORKAUP_CONFIG || {};
+      if (!cfg.gasWebAppUrl) return;
+      fetch(cfg.gasWebAppUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        redirect: "follow",
+        body: JSON.stringify({ action: "application_counts", key: cfg.gasKey || "" })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (out) { if (out && out.ok) paint(Number(out.total || 0)); })
+        .catch(function () {});
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", refresh);
+    } else {
+      refresh();
+    }
+    setInterval(function () { if (!document.hidden) refresh(); }, 300000); // 5 mín
+  })();
+
   if (document.body && String(document.body.getAttribute("data-dashboard-type") || "").trim().toLowerCase() === "website") return;
 
   function ensureGlobalLoader() {

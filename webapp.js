@@ -25,7 +25,42 @@ function doPost(e) {
   if (action === 'list_templates')      return jsonResponse_(listTemplatesViaApi_(body));
   if (action === 'list_recipients')     return jsonResponse_(listRecipientsViaApi_(body));
   if (action === 'send_template_email') return jsonResponse_(sendTemplateEmailViaApi_(body));
+  if (action === 'application_counts')  return jsonResponse_(applicationCountsViaApi_(body));
   return jsonResponse_({ error: 'Unknown action' });
+}
+
+// Light count of pending applications for the nav badge — counts rows with an
+// email in each main tab (matches what the umsokn app lists), no BC lookup.
+function applicationCountsViaApi_(body) {
+  var cfg = loadConfig_();
+  if (!isApiKeyValid_(cfg, body.key)) return { error: 'Unauthorized' };
+
+  var raf = 0, ums = 0;
+  var rafSrc = APP_SOURCES.find(function (s) { return s.key === 'RAFRAEN_INNSKRANING'; });
+  var umsSrc = APP_SOURCES.find(function (s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
+  try {
+    var rafId = cfg.SHEETS && cfg.SHEETS.RAFRAEN_INNSKRANING && cfg.SHEETS.RAFRAEN_INNSKRANING.ID;
+    if (rafId) raf = webapp_countRowsWithEmail_(SpreadsheetApp.openById(rafId).getSheets()[0], rafSrc.emailHeader);
+  } catch (e) {}
+  try {
+    var umsId = cfg.SHEETS && cfg.SHEETS.UMSOKN_VIDSKIPTI && cfg.SHEETS.UMSOKN_VIDSKIPTI.ID;
+    if (umsId) {
+      var us = SpreadsheetApp.openById(umsId).getSheetByName(umsSrc.mainTab);
+      ums = webapp_countRowsWithEmail_(us, umsSrc.emailHeader);
+    }
+  } catch (e) {}
+  return { ok: true, rafraen: raf, umsokn: ums, total: raf + ums };
+}
+
+function webapp_countRowsWithEmail_(sheet, emailHeader) {
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var idx = headers.indexOf(emailHeader);
+  if (idx === -1) return Math.max(0, sheet.getLastRow() - 1);
+  var col = sheet.getRange(2, idx + 1, sheet.getLastRow() - 1, 1).getValues();
+  var n = 0;
+  for (var i = 0; i < col.length; i++) { if (String(col[i][0] || '').trim()) n++; }
+  return n;
 }
 
 // Templates available to send — from the registry in email.js (single source).
