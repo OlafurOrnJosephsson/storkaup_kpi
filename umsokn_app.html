@@ -24,7 +24,7 @@ body {
 }
 .tab {
   padding: 0 1rem;
-  min-width:230px;
+  min-width: 160px;
   cursor: pointer;
   font-size: 1rem;
   font-weight: 400;
@@ -86,7 +86,8 @@ body {
   background: #fff;
   border: 1px solid #e9e9e9;
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 table { width: 100%; border-collapse: collapse; }
 thead { background: #fafafa; }
@@ -236,23 +237,41 @@ tr.done td { opacity: 0.4; }
 }
 .toast.show { transform: translateY(0); opacity: 1; }
 .toast.error { background: #c23340; }
+
+/* ── BC badge variants ── */
+.bc-web-inactive { background: #fff3cd; color: #856404; }
+.bc-web-active   { background: #d4edda; color: #155724; }
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+  .content { padding: 12px 16px; }
+  .tab { min-width: 0; flex: 1; font-size: 12px; padding: 0 8px; height: 2.6rem; }
+  th, td { padding: 10px 8px; }
+  .hide-mobile { display: none !important; }
+  .action-cell { white-space: normal; }
+  .template-select { font-size: 11px; max-width: 140px; margin-bottom: 4px; }
+  .btn { padding: 6px 10px; font-size: 11px; }
+  .score-input { width: 44px; }
+}
 </style>
 </head>
 <body>
 
-<div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #e9e9e9; background:#fff;">
-<div class="tabs" style="border-bottom:none;">
-  <div class="tab" data-tab="rafraen" onclick="switchTab('rafraen')">
-    Rafræn Innskráning <span class="tab-badge" id="badge-rafraen">0</span>
-  </div>
-  <div class="tab active" data-tab="umsokn" onclick="switchTab('umsokn')">
-    Umsókn um viðskipti <span class="tab-badge" id="badge-umsokn">0</span>
-  </div>
-</div>
-  <div style="padding-right:24px; display:flex; align-items:center; gap:12px;">
-    <span id="refresh-status" style="font-size:12px; color:#888;"></span>
-    <button class="btn btn-ghost" id="refresh-btn" onclick="loadData(false)">↻ Endurhlaða</button>
-    <button class="btn btn-ghost" id="sync-btn" onclick="syncMagento()">⟳ Samstilla</button>
+<div style="border-bottom:1px solid #e9e9e9; background:#fff;">
+  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding-right:16px;">
+    <div class="tabs" style="border-bottom:none; flex:1; min-width:0;">
+      <div class="tab" data-tab="rafraen" onclick="switchTab('rafraen')">
+        Rafræn <span class="tab-badge" id="badge-rafraen">0</span>
+      </div>
+      <div class="tab active" data-tab="umsokn" onclick="switchTab('umsokn')">
+        Umsóknir <span class="tab-badge" id="badge-umsokn">0</span>
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+      <span id="refresh-status" style="font-size:11px; color:#888;"></span>
+      <button class="btn btn-ghost" id="refresh-btn" onclick="loadData(false)">↻</button>
+      <button class="btn btn-ghost" id="sync-btn" onclick="syncMagento()">⟳ Samstilla</button>
+    </div>
   </div>
 </div>
 
@@ -373,10 +392,10 @@ function renderRafraen(rows) {
     return;
   }
   var html = '<div class="table-wrap"><table>'
-    + '<thead><tr><th>Dags.</th><th>Fyrirtæki</th><th>Nafn</th><th>Netfang</th><th>BC staða</th><th>Aðgerð</th></tr></thead><tbody>';
+    + '<thead><tr><th class="hide-mobile">Dags.</th><th>Fyrirtæki</th><th>Nafn</th><th class="hide-mobile">Netfang</th><th>BC staða</th><th>Aðgerð</th></tr></thead><tbody>';
   rows.forEach(function(r, i) {
     html += '<tr id="raf-row-' + i + '">'
-      + '<td class="date-cell">' + fmtDate(r.date) + '</td>'
+      + '<td class="date-cell hide-mobile">' + fmtDate(r.date) + '</td>'
       + '<td>'
         + '<div class="company-cell">' + esc(r.company) + '</div>'
         + (r.companyKt ? '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" style="font-size:11px;color:#10069f;font-family:monospace;text-decoration:none;">' + esc(r.companyKt) + '</a>' : '')
@@ -389,9 +408,10 @@ function renderRafraen(rows) {
         + esc(r.email)
         + (r.phone ? '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.phone) + '</div>' : '')
       + '</td>'
-      + '<td>' + bcBadge(r.bcFound) + '</td>'
+      + '<td>' + bcBadge(r.bcFound, r.bcWebshopActive) + '</td>'
       + '<td class="action-cell">'
       + '<button class="btn btn-primary" onclick="confirmRafraen(' + i + ')">Senda redirect</button>'
+      + '<button class="btn btn-ghost" style="margin-left:6px;" onclick="confirmRafraenNeedKt(' + i + ')">Vantar persónul. kt</button>'
       + '</td></tr>';
   });
   html += '</tbody></table></div>';
@@ -420,6 +440,29 @@ function confirmRafraen(i) {
   );
 }
 
+function confirmRafraenNeedKt(i) {
+  var r = appData.rafraen[i];
+  openModal(
+    'Vantar persónulega kennitölu',
+    'Sendir póst sem biður umsækjanda að skrá sig aftur með persónulegri kennitölu, og flytur línu í "Vantar kennitölu" flipa.',
+    '<strong>' + esc(r.name || r.email) + '</strong>' + esc(r.company ? ' — ' + r.company : '') + '<br>' + esc(r.email),
+    function() {
+      run('webapp_sendRafraenNeedKt', [{ rowIndex: r.rowIndex, email: r.email, name: r.name, company: r.company }])
+        .then(function() {
+          document.getElementById('raf-row-' + i).classList.add('done');
+          setTimeout(function() {
+            var el = document.getElementById('raf-row-' + i);
+            if (el) el.remove();
+            var left = document.querySelectorAll('#tab-rafraen tbody tr:not(.done)').length;
+            document.getElementById('badge-rafraen').textContent = left;
+          }, 600);
+          showToast('Póstur sendur til ' + r.email);
+        })
+        .catch(function(e) { showToast('Villa: ' + (e.message || e), true); });
+    }
+  );
+}
+
 // ── Render Umsókn ──────────────────────────────────────────────────────────
 
 function renderUmsokn(rows) {
@@ -430,10 +473,10 @@ function renderUmsokn(rows) {
     return;
   }
   var html = '<div class="table-wrap"><table>'
-    + '<thead><tr><th>Dags.</th><th>Fyrirtæki</th><th>Nafn</th><th>Greiðsla</th><th>BC staða</th><th>Skor</th><th>Aðgerð</th></tr></thead><tbody>';
+    + '<thead><tr><th class="hide-mobile">Dags.</th><th>Fyrirtæki</th><th>Nafn</th><th class="hide-mobile">Greiðsla</th><th>BC staða</th><th class="hide-mobile">Skor</th><th>Aðgerð</th></tr></thead><tbody>';
   rows.forEach(function(r, i) {
     html += '<tr id="ums-row-' + i + '">'
-      + '<td class="date-cell">' + fmtDate(r.date) + '</td>'
+      + '<td class="date-cell hide-mobile">' + fmtDate(r.date) + '</td>'
       + '<td>'
         + '<div class="company-cell">' + esc(r.company) + '</div>'
         + '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" style="font-size:11px;color:#10069f;font-family:monospace;text-decoration:none;">' + esc(r.companyKt) + '</a>'
@@ -446,15 +489,15 @@ function renderUmsokn(rows) {
         + (r.personKt ? '<div style="font-size:11px;color:#888;font-family:monospace;">' + esc(r.personKt) + '</div>' : '')
         + (r.phone   ? '<div style="font-size:11px;color:#5b5b5b;">' + esc(r.phone) + '</div>' : '')
       + '</td>'
-      + '<td class="payment-cell">'
+      + '<td class="payment-cell hide-mobile">'
         + paymentBadge(r.payment)
         + (r.billingInfo ? '<div style="font-size:11px;color:#5b5b5b;margin-top:4px;">' + esc(r.billingInfo) + '</div>' : '')
       + '</td>'
       + '<td>'
-        + bcBadge(r.bcFound)
+        + bcBadge(r.bcFound, r.bcWebshopActive)
         + (isPersonalKt(r.companyKt) ? '<br><span style="display:inline-block;margin-top:4px;background:#fff3cd;color:#856404;font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;">Einstaklingur</span>' : '')
       + '</td>'
-      + '<td style="white-space:nowrap;">'
+      + '<td class="hide-mobile" style="white-space:nowrap;">'
         + '<input class="score-input" id="score-' + i + '" type="number" min="1" max="10" placeholder="1-10" value="' + esc(r.creditScore) + '" onchange="onScoreChange(' + i + ')" />'
         + '<div id="score-badge-' + i + '">' + scoreBadge(r.creditScore) + '</div>'
       + '</td>'
@@ -478,15 +521,24 @@ function renderUmsokn(rows) {
 
 function confirmDone(i) {
   var r = appData.umsokn[i];
+  var instructions = r.bcWebshopActive
+    ? 'Bæta við Tengilið undir viðskiptavinaspjaldið í BC — syncast sjálfkrafa yfir í Magento.'
+    : 'Kveikja á "Viðskiptamaður vefverslunar" toggle í BC og bæta við Tengilið — syncast sjálfkrafa yfir í Magento.';
   openModal(
     'Merkja sem klárað',
-    'Viðkomandi er þegar til í BC. Þetta merkir línuna sem kláraða án þess að senda tölvupóst.',
+    instructions,
     '<strong>' + esc(r.company || r.email) + '</strong>' + (r.companyKt ? '<br><span style="font-size:12px;color:#5b5b5b;">' + esc(r.companyKt) + '</span>' : ''),
     function() {
-      run('webapp_markUmsokn_Done', [{ rowIndex: r.rowIndex }])
+      run('webapp_markUmsokn_Done', [{ rowIndex: r.rowIndex, email: r.email }])
         .then(function() {
           document.getElementById('ums-row-' + i).classList.add('done');
-          showToast(esc(r.company || r.email) + ' merkt sem klárað');
+          setTimeout(function() {
+            document.getElementById('ums-row-' + i).remove();
+            appData.umsokn[i]._done = true;
+            var left = appData.umsokn.filter(function(x) { return x && !x._done; }).length;
+            document.getElementById('badge-umsokn').textContent = left;
+          }, 600);
+          showToast(esc(r.company || r.email) + ' fært í "BC til - stofnað"');
         })
         .catch(function(e) { showToast('Villa: ' + (e.message || e), true); });
     },
@@ -559,10 +611,10 @@ function onScoreChange(i) {
   }
 }
 
-function bcBadge(found) {
-  return found
-    ? '<span class="bc-found">✓ Til í BC — má stofna</span>'
-    : '<span class="bc-notfound">— Ekki til</span>';
+function bcBadge(found, webshopActive) {
+  if (!found)        return '<span class="bc-notfound">— Ekki til í BC</span>';
+  if (webshopActive) return '<span class="bc-found bc-web-active">✓ Til í BC — vefur virkur</span>';
+  return '<span class="bc-found bc-web-inactive">✓ Til í BC — vefur óvirkur</span>';
 }
 
 function paymentBadge(p) {

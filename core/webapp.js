@@ -28,8 +28,8 @@ function webapp_getApplications() {
   var allKts = rafRows.concat(umsRows).map(function(r) { return r.companyKt; }).filter(Boolean);
   var bcMap  = webapp_batchBcLookup_(allKts);
 
-  rafRows.forEach(function(r) { r.bcFound = !!bcMap[r.companyKt]; r.bcName = bcMap[r.companyKt] || ''; });
-  umsRows.forEach(function(r) { r.bcFound = !!bcMap[r.companyKt]; r.bcName = bcMap[r.companyKt] || ''; });
+  rafRows.forEach(function(r) { var m = bcMap[r.companyKt]; r.bcFound = !!m; r.bcName = m ? m.name : ''; r.bcWebshopActive = m ? m.webshopActive : false; });
+  umsRows.forEach(function(r) { var m = bcMap[r.companyKt]; r.bcFound = !!m; r.bcName = m ? m.name : ''; r.bcWebshopActive = m ? m.webshopActive : false; });
 
   // Archive tabs
   var ARCHIVE = [
@@ -99,7 +99,7 @@ function webapp_batchBcLookup_(kennitolur) {
   if (!kts.length) return {};
   var conf = getSupabaseRestConfig_();
   var inList = kts.map(function(kt) { return '"' + kt + '"'; }).join(',');
-  var endpoint = conf.baseUrl + '/bc_customers_raw?select=company_id,company_name&company_id=in.(' + encodeURIComponent(inList) + ')';
+  var endpoint = conf.baseUrl + '/customer_analysis_raw?select=customer_id,customer_name,webshop_active&customer_id=in.(' + encodeURIComponent(inList) + ')';
   var res = UrlFetchApp.fetch(endpoint, {
     method: 'get',
     headers: { apikey: conf.serviceRole, Authorization: 'Bearer ' + conf.serviceRole, 'Accept-Profile': 'raw' },
@@ -108,7 +108,9 @@ function webapp_batchBcLookup_(kennitolur) {
   if (res.getResponseCode() !== 200) return {};
   var rows = safeJsonParse_(res.getContentText(), []);
   var map = {};
-  if (Array.isArray(rows)) rows.forEach(function(r) { map[String(r.company_id)] = r.company_name || ''; });
+  if (Array.isArray(rows)) rows.forEach(function(r) {
+    map[String(r.customer_id)] = { name: r.customer_name || '', webshopActive: !!r.webshop_active };
+  });
   return map;
 }
 
@@ -160,6 +162,37 @@ function webapp_sendRafraenRedirect(rowData) {
   return { ok: true, removed: idx > 0 };
 }
 
+// Applicant entered the company kennitala in both fields — ask them to resubmit
+// with their personal kennitala. Archives to "Vantar kennitölu" (re-found by email).
+function webapp_sendRafraenNeedKt(rowData) {
+  var cfg     = loadConfig_();
+  var src     = APP_SOURCES.find(function(s) { return s.key === 'RAFRAEN_INNSKRANING'; });
+  var sheetId = cfg.SHEETS.RAFRAEN_INNSKRANING.ID;
+  var ss      = SpreadsheetApp.openById(sheetId);
+  var sheet   = ss.getSheets()[0];
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+  GmailApp.sendEmail(
+    rowData.email,
+    'Vantar persónulega kennitölu — umsókn um rafræna innskráningu',
+    buildRafraenNeedKtPlain_(rowData.name),
+    { htmlBody: buildRafraenNeedKtHtml_(rowData.name), from: 'vefur@storkaup.is', name: 'Stórkaup ehf' }
+  );
+
+  var idx = webapp_findRowIndexByEmail_(sheet, src.emailHeader, rowData.email);
+  if (idx > 0) {
+    var dest = ss.getSheetByName('Vantar kennitölu');
+    if (!dest) {
+      dest = ss.insertSheet('Vantar kennitölu');
+      dest.appendRow(headers);
+      dest.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e8e8e8');
+    }
+    dest.appendRow(sheet.getRange(idx, 1, 1, headers.length).getValues()[0]);
+    sheet.deleteRow(idx);
+  }
+  return { ok: true, removed: idx > 0 };
+}
+
 function webapp_saveCreditScore(rowIndex, score) {
   var cfg   = loadConfig_();
   var src   = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
@@ -180,11 +213,24 @@ function webapp_pruneApplications() {
 }
 
 function webapp_markUmsokn_Done(rowData) {
-  var cfg   = loadConfig_();
-  var src   = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
-  var sheet = SpreadsheetApp.openById(cfg.SHEETS.UMSOKN_VIDSKIPTI.ID).getSheetByName(src.mainTab);
-  sheet.getRange(rowData.rowIndex, 1, 1, sheet.getLastColumn()).setBackground('#d4edda');
-  return { ok: true };
+  var cfg     = loadConfig_();
+  var src     = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
+  var ss      = SpreadsheetApp.openById(cfg.SHEETS.UMSOKN_VIDSKIPTI.ID);
+  var sheet   = ss.getSheetByName(src.mainTab);
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+  var idx = webapp_findRowIndexByEmail_(sheet, src.emailHeader, rowData.email);
+  if (idx > 0) {
+    var dest = ss.getSheetByName('BC til - stofnað');
+    if (!dest) {
+      dest = ss.insertSheet('BC til - stofnað');
+      dest.appendRow(headers);
+      dest.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e8e8e8');
+    }
+    dest.appendRow(sheet.getRange(idx, 1, 1, headers.length).getValues()[0]);
+    sheet.deleteRow(idx);
+  }
+  return { ok: true, removed: idx > 0 };
 }
 
 function webapp_sendUmsokn_Email(rowData, templateId) {

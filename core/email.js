@@ -866,6 +866,48 @@ function buildRafraenRedirectPlain_(recipientName, companyName) {
     + 'Kveðja,\nStórkaup';
 }
 
+// ── Rafræn Innskráning — vantar persónulega kennitölu ─────────────────────────
+// Applicant entered the company kennitala in BOTH the company field and the
+// personal-kennitala field; we need their own kennitala to link them.
+function buildRafraenNeedKtHtml_(recipientName) {
+  var name = emailEsc_(recipientName || '');
+  var greeting = name ? 'Halló ' + name + ',' : 'Halló,';
+  var CSS = '<style>'
+    + '.sk-email{max-width:600px;margin:0 auto;font-family:Arial,sans-serif;font-size:14px;color:#282828}'
+    + '.sk-header{background:#fff;border:1px solid #e9e9e9;border-bottom:none;padding:28px 32px;border-radius:8px 8px 0 0}'
+    + '.sk-body{background:#fff;border:1px solid #e9e9e9;border-top:none;padding:28px 32px}'
+    + '.sk-footer{background:#f5f5f5;border:1px solid #e9e9e9;border-top:none;padding:16px 32px;border-radius:0 0 8px 8px}'
+    + '.sk-divider{border:none;border-top:1px solid #e9e9e9;margin:24px 0}'
+    + '.sk-btn{display:inline-block;background:#10069f;color:#fff!important;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none}'
+    + '</style>';
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8">' + CSS + '</head><body>'
+    + '<div class="sk-email">'
+    + '<div class="sk-header"><div style="display:flex;align-items:center;">'
+    + '<img src="https://images.prismic.io/storkaup/agbVeKYofJOwHQ9Y_klavyio-storkauplogo.jpg" alt="Stórkaup logo" style="height:64px;width:auto;vertical-align:middle;">'
+    + '</div></div>'
+    + '<div class="sk-body">'
+    + '<p style="margin:0 0 12px;font-size:18px;font-weight:700;">' + greeting + '</p>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">Við höfum fengið beiðni þína um aðgang í vefverslun Stórkaups.</p>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">Við skráninguna virðist kennitala fyrirtækisins hafa verið slegin inn bæði í reit fyrirtækisins og í reitinn fyrir þína persónulegu kennitölu. Til þess að við getum klárað að tengja þig við fyrirtækið þurfum við þína eigin (persónulegu) kennitölu.</p>'
+    + '<p style="margin:0 0 16px;line-height:1.6;">Vinsamlegast sendu inn skráninguna aftur og settu persónulegu kennitöluna þína í rétta reitinn:</p>'
+    + '<a class="sk-btn" href="https://storkaup.typeform.com/rafinnskraning">Senda inn skráningu aftur</a>'
+    + '<hr class="sk-divider">'
+    + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">Ef þú hefur spurningar, hafðu samband við <a href="mailto:vefur@storkaup.is" style="color:#10069f;text-decoration:none;">vefur@storkaup.is</a></p>'
+    + '</div>'
+    + '<div class="sk-footer"><p style="margin:0;font-size:11px;color:#888;">Stórkaup ehf. | Vefverslun</p></div>'
+    + '</div></body></html>';
+}
+
+function buildRafraenNeedKtPlain_(recipientName) {
+  var greeting = recipientName ? 'Halló ' + recipientName + ',' : 'Halló,';
+  return greeting + '\n\n'
+    + 'Við höfum fengið beiðni þína um aðgang í vefverslun Stórkaups.\n\n'
+    + 'Við skráninguna virðist kennitala fyrirtækisins hafa verið slegin inn bæði í reit fyrirtækisins og í reitinn fyrir þína persónulegu kennitölu. Til þess að við getum klárað að tengja þig við fyrirtækið þurfum við þína eigin (persónulegu) kennitölu.\n\n'
+    + 'Vinsamlegast sendu inn skráninguna aftur og settu persónulegu kennitöluna þína í rétta reitinn:\n'
+    + 'https://storkaup.typeform.com/rafinnskraning\n\n'
+    + 'Kveðja,\nStórkaup | Vefteymi';
+}
+
 // ── Umsókn um viðskipti — email templates ────────────────────────────────────
 
 function umsokn_CSS_() {
