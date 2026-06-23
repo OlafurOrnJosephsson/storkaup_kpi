@@ -17,15 +17,15 @@ const APP_SOURCES = [
     notifyEmailSetting: 'APPLICATION_NOTIFY_EMAIL_RAFRAEN',
     mainTab         : 'Kennitölu skráning',
     nameHeader      : 'Fullt nafn umsækjanda',
-    emailHeader     : 'Netfang umsækjanda',
+    emailHeader     : 'Netfangið þitt',
     companyHeader   : 'Nafn fyrirtækis / Nafn á deild',
-    ktHeader        : 'Kennitala umsækjanda',
+    ktHeader        : 'Kennitalan þín',
     companyKtHeader : 'Kennitala fyrirtækis',
-    phoneHeader     : 'Sími umsækjanda',
+    phoneHeader     : 'Símanúmerið þitt sem tengist rafrænni innskráningu',
     cleanHeaders: [
-      { header: 'Kennitala fyrirtækis',  pad: 10 },
-      { header: 'Kennitala umsækjanda',  pad: 10 },
-      { header: 'Sími umsækjanda',       pad: 7, phone: true }
+      { header: 'Kennitala fyrirtækis',                          pad: 10 },
+      { header: 'Kennitalan þín',                                pad: 10 },
+      { header: 'Símanúmerið þitt sem tengist rafrænni innskráningu', pad: 7, phone: true }
     ]
   },
   {
