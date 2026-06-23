@@ -52,15 +52,18 @@ body {
 .tab:hover { color: var(--sk-text); }
 .tab.active { color: var(--sk-blue); border-bottom-color: var(--sk-blue); font-weight: 700; }
 .tab-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: #f0f0f0;
   color: var(--sk-muted);
   font-size: 11px;
   font-weight: 600;
-  padding: 1px 7px;
+  height: 1.25rem;
+  width: 1.25rem;
   border-radius: 50%;
   margin-left: 6px;
-  height:1.25rem;width:1.25rem;
+  vertical-align: middle;
 }
 .tab.active .tab-badge { background: var(--sk-blue-bg); color: var(--sk-blue); }
 
