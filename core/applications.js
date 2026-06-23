@@ -96,11 +96,25 @@ function doPost(e) {
     const fields    = (response.definition && response.definition.fields) || [];
     const answers   = response.answers || [];
     const answerMap = {};
+    const answerByRef = {};   // stable Typeform ref → value (rename-proof)
 
     answers.forEach(ans => {
       const field = fields.find(f => f.id === ans.field.id);
-      if (field) answerMap[normalizeFieldTitle_(field.title)] = extractTypeformValue_(ans);
+      if (!field) return;
+      const val = extractTypeformValue_(ans);
+      answerMap[normalizeFieldTitle_(field.title)] = val;
+      if (field.ref) answerByRef[field.ref] = val;
     });
+
+    // TEMP (remove once refs are configured): capture each field's stable ref so
+    // we can pin the column mapping to refs instead of question titles. Writes a
+    // "_fieldmap" tab (ref | title | value), overwritten on every submission.
+    try {
+      const fm = ss.getSheetByName('_fieldmap') || ss.insertSheet('_fieldmap');
+      fm.clear();
+      fm.appendRow(['ref', 'title', 'value']);
+      fields.forEach(f => fm.appendRow([f.ref || '', f.title || '', answerByRef[f.ref] || '']));
+    } catch (e) {}
 
     // Initialise headers if sheet is brand new
     if (sh.getLastRow() === 0) {
@@ -129,6 +143,9 @@ function doPost(e) {
     const row = headers.map(h => {
       if (h === 'Submitted At') return response.submitted_at || new Date().toISOString();
       if (h === '_token')       return eventId;
+      // Prefer a stable Typeform ref (rename-proof); fall back to title match.
+      const ref = src.refs && src.refs[h];
+      if (ref && answerByRef[ref] !== undefined) return answerByRef[ref];
       return answerMap[normalizeFieldTitle_(h)] !== undefined ? answerMap[normalizeFieldTitle_(h)] : '';
     });
 
