@@ -83,10 +83,11 @@ function doPost(e) {
     // event_id stays the same on Typeform retries — use as dedup key
     // Fall back to submitted_at if event_id missing (older webhook format)
     const eventId  = payload.event_id || response.token || response.submitted_at || '';
+    console.log('doPost: type=' + payload.event_type + ' formId=' + formId + ' eventId=' + eventId + ' answers=' + ((response.answers || []).length));
 
     const src = APP_SOURCES.find(s => s.formId === formId);
     if (!src) {
-      Logger.log(`⚠️ doPost: unknown formId ${formId}`);
+      console.log('doPost: IGNORED unknown formId ' + formId);
       return jsonResponse_({ status: 'ignored', reason: 'unknown formId' });
     }
 
@@ -136,7 +137,7 @@ function doPost(e) {
 
     // Duplicate guard — event_id is identical on Typeform retries
     if (eventId && isDuplicateSubmission_(sh, headers, eventId)) {
-      Logger.log(`⚠️ doPost: duplicate event_id ${eventId} — skipping`);
+      console.log('doPost: DUPLICATE eventId ' + eventId + ' — skipping');
       return jsonResponse_({ status: 'ok', note: 'duplicate' });
     }
 
@@ -150,6 +151,7 @@ function doPost(e) {
     });
 
     sh.appendRow(row);
+    console.log('doPost: APPENDED row ' + sh.getLastRow() + ' to "' + src.mainTab + '" (email=' + (answerByRef[src.refs && src.refs[src.emailHeader]] || answerMap[normalizeFieldTitle_(src.emailHeader)] || '') + ')');
 
     // Clean kennitölur + símanúmer on the new row only
     cleanSingleRow_(src, sh, sh.getLastRow());
@@ -161,7 +163,7 @@ function doPost(e) {
     return jsonResponse_({ status: 'ok' });
 
   } catch (err) {
-    Logger.log(`❌ doPost error: ${err.stack || err.message}`);
+    console.error('doPost ERROR: ' + (err.stack || err.message));
     return jsonResponse_({ status: 'error', message: err.message }, 500);
   }
 }
