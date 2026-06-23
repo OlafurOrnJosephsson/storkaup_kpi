@@ -18,10 +18,11 @@ function doGet(e) {
 // is triggered here. Note: the request carries customer_id (not a raw "to"
 // address) — the server resolves the address from MAGENTO_CUSTOMERS, so this
 // endpoint can only ever email an existing customer, never an arbitrary address.
-function doPost(e) {
-  var body = {};
-  try { body = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (_) {}
-  var action = String(body.action || '');
+// Dashboard API actions (cache-help, templates, counts). Called from the single
+// doPost router in applications.js — there must be only ONE doPost in the project,
+// or the definitions collide and one silently overrides the other.
+function handleApiAction_(body) {
+  var action = String((body && body.action) || '');
   if (action === 'list_templates')      return jsonResponse_(listTemplatesViaApi_(body));
   if (action === 'list_recipients')     return jsonResponse_(listRecipientsViaApi_(body));
   if (action === 'send_template_email') return jsonResponse_(sendTemplateEmailViaApi_(body));

@@ -74,7 +74,15 @@ function doPost(e) {
   try {
     const payload = JSON.parse(e.postData.contents);
 
+    // This is the ONLY doPost in the project. Dashboard API calls (cache-help,
+    // templates, counts) POST an { action } body — route those to the web-app
+    // handler. Typeform webhooks send { event_type: 'form_response' }.
+    if (payload && payload.action) {
+      return handleApiAction_(payload);
+    }
+
     if (payload.event_type !== 'form_response') {
+      console.log('doPost: ignored (no action, event_type=' + payload.event_type + ')');
       return jsonResponse_({ status: 'ignored', reason: 'not form_response' });
     }
 
