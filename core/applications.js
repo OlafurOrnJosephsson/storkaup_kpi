@@ -22,6 +22,16 @@ const APP_SOURCES = [
     ktHeader        : 'Kennitalan þín',
     companyKtHeader : 'Kennitala fyrirtækis',
     phoneHeader     : 'Símanúmerið þitt sem tengist rafrænni innskráningu',
+    // Sheet-header → stable Typeform field ref. Maps by ref, so rewording a
+    // question (e.g. markdown "*þitt*" in the title) never breaks the mapping.
+    refs: {
+      'Kennitala fyrirtækis'                                : 'b6e3e57e-1397-4fbf-bfb9-6f882f85da2b',
+      'Nafn fyrirtækis / Nafn á deild'                      : '6f1d4c0d-8128-4b6a-a1cf-9a5e5b489ebb',
+      'Fullt nafn umsækjanda'                               : '42a5e12c-26b9-485b-af6f-140b77d14416',
+      'Kennitalan þín'                                      : '22084c15-5cab-4217-b1e7-1e65cdba442a',
+      'Símanúmerið þitt sem tengist rafrænni innskráningu'  : 'c7b664ea-073f-44f9-886c-3a243bd9d596',
+      'Netfangið þitt'                                      : '3b0e0b9b-5337-4b7a-ae28-fc9beaf7837b'
+    },
     cleanHeaders: [
       { header: 'Kennitala fyrirtækis',                          pad: 10 },
       { header: 'Kennitalan þín',                                pad: 10 },
@@ -105,16 +115,6 @@ function doPost(e) {
       answerMap[normalizeFieldTitle_(field.title)] = val;
       if (field.ref) answerByRef[field.ref] = val;
     });
-
-    // TEMP (remove once refs are configured): capture each field's stable ref so
-    // we can pin the column mapping to refs instead of question titles. Writes a
-    // "_fieldmap" tab (ref | title | value), overwritten on every submission.
-    try {
-      const fm = ss.getSheetByName('_fieldmap') || ss.insertSheet('_fieldmap');
-      fm.clear();
-      fm.appendRow(['ref', 'title', 'value']);
-      fields.forEach(f => fm.appendRow([f.ref || '', f.title || '', answerByRef[f.ref] || '']));
-    } catch (e) {}
 
     // Initialise headers if sheet is brand new
     if (sh.getLastRow() === 0) {
