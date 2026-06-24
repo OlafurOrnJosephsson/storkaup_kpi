@@ -177,6 +177,7 @@ function doPost(e) {
     });
 
     sh.appendRow(row);
+    recordSeen_(ss, eventId);
     console.log('doPost: APPENDED row ' + sh.getLastRow() + ' to "' + src.mainTab + '" (email=' + (answerByRef[src.refs && src.refs[src.emailHeader]] || answerMap[normalizeFieldTitle_(src.emailHeader)] || '') + ')');
 
     // Clean kennitölur + símanúmer on the new row only
@@ -195,27 +196,32 @@ function doPost(e) {
 }
 
 // Returns true if this Typeform response token already exists in the sheet or LOKID
+// Duplicate if this event_id already appears in ANY tab of the spreadsheet
+// (main, Framsent, "Vantar kennitölu", LOKID, archives) OR the permanent "_seen"
+// log. Makes Typeform re-deliveries/retries idempotent — even after a row has
+// been moved to another tab or deleted entirely.
 function isDuplicateSubmission_(sh, headers, token) {
-  const tokenColIdx = headers.indexOf('_token');
-  if (tokenColIdx === -1) return false;
-
-  if (sh.getLastRow() >= 2) {
-    const col = sh.getRange(2, tokenColIdx + 1, sh.getLastRow() - 1, 1).getValues();
+  if (!token) return false;
+  const sheets = sh.getParent().getSheets();
+  for (let s = 0; s < sheets.length; s++) {
+    const sheet = sheets[s];
+    if (sheet.getLastRow() < 2) continue;
+    const hdr = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const idx = hdr.indexOf('_token');
+    if (idx === -1) continue;
+    const col = sheet.getRange(2, idx + 1, sheet.getLastRow() - 1, 1).getValues();
     if (col.some(r => String(r[0]).trim() === token)) return true;
   }
-
-  // Also check LOKID — pruneCompletedApplications_ moves rows there
-  const lokid = sh.getParent().getSheetByName('LOKID');
-  if (lokid && lokid.getLastRow() >= 1) {
-    const lokidHeaders = lokid.getRange(1, 1, 1, lokid.getLastColumn()).getValues()[0];
-    const lokidTokenIdx = lokidHeaders.indexOf('_token');
-    if (lokidTokenIdx > -1 && lokid.getLastRow() >= 2) {
-      const lokidCol = lokid.getRange(2, lokidTokenIdx + 1, lokid.getLastRow() - 1, 1).getValues();
-      if (lokidCol.some(r => String(r[0]).trim() === token)) return true;
-    }
-  }
-
   return false;
+}
+
+// Permanent append-only log of every processed event_id (own "_seen" tab), so a
+// re-delivery of a submission whose row was later deleted is still caught above.
+function recordSeen_(ss, token) {
+  if (!token) return;
+  let seen = ss.getSheetByName('_seen');
+  if (!seen) { seen = ss.insertSheet('_seen'); seen.appendRow(['_token', 'logged_at']); }
+  seen.appendRow([token, new Date().toISOString()]);
 }
 
 function jsonResponse_(obj, code) {
