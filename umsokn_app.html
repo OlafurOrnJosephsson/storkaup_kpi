@@ -42,7 +42,7 @@ body {
   display:flex; align-items:center;justify-content: center;
   height: 3rem;
   cursor: pointer;
-  font-size: 13px;
+  font-size: .875rem;
   font-weight: 400;
   color: var(--sk-text);
   border-bottom: 2px solid transparent;
@@ -57,7 +57,7 @@ body {
   justify-content: center;
   background: #f0f0f0;
   color: var(--sk-muted);
-  font-size: 11px;
+  font-size: 0.625rem;
   font-weight: 600;
   height: 1.25rem;
   width: 1.25rem;
@@ -74,12 +74,12 @@ body {
 .loading {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: .75rem;
   color: var(--sk-muted);
-  padding: 40px 0;
+  padding: 3rem 0;
 }
 .spinner {
-  width: 20px; height: 20px;
+  width: 1.5rem; height:1.5rem;
   border: 2px solid var(--sk-border);
   border-top-color: var(--sk-blue);
   border-radius: 50%;
@@ -96,39 +96,47 @@ body {
 .empty-icon { font-size: 32px; margin-bottom: 8px; }
 .empty p { font-size: 13px; }
 
-/* ── Table ── */
-.table-wrap {
-  background: #fff;
-  border: 1px solid var(--sk-border);
-  border-radius: 8px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-table { width: 100%; border-collapse: collapse; }
-thead { background: #fafafa; }
-th {
-  padding: 10px 14px;
-  text-align: left;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--sk-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--sk-border);
-}
-td {
-  padding: 12px 14px;
-  border-bottom: 1px solid #f5f5f5;
-  vertical-align: middle;
-}
-tr:last-child td { border-bottom: none; }
-tr.done td { opacity: 0.4; }
+/* ── Cards ── rows render as cards at ALL widths (no visual table).
+   Label comes from td[data-label]; desktop = "label | value" grid, mobile stacks. */
+.table-wrap { background: transparent; border: none; }
+table        { width: 100%; }
+table, tbody, tr, td { display: block; box-sizing: border-box; }
+thead        { display: none; }
 
-.date-cell { color: var(--sk-muted); font-size: 12px; white-space: nowrap; }
-.company-cell { font-weight: 600; }
-.kt-cell { color: var(--sk-muted); font-size: 12px; font-family: monospace; }
+tbody tr {                       /* one application = one card */
+  border: 1px solid var(--sk-border);
+  border-radius: 0.75rem;
+  background: #fff;
+  margin-bottom: 0.875rem;
+  padding: 0.875rem 1.125rem;
+  box-shadow: 0 1px 4px rgba(16, 6, 159, 0.06);
+}
+tbody tr.done { opacity: 0.4; }
+
+tbody td {
+  display: grid;
+  grid-template-columns: 10rem 1fr;   /* label | value */
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #f2f2f2;
+}
+tbody td:first-child { padding-top: 0; }
+tbody td:last-child  { border-bottom: none; padding-bottom: 0; }
+tbody td::before {
+  content: attr(data-label);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #98a2b3;
+}
+
+.date-cell { color: var(--sk-muted); font-size: .625rem; white-space: nowrap; }
+.company-cell { font-weight: 600; font-size: .9375rem; }
+.kt-cell { color: var(--sk-muted); font-size: .625rem; font-family: monospace; }
 .name-cell { }
-.email-cell { color: var(--sk-muted); font-size: 12px; }
+.email-cell { color: var(--sk-muted); font-size: .625rem; }
 .payment-cell { font-size: 12px; }
 
 /* ── BC badge ── */
@@ -149,14 +157,17 @@ tr.done td { opacity: 0.4; }
 
 /* ── Buttons ── */
 .btn {
-  display: inline-block;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 12px;
+  display: inline-flex;
+  flex-direction:row;
+  align-items: center;
+  height: 2.5rem;
+  padding: 0 1rem;
+  border-radius: .5rem;
+  font-size: .75rem;
   font-weight: 600;
   cursor: pointer;
   border: none;
-  transition: opacity 0.15s;
+  transition: opacity 0.3s;
 }
 .btn:hover { opacity: 0.85; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -168,7 +179,7 @@ tr.done td { opacity: 0.4; }
 
 /* ── Credit score input ── */
 .score-input {
-  width: 52px;
+  width: 58px;
   padding: 4px 6px;
   border: 1px solid var(--sk-border);
   border-radius: 6px;
@@ -258,10 +269,10 @@ tr.done td { opacity: 0.4; }
 .bc-web-active   { background: #d4edda; color: #155724; }
 
 /* ── Cell sub-content, badges, header (used by the generated rows) ── */
-.cell-sub       { font-size: 11px; color: var(--sk-muted); }
-.cell-sub-mt    { font-size: 11px; color: var(--sk-muted); margin-top: 4px; }
-.cell-kt        { font-size: 11px; color: var(--sk-blue); font-family: monospace; text-decoration: none; }
-.cell-kt-muted  { font-size: 11px; color: #888; font-family: monospace; }
+.cell-sub       { font-size: .625rem; color: var(--sk-muted); }
+.cell-sub-mt    { font-size: .625rem; color: var(--sk-muted); margin-top: 4px; }
+.cell-kt        { font-size: .625rem; color: var(--sk-blue); font-family: monospace; text-decoration: none; }
+.cell-kt-muted  { font-size: .625rem; color: #888; font-family: monospace; }
 .badge-person   { display: inline-block; margin-top: 4px; background: #fff3cd; color: #856404; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
 .pay-badge      { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
 .pay-badge--acc  { background: var(--sk-blue-bg); color: var(--sk-blue); }
@@ -275,65 +286,33 @@ tr.done td { opacity: 0.4; }
 .app-header__actions  { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .refresh-status       { font-size: 11px; color: #888; }
 
-/* ── Mobile: töflur verða spjöld (card layout) ── */
-/* ── Mobile / þröngt: töflur verða spjöld ── */
+/* ── Mobile: header stacks, cards go single-column ── */
 @media (max-width: 768px) {
-  .content { padding: 12px 12px; }
+  .content { padding: 0.75rem; }
 
-  /* Hausinn staflast: tabs í fulla breidd, aðgerðir í röð undir */
+  /* Header stacks: tabs full width, actions in a row below */
   .app-header__row { flex-direction: column; align-items: stretch; gap: 0; padding-right: 0; }
   .app-header .tabs { width: 100%; }
   .tab {
     min-width: 0; flex: 1 1 0;
-    font-size: 12.5px; line-height: 1.2;
-    padding: 8px 6px; height: auto; min-height: 3rem;
+    font-size: 0.8rem; line-height: 1.2;
+    padding: 0.5rem 0.375rem; height: auto; min-height: 3rem;
     text-align: center;
   }
-  .tab .tab-badge { margin-left: 5px; }
-  .app-header__actions { justify-content: flex-end; gap: 8px; padding: 8px 2px 10px; flex-wrap: wrap; }
+  .tab .tab-badge { margin-left: 0.3rem; }
+  .app-header__actions { justify-content: flex-end; gap: 0.5rem; padding: 0.5rem 0.125rem 0.625rem; flex-wrap: wrap; }
   .refresh-status { margin-right: auto; }
 
   .hide-mobile { display: none !important; }
 
-  /* Töflur → spjöld */
-  .table-wrap { overflow: visible; border: none; background: transparent; }
-  table, tbody, tr, td { display: block; width: 100%; box-sizing: border-box; }
-  thead { display: none; }
+  /* Cards: label stacks above value on narrow screens */
+  tbody td { grid-template-columns: 1fr; gap: 0.25rem; }
+  tbody td::before { margin-bottom: 0.25rem; }
 
-  tbody tr {
-    border: 1px solid var(--sk-border);
-    border-radius: 12px;
-    background: #fff;
-    margin-bottom: 14px;
-    padding: 14px 16px;
-    box-shadow: 0 1px 4px rgba(16, 6, 159, 0.06);
-  }
-  tbody td {
-    padding: 9px 0;
-    border-bottom: 1px solid #f2f2f2;
-    text-align: left;
-  }
-  tbody td:first-child { padding-top: 0; }
-  tbody td:last-child  { border-bottom: none; padding-bottom: 0; }
-  tbody td::before {
-    content: attr(data-label);
-    display: block;
-    font-size: 10.5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #98a2b3;
-    margin-bottom: 4px;
-  }
-
-  /* Fyrirtæki = titill spjaldsins */
-  .company-cell { font-size: 15px; line-height: 1.3; }
-
-  /* Aðgerð: stýringar fylla breiddina, þægileg tap-targets */
-  .action-cell { white-space: normal; }
-  .action-cell .template-select { width: 100%; max-width: none; margin: 0 0 8px; height: 42px; font-size: 14px; }
-  .action-cell .btn { width: 100%; padding: 12px; font-size: 14px; }
-  .score-input { width: 64px; height: 38px; font-size: 14px; }
+  /* Action controls fill the width, comfy tap targets */
+  .action-cell .template-select { width: 100%; max-width: none; margin: 0 0 0.5rem; height: 2.625rem; font-size: 0.875rem; }
+  .action-cell .btn { width: 100%; font-size: 0.875rem; }
+  .score-input { width: 4rem; height: 2.375rem; font-size: 0.875rem; }
 }
 </style>
 </head>
