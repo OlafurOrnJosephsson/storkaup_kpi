@@ -20,7 +20,7 @@
 
 body {
   font-family: var(--sk-font);
-  font-size: 14px;
+  font-size:18px;
   background:transparent;
   color: var(--sk-text);
 }
@@ -103,9 +103,8 @@ body {
   flex-wrap: wrap;
   gap: 1rem;
 }
-.card {                          /* one application = one card */
-  flex: 1 1 22rem;
-  max-width: 30rem;
+.card {                          /* one application = one card — uniform width */
+  flex: 0 1 24rem;               /* fixed basis, no grow → all cards equally wide */
   border: 1px solid var(--sk-border);
   border-radius: 0.75rem;
   background: #fff;
@@ -116,6 +115,7 @@ body {
 
 .fld {                           /* value sits UNDER its label heading */
   padding: 0.5rem 0;
+  font-size:.875rem;
   border-bottom: 1px solid #f2f2f2;
 }
 .fld:first-child { padding-top: 0; }
@@ -124,18 +124,18 @@ body {
   content: attr(data-label);
   display: block;
   margin-bottom: 0.25rem;
-  font-size: 0.6875rem;
-  font-weight: 700;
+  font-size: 0.5rem;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: #98a2b3;
+  color: var(--sk-muted);
 }
 
 .date-cell { color: var(--sk-muted); font-size: .625rem; white-space: nowrap; }
-.company-cell { font-weight: 600; font-size: .9375rem; }
-.kt-cell { color: var(--sk-muted); font-size: .625rem; font-family: monospace; }
+.company-cell { font-weight: 600; font-size: .875rem; }
+.kt-cell { color: var(--sk-muted); font-size: .75rem; font-family: monospace; }
 .name-cell { }
-.email-cell { color: var(--sk-muted); font-size: .625rem; }
+.email-cell { color: var(--sk-muted); font-size: .75rem; }
 .payment-cell { font-size: 12px; }
 
 /* ── BC badge ── */
@@ -474,9 +474,7 @@ function renderRafraen(rows) {
       + '<div class="fld name-cell" data-label="Nafn">'
         + '<div>' + esc(r.name) + '</div>'
         + (r.personKt ? '<div class="cell-kt-muted">' + esc(r.personKt) + '</div>' : '')
-      + '</div>'
-      + '<div class="fld email-cell" data-label="Netfang">'
-        + esc(r.email)
+        + (r.email ? '<div class="cell-sub">' + esc(r.email) + '</div>' : '')
         + (r.phone ? '<div class="cell-sub">' + esc(r.phone) + '</div>' : '')
       + '</div>'
       + '<div class="fld" data-label="BC staða">' + bcBadge(r.bcFound, r.bcWebshopActive) + '</div>'
