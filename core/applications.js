@@ -57,6 +57,23 @@ const APP_SOURCES = [
     creditScoreHeader  : 'Lánshæfismat',
     paymentHeader      : 'Greiðslufyrirkomulag',
     billingInfoHeader  : 'Upplýsingar vegna reikninga',
+    // Sheet-header → stable Typeform field ref (rename-proof; see RAFRAEN above).
+    refs: {
+      'Heiti fyrirtækis'                    : '6f1d4c0d-8128-4b6a-a1cf-9a5e5b489ebb',
+      'Kennitala fyrirtækis'                : 'c0829f2e-d020-4cc1-ad36-1874950d277d',
+      'Netfang fyrirtækis'                  : '7e625253-a454-41e1-91ec-3608534b6d72',
+      'Heimilisfang fyrirtækis'             : '3a42bc3e-8e79-4ec9-9bd7-8d21f08c5780',
+      'Staður fyrirtækis'                   : '90d8ef8d-6f25-4164-b2db-641a5504de5b',
+      'Póstnúmer fyrirtækis'                : '901bd31d-282e-466d-aaad-011ad64f7f93',
+      'Fullt nafn tengiliðar (prókúruhafa)' : '42a5e12c-26b9-485b-af6f-140b77d14416',
+      'Kennitala tengiliðar (umsækjandi)'   : 'ad85615a-15e6-470a-a497-7e1cba2f170d',
+      'Símanúmer tengiliðar'                : 'c7b664ea-073f-44f9-886c-3a243bd9d596',
+      'Netfang tengiliðar'                  : '3b0e0b9b-5337-4b7a-ae28-fc9beaf7837b',
+      'Merktu við þína starfsemi'           : '0899214f-a6c3-4997-ab8d-60e8e01b8046',
+      'Greiðslufyrirkomulag'                : '7cb64f5b-c81c-4065-809c-f88a32addcc5',
+      'Upplýsingar vegna reikninga'         : '79eb11f9-4b44-4779-afa0-b8311d124f6d',
+      'Viðskiptaskilmálar'                  : 'ca6d2fae-d399-444d-bd5f-a085466c16ec'
+    },
     cleanHeaders: [
       { header: 'Kennitala fyrirtækis',              pad: 10 },
       { header: 'Kennitala tengiliðar (umsækjandi)', pad: 10 },
@@ -153,7 +170,8 @@ function doPost(e) {
       if (h === 'Submitted At') return response.submitted_at || new Date().toISOString();
       if (h === '_token')       return eventId;
       // Prefer a stable Typeform ref (rename-proof); fall back to title match.
-      const ref = src.refs && src.refs[h];
+      // Trim the header so a stray trailing space (e.g. "Staður fyrirtækis ") still matches.
+      const ref = src.refs && (src.refs[h] || src.refs[String(h).trim()]);
       if (ref && answerByRef[ref] !== undefined) return answerByRef[ref];
       return answerMap[normalizeFieldTitle_(h)] !== undefined ? answerMap[normalizeFieldTitle_(h)] : '';
     });
