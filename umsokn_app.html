@@ -98,21 +98,23 @@ body {
 
 /* ── Cards ── rows render as cards at ALL widths (no visual table).
    Label comes from td[data-label]; desktop = "label | value" grid, mobile stacks. */
+.card-list {                     /* cards flow into rows */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
 .card {                          /* one application = one card */
+  flex: 1 1 22rem;
+  max-width: 30rem;
   border: 1px solid var(--sk-border);
   border-radius: 0.75rem;
   background: #fff;
-  margin-bottom: 0.875rem;
   padding: 0.875rem 1.125rem;
   box-shadow: 0 1px 4px rgba(16, 6, 159, 0.06);
 }
 .card.done { opacity: 0.4; }
 
-.fld {
-  display: grid;
-  grid-template-columns: 10rem 1fr;   /* label | value */
-  gap: 0.75rem;
-  align-items: start;
+.fld {                           /* value sits UNDER its label heading */
   padding: 0.5rem 0;
   border-bottom: 1px solid #f2f2f2;
 }
@@ -120,6 +122,8 @@ body {
 .fld:last-child  { border-bottom: none; padding-bottom: 0; }
 .fld::before {
   content: attr(data-label);
+  display: block;
+  margin-bottom: 0.25rem;
   font-size: 0.6875rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -300,9 +304,8 @@ body {
 
   .hide-mobile { display: none !important; }
 
-  /* Cards: label stacks above value on narrow screens */
-  .fld { grid-template-columns: 1fr; gap: 0.25rem; }
-  .fld::before { margin-bottom: 0.25rem; }
+  /* Cards span the full width on phones */
+  .card { flex-basis: 100%; max-width: none; }
 
   /* Action controls fill the width, comfy tap targets */
   .action-cell .template-select { width: 100%; max-width: none; margin: 0 0 0.5rem; height: 2.625rem; font-size: 0.875rem; }
