@@ -98,12 +98,7 @@ body {
 
 /* ── Cards ── rows render as cards at ALL widths (no visual table).
    Label comes from td[data-label]; desktop = "label | value" grid, mobile stacks. */
-.table-wrap { background: transparent; border: none; }
-table        { width: 100%; }
-table, tbody, tr, td { display: block; box-sizing: border-box; }
-thead        { display: none; }
-
-tbody tr {                       /* one application = one card */
+.card {                          /* one application = one card */
   border: 1px solid var(--sk-border);
   border-radius: 0.75rem;
   background: #fff;
@@ -111,9 +106,9 @@ tbody tr {                       /* one application = one card */
   padding: 0.875rem 1.125rem;
   box-shadow: 0 1px 4px rgba(16, 6, 159, 0.06);
 }
-tbody tr.done { opacity: 0.4; }
+.card.done { opacity: 0.4; }
 
-tbody td {
+.fld {
   display: grid;
   grid-template-columns: 10rem 1fr;   /* label | value */
   gap: 0.75rem;
@@ -121,9 +116,9 @@ tbody td {
   padding: 0.5rem 0;
   border-bottom: 1px solid #f2f2f2;
 }
-tbody td:first-child { padding-top: 0; }
-tbody td:last-child  { border-bottom: none; padding-bottom: 0; }
-tbody td::before {
+.fld:first-child { padding-top: 0; }
+.fld:last-child  { border-bottom: none; padding-bottom: 0; }
+.fld::before {
   content: attr(data-label);
   font-size: 0.6875rem;
   font-weight: 700;
@@ -306,8 +301,8 @@ tbody td::before {
   .hide-mobile { display: none !important; }
 
   /* Cards: label stacks above value on narrow screens */
-  tbody td { grid-template-columns: 1fr; gap: 0.25rem; }
-  tbody td::before { margin-bottom: 0.25rem; }
+  .fld { grid-template-columns: 1fr; gap: 0.25rem; }
+  .fld::before { margin-bottom: 0.25rem; }
 
   /* Action controls fill the width, comfy tap targets */
   .action-cell .template-select { width: 100%; max-width: none; margin: 0 0 0.5rem; height: 2.625rem; font-size: 0.875rem; }
@@ -465,34 +460,33 @@ function renderRafraen(rows) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">✓</div><p>Engar ómeðhöndlaðar umsóknir í Rafræn Innskráningu.</p></div>';
     return;
   }
-  var html = '<div class="table-wrap"><table>'
-    + '<thead><tr><th class="hide-mobile">Dags.</th><th>Fyrirtæki</th><th>Nafn</th><th class="hide-mobile">Netfang</th><th>BC staða</th><th>Aðgerð</th></tr></thead><tbody>';
+  var html = '<div class="card-list">';
   rows.forEach(function(r, i) {
-    html += '<tr id="raf-row-' + i + '">'
-      + '<td class="date-cell hide-mobile" data-label="Dags.">' + fmtDate(r.date) + '</td>'
-      + '<td data-label="Fyrirtæki">'
+    html += '<div class="card" id="raf-row-' + i + '">'
+      + '<div class="fld date-cell hide-mobile" data-label="Dags.">' + fmtDate(r.date) + '</div>'
+      + '<div class="fld" data-label="Fyrirtæki">'
         + '<div class="company-cell">' + esc(r.company) + '</div>'
         + (r.companyKt ? '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" class="cell-kt">' + esc(r.companyKt) + '</a>' : '')
-      + '</td>'
-      + '<td class="name-cell" data-label="Nafn">'
+      + '</div>'
+      + '<div class="fld name-cell" data-label="Nafn">'
         + '<div>' + esc(r.name) + '</div>'
         + (r.personKt ? '<div class="cell-kt-muted">' + esc(r.personKt) + '</div>' : '')
-      + '</td>'
-      + '<td class="email-cell" data-label="Netfang">'
+      + '</div>'
+      + '<div class="fld email-cell" data-label="Netfang">'
         + esc(r.email)
         + (r.phone ? '<div class="cell-sub">' + esc(r.phone) + '</div>' : '')
-      + '</td>'
-      + '<td data-label="BC staða">' + bcBadge(r.bcFound, r.bcWebshopActive) + '</td>'
-      + '<td class="action-cell" data-label="Aðgerð">'
+      + '</div>'
+      + '<div class="fld" data-label="BC staða">' + bcBadge(r.bcFound, r.bcWebshopActive) + '</div>'
+      + '<div class="fld action-cell" data-label="Aðgerð">'
       + '<select class="template-select" id="raf-tmpl-' + i + '">'
         + '<option value="">Velja…</option>'
         + '<option value="redirect">Senda redirect</option>'
         + '<option value="needkt">Vantar persónulega kt</option>'
         + '</select>'
       + '<button class="btn btn-primary" onclick="confirmRafraen(' + i + ')">Senda</button>'
-      + '</td></tr>';
+      + '</div></div>';
   });
-  html += '</tbody></table></div>';
+  html += '</div>';
   el.innerHTML = html;
 }
 
@@ -528,7 +522,7 @@ function confirmRafraen(i) {
           setTimeout(function() {
             var el = document.getElementById('raf-row-' + i);
             if (el) el.remove();
-            var left = document.querySelectorAll('#tab-rafraen tbody tr:not(.done)').length;
+            var left = document.querySelectorAll('#tab-rafraen .card:not(.done)').length;
             document.getElementById('badge-rafraen').textContent = left;
             notifyParentPending();
           }, 600);
@@ -548,36 +542,35 @@ function renderUmsokn(rows) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">✓</div><p>Engar ómeðhöndlaðar umsóknir í Umsókn um viðskipti.</p></div>';
     return;
   }
-  var html = '<div class="table-wrap"><table>'
-    + '<thead><tr><th class="hide-mobile">Dags.</th><th>Fyrirtæki</th><th>Nafn</th><th class="hide-mobile">Greiðsla</th><th>BC staða</th><th class="hide-mobile">Skor</th><th>Aðgerð</th></tr></thead><tbody>';
+  var html = '<div class="card-list">';
   rows.forEach(function(r, i) {
-    html += '<tr id="ums-row-' + i + '">'
-      + '<td class="date-cell hide-mobile" data-label="Dags.">' + fmtDate(r.date) + '</td>'
-      + '<td data-label="Fyrirtæki">'
+    html += '<div class="card" id="ums-row-' + i + '">'
+      + '<div class="fld date-cell hide-mobile" data-label="Dags.">' + fmtDate(r.date) + '</div>'
+      + '<div class="fld" data-label="Fyrirtæki">'
         + '<div class="company-cell">' + esc(r.company) + '</div>'
         + '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" class="cell-kt">' + esc(r.companyKt) + '</a>'
         + (r.companyEmail ? '<div class="cell-sub">' + esc(r.companyEmail) + '</div>' : '')
         + ((r.address || r.city) ? '<div class="cell-sub">' + esc([r.address, r.city, r.postal].filter(Boolean).join(', ')) + '</div>' : '')
-      + '</td>'
-      + '<td class="name-cell" data-label="Nafn">'
+      + '</div>'
+      + '<div class="fld name-cell" data-label="Nafn">'
         + '<div>' + esc(r.name) + '</div>'
         + (r.email   ? '<div class="cell-sub">' + esc(r.email) + '</div>' : '')
         + (r.personKt ? '<div class="cell-kt-muted">' + esc(r.personKt) + '</div>' : '')
         + (r.phone   ? '<div class="cell-sub">' + esc(r.phone) + '</div>' : '')
-      + '</td>'
-      + '<td class="payment-cell hide-mobile" data-label="Greiðsla">'
+      + '</div>'
+      + '<div class="fld payment-cell hide-mobile" data-label="Greiðsla">'
         + paymentBadge(r.payment)
         + (r.billingInfo ? '<div class="cell-sub-mt">' + esc(r.billingInfo) + '</div>' : '')
-      + '</td>'
-      + '<td data-label="BC staða">'
+      + '</div>'
+      + '<div class="fld" data-label="BC staða">'
         + bcBadge(r.bcFound, r.bcWebshopActive)
         + (isPersonalKt(r.companyKt) ? '<br><span class="badge-person">Einstaklingur</span>' : '')
-      + '</td>'
-      + '<td class="hide-mobile score-cell" data-label="Skor">'
+      + '</div>'
+      + '<div class="fld hide-mobile score-cell" data-label="Skor">'
         + '<input class="score-input" id="score-' + i + '" type="number" min="1" max="10" placeholder="1-10" value="' + esc(r.creditScore) + '" onchange="onScoreChange(' + i + ')" />'
         + '<div id="score-badge-' + i + '">' + scoreBadge(r.creditScore) + '</div>'
-      + '</td>'
-      + '<td class="action-cell" data-label="Aðgerð">'
+      + '</div>'
+      + '<div class="fld action-cell" data-label="Aðgerð">'
         + (r.bcFound
           ? '<button class="btn btn-ghost" onclick="confirmDone(' + i + ')">✓ Klárað</button>'
           : '<select class="template-select" id="tmpl-' + i + '">'
@@ -588,9 +581,9 @@ function renderUmsokn(rows) {
             + '</select>'
             + '<button class="btn btn-primary" onclick="confirmUmsokn(' + i + ')">Senda</button>'
           )
-      + '</td></tr>';
+      + '</div></div>';
   });
-  html += '</tbody></table></div>';
+  html += '</div>';
   el.innerHTML = html;
 }
 
