@@ -4316,7 +4316,8 @@ function auditTriggers_v1() {
     scheduledMagentoSync_v1:        'daily ~04:xx',
     scheduledCludoSync_v1:          'daily ~04:xx',
     scheduledCustomerAnalysisSync_v1: 'daily ~05:xx',
-    scheduledKlaviyoSync_v1:        'daily ~05:xx'
+    scheduledKlaviyoSync_v1:        'daily ~05:xx',
+    scheduledNewwebStatusSync_v2:   'daily ~11:30 & ~17:30'
   };
 
   var triggers = ScriptApp.getProjectTriggers();
@@ -4377,6 +4378,22 @@ function installScheduledGa4SyncTrigger_v1() {
   return { created: true, schedule: 'everyDays(1).atHour(6).nearMinute(30)' };
 }
 
+function installNewwebStatusSyncTrigger_v2() {
+  var fn = 'scheduledNewwebStatusSync_v2';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[NEWWEB][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+  // Twice daily: late morning and late afternoon, catching same-day status changes.
+  ScriptApp.newTrigger(fn).timeBased().everyDays(1).atHour(11).nearMinute(30).create();
+  ScriptApp.newTrigger(fn).timeBased().everyDays(1).atHour(17).nearMinute(30).create();
+  Logger.log('[NEWWEB][INFO] Created triggers for ' + fn + ' (~11:30 and ~17:30)');
+  return { created: true, schedule: 'everyDays(1) at ~11:30 and ~17:30' };
+}
+
 function resetRecommendedTimeTriggers_v1() {
   var handlers = [
     'safePoll_v2',
@@ -4387,7 +4404,9 @@ function resetRecommendedTimeTriggers_v1() {
     'scheduledCludoSync_v1',
     'scheduledCustomerAnalysisSync_v1',
     'scheduledKlaviyoSync_v1',
-    'scheduledWeeklyDigest'
+    'scheduledNewwebStatusSync_v2',
+    'scheduledWeeklyDigest',
+    'scheduledZeroPriceScan_v1'
   ];
 
   handlers.forEach(function(fn) {
@@ -4400,7 +4419,9 @@ function resetRecommendedTimeTriggers_v1() {
     installScheduledReferenceSyncTrigger_v1(),
     installScheduledMagentoSyncTrigger_v1(),
     installScheduledGa4SyncTrigger_v1(),
-    installWeeklyDigestTrigger_v1()
+    installNewwebStatusSyncTrigger_v2(),
+    installWeeklyDigestTrigger_v1(),
+    installZeroPriceScanTrigger_v1()
   ];
 
   Logger.log('[TRIGGERS][INFO] Recommended trigger schedule reset completed.');

@@ -7,6 +7,11 @@ function doGet(e) {
       .setTitle('Stórkaup — Umsóknir')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
+  if (app === 'listaverd') {
+    return HtmlService.createHtmlOutputFromFile('listaverd_konnun')
+      .setTitle('Stórkaup — Listaverð könnun')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
   var action = (e && e.parameter && e.parameter.action) || 'dashboard';
   if (action === 'dashboard') {
     return jsonResponse_(getDashboardMetrics_(e));
