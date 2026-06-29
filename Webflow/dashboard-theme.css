@@ -67,60 +67,33 @@ input[data-day-picker] {
   height: 1px !important;
 }
 
-/* Visible date field (compact to fit top nav controls) */
+/* Visible date field — fully unstyled here; controlled in Webflow.
+   We only neutralize Flatpickr's own defaults (no outline/hover/focus rings)
+   so Webflow's class styling is the single source of truth. */
 .flatpickr-input,
-.flatpickr-input[readonly] {
-  min-width: 9.5rem;
-  height: 2.125rem;
-  padding: 0 0.625rem;
-  border: 1px solid var(--light-gray-border, #e9e9e9);
-  border-radius: var(--8px, 8px);
-  background: var(--white, #fff);
-  color: var(--black);
-  font-family: var(--primary-font, "Sf Pro Text", Arial, sans-serif);
-  font-size: var(--_sizes---1rem-base, 1rem);
-  font-weight: 400;
-  line-height: 1.2;
-  box-shadow: none;
-}
-
-.flatpickr-input:hover,
-.flatpickr-input[readonly]:hover {
-  border-color: var(--light-gray-border, #dedfdc);
-}
-
-.flatpickr-input:focus,
-.flatpickr-input:focus-visible,
-.flatpickr-input[readonly]:focus,
-.flatpickr-input[readonly]:focus-visible,
-input.flatpickr-input.input:focus,
-input.flatpickr-input.input:focus-visible,
-input.flatpickr-input.input.active,
-input.flatpickr-input.input.form-control:focus,
-input.flatpickr-input.input.form-control:focus-visible,
-input.flatpickr-input.input.form-control.active,
-input.flatpickr-input.input.form-control.active:focus,
-input.flatpickr-input.input.form-control.active:focus-visible,
-input[data-day-picker]:focus + .flatpickr-input,
-input[data-day-picker]:focus-visible + .flatpickr-input {
-  outline: none;
-  border-color: var(--blue, #10069f) !important;
-  font-weight: 600;
-  color: var(--blue, #10069f) !important;
-}
-
-input[data-day-picker]:focus,
-input[data-day-picker]:focus-visible {
-  outline: none !important;
-}
-
+.flatpickr-input[readonly],
 input.flatpickr-input.input,
 input.flatpickr-input.input.form-control,
 input.flatpickr-input.input.active,
 input.flatpickr-input.input.form-control.active {
-  border-color: var(--light-gray-border, #e9e9e9) !important;
-  box-shadow: none !important;
-  outline: none !important;
+  outline: none;
+  box-shadow: none;
+}
+
+.flatpickr-input:hover,
+.flatpickr-input:focus,
+.flatpickr-input:focus-visible,
+.flatpickr-input:active,
+.flatpickr-input[readonly]:hover,
+.flatpickr-input[readonly]:focus,
+.flatpickr-input[readonly]:focus-visible,
+.flatpickr-input[readonly]:active,
+input.flatpickr-input.input:hover,
+input.flatpickr-input.input:focus,
+input.flatpickr-input.input:focus-visible,
+input.flatpickr-input.input:active {
+  outline: none;
+  box-shadow: none;
 }
 
 /* Calendar shell */
