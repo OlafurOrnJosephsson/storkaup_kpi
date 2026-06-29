@@ -35,14 +35,14 @@ body {
 }
 .tab {
   padding: 0 1rem;
-  min-width: 160px;
+  min-width: 220px;
   cursor: pointer;
   font-size: 1rem;
   font-weight: 400;
   display:flex; align-items:center;justify-content: center;
   height: 3rem;
   cursor: pointer;
-  font-size: .875rem;
+  font-size: .75rem;
   font-weight: 400;
   color: var(--sk-text);
   border-bottom: 2px solid transparent;
@@ -50,7 +50,7 @@ body {
   user-select: none;
 }
 .tab:hover { color: var(--sk-text); }
-.tab.active { color: var(--sk-blue); border-bottom-color: var(--sk-blue); font-weight: 700; }
+.tab.active { color: var(--sk-blue); border-bottom-color: var(--sk-blue); font-weight: 500; }
 .tab-badge {
   display: inline-flex;
   align-items: center;
@@ -58,14 +58,14 @@ body {
   background: #f0f0f0;
   color: var(--sk-muted);
   font-size: 0.625rem;
-  font-weight: 600;
+  font-weight: 400;
   height: 1.25rem;
   width: 1.25rem;
   border-radius: 50%;
   margin-left: 6px;
   vertical-align: middle;
 }
-.tab.active .tab-badge { background: var(--sk-blue-bg); color: var(--sk-blue); }
+.tab.active .tab-badge { background: var(--sk-blue-bg); color: var(--sk-blue);font-weight:500; }
 
 /* ── Content ── */
 .content { padding: 24px 0px; }
@@ -123,20 +123,28 @@ body {
 .fld::before {
   content: attr(data-label);
   display: block;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.375rem;
   font-size: 0.5rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: var(--sk-muted);
 }
+.company-cell,
+.cell-sub,
+.cell-kt-muted,
+.cell-kt,
+.cell-sub-mt,
+.payment-cell,
+.date-cell
+{ font-size: .75rem;line-height:1rem;}
 
-.date-cell { color: var(--sk-muted); font-size: .625rem; white-space: nowrap; }
-.company-cell { font-weight: 600; font-size: .875rem; }
-.kt-cell { color: var(--sk-muted); font-size: .75rem; font-family: monospace; }
-.name-cell { }
-.email-cell { color: var(--sk-muted); font-size: .75rem; }
+.company-cell { font-weight: 500;}
+.date-cell { color: var(--sk-muted);  white-space: nowrap;}
+.kt-cell { color: var(--sk-muted);  font-family: monospace; }
+.email-cell { color: var(--sk-muted);}
 .payment-cell { font-size: 12px; }
+.cell-kt{color: var(--sk-blue); font-weight:600;font-family: monospace; text-decoration: none; }
 
 /* ── BC badge ── */
 .bc-found {
@@ -159,11 +167,11 @@ body {
   display: inline-flex;
   flex-direction:row;
   align-items: center;
-  height: 2.5rem;
+  height: 32px;
   padding: 0 1rem;
   border-radius: .5rem;
-  font-size: .75rem;
-  font-weight: 600;
+  font-size: .875rem;
+  font-weight: 700;
   cursor: pointer;
   border: none;
   transition: opacity 0.3s;
@@ -179,21 +187,22 @@ body {
 /* ── Credit score input ── */
 .score-input {
   width: 58px;
-  padding: 4px 6px;
+  height:32px;
+  padding: 0 .5rem;
   border: 1px solid var(--sk-border);
-  border-radius: 6px;
+  border-radius: .5rem;
   font-size: 13px;
   text-align: center;
   background: #fff;
 }
-.score-input:focus { outline: 2px solid var(--sk-blue); }
+.score-input:focus { outline: 1px solid var(--sk-blue); }
 .score-badge {
   display: inline-block;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 4px;
-  margin-top: 4px;
+  font-size: .625rem;
+  font-weight: 600;
+  padding: .25rem .5rem;
+  border-radius: .25rem;
+  margin-top: .5rem;
 }
 .score-red    { background: #f8d7da; color: #721c24; }
 .score-yellow { background: #fff3cd; color: #856404; }
@@ -202,14 +211,15 @@ body {
 /* ── Template dropdown ── */
 .action-cell { white-space: nowrap; }
 .template-select {
-  font-size: 12px;
-  padding: 5px 8px;
+  font-size: .75rem;
+  padding: 0 .5rem;
   border: 1px solid var(--sk-border);
-  border-radius: 6px;
+  border-radius: .5rem;
   background: #fff;
   color: var(--sk-text);
   cursor: pointer;
-  margin-right: 6px;
+  margin-right:1rem;
+  height:32px;
 }
 .template-select:focus { outline: 2px solid var(--sk-blue); }
 
@@ -225,8 +235,8 @@ body {
 .modal-overlay.open { display: flex; }
 .modal {
   background: #fff;
-  border-radius: 10px;
-  padding: 28px 32px;
+  border-radius: 1rem;
+  padding: 2rem;
   max-width: 440px;
   width: 90%;
   box-shadow: 0 8px 32px rgba(0,0,0,0.15);
@@ -236,13 +246,13 @@ body {
 .modal-info {
   background: #f5f6ff;
   border: 1px solid var(--sk-border);
-  border-radius: 6px;
-  padding: 10px 14px;
+  border-radius: .5rem;
+  padding: 1rem;
   margin: 14px 0;
-  font-size: 13px;
+  font-size: .75rem;
 }
-.modal-info strong { display: block; font-size: 14px; margin-bottom: 2px; }
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.modal-info strong { display: block; font-size: .75rem; margin-bottom: .25rem; }
+.modal-actions { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem; }
 
 /* ── Toast ── */
 .toast {
@@ -250,9 +260,9 @@ body {
   bottom: 24px; right: 24px;
   background: var(--sk-text);
   color: #fff;
-  padding: 12px 18px;
+  padding: 1rem;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: .625rem;
   font-weight: 500;
   transform: translateY(80px);
   opacity: 0;
@@ -268,12 +278,9 @@ body {
 .bc-web-active   { background: #d4edda; color: #155724; }
 
 /* ── Cell sub-content, badges, header (used by the generated rows) ── */
-.cell-sub       { font-size: .625rem; color: var(--sk-muted); }
-.cell-sub-mt    { font-size: .625rem; color: var(--sk-muted); margin-top: 4px; }
-.cell-kt        { font-size: .625rem; color: var(--sk-blue); font-family: monospace; text-decoration: none; }
-.cell-kt-muted  { font-size: .625rem; color: #888; font-family: monospace; }
-.badge-person   { display: inline-block; margin-top: 4px; background: #fff3cd; color: #856404; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
-.pay-badge      { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+
+.badge-person   { display: inline-block; margin-top: 4px; background: #fff3cd; color: #856404; font-size: .5rem; font-weight: 600; padding: 3px 8px; border-radius: .25rem; }
+.pay-badge      { padding: 2px 8px; border-radius: 4px; font-size: .625rem; font-weight: 600; }
 .pay-badge--acc  { background: var(--sk-blue-bg); color: var(--sk-blue); }
 .pay-badge--cash { background: #f0f0f0; color: #555; }
 .score-cell     { white-space: nowrap; }
@@ -283,7 +290,7 @@ body {
 .app-header__row      { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-right: 16px; }
 .app-header .tabs     { border-bottom: none; flex: 1; min-width: 0; }
 .app-header__actions  { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.refresh-status       { font-size: 11px; color: #888; }
+.refresh-status       { font-size: .625rem; color: #888; }
 
 /* ── Mobile: header stacks, cards go single-column ── */
 @media (max-width: 768px) {
@@ -472,8 +479,8 @@ function renderRafraen(rows) {
         + (r.companyKt ? '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" class="cell-kt">' + esc(r.companyKt) + '</a>' : '')
       + '</div>'
       + '<div class="fld name-cell" data-label="Nafn">'
-        + '<div>' + esc(r.name) + '</div>'
-        + (r.personKt ? '<div class="cell-kt-muted">' + esc(r.personKt) + '</div>' : '')
+        + '<div class="company-cell">' + esc(r.name) + '</div>'
+        + (r.personKt ? '<div class="cell-sub">' + esc(r.personKt) + '</div>' : '')
         + (r.email ? '<div class="cell-sub">' + esc(r.email) + '</div>' : '')
         + (r.phone ? '<div class="cell-sub">' + esc(r.phone) + '</div>' : '')
       + '</div>'
@@ -554,9 +561,9 @@ function renderUmsokn(rows) {
         + ((r.address || r.city) ? '<div class="cell-sub">' + esc([r.address, r.city, r.postal].filter(Boolean).join(', ')) + '</div>' : '')
       + '</div>'
       + '<div class="fld name-cell" data-label="Nafn">'
-        + '<div>' + esc(r.name) + '</div>'
+        + '<div class="company-cell">' + esc(r.name) + '</div>'
         + (r.email   ? '<div class="cell-sub">' + esc(r.email) + '</div>' : '')
-        + (r.personKt ? '<div class="cell-kt-muted">' + esc(r.personKt) + '</div>' : '')
+        + (r.personKt ? '<div class="cell-sub">' + esc(r.personKt) + '</div>' : '')
         + (r.phone   ? '<div class="cell-sub">' + esc(r.phone) + '</div>' : '')
       + '</div>'
       + '<div class="fld payment-cell hide-mobile" data-label="Greiðsla">'

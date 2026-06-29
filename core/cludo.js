@@ -647,6 +647,79 @@ function runCludoFullSync() {
 
 
 /************************************************************
+ * 📋 exportCategoryPriceList_ — verðlisti eftir Level 1
+ * - Sía PRODUCTS eftir Level 1 gildi
+ * - Tengja við BC_LINES: median UNIT_PRICE_EXCL per SKU
+ * - Output: nýr flips í PRODUCTS workbook
+ ************************************************************/
+function exportCategoryPriceList_(level1Value) {
+  const cfg = loadConfig_();
+
+  // 1) Load + filter products
+  const products = loadTableBySchema_('PRODUCTS');
+  const filtered = products.filter(r =>
+    String(r.LEVEL1 || '').trim() === level1Value
+  );
+
+  if (!filtered.length) {
+    Logger.log(`⚠️ No products for Level 1 = "${level1Value}"`);
+    return;
+  }
+  Logger.log(`📦 ${filtered.length} products in "${level1Value}"`);
+
+  // 2) Median verð per SKU úr BC_LINES
+  const bcLines = loadTableBySchema_('BC_LINES');
+  const pricesBySku = {};
+
+  bcLines.forEach(r => {
+    const sku = normalizeSkuGlobal_(r.SKU);
+    const price = parseFloat(r.UNIT_PRICE_EXCL);
+    if (!sku || isNaN(price) || price <= 0) return;
+    if (!pricesBySku[sku]) pricesBySku[sku] = [];
+    pricesBySku[sku].push(price);
+  });
+
+  // 3) Join + búa til raðir
+  const HEADER = ['SKU', 'Product Name', 'Level 2', 'Level 3', 'Category Path', 'Median Price', '# Sales'];
+
+  const rows = filtered.map(p => {
+    const sku = normalizeSkuGlobal_(p.SKU);
+    const prices = pricesBySku[sku] || [];
+    const sorted = prices.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length
+      ? (sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid])
+      : '';
+
+    return [sku, p.NAME || '', p.LEVEL2 || '', p.LEVEL3 || '', p.CATEGORY_PATH || '', median, prices.length];
+  });
+
+  rows.sort((a, b) =>
+    String(a[2]).localeCompare(String(b[2])) ||
+    String(a[3]).localeCompare(String(b[3])) ||
+    String(a[0]).localeCompare(String(b[0]))
+  );
+
+  // 4) Skrifa í flipa
+  const ss = SpreadsheetApp.openById(cfg.SHEETS.PRODUCTS.ID);
+  const sheetName = `Price List — ${level1Value}`;
+  let sh = ss.getSheetByName(sheetName);
+  if (sh) sh.clearContents();
+  else sh = ss.insertSheet(sheetName);
+
+  sh.appendRow(HEADER);
+  if (rows.length) sh.getRange(2, 1, rows.length, HEADER.length).setValues(rows);
+  sh.getRange(1, 1, sh.getLastRow(), 1).setNumberFormat('@');
+
+  Logger.log(`✅ Price list done — ${rows.length} rows → "${sheetName}"`);
+}
+
+function menu_exportAfengirDrykkir() {
+  exportCategoryPriceList_('Áfengir drykkir');
+}
+
+
+/************************************************************
  * 🔬 Manual test function
  ************************************************************/
 
@@ -658,6 +731,24 @@ function testSingleSku() {
   const env = getCludoEnv_();
   const res = fetchCludoResult_(sku, env);
   Logger.log(JSON.stringify(res, null, 2));
+
+  // Debug: skoðum öll Fields sem Cludo skilar
+  const payload = {
+    query: sku, take: 1, skip: 0,
+    searchType: "phrase",
+    filters: { StorkaupSKU: [sku] }
+  };
+  const rawRes = UrlFetchApp.fetch(env.SEARCH_URL, {
+    method: "post",
+    contentType: "application/json",
+    headers: { Authorization: `SiteKey ${env.SITE_KEY}`, Accept: "application/json" },
+    muteHttpExceptions: true,
+    payload: JSON.stringify(payload)
+  });
+  const data = JSON.parse(rawRes.getContentText());
+  const fields = data?.TypedDocuments?.[0]?.Fields || {};
+  Logger.log('ALL FIELD KEYS: ' + JSON.stringify(Object.keys(fields)));
+  Logger.log('ALL FIELDS: ' + JSON.stringify(fields, null, 2));
 }
 
 

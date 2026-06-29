@@ -33,6 +33,8 @@ function onOpen() {
       ui.createMenu('NEWWEB Tools')
         .addItem('Reset NEWWEB v2 checkpoint', 'menu_resetNewwebCheckpointV2')
         .addItem('Reconcile missing NEWWEB fields', 'menu_reconcileNewwebMissingDataV2')
+        .addItem('Sync NEWWEB order status (updated_at)', 'menu_syncNewwebOrderStatusV2')
+        .addItem('Match ALL NEWWEB statuses to Magento', 'menu_reconcileNewwebAllStatusesV2')
     )
     .addSubMenu(
       ui.createMenu('Tools')
@@ -138,7 +140,33 @@ function menu_reconcileNewwebMissingDataV2() {
     throw new Error('reconcileNewwebMissingData_v2() not found. Ensure core/newsales_v2.js is deployed.');
   }
   var out = reconcileNewwebMissingData_v2();
-  toast_('NEWWEB reconcile done. Repaired: ' + (out && out.repaired || 0), 'KPI CORE');
+  toast_('NEWWEB reconcile done. Repaired: ' + (out && out.repaired || 0) +
+    ', status updated: ' + (out && out.statusUpdated || 0), 'KPI CORE');
+}
+
+function menu_syncNewwebOrderStatusV2() {
+  toast_('Syncing NEWWEB order status from Magento...', 'KPI CORE');
+  if (typeof syncNewwebOrderStatus_v2 !== 'function') {
+    throw new Error('syncNewwebOrderStatus_v2() not found. Ensure core/newsales_v2.js is deployed.');
+  }
+  var out = syncNewwebOrderStatus_v2();
+  toast_('NEWWEB status sync done. Status updated: ' + (out && out.statusUpdated || 0) +
+    ', matched: ' + (out && out.matched || 0), 'KPI CORE');
+}
+
+function menu_reconcileNewwebAllStatusesV2() {
+  toast_('Matching ALL NEWWEB statuses to Magento (may take a while)...', 'KPI CORE');
+  if (typeof reconcileNewwebAllStatuses_v2 !== 'function') {
+    throw new Error('reconcileNewwebAllStatuses_v2() not found. Ensure core/newsales_v2.js is deployed.');
+  }
+  var out = reconcileNewwebAllStatuses_v2();
+  if (out && out.done) {
+    toast_('Done. Status updated: ' + (out.statusUpdated || 0) +
+      ', checked: ' + (out.processed || 0) + '. All statuses now match Magento.', 'KPI CORE');
+  } else {
+    toast_('Paused (time budget). Updated: ' + (out && out.statusUpdated || 0) +
+      ', remaining: ' + (out && out.remaining || 0) + '. Run again to continue.', 'KPI CORE');
+  }
 }
 
 function menu_refreshSalesSummaries() {

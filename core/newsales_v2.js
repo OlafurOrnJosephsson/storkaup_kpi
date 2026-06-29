@@ -14,7 +14,21 @@ const NEWWEB_V2_STATUS_FILTER   = [];       // e.g. ['processing','complete']
 const NEWWEB_V2_MAX_PAGES       = 5;        // limit pages per execution to avoid quota spikes
 const NEWWEB_V2_PAGE_SIZE       = 200;
 const NEWWEB_V2_LOOKBACK_DAYS   = 5;        // never fetch earlier than (today - N days) to keep window small
+
+// Status delta sync (catches pending -> paid, cancellations, etc. after first ingest)
+const NEWWEB_V2_STATUS_SYNC_KEY           = 'NEWWEB_V2_STATUS_SYNC_AT';
+const NEWWEB_V2_STATUS_SYNC_LOOKBACK_DAYS = 7;   // first-run window when no checkpoint exists
+const NEWWEB_V2_STATUS_SYNC_MAX_PAGES     = 10;  // 10 * 200 = 2000 changed orders per run
+
 var globalCustomerLookup = null;
+
+// Statuses considered terminal for reconcile purposes. Anything NOT in this set
+// (incl. blank) is re-checked against Magento so 'pending'/'processing' -> 'paid'
+// transitions that happen after first ingest get picked up.
+// Observed Magento order statuses on this store: pending, processing, paid, complete.
+// 'pending' and 'processing' are non-terminal (re-checked); 'paid'/'complete' are final.
+// closed/canceled kept for forward-compat (refunds/cancellations) though unseen today.
+var NEWWEB_FINAL_STATUSES_V2 = ['paid', 'complete', 'closed', 'canceled', 'cancelled'];
 
 /************************************************************
  * Entry point
@@ -215,7 +229,7 @@ function reconcileNewwebMissingDataWindow_v2_(options) {
   var lastRow = sh.getLastRow();
   if (lastRow <= 1) {
     logNewwebEvent_('INFO', 'NEWWEB reconcile skipped: no data rows');
-    return { scanned: 0, candidates: 0, repaired: 0, missingInMagento: 0 };
+    return { scanned: 0, candidates: 0, repaired: 0, statusUpdated: 0, missingInMagento: 0 };
   }
 
   var idx = {};
@@ -233,7 +247,9 @@ function reconcileNewwebMissingDataWindow_v2_(options) {
     var orderId = String(row[idx['ID']] || '').trim();
     if (!orderId) continue;
     if (byOrderId[orderId]) continue;
-    if (!rowHasMissingFields_v2_(row, idx, required)) continue;
+    var missing = rowHasMissingFields_v2_(row, idx, required);
+    var staleStatus = rowHasNonFinalStatus_v2_(row, idx);
+    if (!missing && !staleStatus) continue;
     byOrderId[orderId] = true;
     candidates.push({
       sheetRow: startRow + i,
@@ -249,7 +265,7 @@ function reconcileNewwebMissingDataWindow_v2_(options) {
       startRow: startRow,
       scanDirection: 'top'
     });
-    return { scanned: values.length, candidates: 0, repaired: 0, missingInMagento: 0 };
+    return { scanned: values.length, candidates: 0, repaired: 0, statusUpdated: 0, missingInMagento: 0 };
   }
 
   logNewwebEvent_('INFO', 'NEWWEB reconcile start', {
@@ -261,6 +277,7 @@ function reconcileNewwebMissingDataWindow_v2_(options) {
 
   var repairedRows = [];
   var repaired = 0;
+  var statusUpdated = 0;
   var missingInMagento = 0;
   try {
     globalCustomerLookup = loadCustomerLookup_();
@@ -279,11 +296,13 @@ function reconcileNewwebMissingDataWindow_v2_(options) {
     var mapped = mapOrdersToOrderRows_([order], headers);
     if (!mapped || !mapped.length) continue;
 
-    var updatedRow = applyMissingFieldsFromRow_v2_(cand.row, mapped[0], idx, required);
-    if (!updatedRow.changed) continue;
+    var afterMissing = applyMissingFieldsFromRow_v2_(cand.row, mapped[0], idx, required);
+    var afterStatus = applyStatusFromRow_v2_(afterMissing.row, mapped[0], idx);
+    if (!afterMissing.changed && !afterStatus.changed) continue;
+    if (afterStatus.changed) statusUpdated++;
 
-    sh.getRange(cand.sheetRow, 1, 1, headers.length).setValues([updatedRow.row]);
-    repairedRows.push(updatedRow.row);
+    sh.getRange(cand.sheetRow, 1, 1, headers.length).setValues([afterStatus.row]);
+    repairedRows.push(afterStatus.row);
     repaired++;
   }
 
@@ -300,6 +319,7 @@ function reconcileNewwebMissingDataWindow_v2_(options) {
     scanned: values.length,
     candidates: candidates.length,
     repaired: repaired,
+    statusUpdated: statusUpdated,
     missingInMagento: missingInMagento
   });
 
@@ -307,8 +327,264 @@ function reconcileNewwebMissingDataWindow_v2_(options) {
     scanned: values.length,
     candidates: candidates.length,
     repaired: repaired,
+    statusUpdated: statusUpdated,
     missingInMagento: missingInMagento
   };
+}
+
+/************************************************************
+ * Full status match — scan the ENTIRE sheet (not a window)
+ * --------------------------------------------------------
+ * Targets every row that is not in a terminal status (or has
+ * missing enrichment), re-fetches it from Magento, and fixes
+ * it. Cannot miss a stuck row regardless of age. Self-resuming:
+ * a fixed pending->paid row becomes terminal and drops out of
+ * the candidate set on the next run, so re-run until done:true.
+ * Honours a wall-clock budget to stay under the GAS time limit.
+ ************************************************************/
+function reconcileNewwebAllStatuses_v2(options) {
+  var opts = options || {};
+  var maxRepairs = Math.max(1, Number(opts.maxRepairs || 100000));
+  var timeBudgetMs = Math.max(30000, Number(opts.timeBudgetMs || 300000)); // ~5 min default
+  var startMs = Date.now();
+
+  var sh = ensureNewwebSheetV2_();
+  var headers = ensureNewwebHeaderV2_(sh);
+  var lastRow = sh.getLastRow();
+  if (lastRow <= 1) {
+    logNewwebEvent_('INFO', 'NEWWEB full reconcile skipped: no data rows');
+    return { scanned: 0, candidates: 0, processed: 0, repaired: 0, statusUpdated: 0, missingInMagento: 0, remaining: 0, done: true };
+  }
+
+  var idx = {};
+  headers.forEach(function(h, i) { idx[h] = i; });
+  var required = ['Company Name', 'Company ID', 'Real Email', 'Region', 'National ID'];
+
+  var values = sh.getRange(2, 1, lastRow - 1, headers.length).getValues();
+
+  var byOrderId = {};
+  var candidates = [];
+  for (var i = 0; i < values.length; i++) {
+    var row = values[i];
+    var orderId = String(row[idx['ID']] || '').trim();
+    if (!orderId || byOrderId[orderId]) continue;
+    if (!rowHasMissingFields_v2_(row, idx, required) && !rowHasNonFinalStatus_v2_(row, idx)) continue;
+    byOrderId[orderId] = true;
+    candidates.push({ sheetRow: 2 + i, orderId: orderId, row: row });
+  }
+
+  var totalCandidates = candidates.length;
+  if (!totalCandidates) {
+    logNewwebEvent_('INFO', 'NEWWEB full reconcile: no candidates (all statuses final, fields present)');
+    return { scanned: values.length, candidates: 0, processed: 0, repaired: 0, statusUpdated: 0, missingInMagento: 0, remaining: 0, done: true };
+  }
+
+  try {
+    globalCustomerLookup = loadCustomerLookup_();
+  } catch (e) {
+    logNewwebEvent_('WARN', 'NEWWEB full reconcile lookup load failed', serializeError_(e));
+  }
+
+  logNewwebEvent_('INFO', 'NEWWEB full reconcile start', {
+    scanned: values.length,
+    candidates: totalCandidates,
+    timeBudgetMs: timeBudgetMs
+  });
+
+  var repairedRows = [];
+  var repaired = 0, statusUpdated = 0, missingInMagento = 0, processed = 0;
+  var pausedByBudget = false;
+
+  for (var c = 0; c < candidates.length; c++) {
+    if (processed >= maxRepairs) break;
+    if ((Date.now() - startMs) > timeBudgetMs) { pausedByBudget = true; break; }
+
+    var cand = candidates[c];
+    var order = fetchMagentoOrderByIncrementId_v2_(cand.orderId);
+    processed++;
+    if (!order) { missingInMagento++; continue; }
+
+    var mapped = mapOrdersToOrderRows_([order], headers);
+    if (!mapped || !mapped.length) continue;
+
+    var afterMissing = applyMissingFieldsFromRow_v2_(cand.row, mapped[0], idx, required);
+    var afterStatus = applyStatusFromRow_v2_(afterMissing.row, mapped[0], idx);
+    if (!afterMissing.changed && !afterStatus.changed) continue;
+    if (afterStatus.changed) statusUpdated++;
+
+    sh.getRange(cand.sheetRow, 1, 1, headers.length).setValues([afterStatus.row]);
+    repairedRows.push(afterStatus.row);
+    repaired++;
+  }
+
+  if (repairedRows.length) {
+    try {
+      upsertNewwebRowsToSupabase_(headers, repairedRows);
+      logNewwebEvent_('INFO', 'NEWWEB full reconcile Supabase upsert ok', { rows: repairedRows.length });
+    } catch (e) {
+      logNewwebEvent_('ERROR', 'NEWWEB full reconcile Supabase upsert failed', serializeError_(e));
+    }
+  }
+
+  var remaining = totalCandidates - processed;
+  var done = !pausedByBudget && remaining <= 0;
+
+  var result = {
+    scanned: values.length,
+    candidates: totalCandidates,
+    processed: processed,
+    repaired: repaired,
+    statusUpdated: statusUpdated,
+    missingInMagento: missingInMagento,
+    remaining: remaining,
+    pausedByBudget: pausedByBudget,
+    done: done
+  };
+  logNewwebEvent_('INFO', 'NEWWEB full reconcile completed', result);
+  return result;
+}
+
+/************************************************************
+ * Status delta sync — bulk "what changed since last check"
+ * --------------------------------------------------------
+ * Asks Magento for every order with updated_at > checkpoint
+ * (ascending) and refreshes Status + enrichment on matching
+ * sheet rows. O(changed orders), not O(open orders). Catches
+ * pending->paid, cancellations, refunds, late B2B fields.
+ * Existing rows only; new orders are owned by safePoll_v2.
+ ************************************************************/
+function syncNewwebOrderStatus_v2() {
+  var sh = ensureNewwebSheetV2_();
+  var headers = ensureNewwebHeaderV2_(sh);
+  var lastRow = sh.getLastRow();
+  if (lastRow <= 1) {
+    logNewwebEvent_('INFO', 'NEWWEB status sync skipped: no data rows');
+    return { fetched: 0, matched: 0, statusUpdated: 0, fieldsRepaired: 0, unseenInSheet: 0 };
+  }
+
+  var idx = {};
+  headers.forEach(function(h, i) { idx[h] = i; });
+  var idCol = idx['ID'];
+
+  // Map increment_id -> { sheetRow, row } from current sheet contents (one read).
+  var values = sh.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  var rowByOrderId = {};
+  for (var i = 0; i < values.length; i++) {
+    var oid = String(values[i][idCol] || '').trim();
+    if (oid && !rowByOrderId[oid]) {
+      rowByOrderId[oid] = { sheetRow: 2 + i, row: values[i] };
+    }
+  }
+
+  var props = PropertiesService.getScriptProperties();
+  var checkpoint = props.getProperty(NEWWEB_V2_STATUS_SYNC_KEY);
+  var startAfter = computeStatusSyncStartAfter_v2_(checkpoint);
+
+  try {
+    globalCustomerLookup = loadCustomerLookup_();
+  } catch (e) {
+    logNewwebEvent_('WARN', 'NEWWEB status sync lookup load failed', serializeError_(e));
+  }
+
+  var required = ['Company Name', 'Company ID', 'Real Email', 'Region', 'National ID'];
+  var fetched = 0, matched = 0, statusUpdated = 0, fieldsRepaired = 0, unseenInSheet = 0;
+  var maxUpdatedAt = null;
+  var repairedRows = [];
+
+  logNewwebEvent_('INFO', 'NEWWEB status sync start', { startAfter: startAfter, checkpoint: checkpoint || '(none)' });
+
+  for (var page = 1; page <= NEWWEB_V2_STATUS_SYNC_MAX_PAGES; page++) {
+    var out = fetchMagentoOrdersByUpdatedAt_v2_(startAfter, page);
+    var items = (out && out.items) || [];
+    logNewwebEvent_('INFO', 'NEWWEB status sync page', { page: page, count: items.length });
+    if (!items.length) break;
+
+    var mapped = mapOrdersToOrderRows_(items, headers);
+    for (var m = 0; m < mapped.length; m++) {
+      fetched++;
+      var mappedRow = mapped[m];
+
+      // Ascending sort by updated_at => last processed is the safe checkpoint.
+      var ua = items[m] && items[m].updated_at;
+      if (ua && (!maxUpdatedAt || ua > maxUpdatedAt)) maxUpdatedAt = ua;
+
+      var oid = String(mappedRow[idCol] || '').trim();
+      var target = oid ? rowByOrderId[oid] : null;
+      if (!target) { unseenInSheet++; continue; }
+      matched++;
+
+      var afterMissing = applyMissingFieldsFromRow_v2_(target.row, mappedRow, idx, required);
+      var afterStatus = applyStatusFromRow_v2_(afterMissing.row, mappedRow, idx);
+      if (!afterMissing.changed && !afterStatus.changed) continue;
+      if (afterMissing.changed) fieldsRepaired++;
+      if (afterStatus.changed) statusUpdated++;
+
+      sh.getRange(target.sheetRow, 1, 1, headers.length).setValues([afterStatus.row]);
+      target.row = afterStatus.row;
+      repairedRows.push(afterStatus.row);
+    }
+
+    if (items.length < NEWWEB_V2_PAGE_SIZE) break;
+  }
+
+  if (repairedRows.length) {
+    try {
+      upsertNewwebRowsToSupabase_(headers, repairedRows);
+      logNewwebEvent_('INFO', 'NEWWEB status sync Supabase upsert ok', { rows: repairedRows.length });
+    } catch (e) {
+      logNewwebEvent_('ERROR', 'NEWWEB status sync Supabase upsert failed', serializeError_(e));
+    }
+  }
+
+  if (maxUpdatedAt) {
+    var iso = new Date(maxUpdatedAt).toISOString();
+    props.setProperty(NEWWEB_V2_STATUS_SYNC_KEY, iso);
+  }
+
+  var result = {
+    fetched: fetched,
+    matched: matched,
+    statusUpdated: statusUpdated,
+    fieldsRepaired: fieldsRepaired,
+    unseenInSheet: unseenInSheet,
+    checkpoint: maxUpdatedAt
+  };
+  logNewwebEvent_('INFO', 'NEWWEB status sync completed', result);
+  return result;
+}
+
+function fetchMagentoOrdersByUpdatedAt_v2_(updatedAfter, page) {
+  var CONFIG = loadConfig_();
+  var base = String(CONFIG.ENDPOINTS.Magento.BASE_URL || '').replace(/\/$/, '');
+  var url =
+    base + '/orders' +
+    '?searchCriteria[filter_groups][0][filters][0][field]=updated_at' +
+    '&searchCriteria[filter_groups][0][filters][0][value]=' + encodeURIComponent(updatedAfter) +
+    '&searchCriteria[filter_groups][0][filters][0][condition_type]=gt' +
+    '&searchCriteria[sortOrders][0][field]=updated_at' +
+    '&searchCriteria[sortOrders][0][direction]=ASC' +
+    '&searchCriteria[pageSize]=' + NEWWEB_V2_PAGE_SIZE +
+    '&searchCriteria[currentPage]=' + page;
+
+  var out = fetchMagentoJsonWithRetry_v2_(url);
+  if (!out || out.status !== 200 || !out.json) return { items: [] };
+  return { items: out.json.items || [] };
+}
+
+function computeStatusSyncStartAfter_v2_(checkpoint) {
+  var parsed = parseDate_(checkpoint);
+  if (parsed) return formatMagentoDate_(parsed); // checkpoint only ever moves forward
+  var floor = new Date(Date.now() - NEWWEB_V2_STATUS_SYNC_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  return formatMagentoDate_(floor);
+}
+
+function resetNewwebStatusSyncCheckpoint_v2(start) {
+  if (start) {
+    PropertiesService.getScriptProperties().setProperty(NEWWEB_V2_STATUS_SYNC_KEY, start);
+  } else {
+    PropertiesService.getScriptProperties().deleteProperty(NEWWEB_V2_STATUS_SYNC_KEY);
+  }
+  logNewwebEvent_('INFO', 'Reset NEWWEB status sync checkpoint', { start: start || '(default lookback)' });
 }
 
 function debugSupabaseConfig_v2() {
@@ -356,6 +632,29 @@ function applyMissingFieldsFromRow_v2_(targetRow, sourceRow, idx, fields) {
 
 function isMissingCellValue_v2_(v) {
   return v === null || v === undefined || String(v).trim() === '';
+}
+
+// True when the row's Status is not terminal (blank counts as non-terminal),
+// i.e. it may have advanced in Magento (e.g. pending -> paid) since first ingest.
+function rowHasNonFinalStatus_v2_(row, idx) {
+  var col = idx['Status'];
+  if (col == null) return false;
+  var s = String(row[col] == null ? '' : row[col]).trim().toLowerCase();
+  return NEWWEB_FINAL_STATUSES_V2.indexOf(s) === -1;
+}
+
+// Overwrites Status from the freshly fetched Magento row when it differs.
+// Unlike applyMissingFieldsFromRow_v2_, this replaces an existing value.
+function applyStatusFromRow_v2_(targetRow, sourceRow, idx) {
+  var col = idx['Status'];
+  if (col == null) return { row: targetRow, changed: false };
+  var fresh = String(sourceRow[col] == null ? '' : sourceRow[col]).trim();
+  if (!fresh) return { row: targetRow, changed: false };
+  var current = String(targetRow[col] == null ? '' : targetRow[col]).trim();
+  if (fresh.toLowerCase() === current.toLowerCase()) return { row: targetRow, changed: false };
+  var out = targetRow.slice();
+  out[col] = sourceRow[col];
+  return { row: out, changed: true };
 }
 
 /************************************************************
@@ -870,6 +1169,32 @@ function safePoll_v2() {
     if (typeof notifyTriggerFailure_ === 'function') {
       try {
         notifyTriggerFailure_('safePoll_v2', errObj, { windowDecision: windowDecision });
+      } catch (alertErr) {
+        Logger.log('[NEWWEB][WARN] Failure alert failed: ' + alertErr);
+      }
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/************************************************************
+ * Scheduled status delta sync wrapper (v2)
+ ************************************************************/
+function scheduledNewwebStatusSync_v2() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    logNewwebEvent_('WARN', 'Status sync skipped: another run in progress');
+    return;
+  }
+  try {
+    return syncNewwebOrderStatus_v2();
+  } catch (e) {
+    var errObj = serializeError_(e);
+    logNewwebEvent_('ERROR', 'scheduledNewwebStatusSync_v2 exception', errObj);
+    if (typeof notifyTriggerFailure_ === 'function') {
+      try {
+        notifyTriggerFailure_('scheduledNewwebStatusSync_v2', errObj, {});
       } catch (alertErr) {
         Logger.log('[NEWWEB][WARN] Failure alert failed: ' + alertErr);
       }
