@@ -94,11 +94,11 @@ Title rules (V3, from SEO review Apr 2025):
 
 **This section is the single source of truth for production pins.** `NEXT_TASKS.md` and `README.md` point here — do not duplicate pin values elsewhere. Update these whenever Webflow custom code changes.
 
-- Webflow deploy rev (`data-storkaup-rev`): `de078fb`
-- `Webflow/dashboard.js`: `de078fb`
-- `Webflow/website-dashboard.js`: `9d75dcb`
-- `Webflow/dashboard-theme.css`: `79acc08`
-- `Webflow/customer-profiles.js`: `2d2ec9b`
+- Webflow deploy rev (`data-storkaup-rev`): `53b118c`
+- `Webflow/dashboard.js`: `53b118c`
+- `Webflow/website-dashboard.js`: `53b118c`
+- `Webflow/dashboard-theme.css`: `53b118c`
+- `Webflow/customer-profiles.js`: `53b118c`
 - Trigger schedule baseline: `ab2931a`
 - Parent/child profile aggregation baseline: `ab0aafd`
 - Parent/child last-orders merge: `ca32334`
