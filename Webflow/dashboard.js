@@ -338,6 +338,43 @@
     return data;
   }
 
+  // Manual BC figures — entered monthly from PowerBI/BC into the password-protected
+  // Webflow page (window.STORKAUP_BC_MANUAL). BC ingest into Supabase was frozen for
+  // security (Syndis flag: financial data too open via anon key), so the BC-derived
+  // ratios no longer come from the RPC — they are supplied here per month. All
+  // web/Magento metrics (YoY, day pace, new customers, self-serve) are untouched.
+  //
+  //   window.STORKAUP_BC_MANUAL = {
+  //     "2026-06": { webOrdersPct: 0.385, webRevenuePct: 0.419, webAov: 80396, bcAov: 69742 }
+  //   };
+  function getManualBcFigures_(month) {
+    var store = (typeof window !== "undefined") ? window.STORKAUP_BC_MANUAL : null;
+    if (!store || typeof store !== "object") return null;
+    var fig = store[month];
+    return (fig && typeof fig === "object") ? fig : null;
+  }
+
+  function applyManualBcFigures_(data, month) {
+    if (!data || !data.month) return false;
+    var fig = getManualBcFigures_(month);
+    if (!fig) return false;
+    var m = data.month;
+    var wo = Number(fig.webOrdersPct);
+    var wr = Number(fig.webRevenuePct);
+    if (Number.isFinite(wo)) m.webOrdersPct = wo;
+    if (Number.isFinite(wr)) m.webRevenuePct = wr;
+    var webAov = Number(fig.webAov);
+    var bcAov = Number(fig.bcAov);
+    if (Number.isFinite(webAov) && Number.isFinite(bcAov) && (webAov + bcAov) > 0) {
+      m.aovWebPct = webAov / (webAov + bcAov);
+      m.aovBcPct = bcAov / (webAov + bcAov);
+      m.bcAovExcl = bcAov;
+    }
+    m.bcManual = true;
+    m.bcRatioMonth = month; // drives the "BC hlutföll byggjast á: <mánuður>" hint
+    return true;
+  }
+
   function getTodayIso() {
     var now = new Date();
     if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
@@ -1155,6 +1192,8 @@
           return;
         }
 
+        applyManualBcFigures_(data, targetMonth);
+
         setText("month-yoy", pct(data.month.yoyPct));
         setText("month-weborders-pct", pct(data.month.webOrdersPct));
         setText("month-webrev-pct", pct(data.month.webRevenuePct));
@@ -1218,8 +1257,14 @@
         // Web goal progress — normalized against 50% target (configurable via data-webrev-goal-target on body)
         // Uses rolling30WebOrdersPct (web orders share) as it better reflects digital adoption
         var webrevTarget = getWebrevGoalTarget_();
-        var webrevNorm = m.rolling30WebOrdersPct != null
-          ? Math.max(0, Math.min(1, m.rolling30WebOrdersPct / webrevTarget)) : null;
+        // "Vefsala % MARKMIÐ" goal card: with manual BC figures, track the
+        // manually-entered web-sales share against the target; otherwise fall back
+        // to the rolling-30d web-orders share from the RPC.
+        var goalShare = (m.bcManual && m.webRevenuePct != null)
+          ? m.webRevenuePct
+          : m.rolling30WebOrdersPct;
+        var webrevNorm = goalShare != null
+          ? Math.max(0, Math.min(1, goalShare / webrevTarget)) : null;
         if (webrevNorm != null) {
           values["webrev-goal-norm-pct"] = webrevNorm * 100;
           setText("webrev-goal-norm-pct", pct(webrevNorm));

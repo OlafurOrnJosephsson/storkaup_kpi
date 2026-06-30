@@ -1,5 +1,13 @@
-﻿-- Dashboard RPC used by Webflow dashboard.js
--- Net BC logic: invoices minus credit invoices (both totals and web share numerators/denominators).
+-- Dashboard RPC used by Webflow dashboard.js
+--
+-- BC REMOVED (2026-06): Business Central ingest into Supabase was frozen for
+-- security (Syndis flag — financial data too open via the anon key). All
+-- BC-derived ratios (webOrdersPct, webRevenuePct, bcAovExcl, aovWebPct, aovBcPct,
+-- rolling30*, bcAsOf, bcRatioMonth) are now returned as null. They are supplied
+-- manually per month from PowerBI/BC inside the password-protected Webflow page
+-- (window.STORKAUP_BC_MANUAL) and applied client-side in dashboard.js. This
+-- function therefore no longer reads raw.bc_invoices_raw / raw.bc_credit_invoices_raw.
+-- See core/sql/security_revoke_anon_bc.sql for the matching table lockdown.
 
 create schema if not exists api;
 
@@ -15,28 +23,6 @@ with month_ctx as (
     date_trunc('month', coalesce(p_month, current_date)::timestamp)::date as month_start,
     (date_trunc('month', coalesce(p_month, current_date)::timestamp) + interval '1 month')::date as month_end,
     date_trunc('month', current_date::timestamp)::date as current_month_start
-),
-bc_sync_anchor as (
-  -- cap BC CTEs at the last successful BC sync so ratios are stable mid-month
-  select max(started_at)::date as last_sync_date
-  from raw.ingestion_runs
-  where job_name = 'scheduledBcSync_v1'
-    and status = 'success'
-),
-bc_ratio_ctx as (
-  -- for current month use previous complete month for BC ratios (avoids booking lag)
-  select
-    case
-      when m.month_start = m.current_month_start
-        then (m.month_start - interval '1 month')::date
-      else m.month_start
-    end as ratio_start,
-    case
-      when m.month_start = m.current_month_start
-        then m.month_start
-      else m.month_end
-    end as ratio_end
-  from month_ctx m
 ),
 month_key as (
   select to_char(month_start, 'YYYY-MM') as ym from month_ctx
@@ -87,64 +73,6 @@ web_prev_year as (
   where o.purchase_date >= (m.month_start::timestamp - interval '1 year')
     and o.purchase_date < (m.month_end::timestamp - interval '1 year')
 ),
-bc_invoices_month as (
-  select
-    count(*)::numeric as orders,
-    coalesce(sum(i.amount_incl), 0)::numeric as revenue_incl,
-    coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
-    count(*) filter (
-      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-         or (
-           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
-           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
-         )
-    )::numeric as web_orders,
-    coalesce(sum(i.amount_excl) filter (
-      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-         or (
-           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
-           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
-         )
-    ), 0)::numeric as web_revenue_excl
-  from raw.bc_invoices_raw i
-  cross join bc_ratio_ctx r
-  where coalesce(i.order_date, i.booking_date) >= r.ratio_start::timestamp
-    and coalesce(i.order_date, i.booking_date) < r.ratio_end::timestamp
-),
-bc_credits_month as (
-  select
-    count(*)::numeric as orders,
-    coalesce(sum(i.amount_incl), 0)::numeric as revenue_incl,
-    coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
-    count(*) filter (
-      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-         or (
-           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
-           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
-         )
-    )::numeric as web_orders,
-    coalesce(sum(i.amount_excl) filter (
-      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-         or (
-           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
-           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
-         )
-    ), 0)::numeric as web_revenue_excl
-  from raw.bc_credit_invoices_raw i
-  cross join bc_ratio_ctx r
-  where coalesce(i.order_date, i.booking_date) >= r.ratio_start::timestamp
-    and coalesce(i.order_date, i.booking_date) < r.ratio_end::timestamp
-),
-bc_net as (
-  select
-    (inv.revenue_incl - cr.revenue_incl)::numeric as revenue_incl,
-    (inv.revenue_excl - cr.revenue_excl)::numeric as revenue_excl,
-    (inv.orders - cr.orders)::numeric as orders,
-    (inv.web_orders - cr.web_orders)::numeric as web_orders,
-    (inv.web_revenue_excl - cr.web_revenue_excl)::numeric as web_revenue_excl
-  from bc_invoices_month inv
-  cross join bc_credits_month cr
-),
 reps as (
   select distinct
     coalesce(nullif(trim(r.name_norm), ''), '') as rep_name_norm,
@@ -166,7 +94,7 @@ web_orders_unique as (
       lower(
         translate(
           coalesce(max(o.customer_name), ''),
-          'Ã¡Ã°Ã¾Ã¦Ã¶Ã©Ã­Ã³ÃºÃ½ÃÃÃžÃ†Ã–Ã‰ÃÃ“ÃšÃ',
+          'áðþæöéíóúýÁÐÞÆÖÉÍÓÚÝ',
           'adthaeoeiouyadthaeoeiouy'
         )
       ),
@@ -181,7 +109,7 @@ web_orders_unique as (
           lower(
             translate(
               coalesce(max(o.company_name), ''),
-              'Ã¡Ã°Ã¾Ã¦Ã¶Ã©Ã­Ã³ÃºÃ½ÃÃÃžÃ†Ã–Ã‰ÃÃ“ÃšÃ',
+              'áðþæöéíóúýÁÐÞÆÖÉÍÓÚÝ',
               'adthaeoeiouyadthaeoeiouy'
             )
           ),
@@ -196,7 +124,7 @@ web_orders_unique as (
           lower(
             translate(
               coalesce(max(o.customer_name), ''),
-              'Ã¡Ã°Ã¾Ã¦Ã¶Ã©Ã­Ã³ÃºÃ½ÃÃÃžÃ†Ã–Ã‰ÃÃ“ÃšÃ',
+              'áðþæöéíóúýÁÐÞÆÖÉÍÓÚÝ',
               'adthaeoeiouyadthaeoeiouy'
             )
           ),
@@ -328,67 +256,6 @@ day_avg_weekday_12w as (
     coalesce(avg(daily.revenue_incl), 0)::numeric as avg_revenue_incl,
     coalesce(count(*), 0)::int as sample_days
   from daily
-),
-rolling30_ctx as (
-  -- 30-day window ending 3 days ago — both sides have same BC booking lag applied
-  select
-    (current_date - interval '33 day')::date as start_date,
-    (current_date - interval '3 day')::date  as end_date
-),
-rolling30_bc_inv as (
-  select
-    coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
-    coalesce(sum(i.amount_excl) filter (
-      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-         or (
-           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
-           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
-         )
-    ), 0)::numeric as web_revenue_excl,
-    count(*)::numeric as orders,
-    count(*) filter (
-      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-         or (
-           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
-           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
-         )
-    )::numeric as web_orders
-  from raw.bc_invoices_raw i
-  cross join rolling30_ctx r
-  where coalesce(i.booking_date, i.order_date) >= r.start_date::timestamp
-    and coalesce(i.booking_date, i.order_date) < r.end_date::timestamp
-),
-rolling30_bc_cr as (
-  select
-    coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
-    coalesce(sum(i.amount_excl) filter (
-      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-         or (
-           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
-           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
-         )
-    ), 0)::numeric as web_revenue_excl,
-    count(*)::numeric as orders,
-    count(*) filter (
-      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-         or (
-           coalesce(i.booking_date, i.order_date) < timestamp '2025-08-18'
-           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
-         )
-    )::numeric as web_orders
-  from raw.bc_credit_invoices_raw i
-  cross join rolling30_ctx r
-  where coalesce(i.booking_date, i.order_date) >= r.start_date::timestamp
-    and coalesce(i.booking_date, i.order_date) < r.end_date::timestamp
-),
-rolling30_net as (
-  select
-    greatest(inv.revenue_excl - cr.revenue_excl, 0)::numeric as revenue_excl,
-    greatest(inv.web_revenue_excl - cr.web_revenue_excl, 0)::numeric as web_revenue_excl,
-    greatest(inv.orders - cr.orders, 0)::numeric as orders,
-    greatest(inv.web_orders - cr.web_orders, 0)::numeric as web_orders
-  from rolling30_bc_inv inv
-  cross join rolling30_bc_cr cr
 )
 select jsonb_build_object(
   'month',
@@ -397,12 +264,9 @@ select jsonb_build_object(
     'revenueIncl', coalesce((select revenue_incl from web_month), 0),
     'revenueExcl', coalesce((select revenue_excl from web_month), 0),
     'orders', coalesce((select orders from web_month), 0),
-    'webOrdersPct', case when coalesce((select orders from bc_net), 0) > 0
-      then coalesce((select web_orders from bc_net), 0) / nullif((select orders from bc_net), 0)
-      else 0 end,
-    'webRevenuePct', case when coalesce((select revenue_excl from bc_net), 0) > 0
-      then coalesce((select web_revenue_excl from bc_net), 0) / nullif((select revenue_excl from bc_net), 0)
-      else 0 end,
+    -- BC-derived ratios are supplied manually client-side (window.STORKAUP_BC_MANUAL).
+    'webOrdersPct', null,
+    'webRevenuePct', null,
     'salesRepPct', case when coalesce((select revenue_incl from web_month), 0) > 0
       then coalesce((select rep_revenue_incl from rep_month), 0) / nullif((select revenue_incl from web_month), 0)
       else 0 end,
@@ -412,77 +276,9 @@ select jsonb_build_object(
     'aovExcl', case when coalesce((select orders from web_month), 0) > 0
       then coalesce((select revenue_excl from web_month), 0) / nullif((select orders from web_month), 0)
       else 0 end,
-    'bcAovExcl', case when coalesce((select orders from bc_net), 0) > 0
-      then coalesce((select revenue_excl from bc_net), 0) / nullif((select orders from bc_net), 0)
-      else 0 end,
-    'aovWebPct',
-      case
-        when (
-          coalesce(
-            case when coalesce((select orders from web_month), 0) > 0
-              then coalesce((select revenue_excl from web_month), 0) / nullif((select orders from web_month), 0)
-              else 0 end, 0
-          ) +
-          coalesce(
-            case when coalesce((select orders from bc_net), 0) > 0
-              then coalesce((select revenue_excl from bc_net), 0) / nullif((select orders from bc_net), 0)
-              else 0 end, 0
-          )
-        ) > 0
-        then
-          coalesce(
-            case when coalesce((select orders from web_month), 0) > 0
-              then coalesce((select revenue_excl from web_month), 0) / nullif((select orders from web_month), 0)
-              else 0 end, 0
-          ) /
-          (
-            coalesce(
-              case when coalesce((select orders from web_month), 0) > 0
-                then coalesce((select revenue_excl from web_month), 0) / nullif((select orders from web_month), 0)
-                else 0 end, 0
-            ) +
-            coalesce(
-              case when coalesce((select orders from bc_net), 0) > 0
-                then coalesce((select revenue_excl from bc_net), 0) / nullif((select orders from bc_net), 0)
-                else 0 end, 0
-            )
-          )
-        else 0
-      end,
-    'aovBcPct',
-      case
-        when (
-          coalesce(
-            case when coalesce((select orders from web_month), 0) > 0
-              then coalesce((select revenue_excl from web_month), 0) / nullif((select orders from web_month), 0)
-              else 0 end, 0
-          ) +
-          coalesce(
-            case when coalesce((select orders from bc_net), 0) > 0
-              then coalesce((select revenue_excl from bc_net), 0) / nullif((select orders from bc_net), 0)
-              else 0 end, 0
-          )
-        ) > 0
-        then
-          coalesce(
-            case when coalesce((select orders from bc_net), 0) > 0
-              then coalesce((select revenue_excl from bc_net), 0) / nullif((select orders from bc_net), 0)
-              else 0 end, 0
-          ) /
-          (
-            coalesce(
-              case when coalesce((select orders from web_month), 0) > 0
-                then coalesce((select revenue_excl from web_month), 0) / nullif((select orders from web_month), 0)
-                else 0 end, 0
-            ) +
-            coalesce(
-              case when coalesce((select orders from bc_net), 0) > 0
-                then coalesce((select revenue_excl from bc_net), 0) / nullif((select orders from bc_net), 0)
-                else 0 end, 0
-            )
-          )
-        else 0
-      end,
+    'bcAovExcl', null,
+    'aovWebPct', null,
+    'aovBcPct', null,
     'newWebCustomers', coalesce((select new_customers from new_web_customers_month), 0),
     'newWebCustomersPct', case when coalesce((select orders from web_month), 0) > 0
       then coalesce((select new_customers from new_web_customers_month), 0) / nullif((select orders from web_month), 0)
@@ -497,20 +293,12 @@ select jsonb_build_object(
     'yoyOrdersPct', case when coalesce((select orders from web_prev_year), 0) > 0
       then coalesce((select orders from web_month), 0) / nullif((select orders from web_prev_year), 0)
       else 0 end,
-    'bcAsOf', to_char((select last_sync_date from bc_sync_anchor), 'YYYY-MM-DD'),
-    'bcRatioMonth', to_char((select ratio_start from bc_ratio_ctx), 'YYYY-MM'),
-    'rolling30WebRevenuePct', case
-      when coalesce((select revenue_excl from rolling30_net), 0) > 0
-        then coalesce((select web_revenue_excl from rolling30_net), 0)
-             / nullif((select revenue_excl from rolling30_net), 0)
-      else null end,
-    'rolling30WebOrdersPct', case
-      when coalesce((select orders from rolling30_net), 0) > 0
-        then coalesce((select web_orders from rolling30_net), 0)
-             / nullif((select orders from rolling30_net), 0)
-      else null end,
-    'rolling30StartDate', to_char((select start_date from rolling30_ctx), 'DD.MM'),
-    'rolling30EndDate',   to_char((select end_date   from rolling30_ctx), 'DD.MM')
+    'bcAsOf', null,
+    'bcRatioMonth', null,
+    'rolling30WebRevenuePct', null,
+    'rolling30WebOrdersPct', null,
+    'rolling30StartDate', null,
+    'rolling30EndDate', null
   ),
   'day',
   jsonb_build_object(
@@ -569,4 +357,3 @@ select api.dashboard_compat(
 $function$;
 
 grant execute on function api.dashboard_compat(text) to anon, authenticated, service_role;
-
