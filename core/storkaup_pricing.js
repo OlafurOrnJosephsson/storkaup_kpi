@@ -98,7 +98,7 @@ function fetchActiveProducts_() {
     'query getProductsV2($pagination: PaginationInput) {' +
     '  getProductsV2(pagination: $pagination) {' +
     '    totalCount pageInfo { hasNextPage }' +
-    '    edges { node { sku name totalQuantity slug attributes { isFrameworkAgreementProduct isSpecialOrderProduct } } }' +
+    '    edges { node { sku name totalQuantity slug featuredImage { url fileName } attributes { isFrameworkAgreementProduct isSpecialOrderProduct } } }' +
     '  }' +
     '}';
 
@@ -137,13 +137,16 @@ function fetchActiveProducts_() {
       const parent = storkaupParentSku_(node.sku);
       if (!parent || seen[parent]) return;
       seen[parent] = true;
+      const fimg = node.featuredImage || {};
+      const noImage = !fimg.url || /myndvantar/i.test((fimg.url || '') + ' ' + (fimg.fileName || ''));
       out.push({
         parent: parent,
         name: node.name || '',
         qty: node.totalQuantity,
         slug: node.slug || '',
         framework: !!(node.attributes && node.attributes.isFrameworkAgreementProduct),
-        specialOrder: !!(node.attributes && node.attributes.isSpecialOrderProduct)
+        specialOrder: !!(node.attributes && node.attributes.isSpecialOrderProduct),
+        noImage: noImage
       });
     });
 
@@ -271,6 +274,13 @@ function findZeroListPriceProducts_v1() {
     Utilities.sleep(250);
   }
 
+  // 2b) Mynd-eftirlit (óháð verði) — featuredImage null eða "myndvantar*"
+  const imageRows = [];
+  products.forEach(p => {
+    if (p.noImage) imageRows.push([p.parent, p.name || '', p.qty, storkaupProductUrl_(p.slug)]);
+  });
+  const missingImage = imageRows.length;
+
   // 3) Skrifa flipa
   const ss = SpreadsheetApp.openById(cfg.SHEETS.PRODUCTS.ID);
   const sheetName = 'ZERO_PRICE_PRODUCTS';
@@ -301,6 +311,18 @@ function findZeroListPriceProducts_v1() {
   }
   fsh.getRange(1, 1, fsh.getLastRow(), 1).setNumberFormat('@');
 
+  // 3c) Vörur sem vantar mynd í sérflipa
+  let ish = ss.getSheetByName('VANTAR_MYND');
+  if (ish) ish.clear();
+  else ish = ss.insertSheet('VANTAR_MYND');
+  const IHEADER = ['SKU', 'Product Name', 'Lager', 'URL'];
+  ish.appendRow(IHEADER);
+  if (imageRows.length) {
+    imageRows.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    ish.getRange(2, 1, imageRows.length, IHEADER.length).setValues(imageRows);
+  }
+  ish.getRange(1, 1, ish.getLastRow(), 1).setNumberFormat('@');
+
   // 4) Cache fyrir hnapp / web-app
   const sample = rows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], issue: r[4], url: r[5] }));
   const cache = {
@@ -310,12 +332,14 @@ function findZeroListPriceProducts_v1() {
     notAvailable: notAvailable,
     frameworkExcluded: frameworkExcluded,
     specialOrderExcluded: specialOrderExcluded,
+    missingImage: missingImage,
+    imageSample: imageRows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], url: r[3] })),
     flagged: rows.length,
     sample: sample
   };
   PropertiesService.getScriptProperties().setProperty('ZERO_PRICE_LAST_RESULT', JSON.stringify(cache));
 
-  const summary = { totalActive: checked, zeroPrice: zeroPrice, notAvailable: notAvailable, frameworkExcluded: frameworkExcluded, specialOrderExcluded: specialOrderExcluded, flagged: rows.length };
+  const summary = { totalActive: checked, zeroPrice: zeroPrice, notAvailable: notAvailable, frameworkExcluded: frameworkExcluded, specialOrderExcluded: specialOrderExcluded, missingImage: missingImage, flagged: rows.length };
   Logger.log('✅ Verðheilsa: ' + JSON.stringify(summary));
   return summary;
 }

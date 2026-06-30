@@ -39,7 +39,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.wrap { max-width: 860px; margin: 0 auto; padding: 8px 4px 48px; }
+.wrap { width: 100%; margin: 0; padding: 0; }
 .mono { font-variant-numeric: tabular-nums; }
 
 /* ── Header ── */
@@ -152,9 +152,9 @@ footer p { margin: 0 0 6px; }
       <div class="v mono" id="stat-na">24</div>
       <div class="l">Vara ekki fáanleg</div>
     </div>
-    <div class="stat flag">
-      <div class="v mono" id="stat-flag">25</div>
-      <div class="l">Samtals til skoðunar</div>
+    <div class="stat warn">
+      <div class="v mono" id="stat-img">3</div>
+      <div class="l">Vantar mynd</div>
     </div>
   </div>
 
@@ -173,6 +173,43 @@ footer p { margin: 0 0 6px; }
         </table>
       </div>
       <div class="tbl-note" id="tbl-note">Sýnir flaggaðar vörur úr nýjustu keyrslu. Fullur listi er einnig í <span class="mono">ZERO_PRICE_PRODUCTS</span> flipanum.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-label">Myndir</div>
+    <h3 id="img-title">Vörur sem vantar mynd</h3>
+    <div class="tbl-wrap">
+      <div class="tbl-scroll">
+        <table>
+          <thead>
+            <tr><th>SKU</th><th>Vöruheiti</th><th class="num">Lager</th></tr>
+          </thead>
+          <tbody id="img-rows">
+            <tr><td class="c-sku">—</td><td class="c-name">Hleðst við keyrslu.</td><td class="num">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tbl-note" id="img-note">Vörur með <span class="mono">featuredImage</span> = null eða „myndvantar“. Fullur listi í <span class="mono">VANTAR_MYND</span> flipanum.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-label">Pantanir</div>
+    <h3 id="ord-title">Pantanir í bið</h3>
+    <p class="body">Magento-pantanir í <span class="mono">pending</span> — hafa ekki flætt áfram og geta verið strand (ekki ratað í BC). Elstu efst; eldri en 48 klst merktar rautt.</p>
+    <div class="tbl-wrap">
+      <div class="tbl-scroll">
+        <table>
+          <thead>
+            <tr><th>Pöntun</th><th>Dagsetning</th><th class="num">Aldur</th><th>Viðskiptavinur</th><th class="num">Upphæð</th></tr>
+          </thead>
+          <tbody id="ord-rows">
+            <tr><td class="c-sku">—</td><td>—</td><td class="num">—</td><td class="c-name">Sækir úr Magento…</td><td class="num">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tbl-note" id="ord-note">Sóttar beint úr Magento við opnun.</div>
     </div>
   </section>
 
@@ -235,6 +272,56 @@ footer p { margin: 0 0 6px; }
       : ('Allar ' + IS(flagged) + ' flaggaðar vörur. Fullur listi einnig í ZERO_PRICE_PRODUCTS flipanum.');
   }
 
+  function renderImgRows(sample, total) {
+    var tb = el('img-rows');
+    if (!sample || !sample.length) {
+      tb.innerHTML = '<tr><td colspan="3" class="empty">✓ Allar vörur með mynd</td></tr>';
+      el('img-note').textContent = 'Engin vara í birtingu vantar mynd.';
+      return;
+    }
+    tb.innerHTML = sample.map(function (r) {
+      var qty = (r.qty === null || r.qty === undefined || r.qty === '') ? '—' : IS(r.qty);
+      var name = r.url
+        ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener" class="plink">' + esc(r.name) + '</a>'
+        : esc(r.name);
+      return '<tr><td class="c-sku">' + esc(r.sku) + '</td><td class="c-name">' + name +
+             '</td><td class="num">' + qty + '</td></tr>';
+    }).join('');
+    el('img-note').textContent = (total > sample.length)
+      ? ('Sýni ' + IS(sample.length) + ' af ' + IS(total) + ' — fullur listi í VANTAR_MYND flipanum.')
+      : ('Allar ' + IS(total) + ' — fullur listi einnig í VANTAR_MYND flipanum.');
+  }
+
+  function renderOrders(r) {
+    var tb = el('ord-rows');
+    if (!r || r.status === 'error') {
+      tb.innerHTML = '<tr><td colspan="5" class="empty" style="color:var(--sk-bad)">Villa: ' + esc(r && r.message || 'óþekkt') + '</td></tr>';
+      return;
+    }
+    var total = Number(r.total || 0);
+    el('ord-title').textContent = total === 0
+      ? 'Engar pantanir í bið'
+      : (IS(total) + ' pantanir í bið' + (r.stuck48 ? ' (' + IS(r.stuck48) + ' eldri en 48 klst)' : ''));
+    var os = r.orders || [];
+    if (!os.length) {
+      tb.innerHTML = '<tr><td colspan="5" class="empty">✓ Engar pantanir í bið</td></tr>';
+      el('ord-note').textContent = 'Engin pöntun stendur í pending.';
+      return;
+    }
+    tb.innerHTML = os.map(function (o) {
+      var old = o.ageHours != null && o.ageHours >= 48;
+      var age = o.ageHours == null ? '—' : (o.ageHours < 48 ? o.ageHours + ' klst' : Math.floor(o.ageHours / 24) + ' d');
+      var ageCell = '<td class="num"' + (old ? ' style="color:var(--sk-bad);font-weight:600"' : '') + '>' + age + '</td>';
+      var date = o.createdAt ? esc(String(o.createdAt).substring(0, 10)) : '—';
+      var total2 = o.total != null ? IS(Math.round(o.total)) + ' kr.' : '—';
+      return '<tr><td class="c-sku">' + esc(o.incrementId) + '</td><td>' + date + '</td>' + ageCell +
+             '<td class="c-name">' + esc(o.customer) + '</td><td class="num">' + total2 + '</td></tr>';
+    }).join('');
+    el('ord-note').textContent = (total > os.length)
+      ? ('Sýni ' + IS(os.length) + ' af ' + IS(total) + ' (elstu fyrst).')
+      : ('Allar ' + IS(total) + ' (elstu fyrst).');
+  }
+
   function render(r) {
     var status = el('live-status');
     if (!r || r.status === 'no_data') {
@@ -250,11 +337,16 @@ footer p { margin: 0 0 6px; }
     el('stat-active').textContent = IS(r.totalActive);
     el('stat-zero').textContent   = IS(r.zeroPrice);
     el('stat-na').textContent     = IS(r.notAvailable);
-    el('stat-flag').textContent   = IS(r.flagged);
+    el('stat-img').textContent    = IS(r.missingImage);
 
     el('list-title').textContent = Number(r.flagged || 0) === 0
       ? 'Engar vörur þarf að laga'
       : (IS(r.flagged) + ' vörur þarf að laga');
+
+    el('img-title').textContent = Number(r.missingImage || 0) === 0
+      ? 'Engar vörur vantar mynd'
+      : (IS(r.missingImage) + ' vörur vantar mynd');
+    renderImgRows(r.imageSample, Number(r.missingImage || 0));
 
     if (r.frameworkExcluded != null) {
       var ex = IS(r.frameworkExcluded) + ' rammasamningsvörur (verðlagðar per samning) ekki taldar með';
@@ -283,6 +375,15 @@ footer p { margin: 0 0 6px; }
       .getZeroPriceResultForUi();
   }
 
+  // Pantanir í bið — sóttar beint úr Magento (fljótlegt, sér frá vöruskönnun).
+  function loadOrders() {
+    if (!hasGas()) return;
+    google.script.run
+      .withSuccessHandler(renderOrders)
+      .withFailureHandler(function (e) { renderOrders({ status: 'error', message: e && e.message }); })
+      .getPendingOrdersForUi();
+  }
+
   // Hnappur: keyra FERSKA skönnun (~1 mín).
   function runScan() {
     var btn = el('btn-check');
@@ -305,8 +406,9 @@ footer p { margin: 0 0 6px; }
       .runZeroPriceScanForUi();
   }
 
-  el('btn-check').addEventListener('click', runScan);
+  el('btn-check').addEventListener('click', function () { runScan(); loadOrders(); });
   loadCached();
+  loadOrders();
 })();
 </script>
 </body>
