@@ -56,7 +56,10 @@
     var fromTag = tag ? (tag.getAttribute("data-storkaup-rev") || "").trim() : "";
     if (fromTag) return fromTag;
 
-    return "main";
+    // Never fall back to a mutable branch — a compromised repo could then be
+    // injected straight into the KPI pages. Keep in sync with CLAUDE.md pins.
+    console.warn("[storkaup] data-storkaup-rev missing — using pinned fallback");
+    return "53b118c";
   }
 
   function ensureCss(href, key) {

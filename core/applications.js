@@ -87,6 +87,23 @@ const APP_SOURCES = [
  * Typeform Webhook endpoint
  * Deploy as: Execute as Me, Anyone (even anonymous) can access
  ************************************************************/
+
+// Shared-secret check for the Typeform webhook URL (?token=...).
+// valid      — provided token matches API.Typeform.WEBHOOK_TOKEN
+// configured — an expected token exists in config at all
+// enforce    — SETTINGS.TYPEFORM_TOKEN_ENFORCE is 'true'
+function checkTypeformToken_(e) {
+  const cfg = loadConfig_();
+  const expected = String((cfg.API && cfg.API.Typeform && cfg.API.Typeform.WEBHOOK_TOKEN) || '').trim();
+  const enforce = String((cfg.SETTINGS || {}).TYPEFORM_TOKEN_ENFORCE || '').toLowerCase() === 'true';
+  if (!expected) {
+    return { valid: false, configured: false, enforce: enforce, reason: 'not configured (add API → Typeform | WEBHOOK_TOKEN)' };
+  }
+  const provided = String((e && e.parameter && e.parameter.token) || '').trim();
+  if (provided === expected) return { valid: true, configured: true, enforce: enforce, reason: 'ok' };
+  return { valid: false, configured: true, enforce: enforce, reason: provided ? 'mismatch' : 'missing from request URL' };
+}
+
 function doPost(e) {
   try {
     const payload = JSON.parse(e.postData.contents);
@@ -101,6 +118,20 @@ function doPost(e) {
     if (payload.event_type !== 'form_response') {
       console.log('doPost: ignored (no action, event_type=' + payload.event_type + ')');
       return jsonResponse_({ status: 'ignored', reason: 'not form_response' });
+    }
+
+    // GAS exposes no request headers, so Typeform's HMAC signature can't be
+    // verified — instead the webhook URL carries ?token=<API.Typeform.WEBHOOK_TOKEN>.
+    // Log-only until SETTINGS.TYPEFORM_TOKEN_ENFORCE=true, so the Typeform-side
+    // URL swap can happen without a rejection window. Enforcement never fires
+    // when the expected token is missing from config — a config gap must not
+    // take the webhook down.
+    const tokenCheck = checkTypeformToken_(e);
+    if (!tokenCheck.valid) {
+      console.warn('[SECURITY] doPost: Typeform token ' + tokenCheck.reason + ' (enforce=' + tokenCheck.enforce + ')');
+      if (tokenCheck.enforce && tokenCheck.configured) {
+        return jsonResponse_({ status: 'rejected', reason: 'invalid token' });
+      }
     }
 
     const response = payload.form_response;

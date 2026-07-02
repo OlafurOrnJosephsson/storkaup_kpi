@@ -89,6 +89,7 @@ function listRecipientsViaApi_(body) {
 function sendTemplateEmailViaApi_(body) {
   var cfg = loadConfig_();
   if (!isApiKeyValid_(cfg, body.key)) return { error: 'Unauthorized' };
+  if (isRateLimited_('send_template_email', 20)) return { error: 'rate_limited' };
 
   var templates = emailTemplates_();
   var tmpl = templates[String(body.template || '')];
@@ -401,8 +402,32 @@ function jsonResponse_(obj) {
   return out;
 }
 
+// Global per-hour cap on an api action, backed by ScriptCache. Not atomic —
+// concurrent bursts can slightly overshoot the cap, which is fine for abuse
+// throttling. No legitimate user hits 20 sends/hour.
+function isRateLimited_(action, maxPerHour) {
+  var cache = CacheService.getScriptCache();
+  var key = 'rl_' + action;
+  var count = Number(cache.get(key) || 0);
+  if (count >= maxPerHour) {
+    console.warn('[SECURITY] rate limit hit for ' + action + ' (' + count + '/' + maxPerHour + ' this hour)');
+    return true;
+  }
+  cache.put(key, String(count + 1), 3600);
+  return false;
+}
+
+// Fail-closed: missing key config means NO api-action access, not open access.
+// Expected key lives in STORKAUP_CONFIG → API tab as `Dashboard | KEY | <value>`
+// (cfg.API is always Service → Key nested, so the old cfg.API.DASHBOARD_KEY
+// lookup could never be a string — the check was effectively always open).
+// Deploy precondition: that config row exists AND Webflow custom code sends
+// the same value as STORKAUP_CONFIG.gasKey.
 function isApiKeyValid_(cfg, providedKey) {
-  var expected = cfg && cfg.API && cfg.API.DASHBOARD_KEY;
-  if (!expected) return true;
+  var expected = cfg && cfg.API && cfg.API.Dashboard && cfg.API.Dashboard.KEY;
+  if (!expected) {
+    console.warn('[SECURITY] isApiKeyValid_: API → Dashboard | KEY not configured — rejecting all api actions');
+    return false;
+  }
   return String(providedKey || '') === String(expected);
 }

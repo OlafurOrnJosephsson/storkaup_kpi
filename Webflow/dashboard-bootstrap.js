@@ -34,8 +34,11 @@
     setInterval(function () { if (!document.hidden) refresh(); }, 300000); // 5 mín
 
     // Instant update: the embedded umsokn app posts its current total after every
-    // load/action, so the badge changes without a page refresh.
+    // load/action, so the badge changes without a page refresh. The app is served
+    // from a GAS iframe, so only google-hosted origins may drive the badge.
     window.addEventListener("message", function (e) {
+      var origin = String((e && e.origin) || "");
+      if (!/\.googleusercontent\.com$|\.google\.com$/.test(origin)) return;
       var d = e && e.data;
       if (d && d.type === "storkaup:pending" && typeof d.total !== "undefined") {
         paint(Number(d.total) || 0);
@@ -110,7 +113,10 @@
     var fromTag = tag ? (tag.getAttribute("data-storkaup-rev") || "").trim() : "";
     if (fromTag) return fromTag;
 
-    return "main";
+    // Never fall back to a mutable branch — a compromised repo could then be
+    // injected straight into the KPI pages. Keep in sync with CLAUDE.md pins.
+    console.warn("[storkaup] data-storkaup-rev missing — using pinned fallback");
+    return "2458fc5";
   }
 
   var rev = getRevision();
