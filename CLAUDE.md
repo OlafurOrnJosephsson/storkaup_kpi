@@ -95,6 +95,8 @@ Title rules (V3, from SEO review Apr 2025):
 **This section is the single source of truth for production pins.** `NEXT_TASKS.md` and `README.md` point here — do not duplicate pin values elsewhere. Update these whenever Webflow custom code changes.
 
 - Webflow deploy rev (`data-storkaup-rev`): `2458fc5`
+- `Webflow/dashboard-bootstrap.js` (script-tag src pin): `b55e8c4`
+- `Webflow/website-dashboard-bootstrap.js` (script-tag src pin): `b55e8c4`
 - `Webflow/dashboard.js`: `2458fc5`
 - `Webflow/website-dashboard.js`: `53b118c`
 - `Webflow/dashboard-theme.css`: `53b118c`
