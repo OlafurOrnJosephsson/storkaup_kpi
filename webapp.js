@@ -32,7 +32,24 @@ function handleApiAction_(body) {
   if (action === 'list_recipients')     return jsonResponse_(listRecipientsViaApi_(body));
   if (action === 'send_template_email') return jsonResponse_(sendTemplateEmailViaApi_(body));
   if (action === 'application_counts')  return jsonResponse_(applicationCountsViaApi_(body));
+  // Delegation frá admin-apps projectinu (admin/) — þungar aðgerðir og
+  // Script-Properties niðurstöður sem búa hér, kallaðar með Dashboard-lyklinum.
+  if (action === 'sync_magento_customers') return jsonResponse_(adminDelegateViaApi_(body, function () { return { ok: true, result: syncMagentoCustomers() }; }));
+  if (action === 'prune_applications')     return jsonResponse_(adminDelegateViaApi_(body, function () { pruneCompletedApplications_(); return { ok: true }; }));
+  if (action === 'zero_price_result')      return jsonResponse_(adminDelegateViaApi_(body, function () { return getZeroPriceResultForUi(); }));
+  if (action === 'pending_orders')         return jsonResponse_(adminDelegateViaApi_(body, function () { return getPendingOrdersForUi(); }));
+  if (action === 'run_zero_price_scan')    return jsonResponse_(adminDelegateViaApi_(body, function () { return runZeroPriceScanForUi(); }));
   return jsonResponse_({ error: 'Unknown action' });
+}
+
+function adminDelegateViaApi_(body, fn) {
+  var cfg = loadConfig_();
+  if (!isApiKeyValid_(cfg, body.key)) return { error: 'Unauthorized' };
+  try {
+    return fn();
+  } catch (e) {
+    return { error: String(e && e.message || e) };
+  }
 }
 
 // Light count of pending applications for the nav badge — counts rows with an

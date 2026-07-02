@@ -1,6 +1,9 @@
 # Keep browser-only Webflow scripts out of Apps Script deployments.
 Webflow/**
 
+# Admin-apps project (separate GAS project — has its own admin/.clasp.json)
+admin/**
+
 # Local/editor metadata
 .vscode/**
 .git/**
