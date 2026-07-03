@@ -26,6 +26,10 @@
 
   --sk-panel:   #ffffff;
   --sk-faint:   #8a8a8a;
+
+  /* Standalone page frame (var transparent/full-bleed í iframe áður) */
+  --sk-page-bg: #f4f5fa;   /* picked ljósgrár grunnur, hallar í --sk-blue */
+  --sk-max:     1180px;    /* miðjuð hámarksbreidd — stilltu á einum stað */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,13 +37,13 @@
 body {
   font-family: var(--sk-font);
   font-size: 18px;
-  background: transparent;
+  background: var(--sk-page-bg);
   color: var(--sk-text);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
-.wrap { width: 100%; margin: 0; padding: 0; }
+.wrap { max-width: var(--sk-max); margin: 0 auto; padding: 40px 32px 56px; }
 .mono { font-variant-numeric: tabular-nums; }
 
 /* ── Header ── */
@@ -118,6 +122,7 @@ footer { margin-top: 44px; padding-top: 20px; border-top: 1px solid var(--sk-bor
 footer p { margin: 0 0 6px; }
 
 @media (max-width: 640px) {
+  .wrap { padding: 24px 16px 40px; }
   .stats { grid-template-columns: repeat(2, 1fr); }
   h1 { font-size: 1.6rem; }
 }

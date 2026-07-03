@@ -14,6 +14,10 @@
   --sk-text:    #282828;   /* Webflow --black */
   --sk-muted:   #5b5b5b;   /* Webflow --black-700 */
   --sk-font:    "SF Pro Text", -apple-system, Arial, sans-serif;
+
+  /* Standalone page frame (var transparent/full-bleed í iframe áður) */
+  --sk-page-bg: #f4f5fa;   /* picked ljósgrár grunnur, hallar í --sk-blue */
+  --sk-max:     1180px;    /* miðjuð hámarksbreidd — stilltu á einum stað */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -21,7 +25,7 @@
 body {
   font-family: var(--sk-font);
   font-size:18px;
-  background:transparent;
+  background: var(--sk-page-bg);
   color: var(--sk-text);
 }
 
@@ -68,7 +72,7 @@ body {
 .tab.active .tab-badge { background: var(--sk-blue-bg); color: var(--sk-blue);font-weight:500; }
 
 /* ── Content ── */
-.content { padding: 24px 0px; }
+.content { max-width: var(--sk-max); margin: 0 auto; padding: 24px 32px; }
 
 /* ── Loading ── */
 .loading {
@@ -287,7 +291,9 @@ body {
 .err-text       { color: #c23340; }
 
 .app-header           { border-bottom: 1px solid var(--sk-border); background: #fff; }
-.app-header__row      { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-right: 16px; }
+.app-inner            { max-width: var(--sk-max); margin: 0 auto; padding: 0 32px; }
+.app-eyebrow          { font-size: .66rem; letter-spacing: .09em; text-transform: uppercase; color: var(--sk-muted); font-weight: 700; padding-top: 14px; }
+.app-header__row      { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
 .app-header .tabs     { border-bottom: none; flex: 1; min-width: 0; }
 .app-header__actions  { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .refresh-status       { font-size: .625rem; color: #888; }
@@ -297,6 +303,7 @@ body {
   .content { padding: 0.75rem; }
 
   /* Header stacks: tabs full width, actions in a row below */
+  .app-inner { padding: 0 0.75rem; }
   .app-header__row { flex-direction: column; align-items: stretch; gap: 0; padding-right: 0; }
   .app-header .tabs { width: 100%; }
   .tab {
@@ -324,19 +331,22 @@ body {
 <body>
 
 <div class="app-header">
-  <div class="app-header__row">
-    <div class="tabs">
-      <div class="tab" data-tab="rafraen" onclick="switchTab('rafraen')">
-        Rafræn Innskráning <span class="tab-badge" id="badge-rafraen">0</span>
+  <div class="app-inner">
+    <div class="app-eyebrow">Stórkaup · Umsóknir</div>
+    <div class="app-header__row">
+      <div class="tabs">
+        <div class="tab" data-tab="rafraen" onclick="switchTab('rafraen')">
+          Rafræn Innskráning <span class="tab-badge" id="badge-rafraen">0</span>
+        </div>
+        <div class="tab active" data-tab="umsokn" onclick="switchTab('umsokn')">
+          Umsókn um viðskipti <span class="tab-badge" id="badge-umsokn">0</span>
+        </div>
       </div>
-      <div class="tab active" data-tab="umsokn" onclick="switchTab('umsokn')">
-        Umsókn um viðskipti <span class="tab-badge" id="badge-umsokn">0</span>
+      <div class="app-header__actions">
+        <span id="refresh-status" class="refresh-status"></span>
+        <button class="btn btn-ghost" id="refresh-btn" onclick="loadData(false)">↻</button>
+        <button class="btn btn-ghost" id="sync-btn" onclick="syncMagento()">⟳ Samstilla</button>
       </div>
-    </div>
-    <div class="app-header__actions">
-      <span id="refresh-status" class="refresh-status"></span>
-      <button class="btn btn-ghost" id="refresh-btn" onclick="loadData(false)">↻</button>
-      <button class="btn btn-ghost" id="sync-btn" onclick="syncMagento()">⟳ Samstilla</button>
     </div>
   </div>
 </div>
