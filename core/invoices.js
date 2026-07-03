@@ -23,17 +23,25 @@ var INVOICE_SHEET_NAME       = 'Reikningar – Log';
 var INVOICE_SOURCES = [
   {
     key: 'OpenAI',
-    // Reikningar berast á vefur@storkaup.is
-    query: 'to:vefur@storkaup.is ' +
-           '(from:openai.com OR from:stripe.com OR from:invoice+statements@openai.com) ' +
+    // OpenAI-reikningar berast á vefur@ (sér-pósthólf). Til að GAS (umsokn@)
+    // sjái þá þarf forward-síu vefur@ → umsokn@ (sjá leiðbeiningar).
+    query: '(from:openai.com OR from:stripe.com OR from:invoice+statements@openai.com) ' +
            '(invoice OR receipt OR reikningur OR kvittun)'
   },
   {
     key: 'Google Workspace',
-    // Reikningar berast á umsjon@storkaup.is
-    query: 'to:umsjon@storkaup.is ' +
-           '(from:payments-noreply@google.com OR from:googleworkspace-noreply@google.com) ' +
+    // Berast á umsokn@ = eigið pósthólf GAS → engin to:-sía þörf.
+    query: 'from:payments-noreply@google.com ' +
            '(invoice OR reikningur OR Workspace OR payment)'
+  },
+  {
+    key: 'Webflow',
+    // Webflow-áskrift (USD), billing email = vefur@. Reikningarnir þurfa að
+    // skila sér inn í umsokn@ (þar sem GAS les) — forward-sía vefur@ → umsokn@.
+    // Webflow sendir ýmist frá webflow.com eða webflow.io. Keyrðu
+    // debugInvoiceSearch_v1() til að staðfesta raunverulegt sender-address.
+    query: '(from:webflow.com OR from:webflow.io) ' +
+           '(invoice OR receipt OR reikningur OR kvittun OR subscription OR billing OR payment)'
   }
 ];
 
@@ -116,6 +124,45 @@ function collectInvoicesToDrive_v1(opts) {
   };
   Logger.log('🧾 Reikninga-safnari: ' + JSON.stringify(summary));
   return summary;
+}
+
+/************************************************************
+ * 🔎 Debug — hvaða pósthólf + hvað finnst?
+ *   Keyrðu þetta til að kvarða leitarstrengina.
+ ************************************************************/
+function debugInvoiceSearch_v1() {
+  var active = '';
+  var effective = '';
+  try { active = Session.getActiveUser().getEmail(); } catch (e) { active = '(?)'; }
+  try { effective = Session.getEffectiveUser().getEmail(); } catch (e) { effective = '(?)'; }
+  Logger.log('📬 Pósthólf sem er lesið → activeUser: ' + active + ' | effectiveUser: ' + effective);
+
+  var probes = [
+    'from:google.com newer_than:400d',
+    'from:payments-noreply@google.com newer_than:400d',
+    'from:googleworkspace-noreply@google.com newer_than:400d',
+    '"Google Workspace" newer_than:400d',
+    'subject:(invoice OR reikningur OR kvittun) newer_than:400d',
+    'from:openai.com newer_than:400d',
+    'from:stripe.com newer_than:400d',
+    'openai newer_than:400d',
+    'invoice newer_than:400d',
+    'from:webflow.com newer_than:400d',
+    'from:webflow.io newer_than:400d',
+    'webflow newer_than:400d',
+    'to:umsjon@storkaup.is newer_than:60d',
+    'to:vefur@storkaup.is newer_than:60d'
+  ];
+
+  probes.forEach(function (q) {
+    var threads = GmailApp.search(q, 0, 5);
+    var sample = '';
+    if (threads.length) {
+      var m = threads[0].getMessages()[0];
+      sample = ' | dæmi: FROM=' + m.getFrom() + ' SUBJ=' + (m.getSubject() || '').slice(0, 60);
+    }
+    Logger.log('  [' + threads.length + (threads.length === 5 ? '+' : '') + '] ' + q + sample);
+  });
 }
 
 /************************************************************
