@@ -176,6 +176,7 @@ CUSTOMERS: {
   COMPANY_NAME: 'Company Name',
   COMPANY_ID: 'Company ID',
   REGION: 'Region',
+  CREATED: 'Created At',
   UPDATED: 'Updated At'
 },
 

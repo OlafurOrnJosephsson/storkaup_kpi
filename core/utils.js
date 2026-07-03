@@ -1950,6 +1950,7 @@ function upsertMagentoCustomersToSupabase_(rows) {
       company_name: r.COMPANY_NAME || null,
       company_id: r.COMPANY_ID || null,
       region: r.REGION || null,
+      created_at_source: parseBcDateForSupabase_(r.CREATED),
       updated_at_source: parseBcDateForSupabase_(r.UPDATED),
       source: 'magento_customers_backfill'
     };
