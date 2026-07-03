@@ -1139,6 +1139,8 @@
             ? Number(row.subtotal_excl).toLocaleString("is-IS", { maximumFractionDigits: 0 }) + " kr"
             : "";
 
+          var isNew = row.is_first_time === true;
+
           var el = tmpl.cloneNode(true);
           el.setAttribute("data-day-order-rendered", "");
           el.style.display = "";
@@ -1150,6 +1152,11 @@
           if (n) n.textContent = name;
           if (c) c.textContent = cid;
           if (a) a.textContent = amt;
+          // First-time buyer marker — Webflow row template carries a hidden
+          // [data-day-order-new] badge; show it only for first-ever web purchases.
+          el.classList.toggle("is-first-time", isNew);
+          var badge = el.querySelector("[data-day-order-new]");
+          if (badge) badge.style.display = isNew ? "" : "none";
           container.appendChild(el);
         });
         renderHourlySparkline_(rows);
