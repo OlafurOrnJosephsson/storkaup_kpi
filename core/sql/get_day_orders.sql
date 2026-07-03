@@ -16,7 +16,10 @@ create or replace function public.get_day_orders(
   subtotal_excl  numeric,
   is_first_time  boolean
 )
-language sql stable
+language sql
+stable
+security definer
+set search_path to 'public', 'raw'
 as $$
   with buyer_keyed as (
     select
