@@ -740,20 +740,28 @@ function syncMagento() {
   btn.disabled = true;
   btn.textContent = '⟳ Samstilli…';
   busy = true;
+  function reset() { btn.disabled = false; btn.textContent = '⟳ Samstilla'; busy = false; }
+
+  // Sync er aðeins fersk-hleðsla á Magento-viðskiptavinum; hourly
+  // scheduledMagentoSync_v1 heldur sheetinu fersku hvort eð er. Þess vegna má
+  // prune (sem færir afgreiddar umsóknir í LOKID) EKKI stranda þó sync klikki —
+  // annars sitja umsóknir fastar við tímabundna Magento-hnökk. Prune keyrir alltaf.
+  var syncErr = null;
   run('syncMagentoCustomers')
+    .catch(function(e) { syncErr = e; })
     .then(function() { return run('webapp_pruneApplications'); })
     .then(function() {
-      showToast('Samstilling lokið — hleð gögn að nýju');
-      btn.disabled = false;
-      btn.textContent = '⟳ Samstilla';
-      busy = false;
+      if (syncErr) {
+        showToast('Magento-samstilling mistókst (' + (syncErr.message || syncErr) + ') — hreinsaði samt afgreiddar umsóknir', true);
+      } else {
+        showToast('Samstilling lokið — hleð gögn að nýju');
+      }
+      reset();
       loadData();
     })
     .catch(function(e) {
       showToast('Villa við samstillingu: ' + (e.message || e), true);
-      btn.disabled = false;
-      btn.textContent = '⟳ Samstilla';
-      busy = false;
+      reset();
     });
 }
 
