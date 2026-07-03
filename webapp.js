@@ -1,17 +1,11 @@
 'use strict';
 
+// This deployment is ANYONE_ANONYMOUS, so it only serves the key-protected
+// dashboard JSON + the doPost api actions. The umsokn/listaverd HTML apps
+// (applicant PII, credit scores) moved to the separate admin-apps project
+// (access: DOMAIN + allowlist) — see admin/. Do NOT re-add `?app=` HTML
+// routes here; that would put PII behind URL-secrecy again.
 function doGet(e) {
-  var app = e && e.parameter && e.parameter.app;
-  if (app === 'umsokn') {
-    return HtmlService.createHtmlOutputFromFile('umsokn_app')
-      .setTitle('Stórkaup — Umsóknir')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-  }
-  if (app === 'listaverd') {
-    return HtmlService.createHtmlOutputFromFile('listaverd_konnun')
-      .setTitle('Stórkaup — Listaverð könnun')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-  }
   var action = (e && e.parameter && e.parameter.action) || 'dashboard';
   if (action === 'dashboard') {
     return jsonResponse_(getDashboardMetrics_(e));

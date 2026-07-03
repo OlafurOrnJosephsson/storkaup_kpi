@@ -4,9 +4,14 @@ GAS + Webflow source repo for Storkaup KPI.
 
 ## Structure
 
-- `core/`, `webapp.js`, `publicAPI.js`, `appsscript.json`: Google Apps Script code (deployed with `clasp`)
+Two separate Apps Script projects live in this repo:
+
+- **Main project** (root) — `core/`, `webapp.js`, `appsscript.json`: ingest triggers, Supabase sync, and the anonymous web app (Typeform webhook + key-protected dashboard/badge/cache-help actions). Deployed with `clasp push` from the repo root.
+- **Admin-apps project** — `admin/`: the internal umsókn (applications) and vöruvöktun/listaverð HTML apps, which handle applicant PII and credit scores. Deployed behind Google login (`access: DOMAIN`) + an `ADMIN_APP_EMAILS` allowlist. Has its own `admin/.clasp.json`; deploy with `clasp push` from inside `admin/`.
 - `Webflow/`: browser-only frontend scripts (deployed to Webflow, **not** pushed to GAS)
-- `.claspignore`: excludes `Webflow/` from `clasp push`
+- `.claspignore`: excludes `Webflow/` **and `admin/`** from the main `clasp push`
+
+See `ARCHITECTURE.md` → *Web-app projects* for why the split exists (PII must sit behind real login, not URL secrecy / a shared Webflow password).
 
 ## Daily Workflow
 
@@ -14,7 +19,8 @@ GAS + Webflow source repo for Storkaup KPI.
    - `git pull`
 2. Make code changes.
 3. Deploy Apps Script changes:
-   - `clasp push`
+   - main project: `clasp push` (repo root)
+   - admin-apps project: `cd admin && clasp push` — then create a new version/deploy so the live `/exec` picks it up
 4. Deploy Webflow script changes:
    - copy/paste from `Webflow/*.js` into Webflow custom code (or your Webflow pipeline)
 5. Commit and backup:
@@ -43,6 +49,7 @@ When updating Webflow scripts:
   - `node --check Webflow/dashboard.js`
   - `node --check Webflow/customer-profiles.js`
   - `node --check Webflow/top-products.js`
+  - `node --check Webflow/dashboard-bootstrap.js` (after any bootstrap change — remember to bump its script-tag `@commit` pin, tracked in `CLAUDE.md`)
 
 ## Klaviyo v1 Notes
 

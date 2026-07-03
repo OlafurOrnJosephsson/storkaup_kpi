@@ -24,9 +24,26 @@ Webflow (JavaScript)               ← read-only dashboard frontend
 
 ---
 
+## Web-app projects
+
+Two separate Apps Script projects live in this repo. The split keeps applicant PII behind real authentication instead of URL-secrecy / the shared Webflow password.
+
+| Project | Location | Web-app access | Serves |
+|---|---|---|---|
+| **Main** | repo root | `ANYONE_ANONYMOUS` | Typeform webhook (`doPost`, `?token=` checked); key-protected dashboard JSON, pending-applications badge, cache-help email; delegation actions for the admin project |
+| **Admin-apps** | `admin/` | `DOMAIN` (@storkaup.is) + `ADMIN_APP_EMAILS` allowlist | umsókn (applications — names, kennitölur, credit scores) + vöruvöktun/listaverð HTML apps |
+
+- Anonymous main deployment serves **no HTML app and no PII** — the old `?app=umsokn`/`?app=listaverd` routes and `core/webapp.js` were removed. Applicant data can only be reached through the admin project after Google login.
+- Admin apps guard every `google.script.run` entry with `adminGuard_()` (`admin/auth.js`); deployer always allowed, others must be in `SETTINGS.ADMIN_APP_EMAILS`; access is audit-logged per user.
+- Heavy/stateful ops (Magento customer sync, application pruning, zero-price scan) stay in the main project; the admin project reaches them via key-protected `doPost` actions (`admin/delegate.js`, using `API.Dashboard.KEY` + `API.Dashboard.EXEC_URL`).
+- `access: DOMAIN` is deliberate — auth is tied to the company Workspace (governed offboarding + MFA). Do not switch to `ANYONE`; route external users through IT as Workspace guests.
+- Webflow nav links open the admin `/exec` URL in a **new tab** (logged-in GAS apps break inside an iframe).
+
+---
+
 ## 1. Google Apps Script — Ingest layer
 
-All ingest runs in Apps Script. No backend server. Triggers are time-based and managed via `resetRecommendedTimeTriggers_v1()`.
+All ingest runs in the **main** Apps Script project. No backend server. Triggers are time-based and managed via `resetRecommendedTimeTriggers_v1()`. (Triggers are independent of web-app deployment settings — the anonymous web-app access does not affect them.)
 
 ### Scheduled triggers
 
@@ -119,7 +136,7 @@ All schema changes are in `core/sql/`. Apply manually in Supabase SQL editor —
 
 ## 3. Webflow — Frontend layer
 
-Read-only dashboards. All data comes from Supabase RPCs via `fetch`. No writes from the frontend.
+Read-only dashboards. All data comes from Supabase RPCs via `fetch`. No writes from the frontend. The internal umsókn/vöruvöktun apps are **not** Webflow pages — the nav links open the admin-apps GAS project in a new tab (see *Web-app projects* above).
 
 ### Pages and JS files
 

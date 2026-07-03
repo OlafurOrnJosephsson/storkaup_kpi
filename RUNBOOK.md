@@ -7,6 +7,17 @@ This runbook covers daily operations for:
 - Magento customer sync
 - BC sync to Supabase (for web vs BC % and related metrics)
 
+## Apps Script projects
+
+- **Main project** (repo root) — all ingest triggers + the anonymous web app (Typeform webhook, key-protected dashboard/badge/cache-help + delegation). Live `/exec` runs a pinned version; `clasp push` updates `@HEAD` only, so cut a new version with `clasp deploy -i <deploymentId>` to activate web-app changes.
+- **Admin-apps project** (`admin/`) — umsókn + vöruvöktun/listaverð HTML apps behind Google login (`access: DOMAIN`) + `SETTINGS.ADMIN_APP_EMAILS` allowlist. `cd admin && clasp push`, then `clasp deploy` for a new version. Access attempts log `[ADMIN][AUDIT] …` in that project's Executions.
+
+If someone reports "You need access" / a blank umsókn or vöruvöktun screen: they are almost certainly on an account not in `ADMIN_APP_EMAILS` (or not a @storkaup.is account), OR the link is being opened in an iframe instead of a new tab. Check the admin project's Executions for the `access DENIED for <email>` line.
+
+## Typeform webhook
+
+Both Typeform forms POST to the main project's `doPost` at `…/exec?token=<API.Typeform.WEBHOOK_TOKEN>`. The token is enforced when `SETTINGS.TYPEFORM_TOKEN_ENFORCE=true` — a request with a wrong/absent token is rejected. If applications stop landing in the sheets after a Typeform-side URL edit, confirm the `?token=` is still present and matches the config row; a mismatch logs `[SECURITY] doPost: Typeform token …` in Executions. To disable enforcement in an emergency, set `TYPEFORM_TOKEN_ENFORCE=false` (no deploy needed — takes effect within the 5-min config cache).
+
 ## Alert Setup (P1-3)
 
 Failure alerts for key triggers are enabled in code.

@@ -38,10 +38,13 @@ Updated: 2026-05-02
 - Unified order search live: SR/SK/WEB orders searchable by company name, kennitala, order ID, SP-nr; results rendered as `data-*` attributes for Webflow design control.
 - BC upsert no longer overwrites `amount_excl` with 0; `order_no` (SP-nr) now synced per invoice.
 - `runPostBcImportSync_v1` restores `scheduledBcSync_v1` ingestion_run → "Uppfært" timestamp stays current.
+- Web-app surface hardened + split (2026-07-02): applicant PII apps (umsókn, vöruvöktun) moved to a separate `admin/` GAS project behind @storkaup.is login + allowlist; anonymous deployment no longer serves any HTML app or PII. Typeform webhook token-checked; dashboard/badge/cache-help API key fail-closed + rate-limited; Webflow secrets moved off the site-wide (gate-visible) custom code onto page-scoped code.
 
 ## Non-Negotiables
 
 - Do not break `safePoll_v2` 5-minute cadence.
+- Keep applicant PII behind login: the anonymous main web app must **not** serve HTML apps or PII (no `?app=` HTML routes). The umsókn/vöruvöktun apps stay in the `admin/` project with `access: DOMAIN` + `ADMIN_APP_EMAILS` — do not switch to `ANYONE` (ties auth to the governed company Workspace; matches the security assessment).
+- Do not put secrets (`gasKey`, BC manual figures) in Webflow **site-wide** custom code — it renders on the unauthenticated password-gate page. Keep them page-scoped on the KPI pages.
 - Do not change BC share logic casually:
   - monthly cards use net BC
   - daily cards use `day_kpi_pack`
@@ -71,6 +74,8 @@ In rough priority order:
 6. **Disable or fix `scheduledCustomerAnalysisSync_v1`** (P10-2) — reduce noisy failures if truly low-value.
 7. **Add trigger audit function** (P10-3) — one-shot menu item to print active trigger schedule.
 8. **Turn off DEBUG flags** (P10-4) — `Webflow/dashboard.js` and `Webflow/website-dashboard.js` have `DEBUG = true`.
+9. **Lock down anon read RPCs with PII** (security) — `search_orders`, `get_customer_last_orders`, `get_customer_profile_family_summary` etc. are still executable by `anon`. Needs the auth migration / DataBricks-sourced rebuild before they can be closed without breaking dashboards.
+10. **Pin `oauthScopes`** (security, low priority / careful) — main `appsscript.json` relies on auto-scopes. Pin an explicit least-privilege list, but re-authorize and watch Executions immediately — a missing scope can break triggers incl. `safePoll_v2`. Deferred until everything else is stable.
 
 ## Trigger Intent
 

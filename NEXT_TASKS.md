@@ -2,6 +2,12 @@
 
 ## Recent Release Notes
 
+- Web-app security hardening + project split (2026-07-02):
+  - **Phase A hardening** (main project, commit `b55e8c4`): Typeform `doPost` checks `?token=` against `API.Typeform.WEBHOOK_TOKEN` (enforced via `SETTINGS.TYPEFORM_TOKEN_ENFORCE=true`); `isApiKeyValid_` now **fail-closed** and reads `API.Dashboard.KEY` (old `cfg.API.DASHBOARD_KEY` lookup never matched the nested config shape — the check was effectively always open); `send_template_email` rate-limited (20/hour); jsDelivr rev fallback pinned instead of mutable `@main`; postMessage badge listener requires a google-hosted origin.
+  - **Gate-page leak fixed**: Webflow serves site-wide `<head>` custom code on the unauthenticated password-gate page, exposing `STORKAUP_BC_MANUAL` + `gasKey`. Moved to page-scoped custom code — `STORKAUP_CONFIG` on all 7 KPI pages, `STORKAUP_BC_MANUAL` on `/kpi/dashboard` + `/kpi/solutolur` only. **Monthly BC figures now go in page-level head code on those two pages.**
+  - **Web-app split** (commits `cb2da06`, `2912e09`; main deploy `@121`): new `admin/` GAS project hosts the umsókn + vöruvöktun/listaverð apps behind Google login (`access: DOMAIN`) + `SETTINGS.ADMIN_APP_EMAILS` allowlist, with per-user audit logs and `adminGuard_()` on every entry point. Anonymous main deployment no longer serves `?app=umsokn`/`?app=listaverd` (routes + `core/webapp.js` + the two HTML files removed); applicant PII/credit scores/email actions are login-gated. Heavy ops delegate back to the main project via key-protected `doPost` actions. Webflow nav links point directly at the admin `/exec` URL (new tab). See `ARCHITECTURE.md` → *Web-app projects*.
+  - Bootstrap script-tag pins bumped to `b55e8c4` (see `CLAUDE.md` → pins).
+
 - Weekly email digest added (2026-05-13):
   - `core/email.js` — `scheduledWeeklyDigest` (mánudagar kl. 08:00) + `menu_sendWelcomeEmail` (manual)
   - `core/sql/weekly_digest.sql` — `public.weekly_digest_stats(p_week_start)` RPC; BC net, web, nýir viðskiptavinir, top 3, Klaviyo 30d

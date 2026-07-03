@@ -5,13 +5,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Deploy workflow
 
 ```bash
-clasp push          # push GAS code to Apps Script
+clasp push          # push MAIN project GAS code to Apps Script
 git add .
 git commit -m "..."
 git push
 ```
 
+Two Apps Script projects live in this repo (see [Web-app projects](#web-app-projects)):
+- **Main** (repo root) — ingest + anonymous web app. `clasp push` from root.
+- **Admin-apps** (`admin/`) — internal PII apps behind Google login. `cd admin && clasp push`, then `clasp deploy -i <deploymentId>` to cut a new version. `admin/**` is excluded from the main push via `.claspignore`.
+
+Web app changes only go live when a **new version is deployed** (`clasp deploy -i <deploymentId>`), not on `clasp push` alone — `push` updates `@HEAD`, but `/exec` runs the pinned version.
+
 Webflow JS files (`Webflow/*.js`) are **not** pushed via clasp — deploy by copy/paste into Webflow custom code and updating jsDelivr commit pins in `README.md` and `NEXT_TASKS.md`.
+
+**Secrets never live in Webflow site-wide custom code** — Webflow serves site-wide `<head>` code on the unauthenticated password-gate page too. Page-scoped custom code (`STORKAUP_CONFIG` with `gasKey`, `STORKAUP_BC_MANUAL`) stays per-page on the KPI pages. Monthly BC figures go into page-level head code on `/kpi/dashboard` + `/kpi/solutolur`.
 
 After any Webflow deploy: run `node --check Webflow/<file>.js` before touching Webflow custom code.
 
@@ -33,6 +41,21 @@ Webflow (Webflow/*.js)             ← read-only dashboards
 
 No backend server. All ingest runs in Apps Script via time-based triggers managed by `resetRecommendedTimeTriggers_v1()`.
 
+## Web-app projects
+
+Access to internal data is split across two GAS deployments so PII never sits behind mere URL-secrecy:
+
+| Project | Location | Web app access | Serves |
+|---|---|---|---|
+| Main | repo root | `ANYONE_ANONYMOUS` | Typeform webhook (`doPost`, token-checked); key-protected dashboard JSON, badge count, cache-help send; delegation actions for the admin project |
+| Admin-apps | `admin/` | `DOMAIN` (@storkaup.is) + `ADMIN_APP_EMAILS` allowlist | umsókn (applications, kennitölur, credit scores) + vöruvöktun/listaverð HTML apps |
+
+- The anonymous main deployment serves **no HTML app and no applicant PII** — `?app=umsokn`/`?app=listaverd` were removed. Do **not** re-add them.
+- Admin apps guard every `google.script.run` entry point with `adminGuard_()` ([admin/auth.js](admin/auth.js)); the deployer is always allowed, others must be in `SETTINGS.ADMIN_APP_EMAILS`. Access attempts are audit-logged per user.
+- Heavy/stateful ops (Magento sync, application pruning, zero-price scan state) stay in the main project; the admin project calls them via key-protected `doPost` actions ([admin/delegate.js](admin/delegate.js)) using `API.Dashboard.KEY` + `API.Dashboard.EXEC_URL`.
+- Keep `access: DOMAIN` on the admin project — it ties auth to the company Workspace (offboarding + MFA governed), matching the security assessment. `ANYONE` (personal Google/Gmail) would reintroduce ungoverned access; route external users through IT as Workspace guests instead.
+- Webflow nav links to the umsókn/vöruvöktun apps point directly at the admin `/exec` URL and open in a **new tab** (logged-in GAS apps break inside an iframe).
+
 ## Config system
 
 All runtime config lives in a separate Google Sheet (`STORKAUP_CONFIG`, ID hardcoded in `core/config.js`). `loadConfig_()` reads and caches it for 5 min via Script Properties. Structure:
@@ -43,6 +66,12 @@ All runtime config lives in a separate Google Sheet (`STORKAUP_CONFIG`, ID hardc
 - `cfg.ENDPOINTS.<Service>.<KEY>` — resolved URL templates
 
 To add a new API key: add a row in STORKAUP_CONFIG → API tab (`Service | Key | Value`). Reference via `cfg.API.ServiceName.KEY_NAME`.
+
+Security-relevant config rows:
+- `API.Typeform.WEBHOOK_TOKEN` — shared secret in the Typeform webhook URL (`?token=…`); enforced when `SETTINGS.TYPEFORM_TOKEN_ENFORCE=true`.
+- `API.Dashboard.KEY` — validates dashboard/badge/cache-help/delegation `doPost` actions (`isApiKeyValid_`, **fail-closed** — missing key rejects all actions). Webflow sends it as `STORKAUP_CONFIG.gasKey`.
+- `API.Dashboard.EXEC_URL` — main-project `/exec` URL the admin project delegates to.
+- `SETTINGS.ADMIN_APP_EMAILS` — comma-separated allowlist for the admin apps.
 
 SEO-specific settings in SETTINGS tab: `SEO_PROVIDER` (`gemini`/`claude`/`openai`), `SEO_GEMINI_MODEL`, `SEO_GEMINI_FALLBACK_MODELS`, `SEO_CLAUDE_MODEL`.
 
