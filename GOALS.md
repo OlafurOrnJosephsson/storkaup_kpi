@@ -76,6 +76,7 @@ In rough priority order:
 8. **Turn off DEBUG flags** (P10-4) — `Webflow/dashboard.js` and `Webflow/website-dashboard.js` have `DEBUG = true`.
 9. **Lock down anon read RPCs with PII** (security) — `search_orders`, `get_customer_last_orders`, `get_customer_profile_family_summary` etc. are still executable by `anon`. Needs the auth migration / DataBricks-sourced rebuild before they can be closed without breaking dashboards.
 10. **Pin `oauthScopes`** (security, low priority / careful) — main `appsscript.json` relies on auto-scopes. Pin an explicit least-privilege list, but re-authorize and watch Executions immediately — a missing scope can break triggers incl. `safePoll_v2`. Deferred until everything else is stable.
+11. **Move Webflow site to a company-owned workspace** (governance, key-person risk — assessment items 6/7) — the Stórkaup site lives in a personal "Olafur's Workspace" (Freelancer plan) alongside a personal site; billing email is `vefur@storkaup.is` (fine) but the workspace ownership is personal. Transfer the site into a company Webflow workspace with a second admin + company payment method. Bigger op (site transfer + re-auth of custom-code deploys); IT/decision item, not urgent.
 
 ## Trigger Intent
 
