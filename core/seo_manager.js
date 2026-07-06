@@ -231,19 +231,35 @@ function generateSEOTitles(categoryName, context, keywordHints, currentMetaTitle
     ? buildSeoPromptV3_(categoryName, context, keywordHints, currentMetaTitle, currentMetaDescription, opts)
     : buildSeoPromptV2_(categoryName, context, keywordHints, currentMetaTitle, currentMetaDescription);
 
-  const seo = env.provider === 'gemini'
-    ? generateSeoWithGemini_(prompt, env, opts)
-    : env.provider === 'claude'
-      ? generateSeoWithClaude_(prompt, env, opts)
-      : generateSeoWithOpenAi_(prompt, env, opts);
-
+  let seo = generateSeoWithProvider_(prompt, env, opts);
   if (!seo.title || !seo.description) {
     throw new Error('AI SEO response missing title/description: ' + JSON.stringify(seo));
   }
 
+  let violations = validateSeoCopy_(seo, opts.level);
+  if (violations.length) {
+    Logger.log(
+      'SEO Manager: "' + categoryName + '" failed validation, retrying -> ' +
+      violations.join(' | ')
+    );
+    try {
+      const retry = generateSeoWithProvider_(buildSeoRetryPrompt_(prompt, seo, violations), env, opts);
+      if (retry.title && retry.description) {
+        const retryViolations = validateSeoCopy_(retry, opts.level);
+        if (retryViolations.length <= violations.length) {
+          seo = retry;
+          violations = retryViolations;
+        }
+      }
+    } catch (retryErr) {
+      Logger.log('SEO Manager: validation retry failed for "' + categoryName + '": ' + retryErr);
+    }
+  }
+
   const cleaned = {
     title: enforceMaxLength_(sanitizeSeoText_(seo.title), 59),
-    description: enforceMaxLength_(sanitizeSeoText_(seo.description), 154)
+    description: enforceMaxLength_(sanitizeSeoText_(seo.description), 154),
+    warnings: violations
   };
 
   Logger.log(
@@ -252,6 +268,66 @@ function generateSEOTitles(categoryName, context, keywordHints, currentMetaTitle
   );
 
   return cleaned;
+}
+
+function generateSeoWithProvider_(prompt, env, opts) {
+  return env.provider === 'gemini'
+    ? generateSeoWithGemini_(prompt, env, opts)
+    : env.provider === 'claude'
+      ? generateSeoWithClaude_(prompt, env, opts)
+      : generateSeoWithOpenAi_(prompt, env, opts);
+}
+
+/**
+ * Deterministic checks against the SEO title rules (V3, Apr 2025 review).
+ * Returns an array of Icelandic violation messages; empty array = valid.
+ */
+function validateSeoCopy_(seo, level) {
+  var title = sanitizeSeoText_(seo && seo.title);
+  var description = sanitizeSeoText_(seo && seo.description);
+  var lvl = Number(level || 0);
+  var violations = [];
+  var bannedPhrases = /pantaðu í dag|fáðu sent hratt|skjót(?:ri)? afhending|mikið úrval/i;
+
+  if (!title) violations.push('Vantar title');
+  else {
+    if (!/\|\s*Stórkaup$/.test(title)) violations.push('Title verður að enda á "| Stórkaup"');
+    if (title.length > 60) violations.push('Title of langur (' + title.length + ' stafir, hámark 60)');
+    if (lvl === 1 && !/í heildsölu/i.test(title)) violations.push('LVL1 title á að innihalda "í heildsölu"');
+    if (lvl >= 2 && /í heildsölu/i.test(title)) violations.push('"í heildsölu" má aðeins vera á LVL1');
+    if (lvl === 3 && title.split('|').length < 3) violations.push('LVL3 title vantar hook ("Vara | Hook | Stórkaup")');
+  }
+
+  if (!description) violations.push('Vantar description');
+  else {
+    if (description.length < 110) violations.push('Description of stutt (' + description.length + ' stafir, mark 130-150)');
+    if (description.length > 158) violations.push('Description of löng (' + description.length + ' stafir, mark 130-150)');
+  }
+
+  if (bannedPhrases.test(title + ' ' + description)) {
+    violations.push('Bannaður frasi ("pantaðu í dag", "skjót afhending", "mikið úrval" o.þ.h.)');
+  }
+
+  return violations;
+}
+
+function buildSeoRetryPrompt_(prompt, seo, violations) {
+  return prompt + '\n\n' + [
+    'FYRRI TILRAUN stóðst ekki kröfurnar:',
+    'Title: "' + sanitizeSeoText_(seo.title) + '"',
+    'Description: "' + sanitizeSeoText_(seo.description) + '"',
+    'Vandamál:',
+    violations.map(function(v) { return '- ' + v; }).join('\n'),
+    'Skilaðu leiðréttri útgáfu sem uppfyllir allar kröfurnar.'
+  ].join('\n');
+}
+
+/** Level 3 > Level 2 > Level 1 columns decide the category depth of a queue row. */
+function seoRowLevel_(row) {
+  if (String(row['Level 3'] || '').trim()) return 3;
+  if (String(row['Level 2'] || '').trim()) return 2;
+  if (String(row['Level 1'] || '').trim()) return 1;
+  return 0;
 }
 
 function buildSeoPromptV2_(categoryName, context, keywordHints, currentMetaTitle, currentMetaDescription) {
@@ -348,15 +424,17 @@ function runSeoAutomationBatch_v1(opts) {
         context,
         keywordHints,
         currentMetaTitle,
-        currentMetaDescription
+        currentMetaDescription,
+        { useV3: true, level: seoRowLevel_(row) }
       );
 
+      const hasWarnings = seoData.warnings && seoData.warnings.length;
       writeSeoQueueResult_(queue.sheet, rowNumber, {
         suggestedTitle: seoData.title,
         suggestedDescription: seoData.description,
-        status: 'GENERATED',
+        status: hasWarnings ? 'NEEDS_REVIEW' : 'GENERATED',
         lastGeneratedAt: new Date(),
-        notes: ''
+        notes: hasWarnings ? 'Validator: ' + seoData.warnings.join(' | ') : ''
       });
 
       results.push({
@@ -468,15 +546,17 @@ function runSeoForRowNumber_v1(rowNumber) {
       context,
       keywordHints,
       currentMetaTitle,
-      currentMetaDescription
+      currentMetaDescription,
+      { useV3: true, level: seoRowLevel_(row) }
     );
 
+    const hasWarnings = seoData.warnings && seoData.warnings.length;
     writeSeoQueueResult_(queue.sheet, rowNumber, {
       suggestedTitle: seoData.title,
       suggestedDescription: seoData.description,
-      status: 'GENERATED',
+      status: hasWarnings ? 'NEEDS_REVIEW' : 'GENERATED',
       lastGeneratedAt: new Date(),
-      notes: ''
+      notes: hasWarnings ? 'Validator: ' + seoData.warnings.join(' | ') : ''
     });
 
     return {
@@ -540,6 +620,50 @@ function clearSeoErrorRows_v1(opts) {
     cleared: cleared,
     statuses: statusesToClear
   };
+}
+
+/**
+ * Re-runs validateSeoCopy_ on already-GENERATED suggestions and resets failing
+ * rows to PENDING (with violations in Notes) so the next batch regenerates them.
+ * Pass { dryRun: true } to only report.
+ */
+function revalidateGeneratedSeoRows_v1(opts) {
+  opts = opts || {};
+  var queue = getSeoQueueData_();
+  var checked = 0;
+  var flagged = 0;
+  var details = [];
+
+  queue.rows.forEach(function(row) {
+    if (normalizeBooleanFlag_(row.Approved)) return;
+    if (normalizeStatus_(row.Status) !== 'GENERATED') return;
+
+    var title = String(row['Suggested Meta Title'] || '').trim();
+    var description = String(row['Suggested Meta Description'] || '').trim();
+    if (!title && !description) return;
+
+    checked++;
+    var violations = validateSeoCopy_({ title: title, description: description }, seoRowLevel_(row));
+    if (!violations.length) return;
+
+    flagged++;
+    details.push({
+      rowNumber: row.__rowNumber,
+      categoryName: String(row['Category Name'] || ''),
+      violations: violations
+    });
+
+    if (!opts.dryRun) {
+      writeSeoQueueResult_(queue.sheet, row.__rowNumber, {
+        status: 'PENDING',
+        notes: 'Revalidate: ' + violations.join(' | ')
+      });
+    }
+  });
+
+  var summary = { ok: true, checked: checked, flagged: flagged, dryRun: !!opts.dryRun, details: details };
+  Logger.log('[SEO_REVALIDATE] checked=' + checked + ' flagged=' + flagged + ' dryRun=' + !!opts.dryRun);
+  return summary;
 }
 
 function writeSeoQueueResult_(sheet, rowNumber, updates) {
@@ -1336,11 +1460,7 @@ function reviseSEOTitles(categoryName, suggestedTitle, suggestedDescription, not
   var env = getSeoManagerEnv_({ requireAi: true });
   var prompt = buildSeoRevisePrompt_(categoryName, suggestedTitle, suggestedDescription, notes);
 
-  var seo = env.provider === 'gemini'
-    ? generateSeoWithGemini_(prompt, env, opts)
-    : env.provider === 'claude'
-      ? generateSeoWithClaude_(prompt, env, opts)
-      : generateSeoWithOpenAi_(prompt, env, opts);
+  var seo = generateSeoWithProvider_(prompt, env, opts);
 
   if (!seo.title || !seo.description) {
     throw new Error('AI SEO revise response missing title/description: ' + JSON.stringify(seo));
@@ -1785,7 +1905,9 @@ function removeSeoAutomationTrigger_v1() {
 
 function fetchCurrentSeoFromWeb_v1(opts) {
   opts = opts || {};
-  var BASE_URL = 'https://storkaup.is';
+  // Category pages live under /flokkur/<slug> — without the prefix the site
+  // redirects to the nearest parent category and we scrape the wrong meta.
+  var BASE_URL = 'https://www.storkaup.is/flokkur';
   var SLEEP_MS = opts.sleepMs != null ? Number(opts.sleepMs) : 1500;
   var BATCH_LIMIT = opts.limit != null ? Number(opts.limit) : 50;
   var forceRefetch = !!opts.forceRefetch;
@@ -1811,7 +1933,16 @@ function fetchCurrentSeoFromWeb_v1(opts) {
     return { ok: true, fetched: 0, skipped: 0, errors: 0, total: queue.rows.length };
   }
 
-  var batch = eligible.slice(0, BATCH_LIMIT);
+  // In force mode every row stays eligible between runs, so advance via cursor.
+  var props = PropertiesService.getScriptProperties();
+  var cursorKey = 'SEO_FETCH_META_CURSOR';
+  var startIndex = 0;
+  if (forceRefetch) {
+    startIndex = Number(props.getProperty(cursorKey) || 0);
+    if (startIndex >= eligible.length) startIndex = 0;
+  }
+
+  var batch = eligible.slice(startIndex, startIndex + BATCH_LIMIT);
   var fetched = 0;
   var errors = 0;
 
@@ -1862,10 +1993,15 @@ function fetchCurrentSeoFromWeb_v1(opts) {
     }
   });
 
+  if (forceRefetch) {
+    var nextIndex = startIndex + batch.length < eligible.length ? startIndex + batch.length : 0;
+    props.setProperty(cursorKey, String(nextIndex));
+  }
+
   var summary = {
     ok: true,
     fetched: fetched,
-    skipped: eligible.length - batch.length,
+    skipped: Math.max(0, eligible.length - (startIndex + batch.length)),
     errors: errors,
     total: queue.rows.length
   };

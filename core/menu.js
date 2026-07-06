@@ -37,19 +37,27 @@ function onOpen() {
         .addItem('Match ALL NEWWEB statuses to Magento', 'menu_reconcileNewwebAllStatusesV2')
     )
     .addSubMenu(
-      ui.createMenu('Tools')
-        .addItem('Test Config', 'menu_testConfig')
+      ui.createMenu('SEO')
+        .addItem('Generate SEO Batch', 'menu_runSeoBatch')
+        .addItem('Generate SEO for Selected Row', 'menu_runSeoSelectedRow')
+        .addItem('Revise SEO for Selected Rows', 'menu_runReviseSelectedRows')
+        .addSeparator()
+        .addItem('Fetch Current Meta from Web', 'menu_fetchCurrentSeoFromWeb')
+        .addItem('Re-fetch Current Meta (force, overwrites)', 'menu_fetchCurrentSeoFromWebForce')
+        .addItem('Revalidate GENERATED rows', 'menu_revalidateGeneratedSeo')
+        .addSeparator()
         .addItem('Setup SEO Queue', 'menu_setupSeoQueue')
         .addItem('Seed SEO Queue from Cludo', 'menu_buildSeoQueueFromCludo')
         .addItem('Merge Meta SEO → SEO_QUEUE', 'menu_mergeSeoFromSheet')
         .addItem('Import SEO from Excel Sheet', 'menu_importSeoFromExcel')
-        .addItem('Generate SEO for Selected Row', 'menu_runSeoSelectedRow')
-        .addItem('Revise SEO for Selected Rows', 'menu_runReviseSelectedRows')
-        .addItem('Generate SEO Batch', 'menu_runSeoBatch')
-        .addItem('Fetch Current Meta from Web', 'menu_fetchCurrentSeoFromWeb')
+        .addSeparator()
         .addItem('Deduplicate SEO Queue', 'menu_deduplicateSeoQueue')
-        .addItem('Debug Gemini Models', 'menu_debugGeminiModels')
         .addItem('Clear SEO Error Rows', 'menu_clearSeoErrorRows')
+        .addItem('Debug Gemini Models', 'menu_debugGeminiModels')
+    )
+    .addSubMenu(
+      ui.createMenu('Tools')
+        .addItem('Test Config', 'menu_testConfig')
         .addItem('Clear Magento Token Cache', 'menu_clearMagentoTokenCache')
         .addItem('Run Klaviyo Sync', 'menu_runKlaviyoSync')
         .addItem('Show Runtime Cache', 'menu_showRuntimeCache')
@@ -304,6 +312,38 @@ function menu_fetchCurrentSeoFromWeb() {
     'Fetched: ' + ((out && out.fetched) || 0) +
     ' | Errors: ' + ((out && out.errors) || 0) +
     ' | Remaining: ' + ((out && out.skipped) || 0),
+    'KPI CORE'
+  );
+}
+
+function menu_fetchCurrentSeoFromWebForce() {
+  if (typeof fetchCurrentSeoFromWeb_v1 !== 'function') {
+    throw new Error('fetchCurrentSeoFromWeb_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const ui = SpreadsheetApp.getUi();
+  const confirm = ui.alert(
+    'Re-fetch Current Meta (force)',
+    'Þetta yfirskrifar Current Meta Title/Description í ÖLLUM röðum (50 í einu) með live stöðu af storkaup.is.\n\nHalda áfram?',
+    ui.ButtonSet.YES_NO
+  );
+  if (confirm !== ui.Button.YES) return;
+  const out = fetchCurrentSeoFromWeb_v1({ limit: 50, forceRefetch: true });
+  toast_(
+    'Fetched: ' + ((out && out.fetched) || 0) +
+    ' | Errors: ' + ((out && out.errors) || 0) +
+    ' | Remaining: ' + ((out && out.skipped) || 0) + ' — keyrðu aftur fyrir næsta skammt.',
+    'KPI CORE'
+  );
+}
+
+function menu_revalidateGeneratedSeo() {
+  if (typeof revalidateGeneratedSeoRows_v1 !== 'function') {
+    throw new Error('revalidateGeneratedSeoRows_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = revalidateGeneratedSeoRows_v1();
+  toast_(
+    'Revalidate: ' + ((out && out.checked) || 0) + ' raðir skoðaðar, ' +
+    ((out && out.flagged) || 0) + ' settar aftur í PENDING (sjá Notes).',
     'KPI CORE'
   );
 }
