@@ -302,7 +302,7 @@ function validateSeoCopy_(seo, level) {
   var description = sanitizeSeoText_(seo && seo.description);
   var lvl = Number(level || 0);
   var violations = [];
-  var bannedPhrases = /pantaðu í dag|fáðu sent hratt|skjót(?:ri)? afhending|mikið úrval/i;
+  var bannedPhrases = /pantaðu (?:í dag|hér|á storkaup)|fáðu sent hratt|skjót(?:ri)? afhending|mikið úrval/i;
 
   if (!title) violations.push('Vantar title');
   else {
@@ -320,7 +320,7 @@ function validateSeoCopy_(seo, level) {
   }
 
   if (bannedPhrases.test(title + ' ' + description)) {
-    violations.push('Bannaður frasi ("pantaðu í dag", "skjót afhending", "mikið úrval" o.þ.h.)');
+    violations.push('Bannaður frasi ("pantaðu hér/í dag", "skjót afhending", "mikið úrval" o.þ.h.)');
   }
 
   return violations;
@@ -1433,13 +1433,13 @@ function buildSeoPromptV3_(categoryName, context, keywordHints, currentMetaTitle
     attrNote,
     currentMetaTitle ? ('Núverandi Meta Title: ' + currentMetaTitle) : '',
     currentMetaDescription ? ('Núverandi Meta Description: ' + currentMetaDescription) : '',
-    'Description: Má flétta inn CTA eins og "Skoðaðu úrvalið", "Pantaðu hér" eða "Fáðu tilboð". "í magni" hentar í description sem longtail keyword.',
+    'Description: endaðu gjarnan á mjúku CTA, t.d. "Skoðaðu vöruúrvalið hér.", "Kynntu þér úrvalið." eða "Fáðu tilboð hjá okkur." — veldu það sem passar flokknum, ekki alltaf sama frasann. ALDREI "Pantaðu hér" eða "Pantaðu í dag". "í magni" hentar í description sem longtail keyword.',
     'Leggðu áherslu á rekstrarþarfir fyrirtækja, gæði og traust.',
     'Tungumál: Íslenska.',
     'Stíll: professional B2B, beinn og trúverðugur.',
     'Strict limit: Title must be between 40-55 characters. Description must be between 130-150 characters.',
     'Forðastu keyword stuffing, of almennan texta og auglýsingalegan tón.',
-    'Ekki nota "pantaðu í dag", "fáðu sent hratt", "skjót afhending", "mikið úrval".',
+    'Ekki nota "pantaðu í dag", "pantaðu hér", "fáðu sent hratt", "skjót afhending", "mikið úrval".',
     'Ekki lofa hraðri afhendingu nema það sé beinlínis studd af samhenginu.',
     'Skrifaðu eins og fyrir íslenskan fyrirtækjamarkað, ekki eins og fyrir neytendaauglýsingu.',
     'Ekki bæta við inngangI, skýringum eða texta eins og "Here is the JSON requested".',
@@ -1464,7 +1464,7 @@ function buildSeoRevisePrompt_(categoryName, suggestedTitle, suggestedDescriptio
     'Stíll: professional B2B, beinn og trúverðugur.',
     'Strict limit: Title must be between 40-55 characters. Description must be between 130-150 characters.',
     'Forðastu keyword stuffing, of almennan texta og auglýsingalegan tón.',
-    'Ekki nota setningar eins og "pantaðu í dag", "fáðu sent hratt", "skjót afhending", "mikið úrval".',
+    'Ekki nota setningar eins og "pantaðu í dag", "pantaðu hér", "fáðu sent hratt", "skjót afhending", "mikið úrval".',
     'Skrifaðu eins og fyrir íslenskan fyrirtækjamarkað, ekki eins og fyrir neytendaauglýsingu.',
     'Ekki bæta við inngangI, skýringum eða texta eins og "Here is the JSON requested".',
     'Return only raw JSON with this exact shape: {"title":"...","description":"..."}'
