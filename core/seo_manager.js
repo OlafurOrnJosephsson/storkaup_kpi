@@ -25,7 +25,8 @@ const SEO_QUEUE_HEADER = [
   'Approved',
   'Reviewed By',
   'Last Generated At',
-  'Notes'
+  'Notes',
+  'Live URL'
 ];
 
 function getSeoManagerEnv_(opts) {
@@ -179,17 +180,31 @@ function ensureSeoQueueSheet_() {
   }
 
   const values = sh.getDataRange().getValues();
-  const needsHeader =
-    !values.length ||
-    values[0].length < SEO_QUEUE_HEADER.length ||
-    SEO_QUEUE_HEADER.some(function(col, idx) {
-      return String(values[0][idx] || '').trim() !== col;
-    });
+  const hasData = values.length > 1;
+  const currentHeader = values.length
+    ? values[0].map(function(v) { return String(v || '').trim(); })
+    : [];
+  const headerMatches = SEO_QUEUE_HEADER.every(function(col, idx) {
+    return currentHeader[idx] === col;
+  });
 
-  if (needsHeader) {
-    sh.clearContents();
+  if (!headerMatches) {
+    // Columns get appended over time (e.g. Live URL). An existing header that is
+    // a prefix of the expected one is extended in place — NEVER clear a sheet
+    // that already holds queue rows.
+    const existingCols = currentHeader.filter(Boolean);
+    const isPrefix = existingCols.every(function(col, idx) {
+      return SEO_QUEUE_HEADER[idx] === col;
+    });
+    if (hasData && !isPrefix) {
+      throw new Error(
+        'SEO_QUEUE header does not match expected columns — fix the header row manually to avoid data loss. Expected: ' +
+        SEO_QUEUE_HEADER.join(' | ')
+      );
+    }
+    if (!hasData) sh.clearContents();
     sh.getRange(1, 1, 1, SEO_QUEUE_HEADER.length).setValues([SEO_QUEUE_HEADER]);
-    applySheetStyling_(sh, { zebra: true });
+    if (!hasData) applySheetStyling_(sh, { zebra: true });
   }
 
   return sh;
@@ -711,7 +726,8 @@ function seedSeoQueueRows_(items) {
       item.approved || '',
       item.reviewedBy || '',
       '',
-      item.notes || ''
+      item.notes || '',
+      item.liveUrl || ''
     ];
   });
 
@@ -1923,7 +1939,8 @@ function fetchCurrentSeoFromWeb_v1(opts) {
 
   var eligible = queue.rows.filter(function(row) {
     var categoryPath = String(row['Category Path'] || '').trim();
-    if (!categoryPath) return false;
+    var liveUrl = String(row['Live URL'] || '').trim();
+    if (!categoryPath && !liveUrl) return false;
     if (!forceRefetch && String(row['Current Meta Title'] || '').trim()) return false;
     return true;
   });
@@ -1950,8 +1967,10 @@ function fetchCurrentSeoFromWeb_v1(opts) {
 
   batch.forEach(function(row, idx) {
     var categoryPath = String(row['Category Path'] || '').trim();
-    var slug = categoryPathToSlug_(categoryPath);
-    var url = BASE_URL + '/' + slug;
+    // Live URL (from sitemap sync) is authoritative; slug transliteration is
+    // only the fallback for rows that have not been linked yet.
+    var url = String(row['Live URL'] || '').trim() ||
+      (BASE_URL + '/' + categoryPathToSlug_(categoryPath));
 
     try {
       var res = UrlFetchApp.fetch(url, {
@@ -2007,6 +2026,152 @@ function fetchCurrentSeoFromWeb_v1(opts) {
   };
   Logger.log('[SEO_FETCH_META] Done: ' + JSON.stringify(summary));
   return summary;
+}
+
+/**
+ * Syncs SEO_QUEUE against the live categories sitemap (source of truth for
+ * which category pages exist and their real URLs):
+ * - links existing rows to their live URL (Live URL column)
+ * - seeds rows for sitemap categories missing from the queue, pulling proper
+ *   Icelandic names from the page's BreadcrumbList JSON-LD plus current meta
+ * - flags queue rows whose category is no longer in the sitemap
+ * Cludo seeding stays as the enrichment source (SKUs, top products, revenue).
+ */
+function syncSeoQueueFromSitemap_v1(opts) {
+  opts = opts || {};
+  var SITEMAP_URL = 'https://www.storkaup.is/sitemaps/categories';
+  var FETCH_LIMIT = opts.limit != null ? Number(opts.limit) : 40;
+  var SLEEP_MS = opts.sleepMs != null ? Number(opts.sleepMs) : 400;
+
+  var res = UrlFetchApp.fetch(SITEMAP_URL, { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) {
+    throw new Error('Categories sitemap fetch failed: HTTP ' + res.getResponseCode());
+  }
+  var sitemapUrls = [];
+  var re = /<loc>\s*([^<]+?)\s*<\/loc>/g;
+  var xml = res.getContentText();
+  var m;
+  while ((m = re.exec(xml)) !== null) sitemapUrls.push(m[1]);
+  if (!sitemapUrls.length) throw new Error('No URLs found in categories sitemap.');
+
+  var queue = getSeoQueueData_();
+  var urlColIdx = SEO_QUEUE_HEADER.indexOf('Live URL');
+  var notesColIdx = SEO_QUEUE_HEADER.indexOf('Notes');
+
+  function rowUrlKey_(row) {
+    var liveUrl = String(row['Live URL'] || '').trim();
+    if (liveUrl) return normalizeCategoryUrl_(liveUrl);
+    var path = String(row['Category Path'] || '').trim();
+    if (!path) return '';
+    return normalizeCategoryUrl_('https://www.storkaup.is/flokkur/' + categoryPathToSlug_(path));
+  }
+
+  var byUrl = {};
+  queue.rows.forEach(function(row) {
+    var key = rowUrlKey_(row);
+    if (key && !byUrl[key]) byUrl[key] = row;
+  });
+
+  var sitemapSet = {};
+  var missing = [];
+  var linked = 0;
+  sitemapUrls.forEach(function(url) {
+    var norm = normalizeCategoryUrl_(url);
+    sitemapSet[norm] = true;
+    var row = byUrl[norm];
+    if (row) {
+      if (!String(row['Live URL'] || '').trim()) {
+        queue.sheet.getRange(row.__rowNumber, urlColIdx + 1).setValue(url);
+        linked++;
+      }
+    } else {
+      missing.push(url);
+    }
+  });
+
+  var toFetch = missing.slice(0, FETCH_LIMIT);
+  var seeded = [];
+  toFetch.forEach(function(url, idx) {
+    try {
+      var page = UrlFetchApp.fetch(url, {
+        muteHttpExceptions: true,
+        followRedirects: true,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StorkaupBot/1.0)' }
+      });
+      if (page.getResponseCode() !== 200) throw new Error('HTTP ' + page.getResponseCode());
+      var html = page.getContentText();
+      var names = extractJsonLdBreadcrumbNames_(html);
+      if (!names.length) {
+        names = url.replace(/^.*\/flokkur\//, '').split('/');
+      }
+      seeded.push({
+        categoryName: names[names.length - 1],
+        currentMetaTitle: extractHtmlTitle_(html),
+        currentMetaDescription: extractHtmlMetaDescription_(html),
+        categoryPath: names.join(' / '),
+        level1: names[0] || '',
+        level2: names[1] || '',
+        level3: names.slice(2).join(' / '),
+        keywordHints: names.join(', '),
+        context: 'Flokkaslóð: ' + names.join(' / '),
+        status: 'PENDING',
+        notes: 'Seeded from sitemap',
+        liveUrl: url
+      });
+    } catch (err) {
+      Logger.log('[SEO_SITEMAP_SYNC] ' + url + ' ERROR: ' + (err && err.message ? err.message : err));
+    }
+    if (idx < toFetch.length - 1 && SLEEP_MS > 0) Utilities.sleep(SLEEP_MS);
+  });
+  if (seeded.length) seedSeoQueueRows_(seeded);
+
+  var flaggedGone = 0;
+  queue.rows.forEach(function(row) {
+    var key = rowUrlKey_(row);
+    if (!key || sitemapSet[key]) return;
+    var notes = String(row.Notes || '');
+    if (notes.indexOf('EKKI Í SITEMAP') !== -1) return;
+    queue.sheet.getRange(row.__rowNumber, notesColIdx + 1)
+      .setValue(('EKKI Í SITEMAP. ' + notes).trim());
+    flaggedGone++;
+  });
+
+  var summary = {
+    ok: true,
+    sitemapUrls: sitemapUrls.length,
+    linked: linked,
+    added: seeded.length,
+    addedRemaining: Math.max(0, missing.length - toFetch.length),
+    flaggedGone: flaggedGone
+  };
+  Logger.log('[SEO_SITEMAP_SYNC] ' + JSON.stringify(summary));
+  return summary;
+}
+
+function normalizeCategoryUrl_(url) {
+  return String(url || '').trim().toLowerCase()
+    .replace(/^http:\/\//, 'https://')
+    .replace(/^https:\/\/storkaup\.is/, 'https://www.storkaup.is')
+    .replace(/\/+$/, '');
+}
+
+function extractJsonLdBreadcrumbNames_(html) {
+  var names = [];
+  var re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  var m;
+  while ((m = re.exec(html)) !== null) {
+    var parsed = safeJsonParse_(m[1]);
+    if (!parsed || parsed['@type'] !== 'BreadcrumbList' || !Array.isArray(parsed.itemListElement)) continue;
+    parsed.itemListElement
+      .slice()
+      .sort(function(a, b) { return Number(a.position || 0) - Number(b.position || 0); })
+      .forEach(function(item) {
+        var name = String((item && item.name) || '').trim();
+        if (name && name.toLowerCase() !== 'forsíða') names.push(name);
+      });
+    break;
+  }
+  return names;
 }
 
 function categoryPathToSlug_(categoryPath) {

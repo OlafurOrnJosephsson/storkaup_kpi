@@ -42,6 +42,7 @@ function onOpen() {
         .addItem('Generate SEO for Selected Row', 'menu_runSeoSelectedRow')
         .addItem('Revise SEO for Selected Rows', 'menu_runReviseSelectedRows')
         .addSeparator()
+        .addItem('Sync queue við sitemap', 'menu_syncSeoQueueFromSitemap')
         .addItem('Fetch Current Meta from Web', 'menu_fetchCurrentSeoFromWeb')
         .addItem('Re-fetch Current Meta (force, overwrites)', 'menu_fetchCurrentSeoFromWebForce')
         .addItem('Revalidate GENERATED rows', 'menu_revalidateGeneratedSeo')
@@ -312,6 +313,21 @@ function menu_fetchCurrentSeoFromWeb() {
     'Fetched: ' + ((out && out.fetched) || 0) +
     ' | Errors: ' + ((out && out.errors) || 0) +
     ' | Remaining: ' + ((out && out.skipped) || 0),
+    'KPI CORE'
+  );
+}
+
+function menu_syncSeoQueueFromSitemap() {
+  if (typeof syncSeoQueueFromSitemap_v1 !== 'function') {
+    throw new Error('syncSeoQueueFromSitemap_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = syncSeoQueueFromSitemap_v1();
+  toast_(
+    'Sitemap sync: ' + ((out && out.sitemapUrls) || 0) + ' flokkar á vef | ' +
+    ((out && out.linked) || 0) + ' raðir tengdar | ' +
+    ((out && out.added) || 0) + ' nýjar' +
+    (out && out.addedRemaining ? ' (+' + out.addedRemaining + ' eftir, keyrðu aftur)' : '') +
+    ' | ' + ((out && out.flaggedGone) || 0) + ' horfnar flaggaðar',
     'KPI CORE'
   );
 }
