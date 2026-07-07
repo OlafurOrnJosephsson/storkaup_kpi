@@ -2148,6 +2148,48 @@ function syncSeoQueueFromSitemap_v1(opts) {
   return summary;
 }
 
+/**
+ * Deletes queue rows flagged 'EKKI Í SITEMAP' by syncSeoQueueFromSitemap_v1.
+ * Approved rows are never deleted — they may hold copy that belongs on a
+ * renamed category's new row — they are returned in `keptApproved` instead.
+ * Pass { dryRun: true } to only report.
+ */
+function purgeSeoQueueNotInSitemap_v1(opts) {
+  opts = opts || {};
+  var queue = getSeoQueueData_();
+  var toDelete = [];
+  var keptApproved = [];
+
+  queue.rows.forEach(function(row) {
+    if (String(row.Notes || '').indexOf('EKKI Í SITEMAP') === -1) return;
+    if (normalizeBooleanFlag_(row.Approved)) {
+      keptApproved.push({
+        rowNumber: row.__rowNumber,
+        categoryName: String(row['Category Name'] || '')
+      });
+    } else {
+      toDelete.push(row.__rowNumber);
+    }
+  });
+
+  if (!opts.dryRun && toDelete.length) {
+    // Bottom-up so earlier deletions don't shift the remaining row numbers.
+    toDelete.sort(function(a, b) { return b - a; }).forEach(function(rowNumber) {
+      queue.sheet.deleteRow(rowNumber);
+    });
+  }
+
+  var summary = {
+    ok: true,
+    deleted: opts.dryRun ? 0 : toDelete.length,
+    wouldDelete: opts.dryRun ? toDelete.length : 0,
+    keptApproved: keptApproved,
+    dryRun: !!opts.dryRun
+  };
+  Logger.log('[SEO_PURGE] ' + JSON.stringify(summary));
+  return summary;
+}
+
 function normalizeCategoryUrl_(url) {
   return String(url || '').trim().toLowerCase()
     .replace(/^http:\/\//, 'https://')

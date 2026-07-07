@@ -52,6 +52,7 @@ function onOpen() {
         .addItem('Merge Meta SEO → SEO_QUEUE', 'menu_mergeSeoFromSheet')
         .addItem('Import SEO from Excel Sheet', 'menu_importSeoFromExcel')
         .addSeparator()
+        .addItem('Henda röðum sem eru ekki í sitemap', 'menu_purgeSeoNotInSitemap')
         .addItem('Deduplicate SEO Queue', 'menu_deduplicateSeoQueue')
         .addItem('Clear SEO Error Rows', 'menu_clearSeoErrorRows')
         .addItem('Debug Gemini Models', 'menu_debugGeminiModels')
@@ -360,6 +361,34 @@ function menu_revalidateGeneratedSeo() {
   toast_(
     'Revalidate: ' + ((out && out.checked) || 0) + ' raðir skoðaðar, ' +
     ((out && out.flagged) || 0) + ' settar aftur í PENDING (sjá Notes).',
+    'KPI CORE'
+  );
+}
+
+function menu_purgeSeoNotInSitemap() {
+  if (typeof purgeSeoQueueNotInSitemap_v1 !== 'function') {
+    throw new Error('purgeSeoQueueNotInSitemap_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  var ui = SpreadsheetApp.getUi();
+  var dry = purgeSeoQueueNotInSitemap_v1({ dryRun: true });
+  var approvedNote = dry.keptApproved.length
+    ? '\n\nApproved raðir sem verða EKKI snertar (færðu textann handvirkt ef við á):\n' +
+      dry.keptApproved.map(function(k) { return '  • ' + k.categoryName; }).join('\n')
+    : '';
+  var resp = ui.alert(
+    'Henda röðum sem eru ekki í sitemap',
+    'Þetta EYÐIR ' + dry.wouldDelete + ' röðum með "EKKI Í SITEMAP" flaggi (ekki Approved).' +
+      approvedNote + '\n\nHalda áfram?',
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) {
+    toast_('Hætt við.', 'KPI CORE');
+    return;
+  }
+  var out = purgeSeoQueueNotInSitemap_v1({});
+  toast_(
+    'Eytt: ' + ((out && out.deleted) || 0) + ' raðir. Approved haldið: ' +
+    ((out && out.keptApproved && out.keptApproved.length) || 0),
     'KPI CORE'
   );
 }
