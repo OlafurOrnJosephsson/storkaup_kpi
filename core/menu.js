@@ -45,6 +45,8 @@ function onOpen() {
         .addItem('Sync queue við sitemap', 'menu_syncSeoQueueFromSitemap')
         .addItem('Fetch Current Meta from Web', 'menu_fetchCurrentSeoFromWeb')
         .addItem('Re-fetch Current Meta (force, overwrites)', 'menu_fetchCurrentSeoFromWebForce')
+        .addItem('Auðga Context með lifandi vörulista', 'menu_fetchLiveCategoryProducts')
+        .addItem('Endurnýja lifandi vörulista (force)', 'menu_fetchLiveCategoryProductsForce')
         .addItem('Revalidate GENERATED rows', 'menu_revalidateGeneratedSeo')
         .addSeparator()
         .addItem('Setup SEO Queue', 'menu_setupSeoQueue')
@@ -329,6 +331,37 @@ function menu_syncSeoQueueFromSitemap() {
     ((out && out.added) || 0) + ' nýjar' +
     (out && out.addedRemaining ? ' (+' + out.addedRemaining + ' eftir, keyrðu aftur)' : '') +
     ' | ' + ((out && out.flaggedGone) || 0) + ' horfnar flaggaðar',
+    'KPI CORE'
+  );
+}
+
+function menu_fetchLiveCategoryProducts() {
+  if (typeof fetchLiveCategoryProductsFromWeb_v1 !== 'function') {
+    throw new Error('fetchLiveCategoryProductsFromWeb_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = fetchLiveCategoryProductsFromWeb_v1({ limit: 40 });
+  toast_(
+    'Auðgað: ' + ((out && out.updated) || 0) + ' raðir | Villur: ' + ((out && out.errors) || 0) +
+    (out && out.remaining ? ' | ' + out.remaining + ' eftir — keyrðu aftur' : ''),
+    'KPI CORE'
+  );
+}
+
+function menu_fetchLiveCategoryProductsForce() {
+  if (typeof fetchLiveCategoryProductsFromWeb_v1 !== 'function') {
+    throw new Error('fetchLiveCategoryProductsFromWeb_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const ui = SpreadsheetApp.getUi();
+  const confirm = ui.alert(
+    'Endurnýja lifandi vörulista (force)',
+    'Þetta skrifar yfir "Vörur á síðunni núna" hlutann í Context á ÖLLUM röðum (40 í einu) með núverandi vörulista af vefnum.\n\nHalda áfram?',
+    ui.ButtonSet.YES_NO
+  );
+  if (confirm !== ui.Button.YES) return;
+  const out = fetchLiveCategoryProductsFromWeb_v1({ limit: 40, forceRefresh: true });
+  toast_(
+    'Auðgað: ' + ((out && out.updated) || 0) + ' raðir | Villur: ' + ((out && out.errors) || 0) +
+    (out && out.remaining ? ' | ' + out.remaining + ' eftir — keyrðu aftur' : ''),
     'KPI CORE'
   );
 }

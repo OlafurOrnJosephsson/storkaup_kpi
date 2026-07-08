@@ -1380,9 +1380,26 @@ var SEO_KNOWN_ATTRIBUTES_ = [
 
 function detectBrandsFromText_(text) {
   var lower = String(text || '').toLowerCase();
-  return SEO_KNOWN_BRANDS_.filter(function(brand) {
+  var fromWhitelist = SEO_KNOWN_BRANDS_.filter(function(brand) {
     return lower.indexOf(brand.toLowerCase()) !== -1;
   });
+  // Live-crawled product brands (see fetchLiveCategoryProductsFromWeb_v1) are
+  // written into Context as "Name (Brand)" — this catches real brands that
+  // aren't in the static SEO_KNOWN_BRANDS_ whitelist above.
+  var fromParens = extractParentheticalBrands_(text);
+  return fromWhitelist.concat(fromParens).filter(function(b, i, arr) {
+    return arr.indexOf(b) === i;
+  });
+}
+
+function extractParentheticalBrands_(text) {
+  var found = {};
+  var re = /\(([A-ZÁÉÍÓÚÝÞÆÖÐ][^()]{1,30})\)/g;
+  var m;
+  while ((m = re.exec(String(text || ''))) !== null) {
+    found[m[1].trim()] = true;
+  }
+  return Object.keys(found);
 }
 
 function detectAttributesFromText_(text) {
@@ -2188,6 +2205,143 @@ function purgeSeoQueueNotInSitemap_v1(opts) {
   };
   Logger.log('[SEO_PURGE] ' + JSON.stringify(summary));
   return summary;
+}
+
+var SEO_LIVE_PRODUCTS_MARKER_ = 'Vörur á síðunni núna:';
+
+/**
+ * Category pages render an ItemList (up to ~8 products, with brand) inside
+ * the CollectionPage JSON-LD's mainEntity — server-rendered, no JS needed.
+ * This is real, current inventory (unlike Cludo's snapshot from whatever
+ * sync last ran) and it carries brand names the static SEO_KNOWN_BRANDS_
+ * whitelist doesn't cover. Run this before a big generation batch to
+ * refresh/enrich Context and Keyword Hints with what's actually on the page.
+ * Rows seeded from the sitemap (which have no Cludo context at all) benefit
+ * most — this is their only source of product-level detail.
+ */
+function fetchLiveCategoryProductsFromWeb_v1(opts) {
+  opts = opts || {};
+  var BASE_URL = 'https://www.storkaup.is/flokkur';
+  var SLEEP_MS = opts.sleepMs != null ? Number(opts.sleepMs) : 400;
+  var BATCH_LIMIT = opts.limit != null ? Number(opts.limit) : 40;
+  var forceRefresh = !!opts.forceRefresh;
+
+  var queue = getSeoQueueData_();
+  var header = SEO_QUEUE_HEADER;
+  var contextColIdx = header.indexOf('Context');
+  var hintsColIdx = header.indexOf('Keyword Hints');
+  if (contextColIdx === -1) throw new Error('SEO_QUEUE sheet is missing Context column.');
+
+  var eligible = queue.rows.filter(function(row) {
+    var url = String(row['Live URL'] || '').trim();
+    var path = String(row['Category Path'] || '').trim();
+    if (!url && !path) return false;
+    if (!forceRefresh && String(row.Context || '').indexOf(SEO_LIVE_PRODUCTS_MARKER_) !== -1) return false;
+    return true;
+  });
+
+  if (!eligible.length) {
+    Logger.log('[SEO_LIVE_PRODUCTS] No eligible rows found.');
+    return { ok: true, updated: 0, errors: 0, remaining: 0, total: queue.rows.length };
+  }
+
+  var props = PropertiesService.getScriptProperties();
+  var cursorKey = 'SEO_LIVE_PRODUCTS_CURSOR';
+  var startIndex = 0;
+  if (forceRefresh) {
+    startIndex = Number(props.getProperty(cursorKey) || 0);
+    if (startIndex >= eligible.length) startIndex = 0;
+  }
+
+  var batch = eligible.slice(startIndex, startIndex + BATCH_LIMIT);
+  var updated = 0;
+  var errors = 0;
+
+  batch.forEach(function(row, idx) {
+    var url = String(row['Live URL'] || '').trim() ||
+      (BASE_URL + '/' + categoryPathToSlug_(String(row['Category Path'] || '')));
+
+    try {
+      var res = UrlFetchApp.fetch(url, {
+        method: 'get',
+        muteHttpExceptions: true,
+        followRedirects: true,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StorkaupBot/1.0)' }
+      });
+      if (res.getResponseCode() !== 200) throw new Error('HTTP ' + res.getResponseCode());
+
+      var products = extractCollectionPageProducts_(res.getContentText());
+      if (!products.length) {
+        Logger.log('[SEO_LIVE_PRODUCTS] Row ' + row.__rowNumber + ' — no products in JSON-LD: ' + url);
+        return;
+      }
+
+      var liveLine = SEO_LIVE_PRODUCTS_MARKER_ + ' ' + products.slice(0, 8).map(function(p) {
+        return p.brand ? (p.name + ' (' + p.brand + ')') : p.name;
+      }).join('; ') + '.';
+
+      var existingContext = String(row.Context || '');
+      var markerRe = new RegExp(SEO_LIVE_PRODUCTS_MARKER_.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^.]*\\.?');
+      var newContext = existingContext.indexOf(SEO_LIVE_PRODUCTS_MARKER_) !== -1
+        ? existingContext.replace(markerRe, liveLine)
+        : (existingContext ? existingContext + ' ' + liveLine : liveLine);
+      queue.sheet.getRange(row.__rowNumber, contextColIdx + 1).setValue(newContext);
+
+      var liveBrands = products.map(function(p) { return p.brand; }).filter(Boolean);
+      if (liveBrands.length && hintsColIdx !== -1) {
+        var existingHints = String(row['Keyword Hints'] || '')
+          .split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+        var mergedHints = existingHints.concat(liveBrands).filter(function(v, i, arr) {
+          return v && arr.indexOf(v) === i;
+        });
+        queue.sheet.getRange(row.__rowNumber, hintsColIdx + 1).setValue(mergedHints.slice(0, 15).join(', '));
+      }
+
+      updated++;
+    } catch (err) {
+      Logger.log('[SEO_LIVE_PRODUCTS] Row ' + row.__rowNumber + ' ERROR: ' + (err && err.message ? err.message : err));
+      errors++;
+    }
+
+    if (idx < batch.length - 1 && SLEEP_MS > 0) Utilities.sleep(SLEEP_MS);
+  });
+
+  if (forceRefresh) {
+    var nextIndex = startIndex + batch.length < eligible.length ? startIndex + batch.length : 0;
+    props.setProperty(cursorKey, String(nextIndex));
+  }
+
+  var summary = {
+    ok: true,
+    updated: updated,
+    errors: errors,
+    remaining: Math.max(0, eligible.length - (startIndex + batch.length)),
+    total: queue.rows.length
+  };
+  Logger.log('[SEO_LIVE_PRODUCTS] ' + JSON.stringify(summary));
+  return summary;
+}
+
+function extractCollectionPageProducts_(html) {
+  var products = [];
+  var re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  var m;
+  while ((m = re.exec(html)) !== null) {
+    var parsed = safeJsonParse_(m[1]);
+    if (!parsed || parsed['@type'] !== 'CollectionPage') continue;
+    var list = parsed.mainEntity;
+    if (!list || list['@type'] !== 'ItemList' || !Array.isArray(list.itemListElement)) continue;
+    list.itemListElement.forEach(function(el) {
+      var item = el && el.item;
+      if (!item || !item.name) return;
+      products.push({
+        name: String(item.name).trim(),
+        brand: (item.brand && item.brand.name) ? String(item.brand.name).trim() : ''
+      });
+    });
+    break;
+  }
+  return products;
 }
 
 function normalizeCategoryUrl_(url) {
