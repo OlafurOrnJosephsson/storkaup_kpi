@@ -49,6 +49,10 @@ function onOpen() {
         .addItem('Endurnýja lifandi vörulista (force)', 'menu_fetchLiveCategoryProductsForce')
         .addItem('Revalidate GENERATED rows', 'menu_revalidateGeneratedSeo')
         .addSeparator()
+        .addItem('Finna flokka sem þurfa nýja mynd', 'menu_flagCategoriesNeedingImage')
+        .addItem('Generate SEO Images (batch)', 'menu_runSeoImageBatch')
+        .addItem('Generate Image for Selected Row', 'menu_runSeoImageSelectedRow')
+        .addSeparator()
         .addItem('Setup SEO Queue', 'menu_setupSeoQueue')
         .addItem('Seed SEO Queue from Cludo', 'menu_buildSeoQueueFromCludo')
         .addItem('Merge Meta SEO → SEO_QUEUE', 'menu_mergeSeoFromSheet')
@@ -422,6 +426,54 @@ function menu_purgeSeoNotInSitemap() {
   toast_(
     'Eytt: ' + ((out && out.deleted) || 0) + ' raðir. Approved haldið: ' +
     ((out && out.keptApproved && out.keptApproved.length) || 0),
+    'KPI CORE'
+  );
+}
+
+function menu_flagCategoriesNeedingImage() {
+  if (typeof flagCategoriesNeedingImage_v1 !== 'function') {
+    throw new Error('flagCategoriesNeedingImage_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = flagCategoriesNeedingImage_v1();
+  toast_(
+    'Þurfa nýja mynd: ' + ((out && out.pending) || 0) +
+    ' | Hafa nú þegar sérmynd: ' + ((out && out.hasCustom) || 0) +
+    ' — sjá "Image Status" dálk',
+    'KPI CORE'
+  );
+}
+
+function menu_runSeoImageBatch() {
+  if (typeof runSeoImageAutomationBatch_v1 !== 'function') {
+    throw new Error('runSeoImageAutomationBatch_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const ui = SpreadsheetApp.getUi();
+  const confirm = ui.alert(
+    'Generate SEO Images (batch)',
+    'Þetta kallar á OpenAI myndagerðar-API (~$0.06/mynd) fyrir næsta skammt af flokkum sem þurfa mynd. Kostnaður er raunverulegur og óafturkræfur.\n\nHalda áfram?',
+    ui.ButtonSet.YES_NO
+  );
+  if (confirm !== ui.Button.YES) {
+    toast_('Hætt við.', 'KPI CORE');
+    return;
+  }
+  const out = runSeoImageAutomationBatch_v1();
+  toast_(
+    'Myndir generataðar: ' + ((out && out.successCount) || 0) +
+    ' | Villur: ' + ((out && out.errorCount) || 0) +
+    ' | Áætlaður kostnaður: $' + ((out && out.estimatedCost) || 0) +
+    ' | Eftir: ' + Math.max(0, ((out && out.eligible) || 0) - ((out && out.processed) || 0)),
+    'KPI CORE'
+  );
+}
+
+function menu_runSeoImageSelectedRow() {
+  if (typeof runSeoImageForSelectedRow_v1 !== 'function') {
+    throw new Error('runSeoImageForSelectedRow_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = runSeoImageForSelectedRow_v1();
+  toast_(
+    'Mynd generataðu fyrir: ' + ((out && out.categoryName) || '') + ' — sjá Suggested Image URL',
     'KPI CORE'
   );
 }

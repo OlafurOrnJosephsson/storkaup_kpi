@@ -26,7 +26,13 @@ const SEO_QUEUE_HEADER = [
   'Reviewed By',
   'Last Generated At',
   'Notes',
-  'Live URL'
+  'Live URL',
+  'Current OG Image',
+  'Image Status',
+  'Image Prompt',
+  'Suggested Image URL',
+  'Image Approved',
+  'Image Notes'
 ];
 
 function getSeoManagerEnv_(opts) {
@@ -80,7 +86,16 @@ function getSeoManagerEnv_(opts) {
       anthropicApi.MODEL ||
       'claude-sonnet-4-6',
     batchSize: Number(cfg.SETTINGS.SEO_BATCH_SIZE || 10),
-    sleepMs: Number(cfg.SETTINGS.SEO_BATCH_SLEEP_MS || 600)
+    sleepMs: Number(cfg.SETTINGS.SEO_BATCH_SLEEP_MS || 600),
+    // Image generation always goes through OpenAI (gpt-image) regardless of
+    // SEO_PROVIDER, which only governs the text (title/description) model.
+    imageModel: cfg.SETTINGS.SEO_IMAGE_MODEL || 'gpt-image-2',
+    imageModelFallbacks: parseCsvList_(
+      cfg.SETTINGS.SEO_IMAGE_MODEL_FALLBACKS || 'gpt-image-1'
+    ),
+    imageSize: cfg.SETTINGS.SEO_IMAGE_SIZE || '1536x1024',
+    imageQuality: cfg.SETTINGS.SEO_IMAGE_QUALITY || 'medium',
+    imageBatchSize: Number(cfg.SETTINGS.SEO_IMAGE_BATCH_SIZE || 8)
   };
 
   const missing = [];
@@ -90,6 +105,7 @@ function getSeoManagerEnv_(opts) {
     if (env.provider === 'openai' && !env.openAiKey) missing.push('API.OpenAI.API_KEY');
     if (env.provider === 'claude' && !env.claudeApiKey) missing.push('API.Anthropic.API_KEY');
   }
+  if (opts.requireImage && !env.openAiKey) missing.push('API.OpenAI.API_KEY (needed for image generation)');
 
   if (missing.length) {
     throw new Error(
@@ -727,7 +743,13 @@ function seedSeoQueueRows_(items) {
       item.reviewedBy || '',
       '',
       item.notes || '',
-      item.liveUrl || ''
+      item.liveUrl || '',
+      '', // Current OG Image — filled by fetchCurrentSeoFromWeb_v1
+      '', // Image Status
+      '', // Image Prompt
+      '', // Suggested Image URL
+      '', // Image Approved
+      ''  // Image Notes
     ];
   });
 
@@ -942,6 +964,312 @@ function formatIskApprox_(value) {
   const num = Number(value || 0);
   if (!num) return '';
   return Math.round(num).toLocaleString('is-IS') + ' kr.';
+}
+
+/************************************************************
+ * SEO IMAGE GENERATION (PHASE 2)
+ * - Detects category rows still on a shared/generic OG image
+ * - Generates a bespoke OG image per category via OpenAI gpt-image,
+ *   using the live product list already crawled into Context
+ * - Saves to Drive, human reviews Suggested Image URL before uploading
+ *   the approved image into Prismic (same manual-paste pattern as text)
+ ************************************************************/
+
+var SEO_IMAGE_STYLE_BY_LEVEL1_ = {
+  'Matvörur': 'Top-down flatlay food photography on a cool grey concrete surface, soft natural daylight, appetizing commercial catalogue style.',
+  'Áfengir drykkir': 'Lifestyle photography — glassware and bottles in a modern hospitality/lounge setting, warm ambient lighting.',
+  'Heilbrigðisvörur': 'Clean clinical flatlay on a white or light-grey surface, bright even lighting, medical/healthcare supply catalogue style.',
+  'Rekstrarvörur': 'Top-down flatlay of operational/cleaning supplies on a cool grey concrete surface, soft natural daylight, professional catalogue style.',
+  'Vélar og tæki': 'Lifestyle photography of professional cleaning or facility work in progress, modern commercial interior, natural lighting.'
+};
+var SEO_IMAGE_STYLE_DEFAULT_ = 'Professional flatlay product photography on a neutral grey surface, soft natural daylight, clean commercial catalogue style.';
+
+function buildSeoImagePrompt_(categoryName, level1, liveProductsText) {
+  var style = SEO_IMAGE_STYLE_BY_LEVEL1_[String(level1 || '').trim()] || SEO_IMAGE_STYLE_DEFAULT_;
+  var productLine = liveProductsText
+    ? ('Feature an assortment representative of: ' + liveProductsText +
+       '. Show the products themselves (unwrapped/unbranded where sensible), not sealed retail packaging with logos.')
+    : ('Feature a representative assortment of products from this category: ' + categoryName + '.');
+
+  return [
+    'Professional commercial photography for a B2B wholesale website category image.',
+    style,
+    productLine,
+    'Natural, true-to-life colors — nothing neon, cartoonish, or overly staged.',
+    'Leave the top-left quadrant of the frame relatively open and uncluttered (plain surface/background, no props) so a logo can be composited there afterward.',
+    'No visible brand logos, no readable text or packaging labels anywhere in the image.',
+    'Landscape composition, high resolution, photorealistic.'
+  ].join(' ');
+}
+
+/** Pulls the live/Cludo product-example line already written into Context by
+ * fetchLiveCategoryProductsFromWeb_v1 / buildSeoQueueFromCludo_v1, for reuse
+ * in the image prompt. Returns '' if neither is present (prompt then falls
+ * back to the bare category name). */
+function extractProductNamesFromContext_(context) {
+  var text = String(context || '');
+  var m = text.match(/Vörur á síðunni núna:\s*([^.]*)\./) || text.match(/Dæmi um vörur:\s*([^.]*)\./);
+  return m ? m[1].trim() : '';
+}
+
+function getSeoImageModelChain_(env) {
+  var configured = [env.imageModel].concat(env.imageModelFallbacks || [])
+    .map(function(m) { return String(m || '').trim(); })
+    .filter(Boolean);
+  return configured.length ? configured : ['gpt-image-2', 'gpt-image-1'];
+}
+
+function generateSeoImageWithOpenAi_(prompt, env) {
+  if (!env.openAiKey) {
+    throw new Error('SEO_IMAGE CONFIG ERROR — missing API.OpenAI.API_KEY (image generation always uses OpenAI, regardless of SEO_PROVIDER).');
+  }
+  var models = getSeoImageModelChain_(env);
+  var size = env.imageSize || '1536x1024';
+  var quality = env.imageQuality || 'medium';
+  var lastErr = null;
+
+  for (var i = 0; i < models.length; i++) {
+    var model = models[i];
+    try {
+      var res = UrlFetchApp.fetch('https://api.openai.com/v1/images/generations', {
+        method: 'post',
+        contentType: 'application/json',
+        headers: { Authorization: 'Bearer ' + env.openAiKey },
+        payload: JSON.stringify({
+          model: model,
+          prompt: prompt,
+          size: size,
+          quality: quality,
+          output_format: 'jpeg',
+          n: 1
+        }),
+        muteHttpExceptions: true
+      });
+      var code = res.getResponseCode();
+      var body = safeJsonParse_(res.getContentText()) || {};
+      if (code === 200 && body.data && body.data[0] && body.data[0].b64_json) {
+        return { base64: body.data[0].b64_json, model: model };
+      }
+      lastErr = new Error('HTTP ' + code + ': ' + truncateForLog_(res.getContentText(), 300));
+      Logger.log('[SEO_IMAGE] model ' + model + ' failed: ' + lastErr.message);
+    } catch (err) {
+      lastErr = err;
+      Logger.log('[SEO_IMAGE] model ' + model + ' threw: ' + (err && err.message ? err.message : err));
+    }
+  }
+  throw lastErr || new Error('OpenAI image generation failed for all configured models.');
+}
+
+function getOrCreateSeoImageFolder_() {
+  var props = PropertiesService.getScriptProperties();
+  var existingId = props.getProperty('SEO_IMAGE_DRIVE_FOLDER_ID');
+  if (existingId) {
+    try { return DriveApp.getFolderById(existingId); } catch (e) { /* recreate below */ }
+  }
+  var folder = DriveApp.createFolder('Stórkaup SEO — Generated OG Images');
+  props.setProperty('SEO_IMAGE_DRIVE_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+function saveSeoImageToDrive_(base64Data, filename) {
+  var folder = getOrCreateSeoImageFolder_();
+  var bytes = Utilities.base64Decode(base64Data);
+  var blob = Utilities.newBlob(bytes, 'image/jpeg', filename);
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return {
+    fileId: file.getId(),
+    url: 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1200'
+  };
+}
+
+/**
+ * Classifies queue rows by whether their Current OG Image is shared by many
+ * other categories (>= threshold occurrences → generic fallback, needs a
+ * bespoke image) or is unique-ish (already has a custom photo — skip).
+ * No hardcoded fallback filenames: genericness is inferred from reuse count,
+ * so it keeps working as Stórkaup adds more bespoke images over time.
+ * Only touches rows with no/PENDING/HAS_CUSTOM status — leaves
+ * GENERATED/ERROR/NEEDS_REVIEW rows alone. Run after a full
+ * fetchCurrentSeoFromWeb_v1 pass so 'Current OG Image' is populated.
+ */
+function flagCategoriesNeedingImage_v1(opts) {
+  opts = opts || {};
+  var threshold = opts.threshold != null ? Number(opts.threshold) : 3;
+  var queue = getSeoQueueData_();
+  var header = SEO_QUEUE_HEADER;
+  var imgColIdx = header.indexOf('Current OG Image');
+  var statusColIdx = header.indexOf('Image Status');
+  if (imgColIdx === -1 || statusColIdx === -1) {
+    throw new Error('SEO_QUEUE missing Current OG Image / Image Status columns — run Setup SEO Queue first.');
+  }
+
+  var counts = {};
+  queue.rows.forEach(function(row) {
+    var img = String(row['Current OG Image'] || '').trim();
+    if (img) counts[img] = (counts[img] || 0) + 1;
+  });
+
+  var pending = 0;
+  var hasCustom = 0;
+  queue.rows.forEach(function(row) {
+    if (normalizeBooleanFlag_(row['Image Approved'])) return;
+    var currentStatus = String(row['Image Status'] || '').trim().toUpperCase();
+    if (currentStatus && currentStatus !== 'PENDING' && currentStatus !== 'HAS_CUSTOM') return;
+
+    var img = String(row['Current OG Image'] || '').trim();
+    var isShared = !img || (counts[img] || 0) >= threshold;
+    var newStatus = isShared ? 'PENDING' : 'HAS_CUSTOM';
+    if (currentStatus === newStatus) return;
+    queue.sheet.getRange(row.__rowNumber, statusColIdx + 1).setValue(newStatus);
+    if (newStatus === 'PENDING') pending++; else hasCustom++;
+  });
+
+  var summary = { ok: true, pending: pending, hasCustom: hasCustom, threshold: threshold, total: queue.rows.length };
+  Logger.log('[SEO_IMAGE_FLAG] ' + JSON.stringify(summary));
+  return summary;
+}
+
+function writeSeoQueueImageResult_(sheet, rowNumber, updates) {
+  var header = SEO_QUEUE_HEADER;
+  var range = sheet.getRange(rowNumber, 1, 1, header.length);
+  var row = range.getValues()[0];
+  function setCol(name, value) {
+    var idx = header.indexOf(name);
+    if (idx !== -1) row[idx] = value;
+  }
+  if ('imagePrompt' in updates) setCol('Image Prompt', updates.imagePrompt);
+  if ('imageUrl' in updates) setCol('Suggested Image URL', updates.imageUrl);
+  if ('imageStatus' in updates) setCol('Image Status', updates.imageStatus);
+  if ('imageNotes' in updates) setCol('Image Notes', updates.imageNotes);
+  range.setValues([row]);
+}
+
+/** ~$/image at medium quality, 1536x1024 (OpenAI pricing, mid-2026) — informational only, shown in batch summaries so cost stays visible. */
+var SEO_IMAGE_APPROX_COST_ = 0.06;
+
+function runSeoImageAutomationBatch_v1(opts) {
+  opts = opts || {};
+  var env = getSeoManagerEnv_({ requireImage: true });
+  var props = PropertiesService.getScriptProperties();
+  var stateKey = 'SEO_IMAGE_MANAGER_LAST_ROW';
+  var queue = getSeoQueueData_();
+  var rows = queue.rows;
+
+  var batchSize = Math.max(1, Number(opts.batchSize || env.imageBatchSize || 8));
+  var eligible = rows.filter(function(row) {
+    if (normalizeBooleanFlag_(row['Image Approved'])) return false;
+    var status = String(row['Image Status'] || '').trim().toUpperCase();
+    if (opts.forceRegenerate) return status !== 'HAS_CUSTOM';
+    return status === 'PENDING' || status === 'ERROR' || status === 'NEEDS_REVIEW';
+  });
+
+  if (!eligible.length) {
+    Logger.log('[SEO_IMAGE_BATCH] no eligible rows.');
+    return { ok: true, processed: 0, eligible: 0, total: rows.length, estimatedCost: 0 };
+  }
+
+  var startIndex = Number(opts.startIndex != null ? opts.startIndex : props.getProperty(stateKey) || 0);
+  if (startIndex >= eligible.length) startIndex = 0;
+
+  var batch = eligible.slice(startIndex, startIndex + batchSize);
+  var results = [];
+
+  Logger.log('[SEO_IMAGE_BATCH] starting ' + startIndex + '-' + (startIndex + batch.length - 1) + ' of ' + eligible.length);
+
+  batch.forEach(function(row, idx) {
+    var rowNumber = row.__rowNumber;
+    try {
+      var categoryName = String(row['Category Name'] || '').trim();
+      if (!categoryName) throw new Error('Row has no Category Name.');
+      var level1 = String(row['Level 1'] || '').trim();
+      var liveProducts = extractProductNamesFromContext_(row.Context);
+      var prompt = buildSeoImagePrompt_(categoryName, level1, liveProducts);
+
+      var gen = generateSeoImageWithOpenAi_(prompt, env);
+      var slug = categoryPathToSlug_(String(row['Category Path'] || categoryName)) || 'category';
+      var saved = saveSeoImageToDrive_(gen.base64, 'seo-og-' + slug + '.jpg');
+
+      writeSeoQueueImageResult_(queue.sheet, rowNumber, {
+        imagePrompt: prompt,
+        imageUrl: saved.url,
+        imageStatus: 'GENERATED',
+        imageNotes: 'model=' + gen.model
+      });
+      results.push({ ok: true, rowNumber: rowNumber, categoryName: categoryName });
+    } catch (err) {
+      var msg = err && err.message ? err.message : String(err || 'Unknown error');
+      writeSeoQueueImageResult_(queue.sheet, rowNumber, { imageStatus: 'ERROR', imageNotes: msg });
+      Logger.log('[SEO_IMAGE_BATCH] ERROR row ' + rowNumber + ': ' + msg);
+      results.push({ ok: false, rowNumber: rowNumber, error: msg });
+    }
+    if (idx < batch.length - 1 && env.sleepMs > 0) Utilities.sleep(env.sleepMs);
+  });
+
+  var nextIndex = startIndex + batch.length < eligible.length ? startIndex + batch.length : 0;
+  props.setProperty(stateKey, String(nextIndex));
+
+  var successCount = results.filter(function(r) { return r.ok; }).length;
+  var summary = {
+    ok: true,
+    processed: batch.length,
+    eligible: eligible.length,
+    nextRow: nextIndex,
+    total: rows.length,
+    successCount: successCount,
+    errorCount: results.length - successCount,
+    estimatedCost: Math.round(successCount * SEO_IMAGE_APPROX_COST_ * 100) / 100,
+    results: results
+  };
+  Logger.log('[SEO_IMAGE_BATCH] summary: ' + JSON.stringify(summary));
+  return summary;
+}
+
+function runSeoImageForSelectedRow_v1() {
+  var queue = getSeoQueueData_();
+  var sheet = queue.sheet;
+  var activeSheet = SpreadsheetApp.getActiveSheet();
+  if (!activeSheet || activeSheet.getName() !== sheet.getName()) {
+    throw new Error('Open SEO_QUEUE sheet and select a data row first.');
+  }
+  var rowNumber = activeSheet.getActiveCell().getRow();
+  if (rowNumber < 2) {
+    throw new Error('Select a queue data row, not the header row.');
+  }
+  return runSeoImageForRowNumber_v1(rowNumber);
+}
+
+function runSeoImageForRowNumber_v1(rowNumber) {
+  var env = getSeoManagerEnv_({ requireImage: true });
+  var queue = getSeoQueueData_();
+  var row = queue.rows.find(function(item) { return item.__rowNumber === Number(rowNumber); });
+  if (!row) throw new Error('SEO queue row not found: ' + rowNumber);
+
+  var categoryName = String(row['Category Name'] || '').trim();
+  if (!categoryName) throw new Error('Selected row has no Category Name.');
+  if (normalizeBooleanFlag_(row['Image Approved'])) throw new Error('Selected row image is already approved.');
+
+  var level1 = String(row['Level 1'] || '').trim();
+  var liveProducts = extractProductNamesFromContext_(row.Context);
+  var prompt = buildSeoImagePrompt_(categoryName, level1, liveProducts);
+
+  try {
+    var gen = generateSeoImageWithOpenAi_(prompt, env);
+    var slug = categoryPathToSlug_(String(row['Category Path'] || categoryName)) || 'category';
+    var saved = saveSeoImageToDrive_(gen.base64, 'seo-og-' + slug + '.jpg');
+
+    writeSeoQueueImageResult_(queue.sheet, rowNumber, {
+      imagePrompt: prompt,
+      imageUrl: saved.url,
+      imageStatus: 'GENERATED',
+      imageNotes: 'model=' + gen.model
+    });
+    return { ok: true, rowNumber: rowNumber, categoryName: categoryName, imageUrl: saved.url };
+  } catch (err) {
+    var msg = err && err.message ? err.message : String(err || 'Unknown error');
+    writeSeoQueueImageResult_(queue.sheet, rowNumber, { imageStatus: 'ERROR', imageNotes: msg });
+    throw err;
+  }
 }
 
 function generateSeoWithOpenAi_(prompt, env, opts) {
@@ -1949,6 +2277,7 @@ function fetchCurrentSeoFromWeb_v1(opts) {
   var header = SEO_QUEUE_HEADER;
   var titleColIdx = header.indexOf('Current Meta Title');
   var descColIdx = header.indexOf('Current Meta Description');
+  var imageColIdx = header.indexOf('Current OG Image');
 
   if (titleColIdx === -1 || descColIdx === -1) {
     throw new Error('SEO_QUEUE sheet is missing Current Meta Title or Current Meta Description columns.');
@@ -1958,8 +2287,13 @@ function fetchCurrentSeoFromWeb_v1(opts) {
     var categoryPath = String(row['Category Path'] || '').trim();
     var liveUrl = String(row['Live URL'] || '').trim();
     if (!categoryPath && !liveUrl) return false;
-    if (!forceRefetch && String(row['Current Meta Title'] || '').trim()) return false;
-    return true;
+    if (forceRefetch) return true;
+    var hasTitle = !!String(row['Current Meta Title'] || '').trim();
+    // Rows fetched before the 'Current OG Image' column existed have a title
+    // but no image — still eligible once, so the image backfills without a
+    // full force re-fetch.
+    var hasImage = imageColIdx === -1 || !!String(row['Current OG Image'] || '').trim();
+    return !hasTitle || !hasImage;
   });
 
   if (!eligible.length) {
@@ -2002,11 +2336,13 @@ function fetchCurrentSeoFromWeb_v1(opts) {
         var html = res.getContentText();
         var title = extractHtmlTitle_(html);
         var description = extractHtmlMetaDescription_(html);
+        var ogImage = extractHtmlOgImage_(html);
 
         var sheetRange = queue.sheet.getRange(row.__rowNumber, 1, 1, header.length);
         var values = sheetRange.getValues()[0];
         values[titleColIdx] = title || '';
         values[descColIdx] = description || '';
+        if (imageColIdx !== -1) values[imageColIdx] = ogImage || '';
         sheetRange.setValues([values]);
 
         Logger.log(
@@ -2401,6 +2737,13 @@ function extractHtmlTitle_(html) {
   var match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   if (!match) return '';
   return decodeHtmlEntities_(match[1]).replace(/\s+/g, ' ').trim();
+}
+
+function extractHtmlOgImage_(html) {
+  var match = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']*)/i) ||
+    html.match(/<meta[^>]+content=["']([^"']*)[^>]+property=["']og:image["']/i);
+  if (!match) return '';
+  return decodeHtmlEntities_(match[1]).trim();
 }
 
 function extractHtmlMetaDescription_(html) {
