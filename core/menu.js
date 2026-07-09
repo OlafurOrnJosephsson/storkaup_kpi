@@ -50,8 +50,10 @@ function onOpen() {
         .addItem('Revalidate GENERATED rows', 'menu_revalidateGeneratedSeo')
         .addSeparator()
         .addItem('Finna flokka sem þurfa nýja mynd', 'menu_flagCategoriesNeedingImage')
-        .addItem('Generate SEO Images (batch)', 'menu_runSeoImageBatch')
-        .addItem('Generate Image for Selected Row', 'menu_runSeoImageSelectedRow')
+        .addItem('Skrifa image-prompt (gjaldfrjálst, líma í ChatGPT)', 'menu_runSeoImagePromptBatch')
+        .addItem('Skrifa image-prompt fyrir valda röð', 'menu_runSeoImagePromptSelectedRow')
+        .addItem('Generate SEO Images (OpenAI API, kostar $)', 'menu_runSeoImageBatch')
+        .addItem('Generate Image for Selected Row (OpenAI API, kostar $)', 'menu_runSeoImageSelectedRow')
         .addSeparator()
         .addItem('Setup SEO Queue', 'menu_setupSeoQueue')
         .addItem('Seed SEO Queue from Cludo', 'menu_buildSeoQueueFromCludo')
@@ -439,6 +441,31 @@ function menu_flagCategoriesNeedingImage() {
     'Þurfa nýja mynd: ' + ((out && out.pending) || 0) +
     ' | Hafa nú þegar sérmynd: ' + ((out && out.hasCustom) || 0) +
     ' — sjá "Image Status" dálk',
+    'KPI CORE'
+  );
+}
+
+function menu_runSeoImagePromptBatch() {
+  if (typeof runSeoImagePromptOnlyBatch_v1 !== 'function') {
+    throw new Error('runSeoImagePromptOnlyBatch_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = runSeoImagePromptOnlyBatch_v1();
+  toast_(
+    'Prompt skrifað fyrir: ' + ((out && out.successCount) || 0) + ' flokka' +
+    ' | Villur: ' + ((out && out.errorCount) || 0) +
+    ' | Eftir: ' + Math.max(0, ((out && out.eligible) || 0) - ((out && out.processed) || 0)) +
+    ' — sjá "Image Prompt" dálk, líma í ChatGPT app',
+    'KPI CORE'
+  );
+}
+
+function menu_runSeoImagePromptSelectedRow() {
+  if (typeof runSeoImagePromptForSelectedRow_v1 !== 'function') {
+    throw new Error('runSeoImagePromptForSelectedRow_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = runSeoImagePromptForSelectedRow_v1();
+  toast_(
+    'Prompt tilbúið fyrir: ' + ((out && out.categoryName) || '') + ' — sjá "Image Prompt" dálk',
     'KPI CORE'
   );
 }

@@ -1148,6 +1148,106 @@ function writeSeoQueueImageResult_(sheet, rowNumber, updates) {
 /** ~$/image at medium quality, 1536x1024 (OpenAI pricing, mid-2026) — informational only, shown in batch summaries so cost stays visible. */
 var SEO_IMAGE_APPROX_COST_ = 0.06;
 
+/**
+ * Zero-cost alternative to runSeoImageAutomationBatch_v1: writes the image
+ * prompt into 'Image Prompt' (status PROMPT_READY) without calling any paid
+ * API. Human copies the prompt into the ChatGPT app, generates/picks the
+ * image there, and uploads it straight into Prismic — no OpenAI billing
+ * needed. Set 'Image Approved' once done so the row drops out of future runs.
+ */
+function runSeoImagePromptOnlyBatch_v1(opts) {
+  opts = opts || {};
+  var props = PropertiesService.getScriptProperties();
+  var stateKey = 'SEO_IMAGE_PROMPT_ONLY_LAST_ROW';
+  var queue = getSeoQueueData_();
+  var rows = queue.rows;
+
+  var batchSize = Math.max(1, Number(opts.batchSize || 40));
+  var eligible = rows.filter(function(row) {
+    if (normalizeBooleanFlag_(row['Image Approved'])) return false;
+    var status = String(row['Image Status'] || '').trim().toUpperCase();
+    if (opts.forceRegenerate) return status !== 'HAS_CUSTOM';
+    return status === 'PENDING' || status === 'ERROR';
+  });
+
+  if (!eligible.length) {
+    Logger.log('[SEO_IMAGE_PROMPT_ONLY] no eligible rows.');
+    return { ok: true, processed: 0, eligible: 0, total: rows.length };
+  }
+
+  var startIndex = Number(opts.startIndex != null ? opts.startIndex : props.getProperty(stateKey) || 0);
+  if (startIndex >= eligible.length) startIndex = 0;
+
+  var batch = eligible.slice(startIndex, startIndex + batchSize);
+  var results = [];
+
+  batch.forEach(function(row) {
+    var rowNumber = row.__rowNumber;
+    try {
+      var categoryName = String(row['Category Name'] || '').trim();
+      if (!categoryName) throw new Error('Row has no Category Name.');
+      var level1 = String(row['Level 1'] || '').trim();
+      var liveProducts = extractProductNamesFromContext_(row.Context);
+      var prompt = buildSeoImagePrompt_(categoryName, level1, liveProducts);
+
+      writeSeoQueueImageResult_(queue.sheet, rowNumber, {
+        imagePrompt: prompt,
+        imageStatus: 'PROMPT_READY',
+        imageNotes: ''
+      });
+      results.push({ ok: true, rowNumber: rowNumber, categoryName: categoryName });
+    } catch (err) {
+      var msg = err && err.message ? err.message : String(err || 'Unknown error');
+      writeSeoQueueImageResult_(queue.sheet, rowNumber, { imageStatus: 'ERROR', imageNotes: msg });
+      results.push({ ok: false, rowNumber: rowNumber, error: msg });
+    }
+  });
+
+  var nextIndex = startIndex + batch.length < eligible.length ? startIndex + batch.length : 0;
+  props.setProperty(stateKey, String(nextIndex));
+
+  var summary = {
+    ok: true,
+    processed: batch.length,
+    eligible: eligible.length,
+    nextRow: nextIndex,
+    total: rows.length,
+    successCount: results.filter(function(r) { return r.ok; }).length,
+    errorCount: results.filter(function(r) { return !r.ok; }).length
+  };
+  Logger.log('[SEO_IMAGE_PROMPT_ONLY] summary: ' + JSON.stringify(summary));
+  return summary;
+}
+
+function runSeoImagePromptForSelectedRow_v1() {
+  var queue = getSeoQueueData_();
+  var sheet = queue.sheet;
+  var activeSheet = SpreadsheetApp.getActiveSheet();
+  if (!activeSheet || activeSheet.getName() !== sheet.getName()) {
+    throw new Error('Open SEO_QUEUE sheet and select a data row first.');
+  }
+  var rowNumber = activeSheet.getActiveCell().getRow();
+  if (rowNumber < 2) {
+    throw new Error('Select a queue data row, not the header row.');
+  }
+
+  var row = queue.rows.find(function(item) { return item.__rowNumber === Number(rowNumber); });
+  if (!row) throw new Error('SEO queue row not found: ' + rowNumber);
+  var categoryName = String(row['Category Name'] || '').trim();
+  if (!categoryName) throw new Error('Selected row has no Category Name.');
+
+  var level1 = String(row['Level 1'] || '').trim();
+  var liveProducts = extractProductNamesFromContext_(row.Context);
+  var prompt = buildSeoImagePrompt_(categoryName, level1, liveProducts);
+
+  writeSeoQueueImageResult_(queue.sheet, rowNumber, {
+    imagePrompt: prompt,
+    imageStatus: 'PROMPT_READY',
+    imageNotes: ''
+  });
+  return { ok: true, rowNumber: rowNumber, categoryName: categoryName, prompt: prompt };
+}
+
 function runSeoImageAutomationBatch_v1(opts) {
   opts = opts || {};
   var env = getSeoManagerEnv_({ requireImage: true });
