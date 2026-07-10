@@ -1608,6 +1608,43 @@ function debugSeoSourceData_v1() {
   return out;
 }
 
+/**
+ * Counts SEO_QUEUE rows by text-meta Status/Approved and image Status/Approved,
+ * so "what's left to do" is a glance instead of manually scanning 260+ rows.
+ */
+function seoQueueStatusSummary_v1() {
+  var queue = getSeoQueueData_();
+  var textByStatus = {};
+  var imageByStatus = {};
+  var textApproved = 0;
+  var imageApproved = 0;
+
+  queue.rows.forEach(function(row) {
+    var approved = normalizeBooleanFlag_(row.Approved);
+    if (approved) textApproved++;
+    else {
+      var status = normalizeStatus_(row.Status) || '(tómt)';
+      textByStatus[status] = (textByStatus[status] || 0) + 1;
+    }
+
+    var imageApprovedFlag = normalizeBooleanFlag_(row['Image Approved']);
+    if (imageApprovedFlag) imageApproved++;
+    else {
+      var imgStatus = normalizeStatus_(row['Image Status']) || '(tómt)';
+      imageByStatus[imgStatus] = (imageByStatus[imgStatus] || 0) + 1;
+    }
+  });
+
+  return {
+    ok: true,
+    total: queue.rows.length,
+    textApproved: textApproved,
+    textByStatus: textByStatus,
+    imageApproved: imageApproved,
+    imageByStatus: imageByStatus
+  };
+}
+
 function normalizeStatus_(value) {
   return String(value || '').trim().toUpperCase();
 }

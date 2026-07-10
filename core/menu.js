@@ -38,6 +38,8 @@ function onOpen() {
     )
     .addSubMenu(
       ui.createMenu('SEO')
+        .addItem('SEO Queue staða (yfirlit)', 'menu_seoQueueStatusSummary')
+        .addSeparator()
         .addItem('Generate SEO Batch', 'menu_runSeoBatch')
         .addItem('Generate SEO for Selected Row', 'menu_runSeoSelectedRow')
         .addItem('Revise SEO for Selected Rows', 'menu_runReviseSelectedRows')
@@ -231,6 +233,29 @@ function menu_buildSalesRepOnboarding() {
     throw new Error('buildSalesRepOnboardingReport() not found. Ensure core/salessummaries.js is deployed.');
   }
   toast_('Sales Rep onboarding report updated.', 'KPI CORE');
+}
+
+function menu_seoQueueStatusSummary() {
+  if (typeof seoQueueStatusSummary_v1 !== 'function') {
+    throw new Error('seoQueueStatusSummary_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = seoQueueStatusSummary_v1();
+
+  function formatBlock(byStatus) {
+    const order = ['PENDING', 'GENERATED', 'PROMPT_READY', 'HAS_CUSTOM', 'NEEDS_REVIEW', 'RETRY', 'ERROR', '(tómt)'];
+    const keys = Object.keys(byStatus).sort((a, b) => {
+      const ia = order.indexOf(a), ib = order.indexOf(b);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+    return keys.map(k => '  ' + k + ': ' + byStatus[k]).join('\n') || '  (ekkert eftir)';
+  }
+
+  const msg =
+    'SEO_QUEUE — ' + out.total + ' raðir alls\n\n' +
+    'META TEXTI (Approved: ' + out.textApproved + ')\n' + formatBlock(out.textByStatus) + '\n\n' +
+    'MYND (Image Approved: ' + out.imageApproved + ')\n' + formatBlock(out.imageByStatus);
+
+  SpreadsheetApp.getUi().alert('SEO Queue staða', msg, SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 function menu_testConfig() {
