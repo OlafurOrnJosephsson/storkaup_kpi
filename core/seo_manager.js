@@ -313,6 +313,11 @@ function generateSeoWithProvider_(prompt, env, opts) {
  * Deterministic checks against the SEO title rules (V3, Apr 2025 review).
  * Returns an array of Icelandic violation messages; empty array = valid.
  */
+/** Catches package quantity/unit fragments leaking into a LVL3 title hook
+ * (e.g. "4stk einingar", "1kg einingum", "24x 500g", "í magni") — these come
+ * straight off product pack sizes in Context and aren't search terms. */
+var SEO_QTY_HOOK_PATTERN_ = /\d+\s*(stk|x|kg|g|ml|l)\b|\beiningum\b|\beiningar\b|í magni\b/i;
+
 function validateSeoCopy_(seo, level) {
   var title = sanitizeSeoText_(seo && seo.title);
   var description = sanitizeSeoText_(seo && seo.description);
@@ -326,7 +331,13 @@ function validateSeoCopy_(seo, level) {
     if (title.length > 60) violations.push('Title of langur (' + title.length + ' stafir, hámark 60)');
     if (lvl === 1 && !/í heildsölu/i.test(title)) violations.push('LVL1 title á að innihalda "í heildsölu"');
     if (lvl >= 2 && /í heildsölu/i.test(title)) violations.push('"í heildsölu" má aðeins vera á LVL1');
-    if (lvl === 3 && title.split('|').length < 3) violations.push('LVL3 title vantar hook ("Vara | Hook | Stórkaup")');
+    if (lvl === 3) {
+      var titleParts = title.split('|');
+      if (titleParts.length < 3) violations.push('LVL3 title vantar hook ("Vara | Hook | Stórkaup")');
+      else if (SEO_QTY_HOOK_PATTERN_.test(titleParts[1])) {
+        violations.push('LVL3 hook er pakkningastærð/magn ("' + titleParts[1].trim() + '") í stað vörutegundar/notkunarsviðs');
+      }
+    }
   }
 
   if (!description) violations.push('Vantar description');
@@ -1888,11 +1899,18 @@ function buildSeoPromptV3_(categoryName, context, keywordHints, currentMetaTitle
     ? 'Title form: "X í heildsölu | Stórkaup" — broad landing page, "í heildsölu" is justified here.'
     : level === 2
       ? 'Title form: "Flokkur | Undirflokkur | Stórkaup" — context separates the subcategory, no "í heildsölu".'
-      : 'Title form: "Vara | Hook (magn/tegund/notkunarsvið) | Stórkaup" — specific, direct, no "í heildsölu".';
+      : 'Title form: "Vara | Hook | Stórkaup" — specific, direct, no "í heildsölu".';
 
   var levelGuidance = level === 1
     ? 'LVL1 aðalflokkur: heildarúrval og lausnir fyrir fyrirtæki.'
-    : 'LVL2/3 undirflokkur: vertu sértækur — nefndu vörumerki, eiginleika eða notkunarsvið ef við á.';
+    : 'LVL2/3 undirflokkur: vertu sértækur — nefndu vörumerki, eiginleika eða notkunarsvið ef við á.\n' +
+      'Hook-hlutinn í title (milli fyrsta og seinasta "|") á að vera 1-3 orð sem lýsa ' +
+      'vörutegund, afbrigði eða notkunarsviði — t.d. "Hvítvín og rauðvín", "Nítríl og latex", ' +
+      '"Fyrir sjúkrahús og hjúkrunarheimili". ALDREI pakkningastærð, magn eða einingafjölda ' +
+      '(slæm dæmi: "4stk einingar", "1kg einingum", "24x 500g", "í magni") — þetta eru ekki ' +
+      'leitarorð sem fólk notar og bæta engu SEO-gildi við. Ef samhengið inniheldur bara ' +
+      'vörulista með pakkningastærðum, dragðu vörutegundina/afbrigðið út úr vöruheitunum ' +
+      'sjálfum í staðinn fyrir að endurtaka magntöluna.';
 
   var brandNote = brands.length
     ? 'Vörumerki sem finnast í gögnum: ' + brands.join(', ') + ' — SKAL nota ef þau passa náttúrulega.'
