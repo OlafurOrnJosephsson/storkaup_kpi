@@ -1,0 +1,150 @@
+/************************************************************
+ * SEARCH CONSOLE — /flokkur/ CTR mæling
+ * Measures the payoff of the SEO_QUEUE meta overhaul: pulls daily
+ * clicks/impressions/CTR/position for category pages (/flokkur/)
+ * from the Search Console API into two tabs for before/after
+ * comparison. Requires the webmasters.readonly OAuth scope
+ * (appsscript.json) and that the script owner has access to the
+ * storkaup.is property in Search Console.
+ ************************************************************/
+
+var SC_DAILY_SHEET_NAME_ = 'SC Flokkur Daily';
+var SC_PAGES_SHEET_NAME_ = 'SC Flokkur Pages';
+
+function getScEnv_() {
+  var cfg = loadConfig_();
+  return {
+    property:
+      (cfg.SETTINGS && cfg.SETTINGS.SC_PROPERTY) ||
+      'sc-domain:storkaup.is',
+    spreadsheetId:
+      (cfg.SHEETS && cfg.SHEETS.SALES_SUMMARIES && cfg.SHEETS.SALES_SUMMARIES.ID) || '',
+    // Baseline start — far enough back to show pre-overhaul performance.
+    startDate:
+      (cfg.SETTINGS && cfg.SETTINGS.SC_START_DATE) ||
+      '2026-06-01'
+  };
+}
+
+function scApiFetch_(path, payload) {
+  var url = 'https://www.googleapis.com/webmasters/v3/' + path;
+  var params = {
+    method: payload ? 'post' : 'get',
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true
+  };
+  if (payload) {
+    params.contentType = 'application/json';
+    params.payload = JSON.stringify(payload);
+  }
+  var res = UrlFetchApp.fetch(url, params);
+  var code = res.getResponseCode();
+  var body = safeJsonParse_(res.getContentText()) || {};
+  if (code !== 200) {
+    throw new Error('Search Console API HTTP ' + code + ': ' + truncateForLog_(res.getContentText(), 300));
+  }
+  return body;
+}
+
+/** Debug: lists the Search Console properties the script owner can read —
+ * run this first to confirm access and find the right SC_PROPERTY value. */
+function listSearchConsoleSites_v1() {
+  var body = scApiFetch_('sites');
+  var sites = (body.siteEntry || []).map(function(s) {
+    return s.siteUrl + ' (' + s.permissionLevel + ')';
+  });
+  Logger.log('[SC_SITES] ' + (sites.length ? sites.join('\n') : 'No properties visible to this account.'));
+  return sites;
+}
+
+function queryScSearchAnalytics_(env, body) {
+  var path = 'sites/' + encodeURIComponent(env.property) + '/searchAnalytics/query';
+  return scApiFetch_(path, body).rows || [];
+}
+
+function formatScDate_(d) {
+  return Utilities.formatDate(d, 'UTC', 'yyyy-MM-dd');
+}
+
+/**
+ * Pulls two datasets for pages containing /flokkur/:
+ * 1) daily aggregate trend since SC_START_DATE → 'SC Flokkur Daily'
+ * 2) per-page snapshot for the last 28 full days → 'SC Flokkur Pages'
+ * Both tabs are fully rewritten on each run (idempotent).
+ */
+function syncScFlokkurStats_v1() {
+  var env = getScEnv_();
+  if (!env.spreadsheetId) {
+    throw new Error('SC sync: missing SHEETS.SALES_SUMMARIES.ID in config.');
+  }
+
+  var today = new Date();
+  var endDate = formatScDate_(today); // API caps at latest available data itself
+  var flokkurFilter = {
+    filters: [{ dimension: 'page', operator: 'contains', expression: '/flokkur/' }]
+  };
+
+  // 1) Daily trend
+  var dailyRows = queryScSearchAnalytics_(env, {
+    startDate: env.startDate,
+    endDate: endDate,
+    dimensions: ['date'],
+    dimensionFilterGroups: [flokkurFilter],
+    rowLimit: 5000,
+    dataState: 'all'
+  });
+
+  // 2) Per-page snapshot, last 28 full days (ending 3 days ago — SC data lags)
+  var snapEnd = new Date(today.getTime() - 3 * 24 * 3600 * 1000);
+  var snapStart = new Date(snapEnd.getTime() - 27 * 24 * 3600 * 1000);
+  var pageRows = queryScSearchAnalytics_(env, {
+    startDate: formatScDate_(snapStart),
+    endDate: formatScDate_(snapEnd),
+    dimensions: ['page'],
+    dimensionFilterGroups: [flokkurFilter],
+    rowLimit: 25000,
+    dataState: 'all'
+  });
+
+  var ss = SpreadsheetApp.openById(env.spreadsheetId);
+
+  writeScTab_(ss, SC_DAILY_SHEET_NAME_,
+    ['Date', 'Clicks', 'Impressions', 'CTR %', 'Avg Position'],
+    dailyRows.map(function(r) {
+      return [r.keys[0], r.clicks, r.impressions, Math.round(r.ctr * 10000) / 100, Math.round(r.position * 10) / 10];
+    })
+  );
+
+  pageRows.sort(function(a, b) { return b.impressions - a.impressions; });
+  writeScTab_(ss, SC_PAGES_SHEET_NAME_,
+    ['Page', 'Clicks (28d)', 'Impressions (28d)', 'CTR %', 'Avg Position'],
+    pageRows.map(function(r) {
+      return [r.keys[0], r.clicks, r.impressions, Math.round(r.ctr * 10000) / 100, Math.round(r.position * 10) / 10];
+    })
+  );
+
+  var summary = {
+    ok: true,
+    property: env.property,
+    dailyDays: dailyRows.length,
+    pages: pageRows.length,
+    totalClicks28d: pageRows.reduce(function(sum, r) { return sum + r.clicks; }, 0)
+  };
+  Logger.log('[SC_SYNC] ' + JSON.stringify(summary));
+  return summary;
+}
+
+function writeScTab_(ss, name, header, rows) {
+  var sh = ss.getSheetByName(name);
+  var created = false;
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    created = true;
+  }
+  sh.clearContents();
+  var data = [header].concat(rows.length ? rows : []);
+  sh.getRange(1, 1, data.length, header.length).setValues(data);
+  if (created) {
+    applySheetStyling_(sh, { zebra: true });
+  }
+}

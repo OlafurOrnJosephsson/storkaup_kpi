@@ -39,6 +39,8 @@ function onOpen() {
     .addSubMenu(
       ui.createMenu('SEO')
         .addItem('SEO Queue staða (yfirlit)', 'menu_seoQueueStatusSummary')
+        .addItem('Search Console: sync /flokkur/ mælingar', 'menu_syncScFlokkur')
+        .addItem('Search Console: lista properties (debug)', 'menu_listScSites')
         .addSeparator()
         .addItem('Generate SEO Batch', 'menu_runSeoBatch')
         .addItem('Generate SEO for Selected Rows', 'menu_runSeoSelectedRows')
@@ -233,6 +235,34 @@ function menu_buildSalesRepOnboarding() {
     throw new Error('buildSalesRepOnboardingReport() not found. Ensure core/salessummaries.js is deployed.');
   }
   toast_('Sales Rep onboarding report updated.', 'KPI CORE');
+}
+
+function menu_syncScFlokkur() {
+  if (typeof syncScFlokkurStats_v1 !== 'function') {
+    throw new Error('syncScFlokkurStats_v1() not found. Ensure core/search_console.js is deployed.');
+  }
+  toast_('Sæki Search Console gögn fyrir /flokkur/...', 'KPI CORE');
+  const out = syncScFlokkurStats_v1();
+  toast_(
+    'SC sync: ' + ((out && out.dailyDays) || 0) + ' dagar í trend | ' +
+    ((out && out.pages) || 0) + ' síður í 28d snapshot | ' +
+    ((out && out.totalClicks28d) || 0) + ' smellir 28d',
+    'KPI CORE'
+  );
+}
+
+function menu_listScSites() {
+  if (typeof listSearchConsoleSites_v1 !== 'function') {
+    throw new Error('listSearchConsoleSites_v1() not found. Ensure core/search_console.js is deployed.');
+  }
+  const sites = listSearchConsoleSites_v1();
+  SpreadsheetApp.getUi().alert(
+    'Search Console properties',
+    sites.length
+      ? sites.join('\n') + '\n\nEf sc-domain:storkaup.is er ekki hér þarf að bæta þessum aðgangi við í Search Console (Settings → Users and permissions), eða setja rétt property-nafn í STORKAUP_CONFIG → SETTINGS → SC_PROPERTY.'
+      : 'Engin property sýnileg þessum aðgangi. Bættu aðgangnum við í Search Console fyrst.',
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
 }
 
 function menu_seoQueueStatusSummary() {
