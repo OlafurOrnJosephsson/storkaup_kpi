@@ -41,7 +41,7 @@ function onOpen() {
         .addItem('SEO Queue staða (yfirlit)', 'menu_seoQueueStatusSummary')
         .addSeparator()
         .addItem('Generate SEO Batch', 'menu_runSeoBatch')
-        .addItem('Generate SEO for Selected Row', 'menu_runSeoSelectedRow')
+        .addItem('Generate SEO for Selected Rows', 'menu_runSeoSelectedRows')
         .addItem('Revise SEO for Selected Rows', 'menu_runReviseSelectedRows')
         .addSeparator()
         .addItem('Sync queue við sitemap', 'menu_syncSeoQueueFromSitemap')
@@ -312,6 +312,19 @@ function menu_runSeoBatch() {
   }
   const out = runSeoAutomationBatch_v1();
   toast_('SEO batch done. Generated: ' + ((out && out.successCount) || 0), 'KPI CORE');
+}
+
+function menu_runSeoSelectedRows() {
+  if (typeof runSeoForSelectedRows_v1 !== 'function') {
+    throw new Error('runSeoForSelectedRows_v1() not found. Ensure core/seo_manager.js is deployed.');
+  }
+  const out = runSeoForSelectedRows_v1();
+  toast_(
+    'SEO generated: ' + ((out && out.successCount) || 0) +
+    ' | Sleppt (approved): ' + ((out && out.skipped) || 0) +
+    ' | Villur: ' + ((out && out.errorCount) || 0),
+    'KPI CORE'
+  );
 }
 
 function menu_runSeoSelectedRow() {

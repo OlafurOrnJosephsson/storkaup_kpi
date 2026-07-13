@@ -551,6 +551,102 @@ function runSeoForSelectedRow_v1() {
   return runSeoForRowNumber_v1(rowNumber);
 }
 
+/**
+ * Generates SEO copy for every row in the current sheet selection (drag-select
+ * 5 rows → generate exactly those 5). Approved rows are skipped; a rate-limit
+ * error stops the loop (remaining rows untouched) instead of burning quota.
+ */
+function runSeoForSelectedRows_v1() {
+  var queue = getSeoQueueData_();
+  var sheet = queue.sheet;
+  var activeSheet = SpreadsheetApp.getActiveSheet();
+  if (!activeSheet || activeSheet.getName() !== sheet.getName()) {
+    throw new Error('Open SEO_QUEUE sheet and select one or more data rows first.');
+  }
+
+  var activeRange = SpreadsheetApp.getActiveRange();
+  if (!activeRange) {
+    throw new Error('No range selected. Select one or more data rows first.');
+  }
+
+  var startRow = activeRange.getRow();
+  var endRow = activeRange.getLastRow();
+  if (startRow < 2) {
+    throw new Error('Select data rows only — not the header row.');
+  }
+
+  var env = getSeoManagerEnv_({ requireAi: true });
+  var results = [];
+
+  for (var rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+    var row = null;
+    for (var r = 0; r < queue.rows.length; r++) {
+      if (queue.rows[r].__rowNumber === rowNumber) {
+        row = queue.rows[r];
+        break;
+      }
+    }
+    if (!row) continue;
+
+    var categoryName = String(row['Category Name'] || '').trim();
+    if (!categoryName) continue;
+
+    if (normalizeBooleanFlag_(row.Approved)) {
+      Logger.log('SEO Manager: skipping approved row ' + rowNumber + ' (' + categoryName + ')');
+      results.push({ ok: true, rowNumber: rowNumber, categoryName: categoryName, skipped: true });
+      continue;
+    }
+
+    try {
+      var seoData = generateSEOTitles(
+        categoryName,
+        String(row.Context || '').trim(),
+        String(row['Keyword Hints'] || '').trim(),
+        String(row['Current Meta Title'] || '').trim(),
+        String(row['Current Meta Description'] || '').trim(),
+        { useV3: true, level: seoRowLevel_(row) }
+      );
+
+      var hasWarnings = seoData.warnings && seoData.warnings.length;
+      writeSeoQueueResult_(queue.sheet, rowNumber, {
+        suggestedTitle: seoData.title,
+        suggestedDescription: seoData.description,
+        status: hasWarnings ? 'NEEDS_REVIEW' : 'GENERATED',
+        lastGeneratedAt: new Date(),
+        notes: hasWarnings ? 'Validator: ' + seoData.warnings.join(' | ') : ''
+      });
+      results.push({ ok: true, rowNumber: rowNumber, categoryName: categoryName });
+    } catch (err) {
+      var errMessage = err && err.message ? err.message : String(err || 'Unknown error');
+      var isQuota = isQuotaOrTemporaryAiError_(errMessage);
+      writeSeoQueueResult_(queue.sheet, rowNumber, {
+        status: isQuota ? 'RETRY' : 'ERROR',
+        lastGeneratedAt: new Date(),
+        notes: errMessage
+      });
+      results.push({ ok: false, rowNumber: rowNumber, categoryName: categoryName, error: errMessage });
+      if (isQuota) {
+        Logger.log('SEO Manager: rate limit hit on row ' + rowNumber + ', stopping selection run.');
+        break;
+      }
+    }
+
+    if (rowNumber < endRow && env.sleepMs > 0) {
+      Utilities.sleep(env.sleepMs);
+    }
+  }
+
+  var summary = {
+    ok: true,
+    successCount: results.filter(function(item) { return item.ok && !item.skipped; }).length,
+    skipped: results.filter(function(item) { return item.skipped; }).length,
+    errorCount: results.filter(function(item) { return !item.ok; }).length,
+    results: results
+  };
+  Logger.log('SEO Manager selected-rows summary: ' + JSON.stringify(summary));
+  return summary;
+}
+
 function runSeoForRowNumber_v1(rowNumber) {
   const env = getSeoManagerEnv_({ requireAi: true });
   const queue = getSeoQueueData_();
