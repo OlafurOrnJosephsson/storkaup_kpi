@@ -5,7 +5,16 @@
   // Runs on EVERY page (before the website early-return below) so the count
   // shows site-wide. Populates [data-storkaup-pending] from the GAS web app;
   // hidden when zero. Degrades silently if gasWebAppUrl is unset or the call fails.
+  //
+  // Call volume is throttled: the count is cached in localStorage with a short
+  // TTL so page navigation, tab switches and multiple open tabs share one fetch
+  // instead of each firing a doPost — applications arrive a few times a day, and
+  // the umsokn app pushes instant updates via postMessage anyway.
   (function () {
+    var CACHE_KEY = "storkaup_pending_badge";
+    var CACHE_TTL_MS = 180000;   // 3 mín — síðuflakk/flipaskipti innan þess nota cache
+    var POLL_MS = 900000;        // 15 mín — umsóknir koma 3-4/dag; postMessage sér um instant
+
     function paint(n) {
       var els = document.querySelectorAll("[data-storkaup-pending]");
       for (var i = 0; i < els.length; i += 1) {
@@ -13,7 +22,21 @@
         els[i].style.display = n > 0 ? "" : "none";
       }
     }
-    function refresh() {
+    function readCache() {
+      try {
+        var c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+        return (c && typeof c.n === "number" && typeof c.ts === "number") ? c : null;
+      } catch (e) { return null; }
+    }
+    function writeCache(n) {
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ n: n, ts: Date.now() })); } catch (e) {}
+    }
+    function refresh(force) {
+      var cached = readCache();
+      if (cached) {
+        paint(cached.n); // mála strax úr cache — ekkert blikk meðan sótt er
+        if (!force && (Date.now() - cached.ts) < CACHE_TTL_MS) return;
+      }
       var cfg = window.STORKAUP_CONFIG || {};
       if (!cfg.gasWebAppUrl) return;
       fetch(cfg.gasWebAppUrl, {
@@ -23,15 +46,21 @@
         body: JSON.stringify({ action: "application_counts", key: cfg.gasKey || "" })
       })
         .then(function (r) { return r.json(); })
-        .then(function (out) { if (out && out.ok) paint(Number(out.total || 0)); })
+        .then(function (out) {
+          if (out && out.ok) {
+            var n = Number(out.total || 0);
+            writeCache(n);
+            paint(n);
+          }
+        })
         .catch(function () {});
     }
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", refresh);
+      document.addEventListener("DOMContentLoaded", function () { refresh(false); });
     } else {
-      refresh();
+      refresh(false);
     }
-    setInterval(function () { if (!document.hidden) refresh(); }, 300000); // 5 mín
+    setInterval(function () { if (!document.hidden) refresh(true); }, POLL_MS);
 
     // Instant update: the embedded umsokn app posts its current total after every
     // load/action, so the badge changes without a page refresh. The app is served
@@ -41,12 +70,14 @@
       if (!/\.googleusercontent\.com$|\.google\.com$/.test(origin)) return;
       var d = e && e.data;
       if (d && d.type === "storkaup:pending" && typeof d.total !== "undefined") {
-        paint(Number(d.total) || 0);
+        var n = Number(d.total) || 0;
+        writeCache(n); // cache fylgi instant-uppfærslunni svo næsta síðuhleðsla máli rétt
+        paint(n);
       }
     });
-    // Catch up when returning to the tab.
+    // Catch up when returning to the tab — respects the cache TTL.
     document.addEventListener("visibilitychange", function () {
-      if (!document.hidden) refresh();
+      if (!document.hidden) refresh(false);
     });
   })();
 
