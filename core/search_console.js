@@ -79,7 +79,10 @@ function syncScFlokkurStats_v1() {
   }
 
   var today = new Date();
-  var endDate = formatScDate_(today); // API caps at latest available data itself
+  // SC data for the most recent ~2 days is incomplete (arrives with a lag) —
+  // including it makes the trend tail crash toward 0% and skews the 14d
+  // deltas on the dashboard, so the daily trend ends 2 days back.
+  var endDate = formatScDate_(new Date(today.getTime() - 2 * 24 * 3600 * 1000));
   var flokkurFilter = {
     filters: [{ dimension: 'page', operator: 'contains', expression: '/flokkur/' }]
   };
