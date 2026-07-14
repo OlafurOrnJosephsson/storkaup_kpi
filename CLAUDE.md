@@ -127,7 +127,7 @@ Title rules (V3, from SEO review Apr 2025):
 - `Webflow/dashboard-bootstrap.js` (script-tag src pin): `df2956f`
 - `Webflow/website-dashboard-bootstrap.js` (script-tag src pin): `b55e8c4`
 - `Webflow/dashboard.js`: `aff3278`
-- `Webflow/website-dashboard.js`: `53b118c`
+- `Webflow/website-dashboard.js`: `ad5ae3b`
 - `Webflow/dashboard-theme.css`: `53b118c`
 - `Webflow/customer-profiles.js`: `53b118c`
 - Trigger schedule baseline: `ab2931a`
