@@ -134,6 +134,75 @@ function syncScFlokkurStats_v1() {
   return summary;
 }
 
+/** Daily trigger wrapper — never throws so the trigger doesn't email errors
+ * for transient SC API hiccups; failures land in the log. */
+function scheduledSearchConsoleSync_v1() {
+  try {
+    var out = syncScFlokkurStats_v1();
+    Logger.log('[SC_SCHEDULED] ' + JSON.stringify(out));
+    return out;
+  } catch (err) {
+    Logger.log('[SC_SCHEDULED][ERROR] ' + (err && err.message ? err.message : err));
+    return { ok: false, error: String(err && err.message || err) };
+  }
+}
+
+/**
+ * Key-protected JSON for the website dashboard (doPost action 'seo_stats').
+ * Reads the two SC tabs (kept fresh by scheduledSearchConsoleSync_v1) and
+ * caches the payload for 30 min — the dashboard never hits the SC API itself.
+ */
+function seoStatsViaApi_(body) {
+  var cfg = loadConfig_();
+  if (!isApiKeyValid_(cfg, body && body.key)) return { error: 'Unauthorized' };
+
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'seo_stats_v1';
+  var cached = cache.get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (e) {}
+  }
+
+  var env = getScEnv_();
+  var ss = SpreadsheetApp.openById(env.spreadsheetId);
+  var out = { ok: true, generatedAt: new Date().toISOString(), daily: [], pages: [] };
+
+  function isoDate_(v) {
+    return v instanceof Date ? Utilities.formatDate(v, 'UTC', 'yyyy-MM-dd') : String(v || '');
+  }
+
+  var dailySh = ss.getSheetByName(SC_DAILY_SHEET_NAME_);
+  if (dailySh && dailySh.getLastRow() > 1) {
+    var rows = dailySh.getRange(2, 1, dailySh.getLastRow() - 1, 5).getValues();
+    out.daily = rows.slice(-90).map(function(r) {
+      return {
+        date: isoDate_(r[0]),
+        clicks: Number(r[1]) || 0,
+        impressions: Number(r[2]) || 0,
+        ctr: Number(r[3]) || 0,
+        position: Number(r[4]) || 0
+      };
+    });
+  }
+
+  var pagesSh = ss.getSheetByName(SC_PAGES_SHEET_NAME_);
+  if (pagesSh && pagesSh.getLastRow() > 1) {
+    var pRows = pagesSh.getRange(2, 1, Math.min(10, pagesSh.getLastRow() - 1), 5).getValues();
+    out.pages = pRows.map(function(r) {
+      return {
+        page: String(r[0] || ''),
+        clicks: Number(r[1]) || 0,
+        impressions: Number(r[2]) || 0,
+        ctr: Number(r[3]) || 0,
+        position: Number(r[4]) || 0
+      };
+    });
+  }
+
+  try { cache.put(cacheKey, JSON.stringify(out), 1800); } catch (e) {}
+  return out;
+}
+
 function writeScTab_(ss, name, header, rows) {
   var sh = ss.getSheetByName(name);
   var created = false;

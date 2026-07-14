@@ -4379,6 +4379,20 @@ function installScheduledGa4SyncTrigger_v1() {
   return { created: true, schedule: 'everyDays(1).atHour(6).nearMinute(30)' };
 }
 
+function installScheduledSearchConsoleSyncTrigger_v1() {
+  var fn = 'scheduledSearchConsoleSync_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[SC][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+  ScriptApp.newTrigger(fn).timeBased().everyDays(1).atHour(5).nearMinute(30).create();
+  Logger.log('[SC][INFO] Created trigger for ' + fn + ' (every day at ~05:30)');
+  return { created: true, schedule: 'everyDays(1).atHour(5).nearMinute(30)' };
+}
+
 function installNewwebStatusSyncTrigger_v2() {
   var fn = 'scheduledNewwebStatusSync_v2';
   var existing = ScriptApp.getProjectTriggers().filter(function(t) {
@@ -4407,7 +4421,8 @@ function resetRecommendedTimeTriggers_v1() {
     'scheduledKlaviyoSync_v1',
     'scheduledNewwebStatusSync_v2',
     'scheduledWeeklyDigest',
-    'scheduledZeroPriceScan_v1'
+    'scheduledZeroPriceScan_v1',
+    'scheduledSearchConsoleSync_v1'
   ];
 
   handlers.forEach(function(fn) {
@@ -4422,7 +4437,8 @@ function resetRecommendedTimeTriggers_v1() {
     installScheduledGa4SyncTrigger_v1(),
     installNewwebStatusSyncTrigger_v2(),
     installWeeklyDigestTrigger_v1(),
-    installZeroPriceScanTrigger_v1()
+    installZeroPriceScanTrigger_v1(),
+    installScheduledSearchConsoleSyncTrigger_v1()
   ];
 
   Logger.log('[TRIGGERS][INFO] Recommended trigger schedule reset completed.');

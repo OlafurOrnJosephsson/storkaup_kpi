@@ -26,6 +26,7 @@ function handleApiAction_(body) {
   if (action === 'list_recipients')     return jsonResponse_(listRecipientsViaApi_(body));
   if (action === 'send_template_email') return jsonResponse_(sendTemplateEmailViaApi_(body));
   if (action === 'application_counts')  return jsonResponse_(applicationCountsViaApi_(body));
+  if (action === 'seo_stats')           return jsonResponse_(seoStatsViaApi_(body));
   // Delegation frá admin-apps projectinu (admin/) — þungar aðgerðir og
   // Script-Properties niðurstöður sem búa hér, kallaðar með Dashboard-lyklinum.
   if (action === 'sync_magento_customers') return jsonResponse_(adminDelegateViaApi_(body, function () { return { ok: true, result: syncMagentoCustomers() }; }));
