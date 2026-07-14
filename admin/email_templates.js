@@ -1,7 +1,7 @@
-﻿/************************************************************
- * email_templates.js — Umsóknar-póstsniðmát (afrit úr core/email.js)
- * Uppruni: core/email.js í aðal-projectinu. Ef sniðmáti er breytt þar
- * þarf að spegla breytinguna hér (og öfugt).
+/************************************************************
+ * email_templates.js  Ums�knar-p�stsni�m�t (afrit �r core/email.js)
+ * Uppruni: core/email.js � a�al-projectinu. Ef sni�m�ti er breytt �ar
+ * �arf a� spegla breytinguna h�r (og �fugt).
  ************************************************************/
 
 function emailEsc_(str) {
@@ -12,15 +12,15 @@ function emailEsc_(str) {
     .replace(/"/g, '&quot;');
 }
 
-// â”€â”€ RafrÃ¦n InnskrÃ¡ning redirect â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ���� Rafræn Innskráning redirect ����������������������������������������������������������������������������������������������
 
 function buildRafraenRedirectHtml_(recipientName, companyName) {
   var name    = emailEsc_(recipientName || '');
   var company = emailEsc_(companyName  || '');
-  var greeting = name ? 'GÃ³Ã°an dag ' + name : 'GÃ³Ã°an dag';
+  var greeting = name ? 'Góðan dag ' + name : 'Góðan dag';
   var notFoundLine = company
-    ? 'ViÃ° innslÃ¡tt fannst hins vegar <strong>' + company + '</strong> ekki Ã­ viÃ°skiptum hjÃ¡ StÃ³rkaup.'
-    : 'ViÃ° innslÃ¡tt fannst hins vegar ekki fyrirtÃ¦ki sem er nÃº Ã¾egar Ã­ viÃ°skiptum hjÃ¡ StÃ³rkaup.';
+    ? 'Við innslátt fannst hins vegar <strong>' + company + '</strong> ekki í viðskiptum hjá Stórkaup.'
+    : 'Við innslátt fannst hins vegar ekki fyrirtæki sem er nú þegar í viðskiptum hjá Stórkaup.';
   var CSS = '<style>'
     + '.sk-email{max-width:600px;margin:0 auto;font-family:Arial,sans-serif;font-size:14px;color:#282828}'
     + '.sk-header{background:#fff;border:1px solid #e9e9e9;border-bottom:none;padding:28px 32px;border-radius:8px 8px 0 0}'
@@ -33,43 +33,43 @@ function buildRafraenRedirectHtml_(recipientName, companyName) {
     + '<div class="sk-email">'
     + '<div class="sk-header">'
     + '<div style="display:flex;align-items:center;">'
-    + '<img src="https://images.prismic.io/storkaup/agbVeKYofJOwHQ9Y_klavyio-storkauplogo.jpg" alt="StÃ³rkaup logo" style="height:64px;width:auto;vertical-align:middle;">'
+    + '<img src="https://images.prismic.io/storkaup/agbVeKYofJOwHQ9Y_klavyio-storkauplogo.jpg" alt="Stórkaup logo" style="height:64px;width:auto;vertical-align:middle;">'
     + '</div>'
     + '</div>'
     + '<div class="sk-body">'
     + '<p style="margin:0 0 12px;font-size:18px;font-weight:700;">' + greeting + '</p>'
-    + '<p style="margin:0 0 12px;line-height:1.6;">Takk fyrir aÃ° skrÃ¡ upplÃ½singar fyrir innskrÃ¡ningu meÃ° rafrÃ¦num skilrÃ­kjum Ã­ vefverslun StÃ³rkaups.</p>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">Takk fyrir að skrá upplýsingar fyrir innskráningu með rafrænum skilríkjum í vefverslun Stórkaups.</p>'
     + '<p style="margin:0 0 16px;line-height:1.6;">' + notFoundLine + '</p>'
-    + '<p style="margin:0 0 16px;line-height:1.6;">Til Ã¾ess aÃ° sÃ¦kja um viÃ°skipti Ã¾arf aÃ° fylla Ãºt Ã¾etta form:</p>'
-    + '<a class="sk-btn" href="https://storkaup.typeform.com/umsoknvidskipti">SÃ¦kja um viÃ°skipti</a>'
+    + '<p style="margin:0 0 16px;line-height:1.6;">Til þess að sækja um viðskipti þarf að fylla út þetta form:</p>'
+    + '<a class="sk-btn" href="https://storkaup.typeform.com/umsoknvidskipti">Sækja um viðskipti</a>'
     + '<hr class="sk-divider">'
-    + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">Ef Ã¾Ãº hefur spurningar, hafÃ°u samband viÃ° <a href="mailto:vefur@storkaup.is" style="color:#10069f;text-decoration:none;">vefur@storkaup.is</a></p>'
+    + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">Ef þú hefur spurningar, hafðu samband við <a href="mailto:vefur@storkaup.is" style="color:#10069f;text-decoration:none;">vefur@storkaup.is</a></p>'
     + '</div>'
     + '<div class="sk-footer">'
-    + '<p style="margin:0;font-size:11px;color:#888;">StÃ³rkaup ehf. | Vefverslun</p>'
+    + '<p style="margin:0;font-size:11px;color:#888;">Stórkaup ehf. | Vefverslun</p>'
     + '</div>'
     + '</div></body></html>';
 }
 
 function buildRafraenRedirectPlain_(recipientName, companyName) {
-  var greeting = recipientName ? 'GÃ³Ã°an dag ' + recipientName : 'GÃ³Ã°an dag';
+  var greeting = recipientName ? 'Góðan dag ' + recipientName : 'Góðan dag';
   var notFoundLine = companyName
-    ? 'ViÃ° innslÃ¡tt fannst hins vegar ' + companyName + ' ekki Ã­ viÃ°skiptum hjÃ¡ StÃ³rkaup.'
-    : 'ViÃ° innslÃ¡tt fannst hins vegar ekki fyrirtÃ¦ki sem er nÃº Ã¾egar Ã­ viÃ°skiptum hjÃ¡ StÃ³rkaup.';
+    ? 'Við innslátt fannst hins vegar ' + companyName + ' ekki í viðskiptum hjá Stórkaup.'
+    : 'Við innslátt fannst hins vegar ekki fyrirtæki sem er nú þegar í viðskiptum hjá Stórkaup.';
   return greeting + '\n\n'
-    + 'Takk fyrir aÃ° skrÃ¡ upplÃ½singar fyrir innskrÃ¡ningu meÃ° rafrÃ¦num skilrÃ­kjum Ã­ vefverslun StÃ³rkaups.\n\n'
+    + 'Takk fyrir að skrá upplýsingar fyrir innskráningu með rafrænum skilríkjum í vefverslun Stórkaups.\n\n'
     + notFoundLine + '\n\n'
-    + 'Til Ã¾ess aÃ° sÃ¦kja um viÃ°skipti Ã¾arf aÃ° fylla Ãºt Ã¾etta form hÃ©r:\n'
+    + 'Til þess að sækja um viðskipti þarf að fylla út þetta form hér:\n'
     + 'https://storkaup.typeform.com/umsoknvidskipti\n\n'
-    + 'KveÃ°ja,\nStÃ³rkaup';
+    + 'Kveðja,\nStórkaup';
 }
 
-// â”€â”€ RafrÃ¦n InnskrÃ¡ning â€” vantar persÃ³nulega kennitÃ¶lu â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ���� Rafræn Innskráning � vantar persónulega kennitölu ��������������������������������������������������
 // Applicant entered the company kennitala in BOTH the company field and the
 // personal-kennitala field; we need their own kennitala to link them.
 function buildRafraenNeedKtHtml_(recipientName) {
   var name = emailEsc_(recipientName || '');
-  var greeting = name ? 'HallÃ³ ' + name + ',' : 'HallÃ³,';
+  var greeting = name ? 'Halló ' + name + ',' : 'Halló,';
   var CSS = '<style>'
     + '.sk-email{max-width:600px;margin:0 auto;font-family:Arial,sans-serif;font-size:14px;color:#282828}'
     + '.sk-header{background:#fff;border:1px solid #e9e9e9;border-bottom:none;padding:28px 32px;border-radius:8px 8px 0 0}'
@@ -81,32 +81,32 @@ function buildRafraenNeedKtHtml_(recipientName) {
   return '<!DOCTYPE html><html><head><meta charset="UTF-8">' + CSS + '</head><body>'
     + '<div class="sk-email">'
     + '<div class="sk-header"><div style="display:flex;align-items:center;">'
-    + '<img src="https://images.prismic.io/storkaup/agbVeKYofJOwHQ9Y_klavyio-storkauplogo.jpg" alt="StÃ³rkaup logo" style="height:64px;width:auto;vertical-align:middle;">'
+    + '<img src="https://images.prismic.io/storkaup/agbVeKYofJOwHQ9Y_klavyio-storkauplogo.jpg" alt="Stórkaup logo" style="height:64px;width:auto;vertical-align:middle;">'
     + '</div></div>'
     + '<div class="sk-body">'
     + '<p style="margin:0 0 12px;font-size:18px;font-weight:700;">' + greeting + '</p>'
-    + '<p style="margin:0 0 12px;line-height:1.6;">ViÃ° hÃ¶fum fengiÃ° beiÃ°ni Ã¾Ã­na um aÃ°gang Ã­ vefverslun StÃ³rkaups.</p>'
-    + '<p style="margin:0 0 12px;line-height:1.6;">ViÃ° skrÃ¡ninguna virÃ°ist kennitala fyrirtÃ¦kisins hafa veriÃ° slegin inn bÃ¦Ã°i Ã­ reit fyrirtÃ¦kisins og Ã­ reitinn fyrir Ã¾Ã­na persÃ³nulegu kennitÃ¶lu. Til Ã¾ess aÃ° viÃ° getum klÃ¡raÃ° aÃ° tengja Ã¾ig viÃ° fyrirtÃ¦kiÃ° Ã¾urfum viÃ° Ã¾Ã­na eigin (persÃ³nulegu) kennitÃ¶lu.</p>'
-    + '<p style="margin:0 0 16px;line-height:1.6;">Vinsamlegast sendu inn skrÃ¡ninguna aftur og settu persÃ³nulegu kennitÃ¶luna Ã¾Ã­na Ã­ rÃ©tta reitinn:</p>'
-    + '<a class="sk-btn" href="https://storkaup.typeform.com/rafinnskraning">Senda inn skrÃ¡ningu aftur</a>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">Við höfum fengið beiðni þína um aðgang í vefverslun Stórkaups.</p>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">Við skráninguna virðist kennitala fyrirtækisins hafa verið slegin inn bæði í reit fyrirtækisins og í reitinn fyrir þína persónulegu kennitölu. Til þess að við getum klárað að tengja þig við fyrirtækið þurfum við þína eigin (persónulegu) kennitölu.</p>'
+    + '<p style="margin:0 0 16px;line-height:1.6;">Vinsamlegast sendu inn skráninguna aftur og settu persónulegu kennitöluna þína í rétta reitinn:</p>'
+    + '<a class="sk-btn" href="https://storkaup.typeform.com/rafinnskraning">Senda inn skráningu aftur</a>'
     + '<hr class="sk-divider">'
-    + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">Ef Ã¾Ãº hefur spurningar, hafÃ°u samband viÃ° <a href="mailto:vefur@storkaup.is" style="color:#10069f;text-decoration:none;">vefur@storkaup.is</a></p>'
+    + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">Ef þú hefur spurningar, hafðu samband við <a href="mailto:vefur@storkaup.is" style="color:#10069f;text-decoration:none;">vefur@storkaup.is</a></p>'
     + '</div>'
-    + '<div class="sk-footer"><p style="margin:0;font-size:11px;color:#888;">StÃ³rkaup ehf. | Vefverslun</p></div>'
+    + '<div class="sk-footer"><p style="margin:0;font-size:11px;color:#888;">Stórkaup ehf. | Vefverslun</p></div>'
     + '</div></body></html>';
 }
 
 function buildRafraenNeedKtPlain_(recipientName) {
-  var greeting = recipientName ? 'HallÃ³ ' + recipientName + ',' : 'HallÃ³,';
+  var greeting = recipientName ? 'Halló ' + recipientName + ',' : 'Halló,';
   return greeting + '\n\n'
-    + 'ViÃ° hÃ¶fum fengiÃ° beiÃ°ni Ã¾Ã­na um aÃ°gang Ã­ vefverslun StÃ³rkaups.\n\n'
-    + 'ViÃ° skrÃ¡ninguna virÃ°ist kennitala fyrirtÃ¦kisins hafa veriÃ° slegin inn bÃ¦Ã°i Ã­ reit fyrirtÃ¦kisins og Ã­ reitinn fyrir Ã¾Ã­na persÃ³nulegu kennitÃ¶lu. Til Ã¾ess aÃ° viÃ° getum klÃ¡raÃ° aÃ° tengja Ã¾ig viÃ° fyrirtÃ¦kiÃ° Ã¾urfum viÃ° Ã¾Ã­na eigin (persÃ³nulegu) kennitÃ¶lu.\n\n'
-    + 'Vinsamlegast sendu inn skrÃ¡ninguna aftur og settu persÃ³nulegu kennitÃ¶luna Ã¾Ã­na Ã­ rÃ©tta reitinn:\n'
+    + 'Við höfum fengið beiðni þína um aðgang í vefverslun Stórkaups.\n\n'
+    + 'Við skráninguna virðist kennitala fyrirtækisins hafa verið slegin inn bæði í reit fyrirtækisins og í reitinn fyrir þína persónulegu kennitölu. Til þess að við getum klárað að tengja þig við fyrirtækið þurfum við þína eigin (persónulegu) kennitölu.\n\n'
+    + 'Vinsamlegast sendu inn skráninguna aftur og settu persónulegu kennitöluna þína í rétta reitinn:\n'
     + 'https://storkaup.typeform.com/rafinnskraning\n\n'
-    + 'KveÃ°ja,\nStÃ³rkaup | Vefteymi';
+    + 'Kveðja,\nStórkaup | Vefteymi';
 }
 
-// â”€â”€ UmsÃ³kn um viÃ°skipti â€” email templates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ���� Umsókn um viðskipti � email templates ������������������������������������������������������������������������
 
 function umsokn_CSS_() {
   return '<style>'
@@ -123,75 +123,75 @@ function umsokn_wrap_(bodyHtml) {
   return '<!DOCTYPE html><html><head><meta charset="UTF-8">' + umsokn_CSS_() + '</head><body>'
     + '<div class="sk-email">'
     + '<div class="sk-header"><div style="display:flex;align-items:center;">'
-    + '<img src="https://images.prismic.io/storkaup/agbVeKYofJOwHQ9Y_klavyio-storkauplogo.jpg" alt="StÃ³rkaup" style="height:64px;width:auto;">'
+    + '<img src="https://images.prismic.io/storkaup/agbVeKYofJOwHQ9Y_klavyio-storkauplogo.jpg" alt="Stórkaup" style="height:64px;width:auto;">'
     + '</div></div>'
     + '<div class="sk-body">' + bodyHtml + '</div>'
-    + '<div class="sk-footer"><p style="margin:0;font-size:11px;color:#888;">StÃ³rkaup ehf. | Vefverslun</p></div>'
+    + '<div class="sk-footer"><p style="margin:0;font-size:11px;color:#888;">Stórkaup ehf. | Vefverslun</p></div>'
     + '</div></body></html>';
 }
 
-// Template 1 â€” Einstaklingur ekki meÃ° VSK-nÃºmer
+// Template 1 � Einstaklingur ekki með VSK-númer
 function buildUmsokn_NoVskHtml_(recipientName) {
-  var greeting = emailEsc_(recipientName || '') ? 'KÃ¦ri/KÃ¦ra ' + emailEsc_(recipientName) : 'KÃ¦ri mÃ³ttakandi';
+  var greeting = emailEsc_(recipientName || '') ? 'Kæri/Kæra ' + emailEsc_(recipientName) : 'Kæri móttakandi';
   return umsokn_wrap_(
     '<p style="margin:0 0 12px;font-size:15px;font-weight:600;">' + greeting + '</p>'
-    + '<p style="margin:0 0 12px;line-height:1.6;">ViÃ° vinnslu upplÃ½singa Ã¡ skrÃ¡ningu kom Ã­ ljÃ³s aÃ° kennitala Ã¡ umsÃ³kn er ekki Ã¡ fyrirtÃ¦kjaskrÃ¡ og Ã¾vÃ­ ekki meÃ° VSK-nÃºmer.</p>'
-    + '<p style="margin:0 0 12px;line-height:1.6;">StÃ³rkaup ehf. selur einungis til fyrirtÃ¦kja, stofnana og einstaklinga Ã­ rekstri sem hafa VSK-nÃºmer. <strong>UmsÃ³kn um viÃ°skipti viÃ° StÃ³rkaup er Ã¾vÃ­ hafnaÃ°.</strong></p>'
-    + '<p style="margin:0 0 0;line-height:1.6;">SÃ© um mistÃ¶k aÃ° rÃ¦Ã°a viÃ° innslÃ¡tt Ã¡ vefnum, biÃ°jum viÃ° Ã¾ig um aÃ° senda inn leiÃ°rÃ©tta skrÃ¡ningu Ã­ gegnum vefinn hjÃ¡ okkur.</p>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">Við vinnslu upplýsinga á skráningu kom í ljós að kennitala á umsókn er ekki á fyrirtækjaskrá og því ekki með VSK-númer.</p>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">Stórkaup ehf. selur einungis til fyrirtækja, stofnana og einstaklinga í rekstri sem hafa VSK-númer. <strong>Umsókn um viðskipti við Stórkaup er því hafnað.</strong></p>'
+    + '<p style="margin:0 0 0;line-height:1.6;">Sé um mistök að ræða við innslátt á vefnum, biðjum við þig um að senda inn leiðrétta skráningu í gegnum vefinn hjá okkur.</p>'
     + '<hr class="sk-divider">'
-    + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">Bestu kveÃ°jur,<br>StÃ³rkaup ehf.</p>'
+    + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">Bestu kveðjur,<br>Stórkaup ehf.</p>'
   );
 }
 function buildUmsokn_NoVskPlain_(recipientName) {
-  var greeting = recipientName ? 'KÃ¦ri/KÃ¦ra ' + recipientName : 'KÃ¦ri mÃ³ttakandi';
+  var greeting = recipientName ? 'Kæri/Kæra ' + recipientName : 'Kæri móttakandi';
   return greeting + '\n\n'
-    + 'ViÃ° vinnslu upplÃ½singa Ã¡ skrÃ¡ningu kom Ã­ ljÃ³s aÃ° kennitala Ã¡ umsÃ³kn er ekki Ã¡ fyrirtÃ¦kjaskrÃ¡ og Ã¾vÃ­ ekki meÃ° VSK-nÃºmer.\n\n'
-    + 'StÃ³rkaup ehf. selur einungis til fyrirtÃ¦kja, stofnana og einstaklinga Ã­ rekstri sem hafa VSK-nÃºmer. UmsÃ³kn um viÃ°skipti viÃ° StÃ³rkaup er Ã¾vÃ­ hafnaÃ°.\n\n'
-    + 'SÃ© um mistÃ¶k aÃ° rÃ¦Ã°a viÃ° innslÃ¡tt Ã¡ vefnum, biÃ°jum viÃ° Ã¾ig um aÃ° senda inn leiÃ°rÃ©tta skrÃ¡ningu Ã­ gegnum vefinn hjÃ¡ okkur.\n\n'
-    + 'Bestu kveÃ°jur,\nStÃ³rkaup ehf.';
+    + 'Við vinnslu upplýsinga á skráningu kom í ljós að kennitala á umsókn er ekki á fyrirtækjaskrá og því ekki með VSK-númer.\n\n'
+    + 'Stórkaup ehf. selur einungis til fyrirtækja, stofnana og einstaklinga í rekstri sem hafa VSK-númer. Umsókn um viðskipti við Stórkaup er því hafnað.\n\n'
+    + 'Sé um mistök að ræða við innslátt á vefnum, biðjum við þig um að senda inn leiðrétta skráningu í gegnum vefinn hjá okkur.\n\n'
+    + 'Bestu kveðjur,\nStórkaup ehf.';
 }
 
-// Template 2 â€” Ãžarf lÃ¡nshÃ¦fismat (einstaklingur Ã­ rekstri)
+// Template 2 � �~arf lánshæfismat (einstaklingur í rekstri)
 function buildUmsokn_NeedsCreditHtml_(recipientName) {
-  var greeting = emailEsc_(recipientName || '') ? 'KÃ¦ri/KÃ¦ra ' + emailEsc_(recipientName) : 'KÃ¦ri mÃ³ttakandi';
+  var greeting = emailEsc_(recipientName || '') ? 'Kæri/Kæra ' + emailEsc_(recipientName) : 'Kæri móttakandi';
   return umsokn_wrap_(
     '<p style="margin:0 0 12px;font-size:15px;font-weight:600;">' + greeting + '</p>'
-    + '<p style="margin:0 0 12px;line-height:1.6;">Takk fyrir skrÃ¡ninguna hjÃ¡ StÃ³rkaup. Ãžar sem Ã¾Ãº ert einstaklingur Ã­ rekstri Ã¡ eigin kennitÃ¶lu hÃ¶fum viÃ° ekki aÃ°gang aÃ° lÃ¡nshÃ¦fismati Creditinfo.</p>'
-    + '<p style="margin:0 0 12px;line-height:1.6;">Til aÃ° geta fullunniÃ° umsÃ³knina Ã¾arft Ã¾Ãº aÃ° fara inn Ã¡ <a href="https://www.creditinfo.is" style="color:#10069f;">creditinfo.is</a>, sÃ¦kja lÃ¡nshÃ¦fismat Ã¾itt og senda Ã¡ <a href="mailto:bokhald@storkaup.is" style="color:#10069f;">bokhald@storkaup.is</a>. Ã framhaldinu er hÃ¦gt aÃ° ljÃºka viÃ° skrÃ¡ninguna.</p>'
-    + '<p style="margin:0 0 0;line-height:1.6;color:#555;font-size:13px;">MikilvÃ¦gt: nafn umsÃ¦kjanda Ã¾arf aÃ° koma fram Ã¡ lÃ¡nshÃ¦fismatinu â€” skjÃ¡skot af skori nÃ¦gir ekki ef nafniÃ° er ekki sÃ½nilegt.</p>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">Takk fyrir skráninguna hjá Stórkaup. �~ar sem þú ert einstaklingur í rekstri á eigin kennitölu höfum við ekki aðgang að lánshæfismati Creditinfo.</p>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">Til að geta fullunnið umsóknina þarft þú að fara inn á <a href="https://www.creditinfo.is" style="color:#10069f;">creditinfo.is</a>, sækja lánshæfismat þitt og senda á <a href="mailto:bokhald@storkaup.is" style="color:#10069f;">bokhald@storkaup.is</a>. Í framhaldinu er hægt að ljúka við skráninguna.</p>'
+    + '<p style="margin:0 0 0;line-height:1.6;color:#555;font-size:13px;">Mikilvægt: nafn umsækjanda þarf að koma fram á lánshæfismatinu � skjáskot af skori nægir ekki ef nafnið er ekki sýnilegt.</p>'
     + '<hr class="sk-divider">'
-    + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">Bestu kveÃ°jur,<br>StÃ³rkaup ehf.</p>'
+    + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">Bestu kveðjur,<br>Stórkaup ehf.</p>'
   );
 }
 function buildUmsokn_NeedsCreditPlain_(recipientName) {
-  var greeting = recipientName ? 'KÃ¦ri/KÃ¦ra ' + recipientName : 'KÃ¦ri mÃ³ttakandi';
+  var greeting = recipientName ? 'Kæri/Kæra ' + recipientName : 'Kæri móttakandi';
   return greeting + '\n\n'
-    + 'Takk fyrir skrÃ¡ninguna hjÃ¡ StÃ³rkaup. Ãžar sem Ã¾Ãº ert einstaklingur Ã­ rekstri Ã¡ eigin kennitÃ¶lu hÃ¶fum viÃ° ekki aÃ°gang aÃ° lÃ¡nshÃ¦fismati Creditinfo.\n\n'
-    + 'Til aÃ° geta fullunniÃ° umsÃ³knina Ã¾arft Ã¾Ãº aÃ° fara inn Ã¡ https://www.creditinfo.is og sÃ¦kja lÃ¡nshÃ¦fismat Ã¾itt og senda Ã¡ bokhald@storkaup.is. Ã framhaldinu er hÃ¦gt aÃ° ljÃºka viÃ° skrÃ¡ninguna.\n\n'
-    + 'MikilvÃ¦gt: nafn umsÃ¦kjanda Ã¾arf aÃ° koma fram Ã¡ lÃ¡nshÃ¦fismatinu â€” skjÃ¡skot af skori nÃ¦gir ekki ef nafniÃ° er ekki sÃ½nilegt.\n\n'
-    + 'Bestu kveÃ°jur,\nStÃ³rkaup ehf.';
+    + 'Takk fyrir skráninguna hjá Stórkaup. �~ar sem þú ert einstaklingur í rekstri á eigin kennitölu höfum við ekki aðgang að lánshæfismati Creditinfo.\n\n'
+    + 'Til að geta fullunnið umsóknina þarft þú að fara inn á https://www.creditinfo.is og sækja lánshæfismat þitt og senda á bokhald@storkaup.is. Í framhaldinu er hægt að ljúka við skráninguna.\n\n'
+    + 'Mikilvægt: nafn umsækjanda þarf að koma fram á lánshæfismatinu � skjáskot af skori nægir ekki ef nafnið er ekki sýnilegt.\n\n'
+    + 'Bestu kveðjur,\nStórkaup ehf.';
 }
 
-// Template 3 â€” LÃ¡nshÃ¦fismat uppfyllir ekki skilyrÃ°i (staÃ°greiÃ°sla)
+// Template 3 � Lánshæfismat uppfyllir ekki skilyrði (staðgreiðsla)
 function buildUmsokn_CashOnlyHtml_(recipientName) {
-  var greeting = emailEsc_(recipientName || '') ? 'KÃ¦ri/KÃ¦ra ' + emailEsc_(recipientName) : 'KÃ¦ri mÃ³ttakandi';
+  var greeting = emailEsc_(recipientName || '') ? 'Kæri/Kæra ' + emailEsc_(recipientName) : 'Kæri móttakandi';
   return umsokn_wrap_(
     '<p style="margin:0 0 12px;font-size:15px;font-weight:600;">' + greeting + '</p>'
-    + '<p style="margin:0 0 12px;line-height:1.6;">ViÃ° Ã¾Ã¶kkum fyrir umsÃ³kn um viÃ°skipti hjÃ¡ StÃ³rkaup. ViÃ° hÃ¶fum sÃ³tt lÃ¡nshÃ¦fismat frÃ¡ Creditinfo og Ã­ ljÃ³si niÃ°urstÃ¶Ã°u Ã¾ess getum viÃ° Ã¾vÃ­ miÃ°ur ekki opnaÃ° Ã¡ reikningsviÃ°skipti eins og Ã³skaÃ° var eftir.</p>'
-    + '<p style="margin:0 0 16px;line-height:1.6;">HÃ¦gt er aÃ° notast viÃ° staÃ°greiÃ°sluferli Ã­ gegnum vefverslunina Ã¾ar sem hÃ¦gt er aÃ° greiÃ°a meÃ° korti Ã¾egar gengiÃ° er frÃ¡ kaupum.</p>'
-    + '<p style="margin:0 0 16px;line-height:1.6;">AÃ°gangur Ã¾inn er virkur og getur Ã¾Ãº skrÃ¡Ã° Ã¾ig inn Ã¡ vef StÃ³rkaups meÃ° rafrÃ¦nni auÃ°kenningu.</p>'
-    + '<a class="sk-btn" href="https://storkaup.is" style="display:inline-block;margin-top:10px;">Fara Ã­ vefverslun</a>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">Við þökkum fyrir umsókn um viðskipti hjá Stórkaup. Við höfum sótt lánshæfismat frá Creditinfo og í ljósi niðurstöðu þess getum við því miður ekki opnað á reikningsviðskipti eins og óskað var eftir.</p>'
+    + '<p style="margin:0 0 16px;line-height:1.6;">Hægt er að notast við staðgreiðsluferli í gegnum vefverslunina þar sem hægt er að greiða með korti þegar gengið er frá kaupum.</p>'
+    + '<p style="margin:0 0 16px;line-height:1.6;">Aðgangur þinn er virkur og getur þú skráð þig inn á vef Stórkaups með rafrænni auðkenningu.</p>'
+    + '<a class="sk-btn" href="https://storkaup.is" style="display:inline-block;margin-top:10px;">Fara í vefverslun</a>'
     + '<hr class="sk-divider">'
-    + '<p style="margin:0 0 12px;color:#666;font-size:13px;line-height:1.6;">Ekki hika viÃ° aÃ° vera Ã­ sambandi viÃ° SÃ¶lu- og Ã¾jÃ³nustuver StÃ³rkaups Ã­ sÃ­ma <strong>515-1500</strong> eÃ°a meÃ° Ã¾vÃ­ aÃ° senda pÃ³st Ã¡ <a href="mailto:sala@storkaup.is" style="color:#10069f;">sala@storkaup.is</a></p>'
-    + '<p style="margin:0;color:#666;font-size:13px;">Bestu kveÃ°jur,<br>StÃ³rkaup ehf.</p>'
+    + '<p style="margin:0 0 12px;color:#666;font-size:13px;line-height:1.6;">Ekki hika við að vera í sambandi við Sölu- og þjónustuver Stórkaups í síma <strong>515-1500</strong> eða með því að senda póst á <a href="mailto:sala@storkaup.is" style="color:#10069f;">sala@storkaup.is</a></p>'
+    + '<p style="margin:0;color:#666;font-size:13px;">Bestu kveðjur,<br>Stórkaup ehf.</p>'
   );
 }
 function buildUmsokn_CashOnlyPlain_(recipientName) {
-  var greeting = recipientName ? 'KÃ¦ri/KÃ¦ra ' + recipientName : 'KÃ¦ri mÃ³ttakandi';
+  var greeting = recipientName ? 'Kæri/Kæra ' + recipientName : 'Kæri móttakandi';
   return greeting + '\n\n'
-    + 'ViÃ° Ã¾Ã¶kkum fyrir umsÃ³kn um viÃ°skipti hjÃ¡ StÃ³rkaup. ViÃ° hÃ¶fum sÃ³tt lÃ¡nshÃ¦fismat frÃ¡ Creditinfo og Ã­ ljÃ³si niÃ°urstÃ¶Ã°u Ã¾ess getum viÃ° Ã¾vÃ­ miÃ°ur ekki opnaÃ° Ã¡ reikningsviÃ°skipti eins og Ã³skaÃ° var eftir.\n\n'
-    + 'HÃ¦gt er aÃ° notast viÃ° staÃ°greiÃ°sluferli Ã­ gegnum vefverslunina Ã¾ar sem hÃ¦gt er aÃ° greiÃ°a meÃ° korti Ã¾egar gengiÃ° er frÃ¡ kaupum.\n\n'
-    + 'AÃ°gangur Ã¾inn er virkur og getur Ã¾Ãº skrÃ¡Ã° Ã¾ig inn Ã¡ vef StÃ³rkaups meÃ° rafrÃ¦nni auÃ°kenningu.\n\nhttps://storkaup.is\n\n'
-    + 'Ekki hika viÃ° aÃ° vera Ã­ sambandi viÃ° SÃ¶lu- og Ã¾jÃ³nustuver StÃ³rkaups Ã­ sÃ­ma 515-1500 eÃ°a meÃ° Ã¾vÃ­ aÃ° senda pÃ³st Ã¡ sala@storkaup.is\n\n'
-    + 'Bestu kveÃ°jur,\nStÃ³rkaup ehf.';
+    + 'Við þökkum fyrir umsókn um viðskipti hjá Stórkaup. Við höfum sótt lánshæfismat frá Creditinfo og í ljósi niðurstöðu þess getum við því miður ekki opnað á reikningsviðskipti eins og óskað var eftir.\n\n'
+    + 'Hægt er að notast við staðgreiðsluferli í gegnum vefverslunina þar sem hægt er að greiða með korti þegar gengið er frá kaupum.\n\n'
+    + 'Aðgangur þinn er virkur og getur þú skráð þig inn á vef Stórkaups með rafrænni auðkenningu.\n\nhttps://storkaup.is\n\n'
+    + 'Ekki hika við að vera í sambandi við Sölu- og þjónustuver Stórkaups í síma 515-1500 eða með því að senda póst á sala@storkaup.is\n\n'
+    + 'Bestu kveðjur,\nStórkaup ehf.';
 }
