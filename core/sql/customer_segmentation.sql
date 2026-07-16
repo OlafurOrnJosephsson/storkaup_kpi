@@ -225,3 +225,10 @@ $$;
 
 comment on function api.get_featured_products_for_segment(text, int, int)
 is 'Returns top products for a segment, for use in solution page modules.';
+
+-- Grants: the api schema has no default privileges, so freshly (re)created
+-- objects are invisible even to service_role (GAS gets 403/42501). Internal
+-- pipeline only — service_role, NOT anon.
+grant usage on schema api to service_role;
+grant select on api.v_customer_segments, api.v_solution_hub_opportunity to service_role;
+grant execute on function api.get_featured_products_for_segment(text, int, int) to service_role;

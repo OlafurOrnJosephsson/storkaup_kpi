@@ -140,3 +140,8 @@ $$;
 
 comment on function api.get_solution_page_products_v1(text, text, int, int)
 is 'Top products per subcategory for a segment — H2 sections + product modules for cross-category solution pages (kaffistofan template).';
+
+-- Grants: api schema has no default privileges — GAS (service_role) gets
+-- 403/42501 without this. Internal only, do not grant to anon.
+grant usage on schema api to service_role;
+grant execute on function api.get_solution_page_products_v1(text, text, int, int) to service_role;

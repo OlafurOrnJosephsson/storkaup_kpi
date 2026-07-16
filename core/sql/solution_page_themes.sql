@@ -208,3 +208,12 @@ order by t.solution_fit_score desc, t.revenue_365d desc;
 
 comment on view api.v_solution_page_themes_v1 is
 'Prioritized solution page themes per segment, including cross-category suggestion and schema hint.';
+
+-- Grants: api schema has no default privileges — without these even
+-- service_role (GAS) gets 403/42501 on the new views. Internal only.
+grant usage on schema api to service_role;
+grant select on
+  api.v_category_solution_fit_v1,
+  api.v_category_pair_affinity_v1,
+  api.v_solution_page_themes_v1
+to service_role;
