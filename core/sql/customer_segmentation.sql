@@ -1,6 +1,17 @@
 -- Customer Segmentation + Solution Opportunity Model for Storkaup
 -- Run in Supabase SQL editor.
 -- Assumes raw tables already exist from your GAS backfills.
+--
+-- If a previous generation of these views is live with a different column
+-- set, `create or replace view` fails (42P16: cannot change view columns).
+-- Drop-first preamble (cascade also drops the solution_page_themes views —
+-- re-apply solution_page_themes.sql right after this file):
+--
+--   drop view if exists api.v_solution_page_themes_v1 cascade;
+--   drop view if exists api.v_category_pair_affinity_v1 cascade;
+--   drop view if exists api.v_category_solution_fit_v1 cascade;
+--   drop view if exists api.v_solution_hub_opportunity cascade;
+--   drop view if exists api.v_customer_segments cascade;
 
 create schema if not exists api;
 
