@@ -47,8 +47,10 @@ agg as (
     count(distinct case when order_date >= current_date - 365 then customer_id end) as customers_365d,
     count(distinct case when order_date >= current_date - 365 then document_no end) as orders_365d,
     sum(case when order_date >= current_date - 365 then amount_excl else 0 end) as revenue_365d,
-    sum(case when order_date >= current_date - 90 then amount_excl else 0 end) as revenue_90d,
-    sum(case when order_date < current_date - 90 and order_date >= current_date - 180 then amount_excl else 0 end) as revenue_prev_90d,
+    -- Momentum windows end 30 days back: BC invoicing lag makes the most
+    -- recent weeks incomplete and was skewing momentum uniformly negative.
+    sum(case when order_date >= current_date - 120 and order_date < current_date - 30 then amount_excl else 0 end) as revenue_90d,
+    sum(case when order_date >= current_date - 210 and order_date < current_date - 120 then amount_excl else 0 end) as revenue_prev_90d,
     count(distinct case when order_date >= current_date - 365 and is_at_risk then customer_id end) as at_risk_customers_365d
   from joined
   group by segment_id, category_l1, category_l2
@@ -152,20 +154,31 @@ with top_fit as (
     ) as rk
   from api.v_category_solution_fit_v1 f
   where f.customers_365d >= 25
+    and f.category_l1 not in ('Unknown', 'Vörur')
+    and f.category_l2 <> 'Unknown'
 ),
+-- Pairs are stored once with category_a < category_b (alphabetical), so the
+-- join below must see both directions or it silently drops half the pairs
+-- (e.g. Matvörur–Rekstrarvörur was invisible from Rekstrarvörur's side).
 aff as (
   select
     category_a,
     category_b,
     co_order_count,
-    confidence_a_to_b,
     lift,
     row_number() over (
       partition by category_a
       order by lift desc, co_order_count desc
     ) as rk
-  from api.v_category_pair_affinity_v1
+  from (
+    select category_a, category_b, co_order_count, lift
+    from api.v_category_pair_affinity_v1
+    union all
+    select category_b as category_a, category_a as category_b, co_order_count, lift
+    from api.v_category_pair_affinity_v1
+  ) both_directions
   where co_order_count >= 25
+    and category_b not in ('Unknown', 'Vörur')
 )
 select
   t.segment_id,

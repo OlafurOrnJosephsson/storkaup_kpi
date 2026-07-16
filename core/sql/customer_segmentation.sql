@@ -25,6 +25,8 @@ with bc_rollup as (
   select
     trim(both from i.company_id) as customer_id,
     max(i.order_date::date) as last_bc_order_date,
+    count(distinct i.document_no)::numeric as bc_orders_total,
+    sum(coalesce(i.amount_incl, 0))::numeric as bc_value_incl_total,
     count(distinct i.document_no) filter (
       where i.order_date::date >= current_date - 90
     )::numeric as orders_bc_90d,
@@ -42,8 +44,11 @@ base as (
     ca.customer_id,
     ca.customer_name,
     coalesce(ca.webshop_active, false) as webshop_active,
-    coalesce(ca.total_value, 0) as total_value,
-    coalesce(ca.total_orders, 0) as total_orders,
+    -- BC is the ledger of record (web orders are invoiced there too, VEFUR),
+    -- so live BC totals ARE the customer totals; ca.total_value had the BC
+    -- part zeroed (same broken sheet columns as last_bc_order_date).
+    coalesce(bc.bc_value_incl_total, 0) as total_value,
+    coalesce(bc.bc_orders_total, 0) as total_orders,
     coalesce(ca.webshop_orders, 0) as webshop_orders,
     coalesce(bc.orders_bc_90d, 0) as orders_bc_90d,
     coalesce(bc.orders_bc_365d, 0) as orders_bc_365d,
@@ -51,10 +56,13 @@ base as (
     coalesce(ca.primary_category, 'Unknown') as primary_category,
     coalesce(ca.low_hanging_fruit_score, 0) as low_hanging_fruit_score,
     coalesce(ca.potential_score, 0) as potential_score,
-    case
-      when coalesce(ca.total_orders, 0) > 0 then coalesce(ca.webshop_orders, 0)::numeric / nullif(ca.total_orders, 0)
-      else 0
-    end as web_share,
+    -- BC total normally contains the web orders, so web/BC is a true share;
+    -- greatest() covers web-only customers not yet invoiced in BC.
+    coalesce(
+      coalesce(ca.webshop_orders, 0)::numeric
+        / nullif(greatest(coalesce(bc.bc_orders_total, 0), coalesce(ca.webshop_orders, 0)), 0),
+      0
+    ) as web_share,
     case
       when bc.last_bc_order_date is null then 999
       else greatest(0, (current_date - bc.last_bc_order_date))
