@@ -183,10 +183,10 @@ select
     else 'CollectionPage + ItemList + FAQPage'
   end as jsonld_recommendation,
   case
-    when t.category_l1 ilike '%skrifstof%' or t.category_l1 ilike '%rekstrar%' then 'Skrifstofurekstur án innkaupastreitu'
-    when t.category_l1 ilike '%matv%' or t.category_l1 ilike '%kaffi%' then 'Heildarlausn fyrir kaffistofu og starfsmannaaðstöðu'
-    when t.category_l1 ilike '%heilbrig%' or t.category_l1 ilike '%hreinl%' then 'Hreinlætis- og öryggislausn fyrir fagrekstur'
-    else 'Heildarlausn fyrir dagleg innkaup þvert á vöruflokka'
+    when t.category_l1 ilike '%skrifstof%' or t.category_l1 ilike '%rekstrar%' then 'Skrifstofurekstur Ã¡n innkaupastreitu'
+    when t.category_l1 ilike '%matv%' or t.category_l1 ilike '%kaffi%' then 'Heildarlausn fyrir kaffistofu og starfsmannaaÃ°stÃ¶Ã°u'
+    when t.category_l1 ilike '%heilbrig%' or t.category_l1 ilike '%hreinl%' then 'HreinlÃ¦tis- og Ã¶ryggislausn fyrir fagrekstur'
+    else 'Heildarlausn fyrir dagleg innkaup Ã¾vert Ã¡ vÃ¶ruflokka'
   end as suggested_h1
 from top_fit t
 left join aff a on a.category_a = t.category_l1 and a.rk = 1

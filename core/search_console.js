@@ -1,15 +1,27 @@
 /************************************************************
- * SEARCH CONSOLE — /flokkur/ CTR mæling
+ * SEARCH CONSOLE — /flokkur/ CTR mæling + query-level demand data
  * Measures the payoff of the SEO_QUEUE meta overhaul: pulls daily
  * clicks/impressions/CTR/position for category pages (/flokkur/)
  * from the Search Console API into two tabs for before/after
- * comparison. Requires the webmasters.readonly OAuth scope
+ * comparison. Also pulls the site-wide query corpus and page×query
+ * detail for solution pages (SC_SOLUTION_PAGES) to validate demand
+ * for cross-category SEO pages. Requires the webmasters.readonly OAuth scope
  * (appsscript.json) and that the script owner has access to the
  * storkaup.is property in Search Console.
  ************************************************************/
 
 var SC_DAILY_SHEET_NAME_ = 'SC Flokkur Daily';
 var SC_PAGES_SHEET_NAME_ = 'SC Flokkur Pages';
+var SC_QUERIES_SHEET_NAME_ = 'SC Queries 90d';
+var SC_SOLUTION_SHEET_NAME_ = 'SC Solution Pages';
+
+// Icelandic question starters — flags AEO/FAQ-relevant queries in the corpus.
+var SC_QUESTION_PREFIXES_ = ['hvað', 'hvernig', 'hver', 'hvar', 'hvenær', 'af hverju', 'hversu', 'má ', 'er hægt'];
+
+function isIcelandicQuestionQuery_(q) {
+  var s = String(q || '').toLowerCase();
+  return SC_QUESTION_PREFIXES_.some(function(p) { return s.indexOf(p) === 0; });
+}
 
 function getScEnv_() {
   var cfg = loadConfig_();
@@ -137,11 +149,106 @@ function syncScFlokkurStats_v1() {
   return summary;
 }
 
+/**
+ * Query-level demand validation for cross-category solution pages.
+ * Pulls two datasets over the last 90 full days (ending 3 days back — SC lags):
+ * 1) site-wide query corpus → 'SC Queries 90d', with a question-query flag
+ *    (AEO/FAQ planning: which questions do people actually ask?)
+ * 2) page×query detail for the solution pages listed in
+ *    SETTINGS.SC_SOLUTION_PAGES (comma-separated paths, default '/kaffistofan')
+ *    → 'SC Solution Pages' — measures live pilots like /kaffistofan, which
+ *    sit outside /flokkur/ and are invisible to syncScFlokkurStats_v1.
+ * Both tabs are fully rewritten on each run (idempotent).
+ */
+function syncScQueryStats_v1() {
+  var env = getScEnv_();
+  if (!env.spreadsheetId) {
+    throw new Error('SC sync: missing SHEETS.SALES_SUMMARIES.ID in config.');
+  }
+  var cfg = loadConfig_();
+  var pageList = String((cfg.SETTINGS && cfg.SETTINGS.SC_SOLUTION_PAGES) || '/kaffistofan')
+    .split(',')
+    .map(function(s) { return s.trim(); })
+    .filter(String);
+
+  var today = new Date();
+  var end = new Date(today.getTime() - 3 * 24 * 3600 * 1000);
+  var start = new Date(end.getTime() - 89 * 24 * 3600 * 1000);
+  var startDate = formatScDate_(start);
+  var endDate = formatScDate_(end);
+
+  // 1) Site-wide query corpus
+  var queryRows = queryScSearchAnalytics_(env, {
+    startDate: startDate,
+    endDate: endDate,
+    dimensions: ['query'],
+    rowLimit: 5000,
+    dataState: 'all'
+  });
+  queryRows.sort(function(a, b) { return b.impressions - a.impressions; });
+
+  // 2) Page × query per solution page (one call per page — list is short)
+  var solutionRows = [];
+  pageList.forEach(function(path) {
+    var rows = queryScSearchAnalytics_(env, {
+      startDate: startDate,
+      endDate: endDate,
+      dimensions: ['page', 'query'],
+      dimensionFilterGroups: [{
+        filters: [{ dimension: 'page', operator: 'contains', expression: path }]
+      }],
+      rowLimit: 5000,
+      dataState: 'all'
+    });
+    solutionRows = solutionRows.concat(rows);
+  });
+  solutionRows.sort(function(a, b) { return b.impressions - a.impressions; });
+
+  var ss = SpreadsheetApp.openById(env.spreadsheetId);
+
+  writeScTab_(ss, SC_QUERIES_SHEET_NAME_,
+    ['Query', 'Clicks (90d)', 'Impressions (90d)', 'CTR %', 'Avg Position', 'Spurning?'],
+    queryRows.map(function(r) {
+      return [
+        r.keys[0], r.clicks, r.impressions,
+        Math.round(r.ctr * 10000) / 100, Math.round(r.position * 10) / 10,
+        isIcelandicQuestionQuery_(r.keys[0]) ? 'já' : ''
+      ];
+    })
+  );
+
+  writeScTab_(ss, SC_SOLUTION_SHEET_NAME_,
+    ['Page', 'Query', 'Clicks (90d)', 'Impressions (90d)', 'CTR %', 'Avg Position'],
+    solutionRows.map(function(r) {
+      return [
+        r.keys[0], r.keys[1], r.clicks, r.impressions,
+        Math.round(r.ctr * 10000) / 100, Math.round(r.position * 10) / 10
+      ];
+    })
+  );
+
+  var summary = {
+    ok: true,
+    queries: queryRows.length,
+    questionQueries: queryRows.filter(function(r) { return isIcelandicQuestionQuery_(r.keys[0]); }).length,
+    solutionPages: pageList.length,
+    solutionRows: solutionRows.length
+  };
+  Logger.log('[SC_QUERY_SYNC] ' + JSON.stringify(summary));
+  return summary;
+}
+
 /** Daily trigger wrapper — never throws so the trigger doesn't email errors
  * for transient SC API hiccups; failures land in the log. */
 function scheduledSearchConsoleSync_v1() {
   try {
     var out = syncScFlokkurStats_v1();
+    try {
+      out.querySync = syncScQueryStats_v1();
+    } catch (qErr) {
+      Logger.log('[SC_SCHEDULED][QUERY_SYNC_ERROR] ' + (qErr && qErr.message ? qErr.message : qErr));
+      out.querySync = { ok: false, error: String(qErr && qErr.message || qErr) };
+    }
     Logger.log('[SC_SCHEDULED] ' + JSON.stringify(out));
     return out;
   } catch (err) {

@@ -40,6 +40,7 @@ function onOpen() {
       ui.createMenu('SEO')
         .addItem('SEO Queue staða (yfirlit)', 'menu_seoQueueStatusSummary')
         .addItem('Search Console: sync /flokkur/ mælingar', 'menu_syncScFlokkur')
+        .addItem('Search Console: sync leitarorð + solution pages', 'menu_syncScQueries')
         .addItem('Search Console: lista properties (debug)', 'menu_listScSites')
         .addSeparator()
         .addItem('Generate SEO Batch', 'menu_runSeoBatch')
@@ -247,6 +248,21 @@ function menu_syncScFlokkur() {
     'SC sync: ' + ((out && out.dailyDays) || 0) + ' dagar í trend | ' +
     ((out && out.pages) || 0) + ' síður í 28d snapshot | ' +
     ((out && out.totalClicks28d) || 0) + ' smellir 28d',
+    'KPI CORE'
+  );
+}
+
+function menu_syncScQueries() {
+  if (typeof syncScQueryStats_v1 !== 'function') {
+    throw new Error('syncScQueryStats_v1() not found. Ensure core/search_console.js is deployed.');
+  }
+  toast_('Sæki Search Console leitarorð (90d) + solution page gögn...', 'KPI CORE');
+  const out = syncScQueryStats_v1();
+  toast_(
+    'SC query sync: ' + ((out && out.queries) || 0) + ' leitarorð (' +
+    ((out && out.questionQueries) || 0) + ' spurningar) | ' +
+    ((out && out.solutionRows) || 0) + ' raðir fyrir ' +
+    ((out && out.solutionPages) || 0) + ' solution síður',
     'KPI CORE'
   );
 }
