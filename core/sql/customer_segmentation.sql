@@ -16,8 +16,28 @@
 create schema if not exists api;
 
 -- 1) Behavior-first customer segments (no ISAT dependency)
+-- Recency + BC order counts are computed live from raw.bc_invoices_raw:
+-- the rollup columns in raw.customer_analysis_raw are unreliable
+-- (last_bc_order_date null and orders_bc_365d zero for all rows — same
+-- root cause fix_orders_bc_365d.sql already worked around for the trends MV).
 create or replace view api.v_customer_segments as
-with base as (
+with bc_rollup as (
+  select
+    trim(both from i.company_id) as customer_id,
+    max(i.order_date::date) as last_bc_order_date,
+    count(distinct i.document_no) filter (
+      where i.order_date::date >= current_date - 90
+    )::numeric as orders_bc_90d,
+    count(distinct i.document_no) filter (
+      where i.order_date::date >= current_date - 365
+    )::numeric as orders_bc_365d
+  from raw.bc_invoices_raw i
+  where i.company_id is not null
+    and trim(both from i.company_id) <> ''
+    and i.order_date is not null
+  group by 1
+),
+base as (
   select
     ca.customer_id,
     ca.customer_name,
@@ -25,9 +45,9 @@ with base as (
     coalesce(ca.total_value, 0) as total_value,
     coalesce(ca.total_orders, 0) as total_orders,
     coalesce(ca.webshop_orders, 0) as webshop_orders,
-    coalesce(ca.orders_bc_90d, 0) as orders_bc_90d,
-    coalesce(ca.orders_bc_365d, 0) as orders_bc_365d,
-    ca.last_bc_order_date,
+    coalesce(bc.orders_bc_90d, 0) as orders_bc_90d,
+    coalesce(bc.orders_bc_365d, 0) as orders_bc_365d,
+    bc.last_bc_order_date,
     coalesce(ca.primary_category, 'Unknown') as primary_category,
     coalesce(ca.low_hanging_fruit_score, 0) as low_hanging_fruit_score,
     coalesce(ca.potential_score, 0) as potential_score,
@@ -36,10 +56,11 @@ with base as (
       else 0
     end as web_share,
     case
-      when ca.last_bc_order_date is null then 999
-      else greatest(0, (current_date - ca.last_bc_order_date::date))
+      when bc.last_bc_order_date is null then 999
+      else greatest(0, (current_date - bc.last_bc_order_date))
     end as recency_days
   from raw.customer_analysis_raw ca
+  left join bc_rollup bc on bc.customer_id = trim(both from ca.customer_id)
 ),
 seg as (
   select
