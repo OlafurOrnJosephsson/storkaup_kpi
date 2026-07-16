@@ -83,10 +83,13 @@ returns table (
 )
 language sql
 stable
+set statement_timeout = '60s'
 as $$
+  -- mart.mv_customer_segments (see solution_page_marts.sql): the live
+  -- segments view is too slow inside the API role's statement timeout.
   with eligible_customers as (
     select customer_id
-    from api.v_customer_segments
+    from mart.mv_customer_segments
     where segment_id = p_segment_id
   ),
   prod as (

@@ -31,14 +31,14 @@ var SOLUTION_PAGES_HEADER_ = [
 
 /************ Supabase (api schema) helpers ************/
 
-function supabaseApiGet_(pathAndQuery) {
+function supabaseProfileGet_(pathAndQuery, profile) {
   var conf = getSupabaseRestConfig_();
   var res = UrlFetchApp.fetch(conf.baseUrl + '/' + pathAndQuery, {
     method: 'get',
     headers: {
       apikey: conf.serviceRole,
       Authorization: 'Bearer ' + conf.serviceRole,
-      'Accept-Profile': 'api'
+      'Accept-Profile': profile || 'api'
     },
     muteHttpExceptions: true
   });
@@ -104,7 +104,14 @@ function writeSolutionPageCells_(sh, rowNumber, updates) {
  * is excluded: that segment is a reactivation campaign target, not SEO.
  */
 function seedSolutionPagesFromThemes_v1() {
-  var themes = supabaseApiGet_('v_solution_page_themes_v1?select=*');
+  // Refresh the mart layer first (raised timeout inside the RPC); the live
+  // view chain 57014s over REST. Stale MV data beats a hard failure.
+  try {
+    callSupabaseRpc_('refresh_solution_page_marts', {});
+  } catch (e) {
+    Logger.log('[SOLUTION_PAGES] Mart refresh failed — reading existing MV data: ' + (e && e.message || e));
+  }
+  var themes = supabaseProfileGet_('mv_solution_page_themes?select=*', 'mart');
   var groups = {};
   themes.forEach(function(t) {
     if (t.segment_id === 'at_risk_declining') return;
