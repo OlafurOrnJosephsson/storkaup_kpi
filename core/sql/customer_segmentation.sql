@@ -61,6 +61,7 @@ select
   potential_score,
   value_tier,
   freq_tier,
+  (recency_days >= 120) as is_at_risk,
   case
     when recency_days >= 120 then 'at_risk_declining'
     when webshop_active and web_share >= 0.55 and value_tier in ('mid','high') then 'web_first_power_buyers'

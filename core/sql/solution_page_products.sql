@@ -11,6 +11,27 @@
 --   structure of storkaup.is/kaffistofan, but data-driven.
 
 -- ============================================================
+-- A0) Segment health — run AFTER re-applying customer_segmentation.sql +
+--     solution_page_themes.sql (2026-07-16: live Supabase views were an
+--     older generation — every customer landed in one segment and
+--     fit_score was constant 1).
+--     A0a: distribution should spread across several segments; if one
+--          segment holds ~everything, segmentation inputs are broken.
+--     A0b: if most rows have null last_bc_order_date, recency defaults
+--          to 999 and everyone becomes at_risk_declining.
+-- ============================================================
+-- A0a:
+-- select segment_id, count(*) as customers, sum(total_value)::bigint as total_value
+-- from api.v_customer_segments
+-- group by 1 order by 2 desc;
+--
+-- A0b:
+-- select count(*) as total_rows,
+--        count(*) filter (where last_bc_order_date is null) as null_last_order,
+--        max(last_bc_order_date) as freshest_order_date
+-- from raw.customer_analysis_raw;
+
+-- ============================================================
 -- A1) Live theme numbers — customers and orders should differ per row.
 --     If they are equal here too, debug the views; if they differ, the
 --     sheet export was broken and priorities must be re-pulled from A3.
