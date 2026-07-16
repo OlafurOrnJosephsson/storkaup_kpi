@@ -294,7 +294,9 @@ function callSolutionAiJson_(prompt, env) {
       },
       payload: JSON.stringify({
         model: env.claudeModel,
-        max_tokens: 4096,
+        // Full page in Icelandic ≈ 4-6k output tokens; 16000 is safe for
+        // non-streaming requests without hitting HTTP timeouts.
+        max_tokens: 16000,
         temperature: 0.4,
         system: 'Þú skrifar íslenskt B2B efni fyrir vefsíður. Skilaðu alltaf eingöngu gildu JSON.',
         messages: [{ role: 'user', content: prompt }]
@@ -309,15 +311,26 @@ function callSolutionAiJson_(prompt, env) {
     var models = [env.geminiModel].concat(env.geminiFallbackModels || []);
     var lastErr = null;
     for (var i = 0; i < models.length && !content; i++) {
+      var modelName = normalizeGeminiModelName_(models[i]);
+      // Gemini 2.5 "thinking" tokens count against maxOutputTokens — a full
+      // page draft got truncated mid-JSON at 8192. Disable thinking and give
+      // the output real headroom on 2.5; 2.0 models cap at 8192.
+      var is25 = /^gemini-2\.5/.test(modelName);
+      var genConfig = {
+        temperature: 0.4,
+        maxOutputTokens: is25 ? 24576 : 8192,
+        responseMimeType: 'application/json'
+      };
+      if (is25) genConfig.thinkingConfig = { thinkingBudget: 0 };
       try {
         var gRes = UrlFetchApp.fetch(
-          'https://generativelanguage.googleapis.com/v1beta/models/' + normalizeGeminiModelName_(models[i]) + ':generateContent?key=' + env.geminiApiKey,
+          'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + env.geminiApiKey,
           {
             method: 'post',
             contentType: 'application/json',
             payload: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.4, maxOutputTokens: 8192, responseMimeType: 'application/json' }
+              generationConfig: genConfig
             }),
             muteHttpExceptions: true
           }
@@ -325,10 +338,16 @@ function callSolutionAiJson_(prompt, env) {
         if (gRes.getResponseCode() !== 200) {
           throw new Error('Gemini ' + models[i] + ' HTTP ' + gRes.getResponseCode() + ': ' + truncateForLog_(gRes.getContentText(), 200));
         }
-        content = extractGeminiText_(safeJsonParse_(gRes.getContentText()) || {});
+        var gBody = safeJsonParse_(gRes.getContentText()) || {};
+        var finishReason = gBody.candidates && gBody.candidates[0] && gBody.candidates[0].finishReason;
+        if (finishReason === 'MAX_TOKENS') {
+          throw new Error('Gemini ' + models[i] + ' truncated output (finishReason MAX_TOKENS)');
+        }
+        content = extractGeminiText_(gBody);
       } catch (e) {
         lastErr = e;
         Logger.log('[SOLUTION_PAGES] Gemini model ' + models[i] + ' failed: ' + e.message);
+        content = null;
       }
     }
     if (!content) throw (lastErr || new Error('Gemini solution page generation failed.'));
@@ -356,7 +375,10 @@ function callSolutionAiJson_(prompt, env) {
 
   var parsed = safeJsonParse_(normalizeJsonishText_(content));
   if (!parsed || !parsed.h1 || !parsed.intro || !Array.isArray(parsed.sections) || !Array.isArray(parsed.faq)) {
-    throw new Error('AI solution page response missing fields: ' + truncateForLog_(String(content), 300));
+    var s = String(content || '');
+    // Show head AND tail — truncated JSON reveals itself at the end.
+    var tail = s.length > 600 ? ' ... [ENDIR]: ' + s.slice(-300) : '';
+    throw new Error('AI solution page response missing/invalid fields (' + s.length + ' stafir): ' + truncateForLog_(s, 300) + tail);
   }
   return parsed;
 }
