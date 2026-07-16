@@ -54,6 +54,9 @@ function onOpen() {
         .addItem('Endurnýja lifandi vörulista (force)', 'menu_fetchLiveCategoryProductsForce')
         .addItem('Revalidate GENERATED rows', 'menu_revalidateGeneratedSeo')
         .addSeparator()
+        .addItem('Lausnasíður: seed úr Supabase þemum', 'menu_seedSolutionPages')
+        .addItem('Lausnasíður: generate fyrir valda röð', 'menu_runSolutionPageSelectedRow')
+        .addSeparator()
         .addItem('Finna flokka sem þurfa nýja mynd', 'menu_flagCategoriesNeedingImage')
         .addItem('Skrifa image-prompt (gjaldfrjálst, líma í ChatGPT)', 'menu_runSeoImagePromptBatch')
         .addItem('Skrifa image-prompt fyrir valda röð', 'menu_runSeoImagePromptSelectedRow')
@@ -248,6 +251,28 @@ function menu_syncScFlokkur() {
     'SC sync: ' + ((out && out.dailyDays) || 0) + ' dagar í trend | ' +
     ((out && out.pages) || 0) + ' síður í 28d snapshot | ' +
     ((out && out.totalClicks28d) || 0) + ' smellir 28d',
+    'KPI CORE'
+  );
+}
+
+function menu_seedSolutionPages() {
+  if (typeof seedSolutionPagesFromThemes_v1 !== 'function') {
+    throw new Error('seedSolutionPagesFromThemes_v1() not found. Ensure core/solution_pages.js is deployed.');
+  }
+  toast_('Sæki lausnasíðu-þemu úr Supabase...', 'KPI CORE');
+  const out = seedSolutionPagesFromThemes_v1();
+  toast_('Lausnasíður: ' + out.added + ' nýjar raðir (' + out.themes + ' þemu alls).', 'KPI CORE');
+}
+
+function menu_runSolutionPageSelectedRow() {
+  if (typeof runSolutionPageForSelectedRow_v1 !== 'function') {
+    throw new Error('runSolutionPageForSelectedRow_v1() not found. Ensure core/solution_pages.js is deployed.');
+  }
+  toast_('Skrifa lausnasíðu-drög (AI)...', 'KPI CORE');
+  const out = runSolutionPageForSelectedRow_v1();
+  toast_(
+    'Lausnasíða "' + out.theme + '": ' + out.sections + ' sektionir, ' +
+    out.queries + ' target leitarorð. Yfirfarðu og merktu Approved.',
     'KPI CORE'
   );
 }
