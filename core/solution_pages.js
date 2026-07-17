@@ -332,16 +332,17 @@ function callSolutionAiJson_(prompt, env) {
       var modelName = normalizeGeminiModelName_(models[i]);
       // Thinking tokens count against maxOutputTokens on 2.5+ models — a full
       // page draft truncates mid-JSON at 8192. 2.0 models cap at 8192 (their
-      // hard limit); 2.5 supports disabling thinking via thinkingBudget 0;
-      // 3.x+ thinks by default (no budget-0 opt-out) so give real headroom.
+      // hard limit). Only 2.5-FLASH accepts thinkingBudget 0 (2.5-pro's
+      // minimum is 128 and rejects 0); everything else (2.5-pro, 3.x+) thinks
+      // by default so it just gets real headroom.
       var is20 = /^gemini-2\.0/.test(modelName);
-      var is25 = /^gemini-2\.5/.test(modelName);
+      var is25flash = /^gemini-2\.5-flash/.test(modelName);
       var genConfig = {
         temperature: 0.4,
-        maxOutputTokens: is20 ? 8192 : (is25 ? 24576 : 32768),
+        maxOutputTokens: is20 ? 8192 : (is25flash ? 24576 : 32768),
         responseMimeType: 'application/json'
       };
-      if (is25) genConfig.thinkingConfig = { thinkingBudget: 0 };
+      if (is25flash) genConfig.thinkingConfig = { thinkingBudget: 0 };
       try {
         var gRes = UrlFetchApp.fetch(
           'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + env.geminiApiKey,
