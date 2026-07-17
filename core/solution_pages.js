@@ -182,7 +182,10 @@ function buildSolutionSections_(segmentId, categoryL1, opts) {
     byL2[l2].revenue += Number(r.revenue_excl) || 0;
     byL2[l2].maxCustomers = Math.max(byL2[l2].maxCustomers, Number(r.customers) || 0);
     if (byL2[l2].products.length < 6 && (Number(r.customers) || 0) >= 3) {
-      byL2[l2].products.push(String(r.product_name || r.sku));
+      byL2[l2].products.push({
+        sku: String(r.sku || ''),
+        name: String(r.product_name || r.sku)
+      });
     }
   });
 
@@ -240,7 +243,7 @@ function collectScQueriesForSolutionPage_(matchTexts) {
 function buildSolutionPagePrompt_(theme, categoryL1, crossCategory, audiences, sections, crossSections, sc) {
   var sectionLines = sections.concat(crossSections).map(function(s) {
     return '- ' + s.heading + (s.cross ? ' (cross-category: ' + crossCategory + ')' : '') +
-      ': topp vörur: ' + s.products.slice(0, 6).join('; ');
+      ': topp vörur: ' + s.products.slice(0, 6).map(function(p) { return p.name; }).join('; ');
   });
   var queryLines = sc.queries.map(function(q) {
     return '- "' + q.query + '" (' + q.impressions + ' birtingar, staða ' + q.position + ')';
@@ -395,7 +398,9 @@ function buildSolutionPageMarkdown_(page, sections) {
     var prods = productByHeading[s.heading] || [];
     if (prods.length) {
       lines.push('Vörur í þessari sektion:');
-      prods.forEach(function(p) { lines.push('- ' + p); });
+      prods.forEach(function(p) {
+        lines.push('- [' + p.sku + '] ' + p.name);
+      });
       lines.push('');
     }
   });
