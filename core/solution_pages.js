@@ -26,7 +26,12 @@ var SOLUTION_PAGES_HEADER_ = [
   'Revenue 365d', 'Status', 'Approved', 'Slug tillaga',
   'Meta Title', 'Meta Description', 'H1',
   'Page Markdown', 'FAQ JSON-LD',
-  'Sections Data', 'Target Queries', 'Error', 'Generated At'
+  'Sections Data', 'Target Queries', 'Error', 'Generated At',
+  // Optional comma/semicolon-separated tokens; only subcategories whose name
+  // contains a token become sections. Pure revenue ranking picks canteen-scale
+  // goods (Frystivara, Dósavara) for themes like kaffistofan — the human
+  // scopes the theme, the data still ranks products within it.
+  'Section Filter'
 ];
 
 /************ Supabase (api schema) helpers ************/
@@ -80,6 +85,10 @@ function ensureSolutionPagesSheet_() {
     sh.getRange(1, 1, 1, SOLUTION_PAGES_HEADER_.length).setValues([SOLUTION_PAGES_HEADER_]);
     sh.setFrozenRows(1);
     applySheetStyling_(sh, { zebra: true });
+  } else if (sh.getLastColumn() < SOLUTION_PAGES_HEADER_.length) {
+    // Header grew (e.g. Section Filter added) — rewrite the header row;
+    // new columns append at the end so existing data keeps its indices.
+    sh.getRange(1, 1, 1, SOLUTION_PAGES_HEADER_.length).setValues([SOLUTION_PAGES_HEADER_]);
   }
   return sh;
 }
@@ -189,9 +198,15 @@ function buildSolutionSections_(segmentId, categoryL1, opts) {
     }
   });
 
+  var allow = opts.allowTokens || null;
   return Object.keys(byL2)
     .map(function(k) { return byL2[k]; })
     .filter(function(s) { return s.maxCustomers >= minCustomers && s.products.length; })
+    .filter(function(s) {
+      if (!allow || !allow.length) return true;
+      var h = s.heading.toLowerCase();
+      return allow.some(function(t) { return h.indexOf(t) !== -1; });
+    })
     .sort(function(a, b) { return b.revenue - a.revenue; })
     .slice(0, maxSections);
 }
@@ -447,13 +462,22 @@ function generateSolutionPageForRowNumber_v1(rowNumber) {
 
   try {
     var minCustomers = Number(env.cfg.SETTINGS.SOLUTION_MIN_PRODUCT_CUSTOMERS || 8);
-    var sections = buildSolutionSections_(segment, categoryL1, { minCustomers: minCustomers, maxSections: 6 });
+    var filterRaw = String(row[solutionColIndex_('Section Filter') - 1] || '').trim();
+    var allowTokens = filterRaw
+      ? filterRaw.toLowerCase().split(/[,;]+/).map(function(t) { return t.trim(); }).filter(String)
+      : null;
+    var sections = buildSolutionSections_(segment, categoryL1, {
+      minCustomers: minCustomers, maxSections: 6, allowTokens: allowTokens
+    });
     if (!sections.length) {
-      throw new Error('Engar sektionir stóðust síu (min customers ' + minCustomers + ') fyrir ' + segment + ' / ' + categoryL1);
+      throw new Error('Engar sektionir stóðust síu (min customers ' + minCustomers +
+        (allowTokens ? ', filter: ' + filterRaw : '') + ') fyrir ' + segment + ' / ' + categoryL1);
     }
     var crossSections = [];
     if (crossCategory) {
-      crossSections = buildSolutionSections_(segment, crossCategory, { minCustomers: minCustomers, maxSections: 2 })
+      crossSections = buildSolutionSections_(segment, crossCategory, {
+        minCustomers: minCustomers, maxSections: 2, allowTokens: allowTokens
+      })
         .map(function(s) { s.cross = true; return s; });
     }
 
