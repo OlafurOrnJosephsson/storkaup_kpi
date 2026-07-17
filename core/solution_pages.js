@@ -282,7 +282,7 @@ function buildSolutionPagePrompt_(theme, categoryL1, crossCategory, audiences, s
     '- meta_title endar á "| Stórkaup", hámark 60 stafir.',
     '- meta_description 130–155 stafir.',
     '- intro: 150–220 orð sem ramma inn vandamálið (innkaupastreita, birgðastýring, endurpöntun) og lausnina.',
-    '- sections: fyrir hverja sektion 50–90 orð um notkunarsamhengið; ekki telja upp pakkningastærðir.',
+    '- sections: NÁKVÆMLEGA sektionirnar að ofan — sami fjöldi, heading orðrétt eins. Aldrei búa til nýjar sektionir, sama hvað leitarorðin gefa í skyn. Fyrir hverja sektion 50–90 orð um notkunarsamhengið; ekki telja upp pakkningastærðir.',
     '- faq: 5 spurningar með 40–80 orða svörum; nýttu raunverulegu leitarspurningarnar ef þær eiga við, annars innkaupaspurningar (afhending, lágmarkspöntun, reikningsviðskipti, endurpöntun á vef, staðgönguvörur).',
     '- slug: stutt íslensk slóð, byrjar á "/", engin séríslensk tákn (t.d. "/hreinlaeti-fagrekstur").',
     '',
@@ -489,9 +489,21 @@ function generateSolutionPageForRowNumber_v1(rowNumber) {
     var prompt = buildSolutionPagePrompt_(theme, categoryL1, crossCategory, audiences, sections, crossSections, sc);
     var page = callSolutionAiJson_(prompt, env);
 
+    // Hard guard: the AI must not invent sections beyond the data-backed
+    // ones (it padded from SC queries when the filter left few sections).
+    var validHeadings = {};
+    sections.concat(crossSections).forEach(function(s) { validHeadings[s.heading] = true; });
+    var droppedHeadings = (page.sections || [])
+      .filter(function(s) { return !validHeadings[s.heading]; })
+      .map(function(s) { return s.heading; });
+    page.sections = (page.sections || []).filter(function(s) { return validHeadings[s.heading]; });
+
     var metaWarnings = validateSeoCopy_(
       { title: page.meta_title, description: page.meta_description }, 0
     );
+    if (droppedHeadings.length) {
+      metaWarnings.push('AI bjó til sektionir án gagna sem var hent: ' + droppedHeadings.join('; '));
+    }
 
     writeSolutionPageCells_(sh, rowNumber, {
       'Status': 'GENERATED',
