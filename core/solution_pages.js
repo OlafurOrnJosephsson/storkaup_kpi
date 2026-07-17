@@ -315,13 +315,15 @@ function callSolutionAiJson_(prompt, env) {
     var lastErr = null;
     for (var i = 0; i < models.length && !content; i++) {
       var modelName = normalizeGeminiModelName_(models[i]);
-      // Gemini 2.5 "thinking" tokens count against maxOutputTokens — a full
-      // page draft got truncated mid-JSON at 8192. Disable thinking and give
-      // the output real headroom on 2.5; 2.0 models cap at 8192.
+      // Thinking tokens count against maxOutputTokens on 2.5+ models — a full
+      // page draft truncates mid-JSON at 8192. 2.0 models cap at 8192 (their
+      // hard limit); 2.5 supports disabling thinking via thinkingBudget 0;
+      // 3.x+ thinks by default (no budget-0 opt-out) so give real headroom.
+      var is20 = /^gemini-2\.0/.test(modelName);
       var is25 = /^gemini-2\.5/.test(modelName);
       var genConfig = {
         temperature: 0.4,
-        maxOutputTokens: is25 ? 24576 : 8192,
+        maxOutputTokens: is20 ? 8192 : (is25 ? 24576 : 32768),
         responseMimeType: 'application/json'
       };
       if (is25) genConfig.thinkingConfig = { thinkingBudget: 0 };
