@@ -1,0 +1,15 @@
+# Normalise line endings. Without this every commit from Windows logs a wall of
+# "LF will be replaced by CRLF" warnings, and a file touched on one machine can
+# show as fully rewritten on another — which hides real changes in the diff.
+# LF in the repository, native in the working copy.
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF or cmd.exe mis-parses them.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Never normalise or diff these as text.
+*.xlsx  binary
+*.png   binary
+*.jpg   binary
+*.pdf   binary

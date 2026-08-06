@@ -1,0 +1,67 @@
+#!/bin/sh
+# Block secrets from reaching a PUBLIC repository.
+#
+# This repo is public — jsDelivr serves Webflow/*.js from it. A leaked
+# service_role key or database password here is not a mistake you can quietly
+# fix: it is public the moment it is pushed, and it stays in the history.
+#
+# The project's design keeps every secret in the STORKAUP_CONFIG spreadsheet and
+# reads it at runtime via loadConfig_(). A scan of all 377 commits on 2026-08-06
+# found nothing leaked, so this hook exists to keep that record intact rather
+# than to fix a known problem.
+#
+# Enable (once per clone):   git config core.hooksPath .githooks
+# Bypass for one commit:     git commit --no-verify
+#
+# Deliberately NOT blocked: sb_publishable_… — that key is designed to be public
+# and lives in the two Webflow bootstrap files. What protects the data is what
+# the anon role is allowed to do, not the secrecy of that key.
+
+fail=0
+
+# Only scan what is actually staged, and only added lines.
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+check() {
+  pattern="$1"
+  label="$2"
+  hits=$(git diff --cached -U0 --diff-filter=ACM -- $staged \
+         | grep -E '^\+' | grep -vE '^\+\+\+' \
+         | grep -nE "$pattern" | head -5)
+  if [ -n "$hits" ]; then
+    echo "✖ BLOCKED — possible $label in staged changes:"
+    echo "$hits" | sed 's/^/    /'
+    fail=1
+  fi
+}
+
+check 'sb_secret_[A-Za-z0-9_-]{10,}'        'Supabase secret key'
+check 'eyJhbGciOi[A-Za-z0-9_-]{20,}'        'JWT (service_role / signed token)'
+check 'AIza[A-Za-z0-9_-]{30,}'              'Google API key'
+check 'sk-ant-[A-Za-z0-9_-]{20,}'           'Anthropic API key'
+check 'sk-[A-Za-z0-9]{32,}'                 'OpenAI-style API key'
+check 'xox[baprs]-[A-Za-z0-9-]{10,}'        'Slack token'
+check 'BEGIN (RSA|OPENSSH|EC|DSA|PGP) PRIVATE KEY' 'private key'
+check '(SERVICE_ROLE_KEY|DB_PASSWORD|SUPABASE_DB_PASSWORD)[[:space:]]*[:=][[:space:]]*.[A-Za-z0-9_.:/+-]{16,}' 'hardcoded credential'
+
+# Audit output and live schema dumps are gitignored, but a forced add would slip
+# them past that. They describe exactly what is reachable without authentication.
+for f in $staged; do
+  case "$f" in
+    core/sql/_audit_output/*|core/sql/_schema_snapshot.sql|SECURITY_REVIEW.md|SECURITY_RESPONSE.md)
+      echo "✖ BLOCKED — $f is confidential and must not be committed to a public repo."
+      fail=1
+      ;;
+  esac
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "Nothing was committed. Move the secret into the STORKAUP_CONFIG sheet and"
+  echo "read it with loadConfig_(), or use 'git commit --no-verify' if this is a"
+  echo "false positive you have actually checked."
+  exit 1
+fi
+
+exit 0
