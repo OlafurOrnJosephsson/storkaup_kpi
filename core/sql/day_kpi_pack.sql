@@ -1,64 +1,45 @@
--- Day KPI pack for daily dashboard cards.
--- Run in Supabase SQL editor.
+-- ============================================================================
+-- public.day_kpi_pack(date) — daily KPI pack for /kpi/dashboard
+--
+-- PROVENANCE: reconstructed from the live database 2026-08-05 via
+-- pg_get_functiondef. The previous copy of this file was STALE — 20802 chars
+-- against a 21045-char live body, despite also carrying a comment header the
+-- body does not have. It was silently behind by an unknown amount, so patching
+-- from it would have overwritten live changes. That is why this file is now
+-- normalised pg_get_functiondef output rather than the old hand-formatted SQL:
+-- it mirrors the database verbatim. Re-pull the live definition before editing.
+--
+-- Two changes applied on top of the live body:
+--
+-- 1. BC REMOVED (2026-08-05). BC ingest into Supabase is frozen for security and
+--    the dashboard's BC ratios are entered manually (window.STORKAUP_BC_MANUAL)
+--    — but this function still read raw.bc_invoices_raw /
+--    raw.bc_credit_invoices_raw directly and is granted to anon, so live BC
+--    financials would land on the anonymous surface the moment ingest resumed.
+--    All six BC output fields now return null, mirroring what
+--    dashboard_compat.sql already does for the monthly ratios. The bc_invoices_day
+--    and bc_credits_day CTEs are removed, so this function no longer touches BC.
+--    (bc_net_day was already dead code — computed but never selected.)
+--    Frontend impact: none. Webflow/dashboard.js:540-551 already gates these
+--    cards and renders "-" with the hint "Engin BC bókuð sala fyrir valinn dag."
+--    The RETURNS TABLE signature is unchanged so nothing else breaks.
+--
+-- 2. ENCODING. The CSV export that carried this definition mangled UTF-8 as
+--    Latin-1: 'Óþekktur viðskiptavinur' arrived as 'ÃÃ¾ekktur viÃ°skiptavinur',
+--    'Óþekkt vara' as 'ÃÃ¾ekkt vara', 'Óflokkað' as 'ÃflokkaÃ°'. Restored here.
+--    If this function is ever round-tripped through a CSV again, check those
+--    three strings before applying — mojibake in a fallback label is easy to miss.
+--
+-- ROLLBACK: the pre-change live body is in
+-- core/sql/_audit_output/day_kpi_pack_live.csv (gitignored). Keep that file.
+-- ============================================================================
 
-create or replace function public.day_kpi_pack(p_day date default current_date)
-returns table (
-  day date,
-  orders bigint,
-  revenue_incl numeric,
-  revenue_excl numeric,
-  aov_excl numeric,
-  vs_yesterday_orders_pct numeric,
-  vs_yesterday_revenue_excl_pct numeric,
-  vs_yesterday_aov_excl_pct numeric,
-  vs_lastweek_orders_pct numeric,
-  vs_lastweek_revenue_excl_pct numeric,
-  vs_lastweek_aov_excl_pct numeric,
-  unique_buyers bigint,
-  repeat_buyer_pct numeric,
-  first_time_buyers bigint,
-  registrations_today bigint,
-  registrations_bought_today bigint,
-  registrations_conversion_pct numeric,
-  current_hour_orders bigint,
-  current_hour_revenue_excl numeric,
-  eod_orders_forecast numeric,
-  eod_revenue_excl_forecast numeric,
-  eod_orders_vs_lastweek_pct numeric,
-  eod_revenue_excl_vs_lastweek_pct numeric,
-  noon_hour int,
-  noon_sales_vs_lastweek_pct numeric,
-  noon_orders_vs_lastweek_pct numeric,
-  alert_noon_sales_drop boolean,
-  alert_noon_orders_drop boolean,
-  top_customer_1 text,
-  top_customer_2 text,
-  top_customer_3 text,
-  top_sku_1 text,
-  top_sku_2 text,
-  top_sku_3 text,
-  top_sku_4 text,
-  top_sku_5 text,
-  top_cat_1 text,
-  top_cat_2 text,
-  top_cat_3 text,
-  hourly_series jsonb,
-  weekday_hourly_avg_series jsonb,
-  weekday_hourly_avg_days int,
-  weekday_avg_orders_per_day numeric,
-  weekday_avg_revenue_excl_per_day numeric,
-  bc_invoices_day_orders numeric,
-  bc_invoices_day_revenue_excl numeric,
-  bc_credits_day_orders numeric,
-  bc_credits_day_revenue_excl numeric,
-  web_orders_pct_of_bc_day numeric,
-  web_revenue_pct_of_bc_day numeric
-)
-language sql
-stable
-security definer
-set search_path to 'public', 'mart', 'raw'
-as $function$
+CREATE OR REPLACE FUNCTION public.day_kpi_pack(p_day date DEFAULT CURRENT_DATE)
+ RETURNS TABLE(day date, orders bigint, revenue_incl numeric, revenue_excl numeric, aov_excl numeric, vs_yesterday_orders_pct numeric, vs_yesterday_revenue_excl_pct numeric, vs_yesterday_aov_excl_pct numeric, vs_lastweek_orders_pct numeric, vs_lastweek_revenue_excl_pct numeric, vs_lastweek_aov_excl_pct numeric, unique_buyers bigint, repeat_buyer_pct numeric, first_time_buyers bigint, registrations_today bigint, registrations_bought_today bigint, registrations_conversion_pct numeric, current_hour_orders bigint, current_hour_revenue_excl numeric, eod_orders_forecast numeric, eod_revenue_excl_forecast numeric, eod_orders_vs_lastweek_pct numeric, eod_revenue_excl_vs_lastweek_pct numeric, noon_hour integer, noon_sales_vs_lastweek_pct numeric, noon_orders_vs_lastweek_pct numeric, alert_noon_sales_drop boolean, alert_noon_orders_drop boolean, top_customer_1 text, top_customer_2 text, top_customer_3 text, top_sku_1 text, top_sku_2 text, top_sku_3 text, top_sku_4 text, top_sku_5 text, top_cat_1 text, top_cat_2 text, top_cat_3 text, hourly_series jsonb, weekday_hourly_avg_series jsonb, weekday_hourly_avg_days integer, weekday_avg_orders_per_day numeric, weekday_avg_revenue_excl_per_day numeric, bc_invoices_day_orders numeric, bc_invoices_day_revenue_excl numeric, bc_credits_day_orders numeric, bc_credits_day_revenue_excl numeric, web_orders_pct_of_bc_day numeric, web_revenue_pct_of_bc_day numeric)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'mart', 'raw'
+AS $function$
 with params as (
   select
     p_day::date as day,
@@ -409,61 +390,6 @@ weekday_hourly_json as (
 weekday_days_count as (
   select count(*)::int as n
   from weekday_days
-),
-bc_invoices_day as (
-  select
-    count(*)::numeric as orders,
-    coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
-    count(*) filter (
-      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-         or (
-           i.booking_date < timestamp '2025-08-18'
-           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
-         )
-    )::numeric as web_orders,
-    coalesce(sum(i.amount_excl) filter (
-      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-         or (
-           i.booking_date < timestamp '2025-08-18'
-           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
-         )
-    ), 0)::numeric as web_revenue_excl
-  from raw.bc_invoices_raw i
-  join params p on true
-  where i.booking_date >= p.day::timestamp
-    and i.booking_date < (p.day::timestamp + interval '1 day')
-),
-bc_credits_day as (
-  select
-    count(*)::numeric as orders,
-    coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
-    count(*) filter (
-      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-         or (
-           i.booking_date < timestamp '2025-08-18'
-           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
-         )
-    )::numeric as web_orders,
-    coalesce(sum(i.amount_excl) filter (
-      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-         or (
-           i.booking_date < timestamp '2025-08-18'
-           and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%'
-         )
-    ), 0)::numeric as web_revenue_excl
-  from raw.bc_credit_invoices_raw i
-  join params p on true
-  where i.booking_date >= p.day::timestamp
-    and i.booking_date < (p.day::timestamp + interval '1 day')
-),
-bc_net_day as (
-  select
-    (inv.orders - cr.orders)::numeric as orders,
-    (inv.revenue_excl - cr.revenue_excl)::numeric as revenue_excl,
-    (inv.web_orders - cr.web_orders)::numeric as web_orders,
-    (inv.web_revenue_excl - cr.web_revenue_excl)::numeric as web_revenue_excl
-  from bc_invoices_day inv
-  cross join bc_credits_day cr
 )
 select
   d0.day,
@@ -530,20 +456,20 @@ select
   coalesce((select wdc.n from weekday_days_count wdc), 0) as weekday_hourly_avg_days,
   coalesce((select wat.avg_orders_per_day from weekday_avg_totals wat), 0) as weekday_avg_orders_per_day,
   coalesce((select wat.avg_revenue_excl_per_day from weekday_avg_totals wat), 0) as weekday_avg_revenue_excl_per_day,
-  coalesce((select i.orders from bc_invoices_day i), 0) as bc_invoices_day_orders,
-  coalesce((select i.revenue_excl from bc_invoices_day i), 0) as bc_invoices_day_revenue_excl,
-  coalesce((select c.orders from bc_credits_day c), 0) as bc_credits_day_orders,
-  coalesce((select c.revenue_excl from bc_credits_day c), 0) as bc_credits_day_revenue_excl,
-  case
-    when coalesce((select i.orders from bc_invoices_day i), 0) > 0
-      then d0.orders::numeric / nullif((select i.orders from bc_invoices_day i), 0)
-    else null
-  end as web_orders_pct_of_bc_day,
-  case
-    when coalesce((select i.revenue_excl from bc_invoices_day i), 0) > 0
-      then d0.revenue_excl / nullif((select i.revenue_excl from bc_invoices_day i), 0)
-    else null
-  end as web_revenue_pct_of_bc_day
+  -- ── BC fields: nulled 2026-08-05. See header note 1 for the full rationale. ─
+  -- Two things this comment deliberately avoids, both learned the hard way:
+  --   * the BC source table names — a bare table name here makes a naive audit
+  --     grep match this very comment and report a false positive;
+  --   * the dollar-quote delimiter — writing it inside the body it delimits ends
+  --     the body early and breaks the CREATE with a syntax error.
+  -- Anything stored inside the function body comes back from pg_get_functiondef,
+  -- so keep detail like that in the header comment above instead.
+  null::numeric as bc_invoices_day_orders,
+  null::numeric as bc_invoices_day_revenue_excl,
+  null::numeric as bc_credits_day_orders,
+  null::numeric as bc_credits_day_revenue_excl,
+  null::numeric as web_orders_pct_of_bc_day,
+  null::numeric as web_revenue_pct_of_bc_day
 from d0
 cross join d1
 cross join d7
@@ -554,4 +480,29 @@ left join forecast fc on true
 left join noon_compare nc on true;
 $function$;
 
+
+-- ── GRANT — unchanged; the dashboard needs this ─────────────────────────────
+-- Kept in this file so it travels with the object. That is the lesson from
+-- security_restore_priority_writes.sql, where a grant living in a separate file
+-- silently undid a lockdown for two months.
 grant execute on function public.day_kpi_pack(date) to anon, authenticated;
+
+
+-- ── VERIFY after applying ──────────────────────────────────────────────────
+-- 1. The six BC columns must come back null, everything else populated:
+--      select bc_invoices_day_orders, web_revenue_pct_of_bc_day,
+--             orders, revenue_excl, unique_buyers
+--      from public.day_kpi_pack(current_date - 1);
+--
+-- 2. No BC table reads remain — expect false. Match on an actual FROM clause,
+--    not a bare table name: a plain `like '%bc_invoices_raw%'` also matches
+--    comments stored in the function body and returns a false positive.
+--      select pg_get_functiondef('public.day_kpi_pack(date)'::regprocedure)
+--             ~* 'from\s+raw\.bc_' as still_reads_bc;
+--    (pg_depend is not an option here — Postgres does not record dependencies
+--    for string-literal function bodies, only for BEGIN ATOMIC ones.)
+--
+-- 3. In the browser, /kpi/dashboard: daily cards still render; the BC ratio
+--    cards show "-" with the no-BC-sales hint; and the Icelandic fallback
+--    labels ("Óþekktur viðskiptavinur", "Óflokkað") are not mojibake in the
+--    top-customer / top-category lists.

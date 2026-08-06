@@ -18,3 +18,13 @@ bc_drop/
 SECURITY_REVIEW.md
 SECURITY_RESPONSE.md
 POWERBI_DATABRICKS_GAP.md
+
+# Live DB schema snapshot — full structure dump; repo is public, so ignored by
+# default until we decide deliberately whether structure disclosure is fine.
+core/sql/_schema_snapshot.sql
+core/sql/_audit_output/
+
+# Supabase CLI working dir. `supabase link` creates supabase/.temp with project
+# credentials/state. The CLI cannot reach the DB from the office network anyway
+# (ports 5432/6543 are blocked, 443 is not) — see core/sql/_dump_definitions.sql.
+supabase/

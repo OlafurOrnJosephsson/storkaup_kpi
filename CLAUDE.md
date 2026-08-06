@@ -110,14 +110,38 @@ Title rules (V3, from SEO review Apr 2025):
 
 ## Key scheduled triggers
 
+**`auditTriggers_v1()` is the source of truth, not this table.** It reads the
+installed triggers and compares them against the `EXPECTED` map in
+[core/utils.js](core/utils.js); that map's cadences come from the `install*`
+functions. Run it before trusting any list of what is scheduled.
+
 | Function | Cadence | Source |
 |---|---|---|
 | `safePoll_v2` | Every 5 min | Magento new orders |
-| `scheduledMagentoSync_v1` | Hourly | Magento full incremental |
-| `scheduledBcSync_v1` | Twice daily | Business Central |
 | `scheduledKlaviyoSync_v1` | Every 15 min | Klaviyo events |
-| `scheduledReferenceSync_v1` | Daily | Products, customers, Cludo |
-| `runDailySanityChecks_v1` | Daily morning | Cross-source validation |
+| `scheduledMagentoSync_v1` | Hourly ~:20 | Magento full incremental |
+| `scheduledReferenceSync_v1` | Every 6h ~:50 | Products, customers, Cludo, marts |
+| `scheduledCludoSync_v1` | Every 12h ~:55 | Cludo product coverage |
+| `scheduledCustomerAnalysisSync_v1` | Daily ~05:25 | Customer profiles + profiles MV |
+| `scheduledSearchConsoleSync_v1` | Daily ~05:30 | Search Console |
+| `scheduledGa4Sync_v1` | Daily ~06:30 | GA4 |
+| `scheduledZeroPriceScan_v1` | Daily ~06:50 | Zero list-price scan |
+| `runDailySanityChecks_v1` | Daily ~07:40 | Cross-source validation |
+| `scheduledNewwebStatusSync_v2` | Daily ~11:30 & ~17:30 | Magento order status |
+| `scheduledWeeklyDigest` | Mondays ~08:00 | Weekly email |
+
+**BC has no trigger.** `scheduledBcSync_v1` was deleted 2026-04-30 (`d83c7c5`);
+this table listed it as "twice daily" for three months after it stopped existing.
+BC now loads only from the **BC Sync menu** (`processBcDrop_v1`), reading XLSX
+dropped in Drive. Files uploaded by `bc_sync.ps1` sit unread until someone clicks
+it. Never run `processBcDropForce_v1` on the invoice file — it nulls `order_no`
+and `email` across all history (see `core/sql/generate_shopping_list_v2.sql`).
+
+Four triggers were found **uninstalled** on 2026-08-06, lost around 2026-05-07..11:
+Klaviyo, Customer Analysis, Cludo, Search Console. Nobody noticed for three
+months because `auditTriggers_v1`'s map was wrong in five places and missing five
+handlers, so its real warnings were buried in false ones. A job whose sub-step
+fails now records `partial`, not `success`, and sends an ops alert.
 
 ## Current production pins
 

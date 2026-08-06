@@ -1252,7 +1252,20 @@ function upsertBcInvoicesToSupabase_(rows) {
   var endpoint = conf.baseUrl + '/bc_invoices_raw?on_conflict=document_no';
   var payload = rows.map(function(r) {
     var documentNo = String(r.DOCUMENT_NO || '').trim();
-    return {
+
+    // amount_excl: same guard as the credit upsert below — see the long note
+    // there. `toNum_(undefined)` returns 0, and on 2026-05-01 that wiped this
+    // column for every row when the export stopped supplying 'Upphaed'
+    // (core/sql/restore_amount_excl.sql was written to repair it). Omitting the
+    // key on absence means merge-duplicates preserves the stored value instead
+    // of overwriting it with 0. This table matters more than credits — it is the
+    // denominator of every net-BC and web-share figure. Keep the guard.
+    var amountExclRaw = r.AMOUNT_EXCL;
+    var hasAmountExcl = amountExclRaw !== undefined
+                     && amountExclRaw !== null
+                     && String(amountExclRaw).trim() !== '';
+
+    var row = {
       document_no: documentNo,
       company_id: r.COMPANY_ID || null,
       external_doc_no: r.EXTERNAL_DOC_NO || null,
@@ -1263,7 +1276,6 @@ function upsertBcInvoicesToSupabase_(rows) {
       booking_date: parseBcDateForSupabase_(r.BOOKING_DATE) || parseBcDateForSupabase_(r.ORDER_DATE),
       order_date: parseBcDateForSupabase_(r.ORDER_DATE) || parseBcDateForSupabase_(r.BOOKING_DATE),
       email: r.EMAIL || null,
-      amount_excl: toNum_(r.AMOUNT_EXCL),
       amount_incl: toNum_(r.AMOUNT_INCL),
       salesperson_code: r.SALESPERSON_CODE || null,
       remaining_amount: toNum_(r.REMAINING),
@@ -1276,6 +1288,10 @@ function upsertBcInvoicesToSupabase_(rows) {
       rsm_date: parseBcDateForSupabase_(r.RSM_DATE),
       source: 'bc_invoices_backfill'
     };
+
+    if (hasAmountExcl) row.amount_excl = toNum_(amountExclRaw);
+
+    return row;
   }).filter(function(x) { return x.document_no; });
 
   if (!payload.length) return { uploaded: 0 };
@@ -1316,7 +1332,33 @@ function upsertBcCreditInvoicesToSupabase_(rows) {
   var endpoint = conf.baseUrl + '/bc_credit_invoices_raw?on_conflict=document_no';
   var payload = rows.map(function(r) {
     var documentNo = String(r.DOCUMENT_NO || '').trim();
-    return {
+
+    // ── amount_excl: send it ONLY when the export actually supplied a value ──
+    // History (read before changing this):
+    //   2026-05-01 incident — the old BC *Sheets* export had no 'Upphaed'
+    //   (excl-VAT) column, only 'Upphaed med VSK'. `toNum_(undefined)` returns 0,
+    //   so every row was written with amount_excl = 0 and the column was wiped.
+    //   Commit 22d73f4 "fixed" it by removing the field from the payload
+    //   entirely, relying on PostgREST merge-duplicates only touching columns
+    //   that are present. core/sql/restore_amount_excl.sql repaired history.
+    //   The invoice payload later had amount_excl restored; this credit payload
+    //   was missed, so every newly INSERTED credit row got NULL. Invisible until
+    //   the 2-month ingest freeze produced genuinely new rows for 2026-06..08 and
+    //   net BC silently equalled gross — amount_excl is what ALL net-BC and
+    //   web-share logic reads (bc_monthly_net_v1, monthly_digest, day_kpi_pack).
+    //
+    // The current XLSX drop export DOES provide 'Upphæð' (verified by
+    // diagnoseBcDropHeaders_v1 on 2026-08-05), so the value is available again.
+    // But a bare toNum_() would re-create the 2026-05-01 incident the moment the
+    // column disappears again. Omitting the key on absence is the safe form:
+    // present → exact value written; absent → key not sent, existing value
+    // preserved. Never write 0 or null over good data. Keep it this way.
+    var amountExclRaw = r.AMOUNT_EXCL;
+    var hasAmountExcl = amountExclRaw !== undefined
+                     && amountExclRaw !== null
+                     && String(amountExclRaw).trim() !== '';
+
+    var row = {
       document_no: documentNo,
       company_id: r.COMPANY_ID || null,
       external_doc_no: null,
@@ -1338,7 +1380,13 @@ function upsertBcCreditInvoicesToSupabase_(rows) {
       rsm_date: parseBcDateForSupabase_(r.RSM_DATE),
       source: 'bc_credit_invoices_backfill'
     };
-  }).filter(function(x) { return x.document_no; });
+
+    // Only add the key when a value exists — see the note above. Omitting it
+    // lets merge-duplicates preserve whatever is already stored.
+    if (hasAmountExcl) row.amount_excl = toNum_(amountExclRaw);
+
+    return row;
+  }).filter(function(x) { return x && x.document_no; });
 
   if (!payload.length) return { uploaded: 0 };
 
@@ -2970,6 +3018,22 @@ function runDailySanityChecks_v1() {
           : 'No ingestion run errors in last 24h'
       );
 
+      // 'partial' = the job completed but a sub-step failed (e.g. a mart refresh
+      // that timed out). Added 2026-08-06: this check only looked for 'error',
+      // and jobs that lost their refresh step still wrote 'success', so stale
+      // materialized views behind live pages went unreported for months. Kept
+      // separate from the error check so a partial run does not read as an
+      // outright failure — it is degraded, not dead.
+      var partialRows = list.filter(function(r) { return String(r && r.status || '') === 'partial'; });
+      addCheck_(
+        'ingestion_partial_24h',
+        partialRows.length === 0,
+        partialRows.length
+          ? ('Partial runs (a sub-step failed — check `details`): '
+              + partialRows.slice(0, 8).map(function(r) { return r.job_name + '@' + r.started_at; }).join(', '))
+          : 'No partial ingestion runs in last 24h'
+      );
+
       var expectedWindowsHours = {
         safePoll_v2: 4,
         scheduledMagentoSync_v1: 6,
@@ -3423,11 +3487,38 @@ function scheduledReferenceSync_v1() {
       toNum_(result.productsBackfill && result.productsBackfill.uploaded) +
       toNum_(result.customerAnalysisBackfill && result.customerAnalysisBackfill.uploaded);
 
+    // A mart refresh that fails must NOT be logged as a clean success. Between
+    // 2026-05 and 2026-08-06 refresh_mv_top_products_all/_master failed on every
+    // off-peak run with a Postgres statement timeout (57014), yet every run was
+    // written as 'success'. runDailySanityChecks_v1 reads `status`, saw success,
+    // and never alerted — so two materialized views behind live dashboard pages
+    // went stale for months in complete silence. Degrade the status and shout.
+    var martErr = (result.martRefresh && result.martRefresh.error) ? String(result.martRefresh.error) : '';
+    var refStatus = martErr ? 'partial' : 'success';
+
     if (runId) {
       try {
-        finishIngestionRun_(runId, 'success', rowsProcessed, result, null);
+        finishIngestionRun_(runId, refStatus, rowsProcessed, result, martErr || null);
       } catch (logErr2) {
-        Logger.log('[REFSYNC][WARN] Could not finish ingestion run log (success): ' + logErr2);
+        Logger.log('[REFSYNC][WARN] Could not finish ingestion run log (' + refStatus + '): ' + logErr2);
+      }
+    }
+
+    if (martErr) {
+      Logger.log('[REFSYNC][ERROR] Mart refresh failed — run marked partial: ' + martErr);
+      try {
+        sendOpsAlert_(
+          '[KPI ALERT] Mart refresh failed (scheduledReferenceSync_v1)',
+          'Ein eða fleiri materialized views endurbyggðust ekki, svo síður sem lesa þær '
+            + 'sýna gömul gögn þar til næsta keyrsla tekst.\n\n'
+            + 'Algengasta orsök: Postgres statement timeout (57014) — þá er refreshið '
+            + 'orðið hægara en statement_timeout á service_role.\n\n'
+            + JSON.stringify(result.martRefresh, null, 2),
+          'mart_refresh_failed',
+          720   // 12h — runs every 6h, so at most one alert per day
+        );
+      } catch (alertErr) {
+        Logger.log('[REFSYNC][WARN] Could not send mart refresh alert: ' + alertErr);
       }
     }
 
@@ -3754,17 +3845,42 @@ function scheduledCustomerAnalysisSync_v1() {
 
     result.finishedAt = new Date().toISOString();
 
+    // The MV refresh is the step that makes the work visible. If it fails the
+    // run is NOT a success — the sheet and raw table are current but every page
+    // still reads the stale MV. Marking it 'success' is what let this sit
+    // unnoticed on 2026-08-06 (and, before the statement_timeout fix, on every
+    // run once the MV grew past 8 seconds).
+    var caStatus = (result.profilesMvRefresh === 'error') ? 'partial' : 'success';
+
     if (runId) {
       try {
         finishIngestionRun_(
           runId,
-          'success',
+          caStatus,
           toNum_(result.customerAnalysisBackfill && result.customerAnalysisBackfill.uploaded),
           result,
-          null
+          caStatus === 'partial' ? 'mv_customer_profiles_labeled_trends refresh failed' : null
         );
       } catch (logErr2) {
-        Logger.log('[CASYNC][WARN] Could not finish ingestion run log (success): ' + logErr2);
+        Logger.log('[CASYNC][WARN] Could not finish ingestion run log (' + caStatus + '): ' + logErr2);
+      }
+    }
+
+    if (caStatus === 'partial') {
+      Logger.log('[CASYNC][ERROR] Profiles MV refresh failed — run marked partial.');
+      try {
+        sendOpsAlert_(
+          '[KPI ALERT] Customer profiles MV refresh failed',
+          'buildCustomerAnalysis tókst og gögnin fóru í raw.customer_analysis_raw, en '
+            + 'api.mv_customer_profiles_labeled_trends endurbyggðist ekki.\n\n'
+            + 'Afleiðing: /kpi/vidskiptavinur sýnir gamlan lista — nýir viðskiptavinir '
+            + 'birtast ekki og webshop_active er úrelt. Allt á síðunni les þetta MV.\n\n'
+            + 'Handvirk lagfæring: select public.refresh_mv_customer_profiles_labeled_trends();',
+          'profiles_mv_refresh_failed',
+          720
+        );
+      } catch (alertErr) {
+        Logger.log('[CASYNC][WARN] Could not send profiles MV alert: ' + alertErr);
       }
     }
 
@@ -4310,15 +4426,42 @@ function removeTriggersByHandler_v1(handlerFn) {
  * Returns array of trigger descriptors; also writes to Logger.
  */
 function auditTriggers_v1() {
+  // ── REQUIRED — must be installed. Absent => [AUDIT][WARN] Missing trigger.
+  // Mirrors the handler list in resetRecommendedTimeTriggers_v1(); keep the two
+  // in sync. Cadences below are read from the install* functions, not guessed.
+  //
+  // Corrected 2026-08-06. The previous map had FIVE wrong cadences
+  // (sanity checks, reference, magento, cludo, klaviyo) and was missing four
+  // handlers entirely — including scheduledSearchConsoleSync_v1, which was
+  // uninstalled and went unreported because the audit did not know it existed.
+  // Five legitimate handlers also showed as "Unknown handler", so eight of the
+  // audit's warnings were noise and three were real. That noise is why
+  // scheduledCustomerAnalysisSync_v1 and scheduledKlaviyoSync_v1 sat
+  // uninstalled from 2026-05-11 to 2026-08-06 without anyone noticing.
   var EXPECTED = {
-    safePoll_v2:                    'every 5 min',
-    runDailySanityChecks_v1:        'daily ~02:xx',
-    scheduledReferenceSync_v1:      'daily ~03:xx',
-    scheduledMagentoSync_v1:        'daily ~04:xx',
-    scheduledCludoSync_v1:          'daily ~04:xx',
-    scheduledCustomerAnalysisSync_v1: 'daily ~05:xx',
-    scheduledKlaviyoSync_v1:        'daily ~05:xx',
-    scheduledNewwebStatusSync_v2:   'daily ~11:30 & ~17:30'
+    safePoll_v2:                      'every 5 min',
+    scheduledMagentoSync_v1:          'hourly ~:20',
+    scheduledKlaviyoSync_v1:          'every 15 min',
+    scheduledReferenceSync_v1:        'every 6h ~:50',
+    scheduledCludoSync_v1:            'every 12h ~:55',
+    scheduledCustomerAnalysisSync_v1: 'daily ~05:25',
+    scheduledSearchConsoleSync_v1:    'daily ~05:30',
+    scheduledGa4Sync_v1:              'daily ~06:30',
+    scheduledZeroPriceScan_v1:        'daily ~06:50',
+    runDailySanityChecks_v1:          'daily ~07:40',
+    scheduledNewwebStatusSync_v2:     'daily ~11:30 & ~17:30 (2 triggers)',
+    scheduledWeeklyDigest:            'Mondays ~08:00'
+  };
+
+  // ── KNOWN BUT OPTIONAL — recognised so they do not log as "Unknown handler",
+  // never warned about when absent. Adding these to EXPECTED would just move the
+  // noise from one warning to the other.
+  var OPTIONAL = {
+    onOpen:                       'spreadsheet ON_OPEN (not time-based)',
+    pruneCompletedApplications:   'no installer in repo — installed by hand',
+    scheduledMonthlyDigest:       'monthly, 1st ~08:00 — install on demand',
+    runScheduledSeoAutomation_v1: 'every 30 min — SEO batch, install on demand',
+    collectInvoicesToDrive_v1:    'daily ~07:10 — invoice collector'
   };
 
   var triggers = ScriptApp.getProjectTriggers();
@@ -4330,7 +4473,7 @@ function auditTriggers_v1() {
       handler:  handler,
       type:     type,
       eventType: evtType,
-      expected: EXPECTED[handler] || '(unrecognised)'
+      expected: EXPECTED[handler] || OPTIONAL[handler] || '(unrecognised)'
     };
   });
 
@@ -4348,21 +4491,40 @@ function auditTriggers_v1() {
       ' | expected=' + r.expected);
   });
 
-  // Warn about unexpected handlers
+  // Genuinely unknown handlers — not required, not a known optional one.
+  // Something installed a trigger nobody documented; worth looking at.
+  var unknown = [];
   Object.keys(counts).forEach(function(handler) {
-    if (!EXPECTED[handler]) {
+    if (!EXPECTED[handler] && !OPTIONAL[handler]) {
+      unknown.push(handler);
       Logger.log('[AUDIT][WARN] Unknown handler: ' + handler + ' (' + counts[handler] + ' trigger(s))');
     }
   });
 
-  // Warn about missing expected handlers
+  // Required handlers with no trigger installed. THIS is the line that matters —
+  // keep it free of noise so it is never scrolled past again.
+  var missing = [];
   Object.keys(EXPECTED).forEach(function(handler) {
     if (!counts[handler]) {
+      missing.push(handler);
       Logger.log('[AUDIT][WARN] Missing trigger for: ' + handler + ' (expected ' + EXPECTED[handler] + ')');
     }
   });
 
-  return { total: triggers.length, byHandler: counts, triggers: rows };
+  if (missing.length) {
+    Logger.log('[AUDIT][ERROR] ' + missing.length + ' required trigger(s) NOT installed: ' + missing.join(', '));
+  } else {
+    Logger.log('[AUDIT][OK] All ' + Object.keys(EXPECTED).length + ' required triggers are installed.');
+  }
+
+  return {
+    total: triggers.length,
+    byHandler: counts,
+    triggers: rows,
+    missing: missing,
+    unknown: unknown,
+    ok: missing.length === 0
+  };
 }
 
 function installScheduledGa4SyncTrigger_v1() {

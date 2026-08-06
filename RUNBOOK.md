@@ -150,6 +150,53 @@ order by 1,3;
 
 ## Common Issues
 
+### Issue: `Permission denied while enabling APIs: <api> for GCP project 159224455440`
+- Symptom: any Google service call fails with this, e.g.
+  `[BC_DROP] Cannot open drop folder: Permission denied while enabling APIs: drive`
+- Cause: the main Apps Script project is attached to a **Standard** GCP project
+  (`storkaup-kpi-core`, number `159224455440`), not a default one. Apps Script
+  auto-enables APIs only in *default* projects. In a Standard project every
+  Google API must be enabled manually in Cloud Console before first use —
+  Apps Script's auto-enable attempt is denied, and the call fails at runtime.
+- Action:
+  1. Open `https://console.cloud.google.com/apis/library/<api>.googleapis.com?project=159224455440`
+     (e.g. `drive.googleapis.com`) and click **Enable**.
+  2. Wait a few seconds for propagation, then re-run.
+  3. If the console shows "you don't have permission", it is an IAM/org-policy
+     issue — request `serviceusage.services.enable` on that project from IT.
+- ⚠️ This is not BC-specific. It hits every DriveApp user in the project:
+  `core/utils.js` (BC drop), `core/invoices.js` (invoice collector),
+  `core/seo_manager.js` (SEO folders). When it happens, check
+  **Apps Script → Executions → Failed** to see how long it has been broken and
+  what else stopped silently.
+- ⚠️ Applies to any NEW Google API this project starts using. Adding an advanced
+  service or a new scope is not enough on a Standard GCP project — enable the
+  API in Cloud Console too, or it will fail only at runtime, in production.
+- Occurred 2026-08-05 (Drive API), blocking the first BC drop import after the
+  ingest freeze. Enabling Drive API in the console resolved it.
+
+### Not an issue: BC columns are 0 in SALES_SUMMARIES from 2026-05 onward
+- Symptom: `BC Revenue Incl/Excl`, `BC Orders` are 0 for recent months; `Build All`
+  does not fix it. Also `Web Orders % of BC` / `Web % of BC` are 0.0% from 2025-09.
+- Cause: **known and accepted (2026-08-05), do not chase.** SALES_SUMMARIES reads
+  the **BC_INVOICES Google Sheet**, and nothing writes to that sheet any more —
+  `processBcDrop_v1` loads BC into **Supabase only** (`core/utils.js:1501`).
+  Every code reference to `BC_INVOICES` is a read. The sheet has been frozen
+  since it was last pasted into manually (~2026-04), so `Build All` just re-reads
+  stale data. Separately, the 0.0% web-share columns broke in 2025-09 because
+  `SALESPERSON_CODE` stopped mapping when BC moved to SaaS and renamed the header
+  (`core/schema.js:100`) — so even pasting fresh data would leave those at 0.
+- Why it is safe to leave: the only consumer of these columns is
+  `getLiveBcWebShare_` in `webapp.js:240`, serving `?action=dashboard`, which no
+  Webflow page calls. Nothing user-facing depends on them.
+- The real BC numbers live in Supabase and are correct: `public.day_kpi_pack`
+  (BC fields deliberately nulled for anon), `mart.v_bc_monthly_net_v1`,
+  `raw.bc_invoices_raw`. Dashboard BC ratios come from
+  `window.STORKAUP_BC_MANUAL`, entered by hand.
+- If these columns ever need to be real: repoint the `loadBCMonthly*` family in
+  `core/salessummaries.js` at `raw.bc_invoices_raw` via service_role. Do NOT
+  reinstate the manual paste — that is assessment item 10 (brittle manual step).
+
 ### Issue: Magento auth 401 in customer sync
 - Symptom: `Magento auth failed (401)` in `scheduledMagentoSync_v1`
 - Action:

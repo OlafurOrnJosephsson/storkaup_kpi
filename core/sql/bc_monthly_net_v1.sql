@@ -76,4 +76,10 @@ from inv
 full outer join cr on cr.month_start = inv.month_start
 order by month_start desc;
 
-grant select on mart.v_bc_monthly_net_v1 to anon, authenticated, service_role;
+-- anon deliberately EXCLUDED (2026-08-05): this view exposes BC monthly net
+-- revenue and the web-share ratios, and nothing in the codebase reads it — the
+-- dashboard's web-share cards come from window.STORKAUP_BC_MANUAL instead.
+-- Do not add `anon` back here. Re-adding it would silently undo
+-- security_revoke_anon_bc_monthly.sql the next time this file is re-applied,
+-- which is exactly how the June 2026 write-lockdown came undone.
+grant select on mart.v_bc_monthly_net_v1 to authenticated, service_role;

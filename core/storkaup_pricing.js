@@ -208,6 +208,47 @@ function probeStorkaupPricing() {
 }
 
 /************************************************************
+ * 🩺 checkStorkaupAuth — sannreyna SESSION COOKIE (ekki cache)
+ *   Keyrðu þetta eftir að hafa sett nýtt STORKAUP_SESSION_COOKIE.
+ *   ÞVINGAR refresh → prófar cookie-ið sjálft, ekki cache-aða
+ *   token-ið (sem lifir 50 mín og gæti gefið falskt grænt ljós).
+ *   Leakar ekki cookie/token — bara lengd og staðfestingu.
+ ************************************************************/
+function checkStorkaupAuth() {
+  const props = PropertiesService.getScriptProperties();
+  const cookie = props.getProperty('STORKAUP_SESSION_COOKIE');
+
+  if (!cookie) {
+    const out = { ok: false, source: 'none', message: 'STORKAUP_SESSION_COOKIE vantar í Script Properties.' };
+    Logger.log('❌ ' + JSON.stringify(out));
+    return out;
+  }
+  Logger.log('🍪 Cookie til staðar (' + cookie.length + ' stafir).');
+
+  let token;
+  try {
+    token = getStorkaupAccessToken_(true);   // ← þvingaður refresh úr cookie
+  } catch (e) {
+    const out = { ok: false, source: 'cookie', message: String(e && e.message || e) };
+    Logger.log('❌ ' + JSON.stringify(out));
+    return out;
+  }
+  Logger.log('🔑 Nýr accessToken sóttur (' + String(token).length + ' stafir).');
+
+  // Sannreyna að token-ið virki í raun á getProductsPricing
+  const r = fetchStorkaupPricing_(['9002691']);
+  const out = {
+    ok: true,
+    source: 'cookie',
+    tokenLength: String(token).length,
+    pricingRows: r.length,
+    message: 'Cookie gilt — accessToken sóttur og verðfyrirspurn skilaði ' + r.length + ' línu(m).'
+  };
+  Logger.log('✅ ' + JSON.stringify(out));
+  return out;
+}
+
+/************************************************************
  * 🧾 findZeroListPriceProducts_v1 — aðalskönnun
  *  - Alheimur = virkar vörur úr getProductsV2 (á vef)
  *  - Verð úr getProductsPricing

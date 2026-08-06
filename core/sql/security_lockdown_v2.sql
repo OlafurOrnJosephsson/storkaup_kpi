@@ -83,7 +83,29 @@ revoke insert, update, delete on api.sales_tasks from anon;
 
 
 -- ── NOT SQL — also do this in the Supabase dashboard ─────────────────────────
--- Settings → API → Exposed schemas: remove `raw` (it is the append-only source
--- layer and should never be reachable over the API). The dashboards read only
--- via RPCs / public+api views, so this does not break anything. Verify whether
--- `mart` can also be removed (check for any direct /rest/v1 reads of mart.* first).
+-- ❌ WRONG — DO NOT FOLLOW. Corrected 2026-08-05.
+--
+-- The original text here read: "Settings → API → Exposed schemas: remove `raw`
+-- ... this does not break anything." That is false and following it would have
+-- taken down every ingest path in the project.
+--
+-- GAS does not talk to the tables directly — it writes through PostgREST with
+-- `Content-Profile: raw` / `Accept-Profile: raw` and the service_role key. There
+-- are 35 such call sites (core/utils.js ×29, core/ga4.js ×4,
+-- core/newsales_v2.js ×2), including the Magento order upsert behind
+-- safePoll_v2 — the one pipeline CLAUDE.md marks as non-negotiable. Un-exposing
+-- `raw` returns 404 for all of them.
+--
+-- `raw` must stay exposed. What actually keeps it safe (verified 2026-08-05):
+--   1. `anon` has NO USAGE on schema raw (audit Q0) — so anon cannot reach it
+--      over /rest/v1 even though the schema is exposed.
+--   2. RLS + a service_role-only policy on each table (audit Q6).
+--
+-- Note that (1) is now the single load-bearing control, so never grant
+-- `usage on schema raw to anon`. And `authenticated` DOES hold that usage, which
+-- is why the RLS gap on the remaining five raw tables must be closed before any
+-- login is introduced — see security_enable_rls_raw_remaining.sql.
+--
+-- Also in that settings page: "Automatically expose new tables" grants Data API
+-- roles privileges on every new table by default. Turn it OFF — that default is
+-- the most plausible origin of the stray anon grants this project keeps finding.
