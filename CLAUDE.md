@@ -147,13 +147,49 @@ fails now records `partial`, not `success`, and sends an ops alert.
 
 **This section is the single source of truth for production pins.** `NEXT_TASKS.md` and `README.md` point here — do not duplicate pin values elsewhere. Update these whenever Webflow custom code changes.
 
-- Webflow deploy rev (`data-storkaup-rev`): `aff3278`
-- `Webflow/dashboard-bootstrap.js` (script-tag src pin): `df2956f`
-- `Webflow/website-dashboard-bootstrap.js` (script-tag src pin): `b55e8c4`
-- `Webflow/dashboard.js`: `aff3278`
-- `Webflow/website-dashboard.js`: `ad5ae3b`
-- `Webflow/dashboard-theme.css`: `53b118c`
-- `Webflow/customer-profiles.js`: `53b118c`
+**There is ONE pin, not one per file.** The bootstrap scripts read
+`data-storkaup-rev` off their own `<script>` tag and load every child file from
+that revision (`getRevision()` in both bootstraps). Changing it moves
+`dashboard.js`, `customer-profiles.js`, `order-search.js`, `top-products.js`,
+`website-dashboard.js` and `dashboard-theme.css` together. This list used to
+give a separate commit per file, which implied a control that does not exist.
+
+**Live (verified against Webflow custom code 2026-08-06):**
+
+| What | Value |
+|---|---|
+| `data-storkaup-rev` — governs all child files | `6c992c5` |
+| `dashboard-bootstrap.js` script-tag src | `6c992c5` |
+| `website-dashboard-bootstrap.js` script-tag src | `6c992c5` |
+
+Both bootstrap files at `6c992c5` are byte-identical to HEAD, so the live pages
+are current. The values recorded here before (`aff3278`, `df2956f`, `b55e8c4`)
+were stale — the deploy had moved to `6c992c5` on 2026-07-14 and nobody updated
+this table.
+
+**Hardcoded fallbacks** — used only if `data-storkaup-rev` is missing from the
+tag. Both bootstraps carry a comment saying "Keep in sync with CLAUDE.md pins";
+neither value was ever recorded here. They are immutable commits by design (never
+`@main`: a mutable branch would let a compromised repo inject straight into the
+KPI pages).
+
+| File | Fallback | Date |
+|---|---|---|
+| `dashboard-bootstrap.js` | `2458fc5` | 2026-06-30 |
+| `website-dashboard-bootstrap.js` | `53b118c` | 2026-06-29 |
+
+⚠️ The two fallbacks differ from each other and both lag the live rev. If the
+attribute is ever dropped, `/kpi/dashboard` and `/kpi/vefmaelabord` would silently
+load different vintages. Bump them when you bump the live rev, or accept that
+they are a last-resort floor rather than a mirror.
+
+**When to change a pin:** only when a file under `Webflow/` actually changes.
+The pin freezes content; it does not track HEAD. Re-pinning to a newer commit
+that contains identical bytes only busts caches and makes this table misreport
+when the frontend last changed.
+
+**Reference baselines** (not deploy pins — historical anchors for comparison):
+
 - Trigger schedule baseline: `ab2931a`
 - Parent/child profile aggregation baseline: `ab0aafd`
 - Parent/child last-orders merge: `ca32334`
