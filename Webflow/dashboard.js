@@ -2324,7 +2324,11 @@
     var dayPicker = document.querySelector("input[data-day-picker], [data-day-picker] input[type='date'], input[type='date'][data-day-picker]");
     var dayMode = getDayMode();
 
-    if (!items.length && !hasMetrics && !dayPicker) return;
+    /* The Klaviyo page can legitimately carry no [data-metric] at all: once the
+       old stat rows are removed, [data-klaviyo-campaign-cards] is the only
+       anchor left and dashboard.js renders the whole page itself. Without this
+       condition init() bailed and the page came up blank. */
+    if (!items.length && !hasMetrics && !dayPicker && !hasKlaviyoMetricTargets()) return;
     log("Found month items:", items.length);
     applyDigitalAdoptionDisclaimer();
 
