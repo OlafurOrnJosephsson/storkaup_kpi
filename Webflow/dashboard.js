@@ -1602,10 +1602,11 @@
         var orders = toNumberSafe(r && r.attributed_orders_30d);
         var tr = klEl("tr");
 
+        /* Name only. The view carries no send timestamp, and the campaign_id is
+           a ULID — noise in a list a salesperson reads. Klaviyo's default names
+           already embed the send date. */
         var nameCell = klEl("td", "kl-c-name",
           String((r && r.campaign_name) || (r && r.campaign_id) || "Ónafngreind herferð"));
-        var cid = String((r && r.campaign_id) || "").trim();
-        if (cid) nameCell.appendChild(klEl("span", null, cid));
         tr.appendChild(nameCell);
 
         tr.appendChild(klEl("td", null, formatNumber(orders)));
@@ -1757,7 +1758,21 @@
     split.appendChild(camp);
 
     wrap.appendChild(split);
-    cardsHost.parentNode.insertBefore(wrap, cardsHost);
+
+    /* Lead with the timeline. The Webflow section stacks
+       [stats rows] → [spacer] → [data-klaviyo-campaign-cards], so inserting
+       before the cards host would bury the chart below the old rows. Anchor
+       on whichever sibling holds the first klaviyo metric instead, falling
+       back to the cards host if the rows have already been removed. */
+    var parent = cardsHost.parentNode;
+    var anchor = cardsHost;
+    var firstMetric = document.querySelector('[data-metric^="klaviyo-"]');
+    if (firstMetric) {
+      var node = firstMetric;
+      while (node && node.parentNode !== parent) node = node.parentNode;
+      if (node) anchor = node;
+    }
+    parent.insertBefore(wrap, anchor);
   }
 
   function fetchKlaviyoAttributionSummary() {
