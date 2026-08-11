@@ -3182,15 +3182,47 @@ function runDailySanityChecks_v1() {
         return;
       }
 
-      // Cross-check against BC invoices sheet directly (authoritative — Supabase may lag)
+      // Cross-check against BC invoices in SUPABASE.
+      //
+      // This read the BC_INVOICES Google Sheet until 2026-08-07, with a comment
+      // claiming the sheet was authoritative because Supabase might lag. That is
+      // now exactly backwards: processBcDrop_v1 writes to Supabase only and has
+      // not written the sheet since commit 4ce7485 (2026-05-02), so the sheet is
+      // months stale while raw.bc_invoices_raw is current. The check was
+      // therefore finding no recent order in BC and firing this alert every 12
+      // hours on orders that were invoiced normally.
+      //
+      // Matched on external_doc_no OR web_order_no: BC carried the Magento id in
+      // 'Numer utanadk. skjals' historically, and the SaaS export added
+      // 'Vefpöntunarnr.' which links web orders explicitly. Checking both covers
+      // the 2025-08-18 cutover in either direction.
       var allIds = list.map(function(r) { return r.order_id; });
-      var allIdsSet = new Set(allIds.map(String));
-      var bcSheetRows = loadTableBySchema_('BC_INVOICES') || [];
-      var inBc = new Set(
-        bcSheetRows
-          .filter(function(r) { return allIdsSet.has(String(r.EXTERNAL_DOC_NO || '').trim()); })
-          .map(function(r) { return String(r.EXTERNAL_DOC_NO || '').trim(); })
-      );
+      var quoted = allIds
+        .map(function(id) { return '"' + String(id).replace(/"/g, '') + '"'; })
+        .join(',');
+
+      var inBc = new Set();
+      try {
+        var bcRows = supabaseRestGetJson_(
+          'bc_invoices_raw?select=external_doc_no,web_order_no'
+            + '&or=(external_doc_no.in.(' + encodeURIComponent(quoted) + ')'
+            + ',web_order_no.in.(' + encodeURIComponent(quoted) + '))'
+            + '&limit=1000',
+          'raw'
+        );
+        (Array.isArray(bcRows) ? bcRows : []).forEach(function(r) {
+          var ext = String(r.external_doc_no || '').trim();
+          var web = String(r.web_order_no || '').trim();
+          if (ext) inBc.add(ext);
+          if (web) inBc.add(web);
+        });
+      } catch (bcErr) {
+        // Cannot reach BC → say so rather than claiming every order is missing.
+        addCheck_('stuck_pending_orders', true,
+          'Could not read raw.bc_invoices_raw (' + bcErr + ') — BC cross-check skipped, no alert sent',
+          'warning');
+        return;
+      }
 
       var notInBc = list.filter(function(r) { return !inBc.has(String(r.order_id)); });
       var inBcList = list.filter(function(r) { return inBc.has(String(r.order_id)); });
