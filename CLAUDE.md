@@ -154,18 +154,44 @@ that revision (`getRevision()` in both bootstraps). Changing it moves
 `website-dashboard.js` and `dashboard-theme.css` together. This list used to
 give a separate commit per file, which implied a control that does not exist.
 
-**Live (verified against Webflow custom code 2026-08-06):**
+**Live (2026-08-11, per the deployer — attribute bumped on all seven KPI pages):**
 
 | What | Value |
 |---|---|
-| `data-storkaup-rev` — governs all child files | `6c992c5` |
+| `data-storkaup-rev` — governs all child files | `4131408` |
 | `dashboard-bootstrap.js` script-tag src | `6c992c5` |
 | `website-dashboard-bootstrap.js` script-tag src | `6c992c5` |
 
-Both bootstrap files at `6c992c5` are byte-identical to HEAD, so the live pages
-are current. The values recorded here before (`aff3278`, `df2956f`, `b55e8c4`)
-were stale — the deploy had moved to `6c992c5` on 2026-07-14 and nobody updated
-this table.
+Only `data-storkaup-rev` was moved to `4131408`; the two script-tag `src`
+values were deliberately left at `6c992c5`, because **both bootstrap files are
+byte-identical between the two revisions** — the `4131408` deploy touched only
+`dashboard.js` and `dashboard-theme.css`. Re-pinning the tags would have busted
+their cache for no content change. Verify with:
+
+```bash
+git diff --stat 6c992c5 4131408 -- Webflow/dashboard-bootstrap.js Webflow/website-dashboard-bootstrap.js
+```
+
+`4131408` shipped the Klaviyo insights block on `/kpi/klaviyo` (monthly
+timeline with un-measured months drawn as voids, traceability split, campaign
+table) and fixed two things worth knowing about:
+
+- `klaviyo-last-sync-date` printed *today's date* unconditionally, so the page
+  always claimed to be current. It now reports `max(order_date)`.
+- `init()` bailed unless it found `.dashboard-date-item[data-month]`, any
+  `[data-metric]`, or a day picker. A `/kpi/klaviyo` stripped down to just
+  `[data-klaviyo-campaign-cards]` matched none of them and came up blank. The
+  guard now also accepts `hasKlaviyoMetricTargets()`.
+
+⚠️ The **hardcoded fallbacks below are now two revisions stale** and were not
+bumped with this deploy. Bumping them is circular — the fallback lives *inside*
+the bootstrap, so changing it changes that file's bytes, which means the
+script-tag `src` pins would then have to move too. Left deliberately; see the
+warning under the fallback table.
+
+Historical note: the values recorded here before `6c992c5` (`aff3278`,
+`df2956f`, `b55e8c4`) were stale — the deploy had moved to `6c992c5` on
+2026-07-14 and nobody updated this table.
 
 **Hardcoded fallbacks** — used only if `data-storkaup-rev` is missing from the
 tag. Both bootstraps carry a comment saying "Keep in sync with CLAUDE.md pins";
