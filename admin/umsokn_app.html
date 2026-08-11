@@ -18,6 +18,27 @@
   /* Standalone page frame (var transparent/full-bleed í iframe áður) */
   --sk-page-bg: #f4f5fa;   /* picked ljósgrár grunnur, hallar í --sk-blue */
   --sk-max:     1180px;    /* miðjuð hámarksbreidd — stilltu á einum stað */
+
+  /* ── Stöðulitir (2026-08-06) ───────────────────────────────────────────
+     Kortið á að segja hvað það vill áður en það er lesið: gult = ekki til í
+     BC, þarf svarbréf. Grænt = til í BC, aðeins staðfesta. Sami litur er á
+     kanti kortsins og á aðgerðareitnum, svo ástandið sést úr fjarlægð. */
+  --sk-wait:      #b26a00;   /* bíður aðgerðar */
+  --sk-wait-bg:   #fff5e1;
+  --sk-wait-edge: #f0d9a8;
+  --sk-wait-act:  #fffaf1;   /* aðgerðareitur */
+
+  --sk-ready:      #2f7a46;  /* tilbúið til staðfestingar */
+  --sk-ready-bg:   #eaf7ee;
+  --sk-ready-edge: #bfe3cb;
+  --sk-ready-act:  #f3faf5;
+
+  --sk-flag:    #a33a55;     /* einstaklingskennitala */
+  --sk-flag-bg: #fdeef2;
+  --sk-flag-edge:#f3d3db;
+
+  --sk-ink-3:   #868bac;     /* dauf merking — hallar í blátt, ekki hlutlaust grátt */
+  --sk-edge-soft:#eff0f8;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -102,20 +123,72 @@ body {
 
 /* ── Cards ── rows render as cards at ALL widths (no visual table).
    Label comes from td[data-label]; desktop = "label | value" grid, mobile stacks. */
-.card-list {                     /* cards flow into rows */
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
+.card-list {                     /* fyllir breiddina, jafnar hæð innan raðar */
+  display: grid;
+  gap: 1.125rem;
+  grid-template-columns: repeat(auto-fill, minmax(27rem, 1fr));
+  align-items: stretch;
 }
-.card {                          /* one application = one card — uniform width */
-  flex: 0 1 24rem;               /* fixed basis, no grow → all cards equally wide */
+.card {
   border: 1px solid var(--sk-border);
-  border-radius: 0.75rem;
+  border-radius: 0.875rem;
   background: #fff;
-  padding: 0.875rem 1.125rem;
-  box-shadow: 0 1px 4px rgba(16, 6, 159, 0.06);
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(16,6,159,.04), 0 6px 18px -12px rgba(16,6,159,.22);
+  /* Flex-dálkur svo meginmálið taki slakann og aðgerðareiturinn lendi alltaf
+     neðst — annars stiga hnapparnir upp og niður eftir efnismagni. */
+  display: flex;
+  flex-direction: column;
+  min-height: 16rem;
+  transition: box-shadow .18s ease, opacity .4s ease;
 }
-.card.done { opacity: 0.4; }
+.card:hover { box-shadow: 0 1px 2px rgba(16,6,159,.05), 0 10px 26px -14px rgba(16,6,159,.3); }
+.card.done { opacity: 0.35; }
+
+/* Ástandið er á kortinu sjálfu, ekki falið í pillu í miðju eyðublaði. */
+.card.st-wait  { border-top: 3px solid var(--sk-wait); }
+.card.st-ready { border-top: 3px solid var(--sk-ready); }
+
+/* ── Kortahaus: auðkenni + staða ── */
+.uc-head { padding: .9rem 1.05rem .8rem; display: grid; gap: .55rem; }
+.uc-id   { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+.uc-co   { font-size: 1.15rem; font-weight: 700; letter-spacing: -.012em; line-height: 1.2; text-wrap: balance; }
+.uc-when { font-size: .75rem; color: var(--sk-ink-3); white-space: nowrap; padding-top: .25rem; }
+.uc-chips{ display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+
+/* ── Meginmál: tveir dálkar í hljóðlátari register ── */
+.uc-body {
+  border-top: 1px solid var(--sk-edge-soft);
+  padding: .8rem 1.05rem .9rem;
+  display: grid; grid-template-columns: 1fr 1fr; gap: .8rem 1.25rem;
+  flex: 1 1 auto; align-content: start;
+}
+.uc-f  { min-width: 0; }
+.uc-k  {
+  font-size: .5rem; font-weight: 600; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--sk-muted); margin-bottom: .2rem;
+}
+.uc-v  { font-size: .78rem; line-height: 1.5; color: var(--sk-muted); overflow-wrap: anywhere; }
+.uc-v strong { color: var(--sk-text); font-weight: 600; }
+.uc-v .tel { font-family: monospace; letter-spacing: .02em; }
+.uc-ktlink {
+  font-family: monospace; color: var(--sk-blue); text-decoration: none;
+  border-bottom: 1px solid #c9cce8; padding-bottom: 1px;
+}
+.uc-ktlink:hover { border-bottom-color: var(--sk-blue); }
+
+/* ── Aðgerðareitur: litaður eftir stöðu ── */
+.uc-act {
+  display: flex; align-items: center; gap: .55rem; flex-wrap: wrap;
+  padding: .75rem 1.05rem; border-top: 1px solid var(--sk-edge-soft);
+}
+.uc-act.st-wait  { background: var(--sk-wait-act); }
+.uc-act.st-ready { background: var(--sk-ready-act); }
+.uc-act .uc-k    { margin-bottom: 0; }
+.uc-hint {
+  flex: 1 1 100%; font-size: .72rem; line-height: 1.45; color: var(--sk-muted);
+}
+.uc-hint strong { color: var(--sk-text); }
 
 .fld {                           /* value sits UNDER its label heading */
   padding: 0.5rem 0;
@@ -150,21 +223,18 @@ body {
 .payment-cell { font-size: 12px; }
 .cell-kt{color: var(--sk-blue); font-weight:600;font-family: monospace; text-decoration: none; }
 
-/* ── BC badge ── */
-.bc-found {
+/* ── Merki (BC-staða, greiðsla, einstaklingur) ──
+   Sama form á öllum svo hausinn lesist sem ein lína af stöðu. */
+.bc-found, .bc-notfound, .pay-badge, .badge-person {
   display: inline-flex; align-items: center; gap: 4px;
-  background: #d4edda; color: #155724;
-  font-size: 11px; font-weight: 600;
-  padding: 3px 8px; border-radius: 4px;
-  white-space: nowrap;
+  font-size: .72rem; font-weight: 700; letter-spacing: .03em;
+  padding: 3px 9px; border-radius: 7px;
+  border: 1px solid transparent; white-space: nowrap;
 }
-.bc-notfound {
-  display: inline-flex; align-items: center; gap: 4px;
-  background: #fff3cd; color: #856404;
-  font-size: 11px; font-weight: 600;
-  padding: 3px 8px; border-radius: 4px;
-  white-space: nowrap;
-}
+.bc-found    { background: var(--sk-ready-bg); color: var(--sk-ready); border-color: var(--sk-ready-edge); }
+.bc-notfound { background: var(--sk-wait-bg);  color: var(--sk-wait);  border-color: var(--sk-wait-edge); }
+.badge-person{ background: var(--sk-flag-bg);  color: var(--sk-flag);  border-color: var(--sk-flag-edge); }
+.pay-badge   { background: var(--sk-blue-bg);  color: var(--sk-blue);  border-color: #d9dcfb; }
 
 /* ── Buttons ── */
 .btn {
@@ -292,11 +362,52 @@ body {
 
 .app-header           { border-bottom: 1px solid var(--sk-border); background: #fff; }
 .app-inner            { max-width: var(--sk-max); margin: 0 auto; padding: 0 32px; }
-.app-eyebrow          { font-size: .66rem; letter-spacing: .09em; text-transform: uppercase; color: var(--sk-muted); font-weight: 700; padding-top: 14px; }
-.app-header__row      { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-.app-header .tabs     { border-bottom: none; flex: 1; min-width: 0; }
-.app-header__actions  { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.refresh-status       { font-size: .625rem; color: #888; }
+.app-header__row      { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+
+/* Merkið sjálft í stað "STÓRKAUP · UMSÓKNIR" í hástöfum. Litirnir eru
+   innbyggðir í SVG-ið (blátt #10069f, rauða strikið #eb0042) — ekkert hér
+   litar það, svo merkið helst rétt óháð þema. */
+.app-mark             { display: flex; align-items: center; padding: 13px 0 11px; flex: 0 0 auto; }
+.app-mark svg         { height: 36px; width: auto; display: block; }
+
+.app-header .tabs     { border-bottom: none; margin-left: 26px; margin-right: auto; min-width: 0; }
+.app-header__actions  { display: flex; align-items: center; gap: 9px; flex-shrink: 0; padding-bottom: 11px; }
+.refresh-status       { font-size: .68rem; color: var(--sk-ink-3); white-space: nowrap; transition: color .3s ease; }
+.refresh-status.flash { color: var(--sk-ready); }
+
+/* ── Hausahnappar ──
+   Hreyfing sem segir til um stöðu, aldrei skraut: snúningur þýðir að eitthvað
+   er í gangi. Sækja-aftur fær einn ákveðinn snúning (stutt verk — spinner sem
+   blikkar í 200ms les eins og galli); Samstilla fær samfelldan snúning því hún
+   tekur tugi sekúnda, og heldur staðfestingu í tvær sekúndur áður en hún
+   fer í hvíld. */
+.icon-btn, .sync-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 36px; border-radius: .5rem; cursor: pointer;
+  border: 1px solid var(--sk-border); background: #fff; color: var(--sk-text);
+  font-family: inherit; font-size: .8rem; font-weight: 600;
+  transition: background-color .16s ease, border-color .16s ease,
+              box-shadow .16s ease, transform .1s ease, color .16s ease;
+}
+.icon-btn { width: 36px; padding: 0; }
+.sync-btn { padding: 0 15px; }
+.icon-btn:hover, .sync-btn:hover {
+  background: #f7f8fd; border-color: #d6d9ea;
+  box-shadow: 0 2px 6px -2px rgba(16,6,159,.18);
+}
+.icon-btn:active, .sync-btn:active { transform: translateY(1px); box-shadow: none; }
+.icon-btn:focus-visible, .sync-btn:focus-visible { outline: 2px solid var(--sk-blue); outline-offset: 2px; }
+.icon-btn svg, .sync-btn svg { width: 16px; height: 16px; display: block; }
+
+.icon-btn.busy svg, .sync-btn.busy svg { animation: spin .75s linear infinite; }
+.icon-btn.turn svg { animation: spin .55s cubic-bezier(.3,.9,.3,1); }
+.sync-btn[disabled] { cursor: default; color: var(--sk-muted); }
+.sync-btn.ok { background: var(--sk-ready-bg); border-color: var(--sk-ready-edge); color: var(--sk-ready); }
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn svg, .sync-btn svg { animation: none !important; }
+  .card, .icon-btn, .sync-btn, .tab { transition-duration: .01ms !important; }
+}
 
 /* ── Mobile: header stacks, cards go single-column ── */
 @media (max-width: 768px) {
@@ -318,12 +429,16 @@ body {
 
   .hide-mobile { display: none !important; }
 
-  /* Cards span the full width on phones */
-  .card { flex-basis: 100%; max-width: none; }
+  /* Eitt kort á breidd, og reitirnir tveir staflast */
+  .card-list { grid-template-columns: 1fr; gap: .875rem; }
+  .uc-body   { grid-template-columns: 1fr; }
+  .app-mark  { padding: 10px 0 6px; }
+  .app-mark svg { height: 30px; }
+  .app-header .tabs { margin-left: 0; width: 100%; }
 
-  /* Action controls fill the width, comfy tap targets */
-  .action-cell .template-select { width: 100%; max-width: none; margin: 0 0 0.5rem; height: 2.625rem; font-size: 0.875rem; }
-  .action-cell .btn { width: 100%; font-size: 0.875rem; }
+  /* Aðgerðir fylla breiddina — þægileg snertimörk */
+  .uc-act .template-select { width: 100%; max-width: none; height: 2.625rem; font-size: 0.875rem; }
+  .uc-act .btn { width: 100%; font-size: 0.875rem; }
   .score-input { width: 4rem; height: 2.375rem; font-size: 0.875rem; }
 }
 </style>
@@ -332,8 +447,16 @@ body {
 
 <div class="app-header">
   <div class="app-inner">
-    <div class="app-eyebrow">Stórkaup · Umsóknir</div>
     <div class="app-header__row">
+      <div class="app-mark">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 83 56" role="img" aria-label="Stórkaup">
+          <g clip-path="url(#sk_logo_a)">
+            <path fill="#10069F" d="M4.973 22.134c.094 1.406 1.422 2.731 3.93 2.731 2.51 0 3.52-1.041 3.52-2.462 0-1.343-1.09-1.959-3.19-2.4l-3.047-.664c-3.19-.63-5.73-2.368-5.73-6.126 0-4.31 3.6-6.724 8.414-6.724 5.21 0 8.288 2.904 8.335 6.582h-4.814c-.094-1.342-1.216-2.652-3.537-2.652-2.037 0-3.205.963-3.205 2.384 0 1.153 1.026 1.862 2.889 2.227l3.126.63c3.094.601 5.904 2.132 5.904 6.22 0 4.09-3.22 6.963-8.856 6.963-6.581 0-8.664-3.584-8.712-6.709zM24.866 28.449V11.162h-5.857V6.9h16.94v4.262h-5.873v17.287zM37.517 16.482c0-6.126 3.552-9.962 9.646-9.962 6.093 0 9.598 3.868 9.598 9.962v2.51c0 6.063-3.52 9.851-9.63 9.851s-9.616-3.788-9.616-9.85v-2.511zm5.336 2.526c0 3.742 1.736 5.589 4.294 5.589 2.559 0 4.28-1.847 4.28-5.59v-2.589c0-3.725-1.737-5.667-4.28-5.667s-4.294 1.94-4.294 5.667zm2.352-14.24L48.616 0h4.216l-4.168 4.768h-3.459M76.249 13.955c0 3.552-2.384 5.478-3.852 6.078l4.295 8.415h-5.777l-3.647-7.688h-2.952v7.688h-5.13V6.898h9.124c5.32 0 7.94 3 7.94 7.057zm-8.762 3.11c2.022 0 3.378-1.027 3.378-3.064s-1.467-3.19-3.331-3.19h-3.22v6.252h3.172zM11.024 42.012l7.065 11.124h-5.613l-4.934-7.983L5.8 47.21v5.928H1.039V33.496h4.764v8.345h.202l6.748-8.345h5.08l-6.807 8.518zM18.562 53.136l6.331-19.642h5.813l6.288 19.642H31.93l-1.267-4.506H24.59l-1.281 4.506zm8.993-15.383-2.086 7.44h4.345l-2.043-7.44zM43.456 45.768c0 2.504 1.425 3.757 3.497 3.757s3.483-1.282 3.483-3.757V33.493h4.763V46.43c0 4.246-3.121 7.066-8.244 7.066-5.124 0-8.245-2.821-8.245-7.066V33.493h4.748v12.275zM67.484 33.494c4.518 0 6.878 3.108 6.878 6.823s-2.403 6.747-6.936 6.747h-3.497v6.072h-4.748V33.494h8.302999999999999m-3.569 9.988h1.914c2.288 0 3.712-.862 3.712-3.165 0-2.046-1.223-3.164-3.165-3.164h-2.46v6.33"></path>
+            <path fill="#EB0042" d="M82.92 28.65h-2.402v27.352h2.401z"></path>
+          </g>
+          <defs><clipPath id="sk_logo_a"><path fill="#fff" d="M0 0h82.918v56H0z"></path></clipPath></defs>
+        </svg>
+      </div>
       <div class="tabs">
         <div class="tab" data-tab="rafraen" onclick="switchTab('rafraen')">
           Rafræn Innskráning <span class="tab-badge" id="badge-rafraen">0</span>
@@ -344,8 +467,20 @@ body {
       </div>
       <div class="app-header__actions">
         <span id="refresh-status" class="refresh-status"></span>
-        <button class="btn btn-ghost" id="refresh-btn" onclick="loadData(false)">↻</button>
-        <button class="btn btn-ghost" id="sync-btn" onclick="syncMagento()">⟳ Samstilla</button>
+        <button class="icon-btn" id="refresh-btn" onclick="spinRefreshIcon();loadData(false)" title="Sækja aftur" aria-label="Sækja aftur">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 4.2V10h-5.8"/>
+          </svg>
+        </button>
+        <button class="sync-btn" id="sync-btn" onclick="syncMagento()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3.5 12a8.5 8.5 0 0 1 14.3-6.2L20.5 8"/><path d="M20.5 3.2V8h-4.8"/>
+            <path d="M20.5 12a8.5 8.5 0 0 1-14.3 6.2L3.5 16"/><path d="M3.5 20.8V16h4.8"/>
+          </svg>
+          <span id="sync-label">Samstilla</span>
+        </button>
       </div>
     </div>
   </div>
@@ -428,7 +563,27 @@ function fmtClock(d) {
 }
 function setRefreshStatus(text) {
   var el = document.getElementById('refresh-status');
-  if (el) el.textContent = text || '';
+  if (!el) return;
+  el.textContent = text || '';
+  if (!text) return;
+  el.classList.add('flash');          // grænt blikk svo uppfærslan sjáist
+  setTimeout(function() { el.classList.remove('flash'); }, 900);
+}
+
+// Sækja-aftur: einn ákveðinn snúningur. Stutt verk fá hreyfingu, ekki spinner.
+function spinRefreshIcon() {
+  var b = document.getElementById('refresh-btn');
+  if (!b || b.classList.contains('turn')) return;
+  b.classList.add('turn');
+  setTimeout(function() { b.classList.remove('turn'); }, 560);
+}
+
+// Símanúmer koma úr forminu á ýmsu formi (+354 862 5014, 3548625014, bil og
+// bandstrik). Innanlandsapp þarf ekki landsnúmerið — sýnum hreina tölu.
+function fmtTel(raw) {
+  var d = String(raw == null ? '' : raw).replace(/[^0-9]/g, '');
+  if (d.length > 7 && d.indexOf('354') === 0) d = d.substring(3);
+  return d;
 }
 
 // silent=true → background poll: no spinner, and only re-render if the data
@@ -482,27 +637,48 @@ function renderRafraen(rows) {
   }
   var html = '<div class="card-list">';
   rows.forEach(function(r, i) {
-    html += '<div class="card" id="raf-row-' + i + '">'
-      + '<div class="fld date-cell hide-mobile" data-label="Dags.">' + fmtDate(r.date) + '</div>'
-      + '<div class="fld" data-label="Fyrirtæki">'
-        + '<div class="company-cell">' + esc(r.company) + '</div>'
-        + (r.companyKt ? '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" class="cell-kt">' + esc(r.companyKt) + '</a>' : '')
+    var st  = r.bcFound ? 'ready' : 'wait';
+    var tel = fmtTel(r.phone);
+    var showPersonKt = r.personKt && String(r.personKt).replace(/\D/g,'') !== String(r.companyKt || '').replace(/\D/g,'');
+
+    html += '<div class="card st-' + st + '" id="raf-row-' + i + '">'
+
+      + '<div class="uc-head">'
+        + '<div class="uc-id">'
+          + '<div class="uc-co">' + esc(r.company || r.name || '—') + '</div>'
+          + '<div class="uc-when">' + fmtDate(r.date) + '</div>'
+        + '</div>'
+        + '<div class="uc-chips">'
+          + bcBadge(r.bcFound, r.bcWebshopActive)
+          + (isPersonalKt(r.companyKt) ? '<span class="badge-person">Einstaklingur</span>' : '')
+        + '</div>'
       + '</div>'
-      + '<div class="fld name-cell" data-label="Nafn">'
-        + '<div class="company-cell">' + esc(r.name) + '</div>'
-        + (r.personKt ? '<div class="cell-sub">' + esc(r.personKt) + '</div>' : '')
-        + (r.email ? '<div class="cell-sub">' + esc(r.email) + '</div>' : '')
-        + (r.phone ? '<div class="cell-sub">' + esc(r.phone) + '</div>' : '')
+
+      + '<div class="uc-body">'
+        + '<div class="uc-f"><div class="uc-k">Tengiliður</div><div class="uc-v">'
+          + '<strong>' + esc(r.name || '—') + '</strong>'
+          + (r.email ? '<br>' + esc(r.email) : '')
+          + (tel ? '<br><span class="tel">' + esc(tel) + '</span>' : '')
+          + (showPersonKt ? (tel ? ' · ' : '<br>') + '<span class="tel">' + esc(r.personKt) + '</span>' : '')
+        + '</div></div>'
+        + '<div class="uc-f"><div class="uc-k">Fyrirtæki</div><div class="uc-v">'
+          + (r.companyKt
+              ? '<a class="uc-ktlink" target="_blank" rel="noopener" href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/'
+                + esc(r.companyKt) + '">' + esc(r.companyKt) + '</a>'
+              : '<span style="color:var(--sk-ink-3)">Engin kennitala skráð</span>')
+        + '</div></div>'
       + '</div>'
-      + '<div class="fld" data-label="BC staða">' + bcBadge(r.bcFound, r.bcWebshopActive) + '</div>'
-      + '<div class="fld action-cell" data-label="Aðgerð">'
-      + '<select class="template-select" id="raf-tmpl-' + i + '">'
-        + '<option value="">Velja…</option>'
-        + '<option value="redirect">Senda redirect</option>'
-        + '<option value="needkt">Vantar persónulega kt</option>'
+
+      + '<div class="uc-act st-' + st + '">'
+        + '<select class="template-select" id="raf-tmpl-' + i + '">'
+          + '<option value="">Velja aðgerð…</option>'
+          + '<option value="redirect">Senda redirect</option>'
+          + '<option value="needkt">Vantar persónulega kt</option>'
         + '</select>'
-      + '<button class="btn btn-primary" onclick="confirmRafraen(' + i + ')">Senda</button>'
-      + '</div></div>';
+        + '<button class="btn btn-primary" onclick="confirmRafraen(' + i + ')">Senda</button>'
+      + '</div>'
+
+      + '</div>';
   });
   html += '</div>';
   el.innerHTML = html;
@@ -534,7 +710,7 @@ function confirmRafraen(i) {
     a.desc,
     '<strong>' + esc(r.name || r.email) + '</strong>' + esc(r.company ? ' — ' + r.company : '') + '<br>' + esc(r.email),
     function() {
-      run(a.fn, [{ rowIndex: r.rowIndex, email: r.email, name: r.name, company: r.company }])
+      run(a.fn, [{ rowIndex: r.rowIndex, email: r.email, name: r.name, company: r.company, companyKt: r.companyKt }])
         .then(function() {
           document.getElementById('raf-row-' + i).classList.add('done');
           setTimeout(function() {
@@ -562,44 +738,68 @@ function renderUmsokn(rows) {
   }
   var html = '<div class="card-list">';
   rows.forEach(function(r, i) {
-    html += '<div class="card" id="ums-row-' + i + '">'
-      + '<div class="fld date-cell hide-mobile" data-label="Dags.">' + fmtDate(r.date) + '</div>'
-      + '<div class="fld" data-label="Fyrirtæki">'
-        + '<div class="company-cell">' + esc(r.company) + '</div>'
-        + '<a href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/' + esc(r.companyKt) + '" target="_blank" class="cell-kt">' + esc(r.companyKt) + '</a>'
-        + (r.companyEmail ? '<div class="cell-sub">' + esc(r.companyEmail) + '</div>' : '')
-        + ((r.address || r.city) ? '<div class="cell-sub">' + esc([r.address, r.city, r.postal].filter(Boolean).join(', ')) + '</div>' : '')
+    var personal = isPersonalKt(r.companyKt);
+    var st       = r.bcFound ? 'ready' : 'wait';
+    // Kennitala einstaklings er falin þegar hún er sú sama og kennitala
+    // fyrirtækisins — "Einstaklingur"-merkið segir það þegar, og að endurtaka
+    // töluna er hávaði.
+    var showPersonKt = r.personKt && String(r.personKt).replace(/\D/g,'') !== String(r.companyKt).replace(/\D/g,'');
+    var tel  = fmtTel(r.phone);
+    var addr = [r.address, r.city, r.postal].filter(Boolean).join(', ');
+
+    html += '<div class="card st-' + st + '" id="ums-row-' + i + '">'
+
+      + '<div class="uc-head">'
+        + '<div class="uc-id">'
+          + '<div class="uc-co">' + esc(r.company || r.name || '—') + '</div>'
+          + '<div class="uc-when">' + fmtDate(r.date) + '</div>'
+        + '</div>'
+        + '<div class="uc-chips">'
+          + bcBadge(r.bcFound, r.bcWebshopActive)
+          + (personal ? '<span class="badge-person">Einstaklingur</span>' : '')
+          + paymentBadge(r.payment)
+        + '</div>'
       + '</div>'
-      + '<div class="fld name-cell" data-label="Nafn">'
-        + '<div class="company-cell">' + esc(r.name) + '</div>'
-        + (r.email   ? '<div class="cell-sub">' + esc(r.email) + '</div>' : '')
-        + (r.personKt ? '<div class="cell-sub">' + esc(r.personKt) + '</div>' : '')
-        + (r.phone   ? '<div class="cell-sub">' + esc(r.phone) + '</div>' : '')
+
+      + '<div class="uc-body">'
+        + '<div class="uc-f"><div class="uc-k">Tengiliður</div><div class="uc-v">'
+          + '<strong>' + esc(r.name || '—') + '</strong>'
+          + (r.email ? '<br>' + esc(r.email) : '')
+          + (tel ? '<br><span class="tel">' + esc(tel) + '</span>' : '')
+          + (showPersonKt ? (tel ? ' · ' : '<br>') + '<span class="tel">' + esc(r.personKt) + '</span>' : '')
+        + '</div></div>'
+        + '<div class="uc-f"><div class="uc-k">Fyrirtæki</div><div class="uc-v">'
+          + (r.companyKt
+              ? '<a class="uc-ktlink" target="_blank" rel="noopener" href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/'
+                + esc(r.companyKt) + '">' + esc(r.companyKt) + '</a>'
+              : '')
+          + (r.companyEmail ? (r.companyKt ? '<br>' : '') + esc(r.companyEmail) : '')
+          + (addr ? '<br>' + esc(addr) : '')
+          + (r.billingInfo ? '<br>' + esc(r.billingInfo) : '')
+        + '</div></div>'
       + '</div>'
-      + '<div class="fld payment-cell hide-mobile" data-label="Greiðsla">'
-        + paymentBadge(r.payment)
-        + (r.billingInfo ? '<div class="cell-sub-mt">' + esc(r.billingInfo) + '</div>' : '')
-      + '</div>'
-      + '<div class="fld" data-label="BC staða">'
-        + bcBadge(r.bcFound, r.bcWebshopActive)
-        + (isPersonalKt(r.companyKt) ? '<br><span class="badge-person">Einstaklingur</span>' : '')
-      + '</div>'
-      + '<div class="fld hide-mobile score-cell" data-label="Skor">'
-        + '<input class="score-input" id="score-' + i + '" type="number" min="1" max="10" placeholder="1-10" value="' + esc(r.creditScore) + '" onchange="onScoreChange(' + i + ')" />'
-        + '<div id="score-badge-' + i + '">' + scoreBadge(r.creditScore) + '</div>'
-      + '</div>'
-      + '<div class="fld action-cell" data-label="Aðgerð">'
+
+      + '<div class="uc-act st-' + st + '">'
         + (r.bcFound
-          ? '<button class="btn btn-ghost" onclick="confirmDone(' + i + ')">✓ Klárað</button>'
-          : '<select class="template-select" id="tmpl-' + i + '">'
-            + '<option value="">Velja…</option>'
-            + '<option value="1">1 — Ekkert VSK-númer</option>'
-            + '<option value="2" ' + (isPersonalKt(r.companyKt) ? 'selected' : '') + '>2 — Þarf lánshæfismat</option>'
-            + '<option value="3">3 — Staðgreiðsla einungis</option>'
+          ? '<button class="btn btn-primary" onclick="confirmDone(' + i + ')">✓ Klárað</button>'
+            + '<div class="uc-hint">Kveikja á <strong>Viðskiptamaður vefverslunar</strong> í BC og bæta við tengilið — syncast sjálfkrafa í Magento.</div>'
+          : '<span class="uc-k">Skor</span>'
+            + '<input class="score-input" id="score-' + i + '" type="number" min="1" max="10" placeholder="1-10" value="' + esc(r.creditScore) + '" onchange="onScoreChange(' + i + ')" />'
+            + '<select class="template-select" id="tmpl-' + i + '">'
+              + '<option value="">Velja svarbréf…</option>'
+              + '<option value="1">1 — Ekkert VSK-númer</option>'
+              + '<option value="2" ' + (personal ? 'selected' : '') + '>2 — Þarf lánshæfismat</option>'
+              + '<option value="3">3 — Staðgreiðsla einungis</option>'
             + '</select>'
             + '<button class="btn btn-primary" onclick="confirmUmsokn(' + i + ')">Senda</button>'
+            // Aðskilið frá skor-merkinu: onScoreChange skrifar yfir #score-badge,
+            // og þá mátti skýringin um einstaklingskennitölu ekki hverfa með.
+            + (personal ? '<div class="uc-hint">Einstaklingskennitala — svarbréf 2 valið sjálfkrafa.</div>' : '')
+            + '<div class="uc-hint" id="score-badge-' + i + '">' + scoreBadge(r.creditScore) + '</div>'
           )
-      + '</div></div>';
+      + '</div>'
+
+      + '</div>';
   });
   html += '</div>';
   el.innerHTML = html;
@@ -616,7 +816,7 @@ function confirmDone(i) {
     instructions,
     '<strong>' + esc(r.company || r.email) + '</strong>' + (r.companyKt ? '<br><span class="cell-sub">' + esc(r.companyKt) + '</span>' : ''),
     function() {
-      run('webapp_markUmsokn_Done', [{ rowIndex: r.rowIndex, email: r.email }])
+      run('webapp_markUmsokn_Done', [{ rowIndex: r.rowIndex, email: r.email, companyKt: r.companyKt }])
         .then(function() {
           document.getElementById('ums-row-' + i).classList.add('done');
           setTimeout(function() {
@@ -646,7 +846,7 @@ function confirmUmsokn(i) {
     'Sendir template ' + tmpl + ' á umsækjanda og flytur í "' + labels[tmpl] + '" flipa.',
     '<strong>' + esc(r.name || r.email) + '</strong>' + esc(r.company ? ' — ' + r.company : '') + '<br>' + esc(r.email),
     function() {
-      run('webapp_sendUmsokn_Email', [{ rowIndex: r.rowIndex, email: r.email, name: r.name }, tmpl])
+      run('webapp_sendUmsokn_Email', [{ rowIndex: r.rowIndex, email: r.email, name: r.name, companyKt: r.companyKt }, tmpl])
         .then(function() {
           document.getElementById('ums-row-' + i).classList.add('done');
           setTimeout(function() {
@@ -746,11 +946,27 @@ function esc(s) {
 // ── Sync ───────────────────────────────────────────────────────────────────
 
 function syncMagento() {
-  var btn = document.getElementById('sync-btn');
+  var btn   = document.getElementById('sync-btn');
+  var label = document.getElementById('sync-label');
   btn.disabled = true;
-  btn.textContent = '⟳ Samstilli…';
+  btn.classList.remove('ok');
+  btn.classList.add('busy');          // samfelldur snúningur meðan unnið er
+  label.textContent = 'Samstilli…';
   busy = true;
-  function reset() { btn.disabled = false; btn.textContent = '⟳ Samstilla'; busy = false; }
+
+  // Staðfestingin er höfð uppi í tvær sekúndur áður en hnappurinn fer í hvíld —
+  // blikk sem varir 200ms sést ekki, og þá veit notandinn ekki hvort tókst.
+  function reset() {
+    btn.classList.remove('busy');
+    btn.classList.add('ok');
+    label.textContent = 'Samstillt';
+    busy = false;
+    setTimeout(function() {
+      btn.classList.remove('ok');
+      label.textContent = 'Samstilla';
+      btn.disabled = false;
+    }, 1900);
+  }
 
   // Sync er aðeins fersk-hleðsla á Magento-viðskiptavinum; hourly
   // scheduledMagentoSync_v1 heldur sheetinu fersku hvort eð er. Þess vegna má
