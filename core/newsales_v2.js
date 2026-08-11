@@ -1163,6 +1163,22 @@ function safePoll_v2() {
   }
   try {
     pollMagentoOrders_v2();
+
+    // Hjartsláttur (2026-08-11). safePoll_v2 skráði aldrei í raw.ingestion_runs,
+    // en checkIngestionRuns_ bjóst við keyrslu innan 4 klst — svo
+    // ingestion_freshness FÉLL á hverjum degi frá því athugunin var skrifuð og
+    // gat aldrei gengið upp. Dagleg falsk viðvörun á mikilvægustu pípunni.
+    //
+    // Ekki skráð í ingestion_runs viljandi: 288 keyrslur á dag væru ~105.000
+    // raðir á ári í töflu sem á að vera atburðaskrá. Script Property er ein
+    // ritun, engin HTTP-ferð, og sanity-checkin keyra í sama verkefni svo þau
+    // lesa hana beint.
+    try {
+      PropertiesService.getScriptProperties()
+        .setProperty('SAFEPOLL_LAST_OK_MS', String(Date.now()));
+    } catch (hbErr) {
+      Logger.log('[NEWWEB][WARN] Heartbeat write failed: ' + hbErr);
+    }
   } catch (e) {
     var errObj = serializeError_(e);
     logNewwebEvent_('ERROR', 'safePoll_v2 exception', errObj);

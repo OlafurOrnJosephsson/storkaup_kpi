@@ -3004,7 +3004,6 @@ function runDailySanityChecks_v1() {
 
   function checkIngestionRuns_() {
     var jobs = [
-      'safePoll_v2',
       'scheduledMagentoSync_v1',
       'scheduledCludoSync_v1',
       'scheduledCustomerAnalysisSync_v1',
@@ -3046,8 +3045,12 @@ function runDailySanityChecks_v1() {
           : 'No partial ingestion runs in last 24h'
       );
 
+      // safePoll_v2 er VILJANDI ekki hér: hún skrifar aldrei í ingestion_runs
+      // (engin startIngestionRun_ í core/newsales_v2.js), svo krafa um ferska
+      // keyrslu gat aldrei gengið upp og felldi ingestion_freshness á hverjum
+      // einasta degi. Hún er vöktuð með hjartslætti í staðinn — sjá
+      // checkSafePollHeartbeat_ hér að neðan.
       var expectedWindowsHours = {
-        safePoll_v2: 4,
         scheduledMagentoSync_v1: 6,
         scheduledCludoSync_v1: 24,
         scheduledCustomerAnalysisSync_v1: 36,
@@ -3161,6 +3164,53 @@ function runDailySanityChecks_v1() {
     }
   }
 
+  /**
+   * Lífsmark safePoll_v2 (2026-08-11).
+   *
+   * safePoll_v2 skrifar ekki í ingestion_runs — 288 keyrslur á dag væru
+   * ~105.000 raðir á ári í atburðaskrá. Hún setur Script Property í staðinn og
+   * þessi athugun les hana. Sama verkefni, engin HTTP-ferð.
+   *
+   * Fenstrið er virt: fallið er SLÖKKT 00:00-06:59 af ásettu ráði
+   * (getNewwebRunWindowDecision_v2_), svo það er rétt að ekkert lífsmark sé til
+   * á þeim tíma. Athugun sem hunsar það framleiðir næturviðvaranir um kerfi sem
+   * er að haga sér nákvæmlega eins og til var ætlast.
+   */
+  function checkSafePollHeartbeat_() {
+    var MAX_AGE_MIN = 90;   // 5 mín innan vinnutíma, 15 mín á kvöldin — 90 er rúmt
+    try {
+      var tz   = Session.getScriptTimeZone() || 'GMT';
+      var hour = Number(Utilities.formatDate(new Date(), tz, 'H'));
+
+      if (hour < 7) {
+        addCheck_('safepoll_heartbeat', true,
+          'Næturgluggi (00:00-06:59) — safePoll_v2 á ekki að keyra, engin krafa gerð',
+          'warning');
+        return;
+      }
+
+      var raw = PropertiesService.getScriptProperties().getProperty('SAFEPOLL_LAST_OK_MS');
+      if (!raw) {
+        addCheck_('safepoll_heartbeat', false,
+          'Ekkert lífsmark skráð. Væntanlegt eftir næstu keyrslu safePoll_v2; '
+            + 'ef það birtist ekki innan 15 mín er pípan stopp.',
+          'warning');
+        return;
+      }
+
+      var ageMin = Math.round((Date.now() - Number(raw)) / 60000);
+      var ok = ageMin <= MAX_AGE_MIN;
+      addCheck_('safepoll_heartbeat', ok,
+        ok ? ('safePoll_v2 keyrði fyrir ' + ageMin + ' mín')
+           : ('safePoll_v2 hefur ekki klárað keyrslu í ' + ageMin + ' mín (mörk '
+              + MAX_AGE_MIN + '). Magento-pantanir berast ekki inn.'),
+        'warning');
+    } catch (e) {
+      addCheck_('safepoll_heartbeat', true,
+        'Gat ekki lesið lífsmark (' + e + ') — athugun sleppt', 'warning');
+    }
+  }
+
   function checkStuckPendingOrders_() {
     var STUCK_HOURS = 12;
     var LOOKBACK_DAYS = 7;
@@ -3269,6 +3319,7 @@ function runDailySanityChecks_v1() {
 
     checkDashboardShares_();
     checkIngestionRuns_();
+    checkSafePollHeartbeat_();
     checkKlaviyoAttributionBound_();
     checkGa4PurchaseRatio_();
     checkStuckPendingOrders_();
