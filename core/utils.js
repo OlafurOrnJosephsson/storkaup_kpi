@@ -1441,6 +1441,11 @@ function upsertBcLinesToSupabase_(rows) {
       unit_price_excl: toNum_(r.UNIT_PRICE_EXCL),
       amount_excl: toNum_(r.AMOUNT_EXCL),
       discount_pct: toNum_(r.DISCOUNT),
+      // Nýtt 2026-08-07 úr SaaS-exportinu. order_no hvarf úr sölureikningunum
+      // og birtist hér — þaðan má fylla hann afturvirkt á bc_invoices_raw svo
+      // sp_no virki aftur í pantanaleitinni (core/sql/bc_new_columns.sql).
+      order_no: r.ORDER_NO || null,
+      line_discount: toNum_(r.LINE_DISCOUNT),
       source: 'bc_lines_backfill'
     };
   }).filter(function(x) {
@@ -1922,6 +1927,13 @@ function upsertBcCustomersToSupabase_(rows) {
       payments: toNum_(r.PAYMENTS),
       sales: toNum_(r.SALES),
       modified_date: parseBcDateForSupabase_(r.MODIFIED_DATE),
+      // Nýtt 2026-08-07. SaaS-exportið hætti að skila 'Hamarksskuld (SGM)' svo
+      // credit_limit verður null — vanskilaupphæðin kemur í staðinn og er í raun
+      // sterkara merki: heimild er eitthvað sem einhver skráði, vanskil eru
+      // staðreynd úr bókhaldinu. Nýtist í lánshæfismati á umsóknum.
+      arrears: toNum_(r.ARREARS),
+      status_sgm: r.STATUS_SGM || null,
+      contact_name: r.CONTACT || null,
       source: 'bc_customers_backfill'
     };
   }).filter(function(x) { return x.company_id; });

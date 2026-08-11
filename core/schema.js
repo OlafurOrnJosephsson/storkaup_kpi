@@ -68,12 +68,23 @@ BC_CUSTOMERS: {
   COLUMNS: {
     COMPANY_ID: 'Nr.',
     COMPANY_NAME: 'Heiti',
-    CREDIT_LIMIT: 'Hamarksskuld (SGM)',
+    CREDIT_LIMIT: 'Hamarksskuld (SGM)',  // hvarf úr SaaS-exportinu 2026-08 → null
     PHONE: 'Simi',
     BALANCE: 'Hreyfing (SGM)',
     PAYMENTS: 'Greidslur (SGM)',
     SALES: 'Sala (SGM)',
-    MODIFIED_DATE: 'Sidast breytt, dags.'
+    MODIFIED_DATE: 'Sidast breytt, dags.',
+
+    // Nýir dálkar í SaaS-exportinu, teknir í notkun 2026-08-07.
+    // ATH: exportið hefur líka dálk sem heitir einfaldlega 'Hreyfing' (án SGM).
+    // Hann er VILJANDI ekki mappaður — BALANCE er 'Hreyfing (SGM)' og tveir
+    // dálkar með nánast sama nafni og ólíka merkingu er uppskrift að því að
+    // einhver mappi rangan síðar.
+    ARREARS: 'Upphæð vanskila (SGM)',  // vanskil — staðreynd úr eigin bókhaldi,
+                                       // nýtist í lánshæfismati á umsóknum
+    STATUS_SGM: 'Staða (SGM)',         // staða viðskiptamanns, parast við vanskil
+    CONTACT: 'Tengiliður'              // sýnir hvort BC-tengiliður er þegar
+                                       // skráður — skrefið í "Klárað"-flæðinu
   }
 },
 
@@ -157,7 +168,15 @@ BC_LINES: {
     UOM: 'Maelieiningarkodi',
     UNIT_PRICE_EXCL: 'Ein.verd an VSK',
     AMOUNT_EXCL: 'Upphaed',
-    DISCOUNT: 'Linuafsl.%'
+    DISCOUNT: 'Linuafsl.%',
+
+    // Nýir dálkar í SaaS-exportinu, teknir í notkun 2026-08-07:
+    ORDER_NO: 'Pöntunarnr.',        // hvarf úr BC_INVOICES og birtist hér —
+                                    // endurheimtir sp_no í api.search_orders
+    LINE_DISCOUNT: 'Afsl.upphæð línu' // afsláttarupphæð línu. Það er þessi
+                                    // dálkur sem greinir í sundur tvær annars
+                                    // eins línur; án hans falla ~2% af línum
+                                    // saman í on_conflict lyklinum.
   }
 },
 
