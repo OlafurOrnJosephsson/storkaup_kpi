@@ -928,3 +928,306 @@ input[type="text"].is-invalid {
 [data-module="customer-profiles"] .cp-cachehelp__msg--error {
   color: #b42318;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Klaviyo insights — additive block rendered by dashboard.js on /kpi/klaviyo.
+   Everything here is scoped to .kl-* classes the JS creates itself; no
+   selector reaches into Webflow-authored markup, so this cannot disturb the
+   existing rows. Light-only by design, matching the live page.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.kl-insights {
+  --kl-page:      #ffffff;
+  --kl-surface:   #f5f6fe;
+  --kl-well:      #ecedfb;
+  --kl-line:      #e0e2f4;
+  --kl-line-soft: #eaebf7;
+
+  --kl-ink:   #16182e;
+  --kl-ink-2: #4d5170;
+  --kl-ink-3: #858aa8;
+
+  /* Series: the project --chart-blue plus a partner validated against this
+     surface (lightness band, chroma floor, CVD separation, contrast). */
+  --kl-s1: var(--chart-blue, #8077fa);
+  --kl-s2: #2f9e8f;
+
+  /* Status — reserved, never reused as a series colour. */
+  --kl-warn:     #fdc65d;
+  --kl-warn-ink: #8a5a00;
+  --kl-warn-bg:  #fdf5e4;
+  --kl-crit:     #d6455d;
+  --kl-crit-ink: #a3202f;
+  --kl-crit-bg:  #fceef0;
+  --kl-good-ink: #1c7a5e;
+
+  --kl-void: #c2c5de;
+
+  --kl-mono: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin: 0 0 22px;
+  color: var(--kl-ink);
+}
+
+.kl-insights *,
+.kl-insights *::before,
+.kl-insights *::after { box-sizing: border-box; }
+
+/* ── Status strip ─────────────────────────────────────────────────────── */
+.kl-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px 16px;
+  padding: 12px 15px;
+  border: 1px solid var(--kl-line);
+  border-left: 3px solid var(--kl-crit);
+  border-radius: 10px;
+  background: var(--kl-surface);
+}
+.kl-strip--ok   { border-left-color: var(--kl-s2); }
+.kl-strip--warn { border-left-color: var(--kl-warn); }
+.kl-strip-msg { font-size: 0.88rem; color: var(--kl-ink); }
+.kl-strip-sub {
+  font-family: var(--kl-mono);
+  font-size: 0.72rem;
+  color: var(--kl-ink-3);
+  margin-left: auto;
+}
+
+.kl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--kl-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.kl-pill-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.kl-pill--crit { background: var(--kl-crit-bg); color: var(--kl-crit-ink); }
+.kl-pill--crit .kl-pill-dot { background: var(--kl-crit); }
+.kl-pill--warn { background: var(--kl-warn-bg); color: var(--kl-warn-ink); }
+.kl-pill--warn .kl-pill-dot { background: var(--kl-warn); }
+.kl-pill--ok { background: #e7f5f0; color: var(--kl-good-ink); }
+.kl-pill--ok .kl-pill-dot { background: var(--kl-s2); }
+
+/* ── Cards ────────────────────────────────────────────────────────────── */
+.kl-card {
+  background: var(--kl-surface);
+  border: 1px solid var(--kl-line);
+  border-radius: 10px;
+  padding: 20px;
+}
+.kl-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+.kl-h2 {
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  margin: 0;
+  color: var(--kl-ink);
+}
+.kl-note {
+  margin: 0 0 18px;
+  font-size: 0.83rem;
+  line-height: 1.55;
+  color: var(--kl-ink-2);
+  max-width: 74ch;
+}
+
+/* ── Timeline chart ───────────────────────────────────────────────────── */
+.kl-chart-scroll { overflow-x: auto; }
+.kl-chart { width: 100%; min-width: 620px; height: 232px; display: block; }
+.kl-chart text { font-family: var(--kl-mono); fill: var(--kl-ink-3); font-size: 10.5px; }
+.kl-chart .kl-grid { stroke: var(--kl-line-soft); stroke-width: 1; }
+.kl-chart .kl-zero { stroke: var(--kl-line); stroke-width: 1; }
+.kl-chart .kl-bar { fill: var(--kl-s1); }
+.kl-chart .kl-bar--partial { fill: var(--kl-s1); opacity: 0.5; }
+.kl-chart .kl-void { fill: url(#kl-hatch); }
+.kl-chart .kl-val { fill: var(--kl-ink); font-size: 11px; font-weight: 600; }
+.kl-chart .kl-hit { fill: transparent; }
+.kl-chart .kl-hit:hover + .kl-bar,
+.kl-chart .kl-hit:hover + .kl-bar--partial { fill: var(--kl-s2); }
+
+.kl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--kl-line-soft);
+  font-size: 0.78rem;
+  color: var(--kl-ink-2);
+}
+.kl-legend-item { display: inline-flex; align-items: center; gap: 7px; }
+.kl-swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.kl-swatch--s1 { background: var(--kl-s1); }
+.kl-swatch--s2 { background: var(--kl-s2); }
+.kl-swatch--half { background: var(--kl-s1); opacity: 0.5; }
+.kl-swatch--void {
+  background: repeating-linear-gradient(45deg, var(--kl-void) 0 1.5px, transparent 1.5px 5px);
+  border: 1px solid var(--kl-line);
+}
+
+/* ── Tooltip ──────────────────────────────────────────────────────────── */
+.kl-tip {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s;
+  background: #16182e;
+  color: #ffffff;
+  padding: 8px 11px;
+  border-radius: 7px;
+  font-family: var(--kl-mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  box-shadow: 0 6px 20px -6px rgba(22, 24, 46, 0.4);
+}
+.kl-tip.is-on { opacity: 1; }
+
+/* ── Split ────────────────────────────────────────────────────────────── */
+.kl-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 820px) { .kl-split { grid-template-columns: 1fr; } }
+
+.kl-trace-bar {
+  display: flex;
+  height: 34px;
+  border-radius: 6px;
+  overflow: hidden;
+  gap: 2px;
+  margin: 4px 0 12px;
+}
+.kl-trace-seg { display: block; }
+
+.kl-rows { display: flex; flex-direction: column; }
+.kl-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--kl-line-soft);
+}
+.kl-row:last-child { border-bottom: 0; }
+.kl-row-k {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.83rem;
+  color: var(--kl-ink-2);
+}
+.kl-row-v {
+  font-family: var(--kl-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--kl-ink);
+}
+.kl-row-v small { font-weight: 400; color: var(--kl-ink-3); font-size: 0.72rem; }
+
+/* ── Campaign table — holds its shape from 1 row to 20 ────────────────── */
+.kl-table { width: 100%; border-collapse: collapse; }
+.kl-table th {
+  font-family: var(--kl-mono);
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kl-ink-3);
+  text-align: right;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--kl-line);
+  white-space: nowrap;
+}
+.kl-table th.kl-c-name { text-align: left; }
+.kl-table td {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--kl-line-soft);
+  vertical-align: baseline;
+  text-align: right;
+  font-family: var(--kl-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--kl-ink);
+  white-space: nowrap;
+}
+.kl-table tr:last-child td { border-bottom: 0; }
+.kl-table td.kl-c-name {
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.83rem;
+  font-weight: 600;
+  white-space: normal;
+  padding-right: 14px;
+}
+.kl-table td.kl-c-name span {
+  display: block;
+  font-family: var(--kl-mono);
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--kl-ink-3);
+  margin-top: 1px;
+}
+.kl-table td + td, .kl-table th + th { padding-left: 14px; }
+
+.kl-c-share { width: 128px; }
+.kl-share-wrap { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.kl-share-track {
+  flex: 1;
+  height: 7px;
+  min-width: 42px;
+  border-radius: 4px;
+  background: var(--kl-well);
+  overflow: hidden;
+}
+.kl-share-fill { display: block; height: 100%; border-radius: 4px; background: var(--kl-s1); }
+.kl-share-n {
+  font-size: 0.76rem;
+  color: var(--kl-ink-2);
+  font-weight: 600;
+  width: 38px;
+  text-align: right;
+}
+.kl-muted {
+  font-family: var(--kl-mono);
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--kl-ink-3);
+}
+
+.kl-callout {
+  margin: 14px 0 0;
+  padding: 11px 13px;
+  border-radius: 8px;
+  background: var(--kl-warn-bg);
+  color: var(--kl-warn-ink);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.kl-insights :focus-visible { outline: 2px solid var(--kl-s1); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kl-tip { transition: none; }
+}

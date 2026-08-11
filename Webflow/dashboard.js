@@ -1309,6 +1309,457 @@
     return d.toISOString().slice(0, 10);
   }
 
+  /* ── Klaviyo insights block ────────────────────────────────────────────
+     Renders a monthly timeline, a traceability split and a campaign table
+     into a container inserted above the Webflow-authored campaign cards.
+
+     Strictly ADDITIVE: it builds its own .kl-* markup and never mutates or
+     restyles the existing Webflow rows, so if anything in here throws, the
+     page renders exactly as it did before. Styles live in
+     dashboard-theme.css under "Klaviyo insights".
+
+     Note on empty months: the attribution MV simply has no rows for a month
+     with nothing attributed, which is indistinguishable from a month where
+     the sync was not running. The chart therefore says "engin skráning"
+     rather than claiming zero — see klRenderTimeline. */
+
+  var KL_MONTHS_BACK = 14;
+  var KL_MONTH_ABBR = ["jan", "feb", "mar", "apr", "maí", "jún", "júl", "ágú", "sep", "okt", "nóv", "des"];
+  var klTipEl = null;
+
+  function klEl(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== null && text !== undefined) n.textContent = String(text);
+    return n;
+  }
+
+  function klSvgEl(tag, attrs) {
+    var n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    return n;
+  }
+
+  function klMonthLabel(key, withYear) {
+    var parts = String(key || "").split("-");
+    var name = KL_MONTH_ABBR[Number(parts[1]) - 1] || key;
+    return withYear ? name + " " + String(parts[0]).slice(2) : name;
+  }
+
+  function klDaysBetween(fromIso, toIso) {
+    var a = new Date(String(fromIso) + "T00:00:00Z").getTime();
+    var b = new Date(String(toIso) + "T00:00:00Z").getTime();
+    if (isNaN(a) || isNaN(b)) return null;
+    return Math.round((b - a) / 86400000);
+  }
+
+  function klMkr(value) {
+    var v = toNumberSafe(value) / 1000000;
+    return (Math.round(v * 100) / 100).toFixed(2).replace(".", ",");
+  }
+
+  function klNiceMax(peak) {
+    var steps = [4, 8, 12, 20, 40, 60, 80, 120, 200, 400, 600, 800, 1200, 2000];
+    if (!peak || peak <= 0) return 4;
+    for (var i = 0; i < steps.length; i += 1) { if (peak <= steps[i]) return steps[i]; }
+    return Math.ceil(peak / 400) * 400;
+  }
+
+  /* Last KL_MONTHS_BACK months ending at the current one. A month absent from
+     `monthly` gets orders:null — drawn as an explicit void, never a zero bar. */
+  function klBuildMonthSeries(monthly, todayIso) {
+    var year = Number(String(todayIso).slice(0, 4));
+    var month = Number(String(todayIso).slice(5, 7));
+    var keys = [];
+    var i;
+    for (i = KL_MONTHS_BACK - 1; i >= 0; i -= 1) {
+      var mm = month - i;
+      var yy = year;
+      while (mm <= 0) { mm += 12; yy -= 1; }
+      keys.push(String(yy) + "-" + (mm < 10 ? "0" + mm : String(mm)));
+    }
+    return keys.map(function (key, idx) {
+      var hit = monthly[key];
+      var showYear = idx === 0 || key.slice(0, 4) !== keys[idx - 1].slice(0, 4);
+      return {
+        key: key,
+        label: klMonthLabel(key, showYear),
+        orders: hit ? hit.orders : null,
+        revIncl: hit ? hit.revIncl : 0,
+        partial: key === String(todayIso).slice(0, 7)
+      };
+    });
+  }
+
+  function klTooltip() {
+    if (klTipEl && document.body && document.body.contains(klTipEl)) return klTipEl;
+    klTipEl = klEl("div", "kl-tip");
+    klTipEl.setAttribute("role", "tooltip");
+    klTipEl.setAttribute("aria-hidden", "true");
+    if (document.body) document.body.appendChild(klTipEl);
+    return klTipEl;
+  }
+
+  /* Values are set with textContent, never innerHTML — campaign names come
+     from Klaviyo and are not trusted markup. */
+  function klBindTooltip(node, lines) {
+    function show() {
+      var tip = klTooltip();
+      tip.textContent = "";
+      lines.forEach(function (line, idx) {
+        if (idx) tip.appendChild(document.createElement("br"));
+        var span = klEl(idx ? "span" : "b", null, line);
+        tip.appendChild(span);
+      });
+      tip.classList.add("is-on");
+      tip.setAttribute("aria-hidden", "false");
+      var r = node.getBoundingClientRect();
+      var t = tip.getBoundingClientRect();
+      var left = r.left + (r.width / 2) - (t.width / 2);
+      left = Math.max(8, Math.min(left, window.innerWidth - t.width - 8));
+      var top = r.top - t.height - 10;
+      if (top < 8) top = r.bottom + 10;
+      tip.style.left = left + "px";
+      tip.style.top = top + "px";
+    }
+    function hide() {
+      var tip = klTooltip();
+      tip.classList.remove("is-on");
+      tip.setAttribute("aria-hidden", "true");
+    }
+    node.addEventListener("mouseenter", show);
+    node.addEventListener("focus", show);
+    node.addEventListener("mouseleave", hide);
+    node.addEventListener("blur", hide);
+  }
+
+  function klRenderTimeline(series) {
+    var W = 760, H = 232, padT = 26, padR = 8, padB = 34, padL = 34;
+    var plotW = W - padL - padR;
+    var plotH = H - padT - padB;
+    var base = padT + plotH;
+
+    var peak = 0;
+    series.forEach(function (d) { if (d.orders !== null && d.orders > peak) peak = d.orders; });
+    var max = klNiceMax(peak);
+
+    var svg = klSvgEl("svg", {
+      "class": "kl-chart",
+      viewBox: "0 0 " + W + " " + H,
+      preserveAspectRatio: "xMinYMin meet",
+      role: "img"
+    });
+    var voidCount = series.filter(function (d) { return d.orders === null; }).length;
+    svg.setAttribute(
+      "aria-label",
+      "Súlurit: eignaðar pantanir á mánuði, síðustu " + series.length + " mánuðir. " +
+      "Hæsti mánuður " + peak + " pantanir. " + voidCount + " mánuðir án skráningar."
+    );
+
+    var defs = klSvgEl("defs", {});
+    var pattern = klSvgEl("pattern", {
+      id: "kl-hatch", width: "6", height: "6",
+      patternTransform: "rotate(45)", patternUnits: "userSpaceOnUse"
+    });
+    pattern.appendChild(klSvgEl("line", {
+      x1: "0", y1: "0", x2: "0", y2: "6",
+      stroke: "var(--kl-void, #c2c5de)", "stroke-width": "1.5"
+    }));
+    defs.appendChild(pattern);
+    svg.appendChild(defs);
+
+    [0, 0.25, 0.5, 0.75, 1].forEach(function (frac) {
+      var value = Math.round(max * frac);
+      var y = base - (frac * plotH);
+      svg.appendChild(klSvgEl("line", {
+        "class": frac === 0 ? "kl-zero" : "kl-grid",
+        x1: padL, y1: y, x2: W - padR, y2: y
+      }));
+      var lab = klSvgEl("text", { x: padL - 8, y: y + 3.5, "text-anchor": "end" });
+      lab.textContent = String(value);
+      svg.appendChild(lab);
+    });
+
+    var slot = plotW / series.length;
+    var barW = Math.min(38, slot * 0.62);
+
+    series.forEach(function (d, idx) {
+      var cx = padL + (slot * idx) + (slot / 2);
+      var x = cx - (barW / 2);
+
+      var mlab = klSvgEl("text", { x: cx, y: base + 16, "text-anchor": "middle" });
+      mlab.textContent = d.label;
+      svg.appendChild(mlab);
+
+      if (d.orders === null) {
+        svg.appendChild(klSvgEl("rect", {
+          "class": "kl-void", x: x, y: padT, width: barW, height: plotH, rx: 4
+        }));
+      } else {
+        var h = Math.max(2, (d.orders / max) * plotH);
+        svg.appendChild(klSvgEl("rect", {
+          "class": d.partial ? "kl-bar--partial" : "kl-bar",
+          x: x, y: base - h, width: barW, height: h, rx: 4
+        }));
+        if (d.orders > 0 && (d.orders / max) > 0.15) {
+          var val = klSvgEl("text", { "class": "kl-val", x: cx, y: base - h - 7, "text-anchor": "middle" });
+          val.textContent = String(d.orders);
+          svg.appendChild(val);
+        }
+      }
+
+      var full = klMonthLabel(d.key, true);
+      var lines = d.orders === null
+        ? [full, "engin skráning í eignunargögnum"]
+        : [full, d.orders + " eignaðar pantanir", klMkr(d.revIncl) + " Mkr m. vsk"];
+      if (d.partial && d.orders !== null) lines.push("mánuður ekki búinn");
+
+      var hit = klSvgEl("rect", {
+        "class": "kl-hit", x: padL + (slot * idx), y: padT,
+        width: slot, height: plotH, tabindex: "0", role: "img"
+      });
+      hit.setAttribute("aria-label", lines.join(" — "));
+      klBindTooltip(hit, lines);
+      svg.appendChild(hit);
+    });
+
+    return svg;
+  }
+
+  function klCard(title, subtitle, noteText) {
+    var card = klEl("section", "kl-card");
+    var head = klEl("div", "kl-card-head");
+    head.appendChild(klEl("h3", "kl-h2", title));
+    if (subtitle) head.appendChild(klEl("span", "kl-strip-sub", subtitle));
+    card.appendChild(head);
+    if (noteText) card.appendChild(klEl("p", "kl-note", noteText));
+    return card;
+  }
+
+  function klRow(label, valueText, hintText, swatchColor) {
+    var row = klEl("div", "kl-row");
+    var k = klEl("span", "kl-row-k");
+    if (swatchColor) {
+      var sw = klEl("span", "kl-swatch");
+      sw.style.background = swatchColor;
+      k.appendChild(sw);
+    }
+    k.appendChild(document.createTextNode(label));
+    var v = klEl("span", "kl-row-v", valueText);
+    if (hintText) {
+      var small = klEl("small", null, " · " + hintText);
+      v.appendChild(small);
+    }
+    row.appendChild(k);
+    row.appendChild(v);
+    return row;
+  }
+
+  /* The campaign table is filled later, once the campaign-cards view resolves.
+     It is a table rather than one card per campaign so the layout holds from a
+     single row up to twenty as sending picks up. */
+  function klRenderCampaignTable(rows, cardsHost) {
+    var host = document.querySelector("[data-kl-campaign-table]");
+    if (!host) return;
+
+    var list = (Array.isArray(rows) ? rows : []).slice();
+    list.sort(function (a, b) {
+      return toNumberSafe(b && b.attributed_orders_30d) - toNumberSafe(a && a.attributed_orders_30d);
+    });
+
+    var totalOrders = 0;
+    list.forEach(function (r) { totalOrders += toNumberSafe(r && r.attributed_orders_30d); });
+    var topOrders = list.length ? toNumberSafe(list[0].attributed_orders_30d) : 0;
+
+    host.textContent = "";
+
+    var countHost = document.querySelector("[data-kl-campaign-count]");
+    if (countHost) {
+      countHost.textContent = list.length === 1 ? "1 herferð" : list.length + " herferðir";
+    }
+
+    if (!list.length) {
+      host.appendChild(klEl("p", "kl-muted", "Engin herferð með eignaða pöntun síðustu 30 daga."));
+    } else {
+      var table = klEl("table", "kl-table");
+      var thead = klEl("thead");
+      var htr = klEl("tr");
+      [
+        { t: "Herferð", c: "kl-c-name" },
+        { t: "Pantanir", c: null },
+        { t: "Sala m. vsk", c: null },
+        { t: "Hlutfall pantana", c: "kl-c-share" }
+      ].forEach(function (col) {
+        var th = klEl("th", col.c, col.t);
+        th.setAttribute("scope", "col");
+        htr.appendChild(th);
+      });
+      thead.appendChild(htr);
+      table.appendChild(thead);
+
+      var tbody = klEl("tbody");
+      list.forEach(function (r) {
+        var orders = toNumberSafe(r && r.attributed_orders_30d);
+        var tr = klEl("tr");
+
+        var nameCell = klEl("td", "kl-c-name",
+          String((r && r.campaign_name) || (r && r.campaign_id) || "Ónafngreind herferð"));
+        var cid = String((r && r.campaign_id) || "").trim();
+        if (cid) nameCell.appendChild(klEl("span", null, cid));
+        tr.appendChild(nameCell);
+
+        tr.appendChild(klEl("td", null, formatNumber(orders)));
+        tr.appendChild(klEl("td", null, formatNumber(r && r.attributed_revenue_incl_30d)));
+
+        var shareCell = klEl("td", "kl-c-share");
+        if (totalOrders <= 1) {
+          /* A share of a single order carries no information — say so instead
+             of printing a confident 100%. */
+          shareCell.appendChild(klEl("span", "kl-muted", "eina í mælingu"));
+        } else {
+          var wrap = klEl("span", "kl-share-wrap");
+          var track = klEl("span", "kl-share-track");
+          var fill = klEl("span", "kl-share-fill");
+          fill.style.width = (topOrders > 0 ? Math.round((orders / topOrders) * 100) : 0) + "%";
+          track.appendChild(fill);
+          wrap.appendChild(track);
+          wrap.appendChild(klEl("span", "kl-share-n", pct(orders / totalOrders)));
+          shareCell.appendChild(wrap);
+        }
+        tr.appendChild(shareCell);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      host.appendChild(table);
+    }
+
+    /* Only once the table is actually on the page do we retire the original
+       Webflow cards, so a failure above leaves them in place. Delete the
+       cards host in Webflow to make this permanent. */
+    if (cardsHost && cardsHost.style.display !== "none") {
+      cardsHost.style.display = "none";
+      cardsHost.setAttribute("data-kl-superseded", "1");
+    }
+  }
+
+  function klRenderInsights(agg, cardsHost) {
+    if (!cardsHost || !cardsHost.parentNode) return;
+
+    var existing = document.querySelector("[data-kl-insights]");
+    if (existing) existing.remove();
+
+    var wrap = klEl("div", "kl-insights");
+    wrap.setAttribute("data-kl-insights", "1");
+
+    /* ── Freshness strip: the real last data day, not today's date ──────── */
+    var lastDay = agg.lastDataDay;
+    var age = lastDay ? klDaysBetween(lastDay, agg.today) : null;
+    var level = "crit";
+    var pillText = "Gögn ekki fersk";
+    if (age !== null && age <= 2) { level = "ok"; pillText = "Gögn fersk"; }
+    else if (age !== null && age <= 7) { level = "warn"; pillText = "Gögn dagsett"; }
+
+    var strip = klEl("div", "kl-strip kl-strip--" + level);
+    strip.setAttribute("role", "status");
+    var pill = klEl("span", "kl-pill kl-pill--" + level);
+    pill.appendChild(klEl("span", "kl-pill-dot"));
+    pill.appendChild(document.createTextNode(pillText));
+    strip.appendChild(pill);
+
+    var msg = klEl("span", "kl-strip-msg");
+    if (lastDay) {
+      msg.appendChild(document.createTextNode("Nýjustu eignuðu gögnin eru frá "));
+      msg.appendChild(klEl("strong", null, lastDay));
+      msg.appendChild(document.createTextNode(
+        age === 0 ? " — í dag." : age === 1 ? " — í gær." : " — " + age + " dagar síðan."
+      ));
+    } else {
+      msg.textContent = "Engin eignuð gögn fundust.";
+    }
+    strip.appendChild(msg);
+    strip.appendChild(klEl("span", "kl-strip-sub", "last click, 30 d" + (agg.botExcluded ? ", án bot-klikka" : "")));
+    wrap.appendChild(strip);
+
+    /* ── Monthly timeline ──────────────────────────────────────────────── */
+    var series = klBuildMonthSeries(agg.monthly, agg.today);
+    var first = series[0];
+    var timeline = klCard(
+      "Eignaðar pantanir á mánuði",
+      klMonthLabel(first.key, true) + " – " + klMonthLabel(series[series.length - 1].key, true),
+      "Mánuður án súlu hefur engar raðir í eignunargögnunum. Það þýðir annaðhvort að ekkert " +
+      "eignaðist herferð þann mánuð, eða að samstillingin lá niðri — gögnin greina það ekki í sundur."
+    );
+    var scroll = klEl("div", "kl-chart-scroll");
+    scroll.appendChild(klRenderTimeline(series));
+    timeline.appendChild(scroll);
+
+    var legend = klEl("div", "kl-legend");
+    [
+      ["kl-swatch--s1", "Eignaðar pantanir"],
+      ["kl-swatch--half", "Mánuður ekki búinn"],
+      ["kl-swatch--void", "Engin skráning"]
+    ].forEach(function (pair) {
+      var item = klEl("span", "kl-legend-item");
+      item.appendChild(klEl("span", "kl-swatch " + pair[0]));
+      item.appendChild(document.createTextNode(pair[1]));
+      legend.appendChild(item);
+    });
+    timeline.appendChild(legend);
+    wrap.appendChild(timeline);
+
+    /* ── Split: traceability + campaign table ──────────────────────────── */
+    var split = klEl("div", "kl-split");
+
+    var traced = agg.tracedOrders;
+    var untraced = agg.untracedOrders;
+    var totalAll = traced + untraced;
+    var trace = klCard(
+      "Hve mikið getum við rakið?",
+      null,
+      "Herferðalistinn getur aldrei stemmt við heildartöluna: pantanir sem eignast Klaviyo án " +
+      "herferðar-ID komast ekki á lista. Það vantar ID í upprunann, það er ekki villa í listanum."
+    );
+    if (totalAll > 0) {
+      var bar = klEl("div", "kl-trace-bar");
+      bar.setAttribute("role", "img");
+      bar.setAttribute("aria-label",
+        traced + " af " + totalAll + " pöntunum hafa herferðar-ID, " + untraced + " hafa ekkert ID.");
+      var segA = klEl("span", "kl-trace-seg");
+      segA.style.flex = String(traced);
+      segA.style.background = "var(--kl-s2)";
+      var segB = klEl("span", "kl-trace-seg");
+      segB.style.flex = String(untraced);
+      segB.style.background = "var(--kl-s1)";
+      bar.appendChild(segA);
+      bar.appendChild(segB);
+      trace.appendChild(bar);
+    }
+    var rows = klEl("div", "kl-rows");
+    rows.appendChild(klRow("Með herferðar-ID", formatNumber(traced),
+      totalAll ? pct(traced / totalAll) : null, "var(--kl-s2)"));
+    rows.appendChild(klRow("Ekkert ID", formatNumber(untraced),
+      totalAll ? pct(untraced / totalAll) : null, "var(--kl-s1)"));
+    rows.appendChild(klRow("Ólíkar herferðir frá upphafi", formatNumber(agg.campaignsAllTime), null, null));
+    rows.appendChild(klRow("Eignuð sala frá upphafi", klMkr(agg.revenueInclAllTime) + " Mkr", "m. vsk", null));
+    trace.appendChild(rows);
+    split.appendChild(trace);
+
+    var camp = klCard("Herferðir, síðustu 30 dagar", null, null);
+    var countSpan = camp.querySelector(".kl-strip-sub");
+    if (!countSpan) {
+      countSpan = klEl("span", "kl-strip-sub");
+      camp.querySelector(".kl-card-head").appendChild(countSpan);
+    }
+    countSpan.setAttribute("data-kl-campaign-count", "1");
+    var tableHost = klEl("div");
+    tableHost.setAttribute("data-kl-campaign-table", "1");
+    camp.appendChild(tableHost);
+    split.appendChild(camp);
+
+    wrap.appendChild(split);
+    cardsHost.parentNode.insertBefore(wrap, cardsHost);
+  }
+
   function fetchKlaviyoAttributionSummary() {
     if (!hasKlaviyoMetricTargets()) return Promise.resolve();
     if (klaviyoCacheTs && (Date.now() - klaviyoCacheTs) < STABLE_RPC_TTL_MS) return Promise.resolve();
@@ -1371,6 +1822,11 @@
         })
         .then(function (campaignRows) {
           renderKlaviyoCampaignCards(campaignRows);
+          try {
+            klRenderCampaignTable(campaignRows, cardsHost);
+          } catch (tableErr) {
+            log("Klaviyo campaign table render failed:", tableErr);
+          }
         })
         .catch(function (err2) {
           if (retryLeft > 0) {
@@ -1491,7 +1947,13 @@
           ordersAllTime: 0,
           revenueExclAllTime: 0,
           revenueInclAllTime: 0,
-          campaigns30d: {}
+          campaigns30d: {},
+          /* extras for the insights block */
+          monthly: {},
+          campaignsAllTime: {},
+          tracedOrders: 0,
+          untracedOrders: 0,
+          lastDataDay: ""
         };
 
         list.forEach(function (r) {
@@ -1504,6 +1966,20 @@
           totals.ordersAllTime += orders;
           totals.revenueExclAllTime += revExcl;
           totals.revenueInclAllTime += revIncl;
+
+          if (d) {
+            if (!totals.lastDataDay || d > totals.lastDataDay) totals.lastDataDay = d;
+            var mk = d.slice(0, 7);
+            if (!totals.monthly[mk]) totals.monthly[mk] = { orders: 0, revIncl: 0 };
+            totals.monthly[mk].orders += orders;
+            totals.monthly[mk].revIncl += revIncl;
+          }
+          if (cid) {
+            totals.campaignsAllTime[cid] = 1;
+            totals.tracedOrders += orders;
+          } else {
+            totals.untracedOrders += orders;
+          }
 
           if (d && d >= from30d && d <= today) {
             totals.orders30d += orders;
@@ -1530,9 +2006,29 @@
         setText("klaviyo-orders-all-time", toNumberSafe(totals.ordersAllTime));
         setText("klaviyo-revenue-excl-all-time", formatNumber(totals.revenueExclAllTime));
         setText("klaviyo-revenue-incl-all-time", formatNumber(totals.revenueInclAllTime));
-        setText("klaviyo-last-sync-date", today);
+        /* The real last day with attributed data — this used to print today's
+           date unconditionally, so the page always claimed to be current. */
+        var freshness = totals.lastDataDay || "-";
+        setText("klaviyo-last-sync-date", freshness);
         setKlaviyoAttributionMethodMetric();
-        setKlaviyoQualityLine(totals.orders30d, today);
+        setKlaviyoQualityLine(totals.orders30d, freshness);
+
+        /* Additive insights block. Wrapped so a failure here cannot take the
+           existing rows or the campaign cards down with it. */
+        try {
+          klRenderInsights({
+            today: today,
+            lastDataDay: totals.lastDataDay,
+            monthly: totals.monthly,
+            tracedOrders: totals.tracedOrders,
+            untracedOrders: totals.untracedOrders,
+            campaignsAllTime: Object.keys(totals.campaignsAllTime).length,
+            revenueInclAllTime: totals.revenueInclAllTime,
+            botExcluded: !includeBotClicks
+          }, cardsHost);
+        } catch (insightsErr) {
+          log("Klaviyo insights render failed:", insightsErr);
+        }
 
         return fetchAndRenderCampaignCards(1);
       })
