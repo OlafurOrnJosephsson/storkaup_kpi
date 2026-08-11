@@ -197,6 +197,53 @@ order by 1,3;
   `core/salessummaries.js` at `raw.bc_invoices_raw` via service_role. Do NOT
   reinstate the manual paste — that is assessment item 10 (brittle manual step).
 
+### Issue: OLDWEB `revenue_excl` is not VAT-exclusive revenue — never use it
+- Symptom: any web trend spanning the July 2025 headless cutover shows a ~30%
+  collapse in revenue and AOV in Sept 2025 that never happened. On
+  `revenue_excl`, AOV goes 112k (Jul 2025) → 78k (Sep 2025); on `revenue_incl`
+  the same series is flat/rising (101k → 94k → 98k Jul 2026).
+- Cause: [core/schema.js](core/schema.js) maps `OLDWEB.SUBTOTAL_EXCL` to the
+  Magento 1 grid column **`Subtotal`**, which is *not* the tax-exclusive
+  subtotal. It is a gross, pre-adjustment goods figure. `SUBTOTAL_INCL` maps to
+  **`Grand Total (Purchased)`**, which *is* the real charged amount.
+  NEWWEB is unaffected — it reads an explicitly named
+  `Subtotal (Excl Tax)` column ([core/newsales_v2.js:134](core/newsales_v2.js#L134)).
+- Proof (measured 2026-08-10 over all 20,980 OLDWEB orders, 2022-04→2025-08):
+  - `revenue_excl > revenue_incl` on **65% of OLDWEB orders** — arithmetically
+    impossible for a genuine excl/incl pair, since
+    `grand_total_incl >= taxable_base * 1.11` always holds.
+  - The violation rate is a flat 62–79% in **every one of the 40 months** — it is
+    not one bad export batch.
+  - Per-order `excl/incl` ranges **0.55–1.85**, so no single correction factor
+    fixes it. Clean spikes sit at exactly `1/1.11` (0.901) and `1/1.24` (0.806) —
+    those are the zero-adjustment orders where the pair happens to be correct.
+  - Decisive test — both systems ran in parallel 2025-07-18 → 2025-08-18, same
+    customers, same products, same weeks:
+
+    | Source | orders | excl/incl | rows with excl>incl | AOV incl | AOV excl |
+    |---|---|---|---|---|---|
+    | OLDWEB | 678 | 1.136 | 66% | 103,121 | 117,130 |
+    | NEWWEB | 77 | 0.836 | 0% | 111,059 | 92,841 |
+
+    `AOV incl` is continuous across the cutover (103k vs 111k); `AOV excl` is not
+    (117k vs 93k). `revenue_incl` is the comparable series.
+- Action:
+  1. For any web trend crossing July 2025, use **`revenue_incl`**.
+  2. If an excl figure is needed for OLDWEB, derive it: `revenue_incl / 1.196`
+     (0.836 is the NEWWEB-measured blended VAT factor). Do not pass the stored
+     column through.
+  3. `mart.v_web_daily_unified` / `v_web_monthly_unified` / `v_web_orders_unified`
+     currently pass the bad column through unchanged.
+- ⚠️ `day_kpi_pack` reads `revenue_excl` for its d1/d7 comparisons
+  ([core/sql/day_kpi_pack.sql:61](core/sql/day_kpi_pack.sql#L61)). Those windows
+  are entirely inside the NEWWEB era, so **live daily cards are correct** — but
+  any backfilled daily comparison reaching before 2025-08 is not.
+- This is a **different bug** from the BC `amount_excl` zeroing (P9-1, fixed
+  2026-05-13). That one was `raw.bc_invoices_raw`; this one is the OLDWEB
+  web-order source and is still present.
+- Worth adding to `runDailySanityChecks_v1`: assert `revenue_excl <= revenue_incl`
+  on any unified web view. Nothing currently catches this class of error.
+
 ### Issue: Magento auth 401 in customer sync
 - Symptom: `Magento auth failed (401)` in `scheduledMagentoSync_v1`
 - Action:
