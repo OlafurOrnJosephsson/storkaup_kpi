@@ -104,6 +104,7 @@ function fetchActiveProducts_() {
 
   let offset = 0;
   let total = null;
+  let rawCount = 0;
   const seen = {};
   const out = [];
 
@@ -134,6 +135,7 @@ function fetchActiveProducts_() {
     edges.forEach(e => {
       const node = e && e.node;
       if (!node) return;
+      rawCount++;
       const parent = storkaupParentSku_(node.sku);
       if (!parent || seen[parent]) return;
       seen[parent] = true;
@@ -150,15 +152,144 @@ function fetchActiveProducts_() {
       });
     });
 
-    offset += PAGE;
+    // Skref = fjoldi rada sem KOM, ekki fast PAGE. Skili sidha faerri
+    // rodhum en beditdh var um myndi fast skref hoppa yfir mismuninn.
+    offset += edges.length;
     if (!conn.pageInfo || !conn.pageInfo.hasNextPage) break;
     if (offset > 50000) throw new Error('getProductsV2 pagination guard (>50000).');
     Utilities.sleep(120);
   }
 
+  // Offset-sidhuflakk her er slembid ostodugt (sja fetchUncategorizedProducts_).
+  // Vorulistinn er grunnur ALLRA maelinga i thessari skra, svo hljod tap er
+  // thad versta sem getur gerst — vid segjum fra i stad thess ad thegja.
+  if (total !== null && total !== undefined && rawCount < total) {
+    Logger.log('⚠️ getProductsV2: sotti ' + rawCount + ' rodhur af ' + total +
+               ' — sidhuflakkid slapp, maelingar ithessari keyrslu eru ekki ' +
+               'yfir allan vorulistann.');
+  }
   Logger.log('🌐 getProductsV2: ' + out.length + ' einstök parent-SKU (totalCount ' + total + ')');
   return out;
 }
+
+/************************************************************
+ * 🗂️ fetchTopCategoryPaths_ — toppflokkar vefsins (OPINBER)
+ *   getProductCategoriesV2 skilar flokkatrenu. url_path er audkennid
+ *   sem getProductsV2(categories:) tekur vid — ekki id.
+ ************************************************************/
+function fetchTopCategoryPaths_() {
+  const res = UrlFetchApp.fetch(STORKAUP_GQL_URL_, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Accept: '*/*', Origin: 'https://www.storkaup.is' },
+    muteHttpExceptions: true,
+    payload: JSON.stringify({ query: '{ getProductCategoriesV2 { items { url_path } } }' })
+  });
+  if (res.getResponseCode() !== 200) {
+    throw new Error('getProductCategoriesV2 ' + res.getResponseCode());
+  }
+  const data = JSON.parse(res.getContentText());
+  if (data.errors) {
+    throw new Error('getProductCategoriesV2 errors: ' + JSON.stringify(data.errors).slice(0, 200));
+  }
+  const root = (data.data && data.data.getProductCategoriesV2) || {};
+  const paths = (root.items || []).map(i => i && i.url_path).filter(x => !!x);
+  if (!paths.length) throw new Error('getProductCategoriesV2 skiladi engum toppflokki');
+  return paths;
+}
+
+
+/************************************************************
+ * 🗂️ fetchUncategorizedProducts_ — vorur i ENGUM flokki
+ *
+ *   Spyr BEINT med excludedCategories i stad thess ad saekja allan
+ *   flokkada listann og draga hann fra. Thad er ekki bara odyrara
+ *   (1 fyrirspurn i stad ~23) heldur EINA retta leidin:
+ *
+ *   Offset-sidhuflakk a thessum endapunkti er slembid ostodugt. I maelingu
+ *   2026-09-08 skiladi flakk yfir 4.468 rodhur adeins 4.436 einstokum —
+ *   32 komu tvisvar og 32 aldrei — og thad endurtok sig. Adrar 12 keyrslur
+ *   sama dag voru hnokkralausar. Diff-nalgun byr thvi til DRAUGA: vara sem
+ *   flakkid missti virdist flokkslaus. Sú villa birti 20 flokkslausar vorur
+ *   sem allar attu flokk.
+ *
+ *   excludedCategories er sannreynt: fyrir alla fimm toppflokka gildir
+ *   categories + excludedCategories === totalCount upp a eininguna.
+ *   Toppflokkar erfa born, svo fimm slodhir naegja fyrir allt tredh.
+ *
+ *   Skilar { rows, total } eda kastar ef sidhuflakkid slapp — hringjandi
+ *   skrair tha OMAELT (null) i stad thess ad birta ohaldbaeran lista.
+ ************************************************************/
+function fetchUncategorizedProducts_(paths) {
+  const PAGE = 200;
+  const query =
+    'query Q($pagination: PaginationInput, $excludedCategories: [String!]) {' +
+    '  getProductsV2(pagination: $pagination, excludedCategories: $excludedCategories) {' +
+    '    totalCount pageInfo { hasNextPage }' +
+    '    edges { node { sku name totalQuantity slug } }' +
+    '  }' +
+    '}';
+
+  const rawSkus = {};
+  const seenParent = {};
+  const rows = [];
+  let offset = 0;
+  let total = null;
+  let rawCount = 0;
+
+  while (true) {
+    const res = UrlFetchApp.fetch(STORKAUP_GQL_URL_, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Accept: '*/*', Origin: 'https://www.storkaup.is' },
+      muteHttpExceptions: true,
+      payload: JSON.stringify({
+        query: query,
+        variables: { pagination: { first: PAGE, offset: offset }, excludedCategories: paths }
+      })
+    });
+    if (res.getResponseCode() !== 200) {
+      throw new Error('getProductsV2(excludedCategories) ' + res.getResponseCode());
+    }
+    const data = JSON.parse(res.getContentText());
+    if (data.errors) {
+      throw new Error('getProductsV2(excludedCategories) errors: ' + JSON.stringify(data.errors).slice(0, 200));
+    }
+    const conn = (data.data && data.data.getProductsV2) || {};
+    total = conn.totalCount;
+    const edges = conn.edges || [];
+    if (!edges.length) break;
+
+    edges.forEach(e => {
+      const node = e && e.node;
+      if (!node) return;
+      rawCount++;
+      rawSkus[node.sku] = true;
+      const parent = storkaupParentSku_(node.sku);
+      if (!parent || seenParent[parent]) return;
+      seenParent[parent] = true;
+      rows.push([parent, node.name || '', node.totalQuantity, storkaupProductUrl_(node.slug)]);
+    });
+
+    // Skref = fjoldi rada sem KOM, ekki fast PAGE.
+    offset += edges.length;
+    if (!conn.pageInfo || !conn.pageInfo.hasNextPage) break;
+    if (offset > 50000) throw new Error('getProductsV2(excludedCategories) pagination guard (>50000).');
+    Utilities.sleep(120);
+  }
+
+  // Sjalfsprof: serfarinn segir sjalfur hvad thau eiga ad vera margar.
+  // Naum vid faerri einstokum SKU en thad, slapp flakkid og listinn er
+  // ohaldbaer — betra ad segja OMAELT en ad birta drauga.
+  const uniqueRaw = Object.keys(rawSkus).length;
+  if (total !== null && total !== undefined && uniqueRaw < total) {
+    throw new Error('sidhuflakk slapp — ' + uniqueRaw + ' einstok af ' + total +
+                    ' (' + rawCount + ' rodhur sottar)');
+  }
+
+  return { rows: rows, total: total };
+}
+
 
 /************************************************************
  * 🌐 fetchStorkaupPricing_ — verð fyrir lista af parent-SKU (KREFST token)
@@ -249,12 +380,27 @@ function checkStorkaupAuth() {
 }
 
 /************************************************************
- * 🧾 findZeroListPriceProducts_v1 — aðalskönnun
+ * 🧾 findZeroListPriceProducts_v1 — aðalskönnun (vöruheilsa)
  *  - Alheimur = virkar vörur úr getProductsV2 (á vef)
  *  - Verð úr getProductsPricing
  *  - Flaggar: LISTAVERÐ 0  /  VARA EKKI FÁANLEG
- *  - Skrifar í flipa ZERO_PRICE_PRODUCTS + vistar cache fyrir hnapp
- *  - Skilar { totalActive, zeroPrice, notAvailable, flagged }
+ *
+ *  Fjögur eftirlit til viðbótar, öll ÓHÁÐ verði. Þau ríða á sama
+ *  vörulistanum, svo þau kosta nær ekkert:
+ *    VANTAR_MYND        featuredImage null eða "myndvantar"
+ *    UPPSELT            qty <= 0            (kostar 0 fyrirspurnir)
+ *    NEIKVAEDUR_LAGER   qty < 0             (hlutmengi uppselt; gagnavilla)
+ *    AN_FLOKKS          engum flokki        (+2 fyrirspurnir)
+ *
+ *  Birgðatalan kemur með vörulistanum. Hún er VILJANDI ekki skrifuð í
+ *  PRODUCTS: það skjal endurnýjast 50 raðir í hverri Cludo-keyrslu, svo
+ *  ferskt gildi þar myndi frjósa. Hér er flipinn hreinsaður og skrifaður
+ *  í heild í hverri keyrslu.
+ *
+ *  - Skrifar flipa + vistar cache fyrir hnapp
+ *  - Skilar { totalActive, zeroPrice, notAvailable, missingImage,
+ *             outOfStock, negativeStock, noCategory, flagged }
+ *    noCategory === null þýðir ÓMÆLT (flokkalesturinn bilaði), ekki 0.
  ************************************************************/
 function findZeroListPriceProducts_v1() {
   const cfg = loadConfig_();
@@ -322,6 +468,37 @@ function findZeroListPriceProducts_v1() {
   });
   const missingImage = imageRows.length;
 
+  // 2c) Birgdaeftirlit (ohad verdi) — talan fylgir vorulistanum, svo thetta
+  // kostar engar nyjar fyrirspurnir. qty === null thydir OTHEKKT, ekki 0.
+  const outOfStockRows = [];
+  const negativeRows = [];
+  products.forEach(p => {
+    if (p.qty === null || p.qty === undefined || p.qty === '') return;
+    const n = Number(p.qty);
+    if (!isFinite(n)) return;
+    const row = [p.parent, p.name || '', n, storkaupProductUrl_(p.slug)];
+    if (n <= 0) outOfStockRows.push(row);
+    if (n < 0) negativeRows.push(row);
+  });
+  const outOfStock = outOfStockRows.length;
+  const negativeStock = negativeRows.length;
+
+  // 2d) Flokkaeftirlit — vorur i birtingu sem tilheyra engum flokki.
+  // Spurt BEINT (excludedCategories), ekki reiknad ut fra mismun: sja
+  // fetchUncategorizedProducts_ um hvers vegna diff byr til drauga.
+  // Sér-try: bili flokkalesturinn kostar thad EINA maelingu, ekki alla
+  // skonnunina. null = OMAELT, sem er annad en 0.
+  let noCategoryRows = [];
+  let noCategory = null;
+  try {
+    const uncat = fetchUncategorizedProducts_(fetchTopCategoryPaths_());
+    noCategoryRows = uncat.rows;
+    noCategory = noCategoryRows.length;
+  } catch (e) {
+    noCategoryRows = [];
+    Logger.log('⚠️ Flokkaeftirlit mistokst — skrad OMAELT: ' + e.message);
+  }
+
   // 3) Skrifa flipa
   const ss = SpreadsheetApp.openById(cfg.SHEETS.PRODUCTS.ID);
   const sheetName = 'ZERO_PRICE_PRODUCTS';
@@ -364,6 +541,25 @@ function findZeroListPriceProducts_v1() {
   }
   ish.getRange(1, 1, ish.getLastRow(), 1).setNumberFormat('@');
 
+  // 3d) Nyju eftirlitsflipar
+  const NEW_HEADER = ['SKU', 'Product Name', 'Lager', 'URL'];
+  const writeTab_ = function (name, rows, cmp) {
+    let s2 = ss.getSheetByName(name);
+    if (s2) s2.clear();
+    else s2 = ss.insertSheet(name);
+    s2.appendRow(NEW_HEADER);
+    if (rows.length) {
+      rows.sort(cmp || function (a, b) { return String(a[0]).localeCompare(String(b[0])); });
+      s2.getRange(2, 1, rows.length, NEW_HEADER.length).setValues(rows);
+    }
+    s2.getRange(1, 1, s2.getLastRow(), 1).setNumberFormat('@');
+  };
+
+  writeTab_('UPPSELT', outOfStockRows);
+  // Mest neikvaett fyrst — thad er versta gagnavillan.
+  writeTab_('NEIKVAEDUR_LAGER', negativeRows, function (a, b) { return a[2] - b[2]; });
+  if (noCategory !== null) writeTab_('AN_FLOKKS', noCategoryRows);
+
   // 4) Cache fyrir hnapp / web-app
   const sample = rows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], issue: r[4], url: r[5] }));
   const cache = {
@@ -375,12 +571,17 @@ function findZeroListPriceProducts_v1() {
     specialOrderExcluded: specialOrderExcluded,
     missingImage: missingImage,
     imageSample: imageRows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], url: r[3] })),
+    outOfStock: outOfStock,
+    negativeStock: negativeStock,
+    negativeSample: negativeRows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], url: r[3] })),
+    noCategory: noCategory,
+    noCategorySample: noCategoryRows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], url: r[3] })),
     flagged: rows.length,
     sample: sample
   };
   PropertiesService.getScriptProperties().setProperty('ZERO_PRICE_LAST_RESULT', JSON.stringify(cache));
 
-  const summary = { totalActive: checked, zeroPrice: zeroPrice, notAvailable: notAvailable, frameworkExcluded: frameworkExcluded, specialOrderExcluded: specialOrderExcluded, missingImage: missingImage, flagged: rows.length };
+  const summary = { totalActive: checked, zeroPrice: zeroPrice, notAvailable: notAvailable, frameworkExcluded: frameworkExcluded, specialOrderExcluded: specialOrderExcluded, missingImage: missingImage, outOfStock: outOfStock, negativeStock: negativeStock, noCategory: noCategory, flagged: rows.length };
   Logger.log('✅ Verðheilsa: ' + JSON.stringify(summary));
   return summary;
 }

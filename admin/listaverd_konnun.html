@@ -70,7 +70,7 @@ h1 { font-size: 2rem; line-height: 1.18; letter-spacing: -0.02em; text-wrap: bal
 .live-status.bad { color: var(--sk-bad); font-weight: 600; }
 
 /* ── Stat cards ── */
-.stats { margin-top: 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stats { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 12px; }
 .stat { background: var(--sk-panel); border: 1px solid var(--sk-border); border-radius: 10px; padding: 18px; }
 .stat .v { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.02em; }
 .stat .l { margin-top: 4px; font-size: 0.8rem; color: var(--sk-faint); line-height: 1.4; }
@@ -161,6 +161,18 @@ footer p { margin: 0 0 6px; }
       <div class="v mono" id="stat-img">3</div>
       <div class="l">Vantar mynd</div>
     </div>
+    <div class="stat flag">
+      <div class="v mono" id="stat-oos">0</div>
+      <div class="l">Uppselt (lager 0 eða minna)</div>
+    </div>
+    <div class="stat bad">
+      <div class="v mono" id="stat-neg">0</div>
+      <div class="l">Neikvæður lager</div>
+    </div>
+    <div class="stat warn">
+      <div class="v mono" id="stat-nocat">0</div>
+      <div class="l">Án flokks á vef</div>
+    </div>
   </div>
 
   <section>
@@ -200,6 +212,44 @@ footer p { margin: 0 0 6px; }
   </section>
 
   <section>
+    <div class="sec-label">Lager</div>
+    <h3 id="neg-title">Vörur með neikvæðan lager</h3>
+    <p class="body">Neikvæð lagerstaða er gagnavilla, ekki verslunarstaða — hún leysist í birgðakerfinu, ekki á vefnum. Mest neikvætt efst.</p>
+    <div class="tbl-wrap">
+      <div class="tbl-scroll">
+        <table>
+          <thead>
+            <tr><th>SKU</th><th>Vöruheiti</th><th class="num">Lager</th></tr>
+          </thead>
+          <tbody id="neg-rows">
+            <tr><td colspan="3" class="empty">Hleð…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tbl-note" id="neg-note">Fullur listi í <span class="mono">NEIKVAEDUR_LAGER</span> flipanum.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-label">Flokkun</div>
+    <h3 id="nocat-title">Vörur án flokks</h3>
+    <p class="body">Vörur í birtingu sem tilheyra engum flokki. Þær finnast ekki með því að vafra vefinn, aðeins með leit eða beinni slóð.</p>
+    <div class="tbl-wrap">
+      <div class="tbl-scroll">
+        <table>
+          <thead>
+            <tr><th>SKU</th><th>Vöruheiti</th><th class="num">Lager</th></tr>
+          </thead>
+          <tbody id="nocat-rows">
+            <tr><td colspan="3" class="empty">Hleð…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tbl-note" id="nocat-note">Fullur listi í <span class="mono">AN_FLOKKS</span> flipanum.</div>
+    </div>
+  </section>
+
+  <section>
     <div class="sec-label">Pantanir</div>
     <h3 id="ord-title">Pantanir í bið</h3>
     <p class="body">Magento-pantanir í <span class="mono">pending</span> — hafa ekki flætt áfram og geta verið strand (ekki ratað í BC). Elstu efst; eldri en 48 klst merktar rautt.</p>
@@ -226,6 +276,9 @@ footer p { margin: 0 0 6px; }
       <div class="row"><div class="k">Verðin</div><div class="d">Verðkerfi vefsins (<code>getProductsPricing</code>), sama API og storkaup.is notar fyrir innskráða viðskiptavini.</div></div>
       <div class="row"><div class="k">Flöggun</div><div class="d"><span class="chip bad">Listaverð 0</span> = verð er 0 kr. &nbsp; <span class="chip warn">Vara ekki fáanleg</span> = engin verðlína (hangir inni án verðs — líklega archived í Plytix / lokuð í BC en óhreinsuð úr Elastic).</div></div>
       <div class="row"><div class="k">Útilokað</div><div class="d" id="excl-note">Rammasamningsvörur eru verðlagðar per samning og því ekki taldar með.</div></div>
+      <div class="row"><div class="k">Lager</div><div class="d"><code>totalQuantity</code> úr sama vörulista. Uppselt = 0 eða minna; neikvætt er gagnavilla og talið sér. Talan er dagsett við keyrslu, ekki lifandi.</div></div>
+      <div class="row"><div class="k">Flokkun</div><div class="d">Spurt beint um vörur utan allra toppflokka (<code>excludedCategories</code>). Toppflokkar erfa undirflokka, svo vara í undirflokki telst flokkuð.</div></div>
+      <div class="row"><div class="k">Ómælt</div><div class="d">Strik (<span class="mono">—</span>) þýðir að mælingin komst ekki á í þessari keyrslu. Það er ekki núll.</div></div>
     </div>
   </section>
 
@@ -249,6 +302,11 @@ footer p { margin: 0 0 6px; }
   }
 
   function el(id) { return document.getElementById(id); }
+
+  // Fjarvist reits thydir OMAELT, ekki 0 — gamall cache hefur ekki nyju
+  // maelingarnar og "0 uppselt" vaeri einfaldlega osatt.
+  function measured(v) { return (v === null || v === undefined || v === '') ? null : Number(v); }
+  function statTxt(v) { var n = measured(v); return n === null ? '—' : IS(n); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   function chip(issue) {
@@ -297,6 +355,34 @@ footer p { margin: 0 0 6px; }
       : ('Allar ' + IS(total) + ' — fullur listi einnig í VANTAR_MYND flipanum.');
   }
 
+  // Sameiginlegur myndari fyrir einfaldar SKU/heiti/lager toflur.
+  // total === null thydir OMAELT — tha er hvorki hakid ne tala rett.
+  function renderSimple(rowsId, noteId, sample, total, tab, emptyMsg) {
+    var tb = el(rowsId);
+    if (total === null || total === undefined) {
+      tb.innerHTML = '<tr><td colspan="3" class="empty">Ómælt í þessari keyrslu</td></tr>';
+      el(noteId).textContent = 'Mælingin komst ekki á í síðustu keyrslu — sjá keyrsluskrá.';
+      return;
+    }
+    if (!sample || !sample.length) {
+      tb.innerHTML = '<tr><td colspan="3" class="empty">✓ ' + esc(emptyMsg) + '</td></tr>';
+      el(noteId).textContent = emptyMsg + '.';
+      return;
+    }
+    tb.innerHTML = sample.map(function (r) {
+      var qty = (r.qty === null || r.qty === undefined || r.qty === '') ? '—' : IS(r.qty);
+      var neg = Number(r.qty) < 0;
+      var qtyCell = '<td class="num"' + (neg ? ' style="color:var(--sk-bad);font-weight:600"' : '') + '>' + qty + '</td>';
+      var name = r.url
+        ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener" class="plink">' + esc(r.name) + '</a>'
+        : esc(r.name);
+      return '<tr><td class="c-sku">' + esc(r.sku) + '</td><td class="c-name">' + name + '</td>' + qtyCell + '</tr>';
+    }).join('');
+    el(noteId).textContent = (total > sample.length)
+      ? ('Sýni ' + IS(sample.length) + ' af ' + IS(total) + ' — fullur listi í ' + tab + ' flipanum.')
+      : ('Allar ' + IS(total) + ' — fullur listi einnig í ' + tab + ' flipanum.');
+  }
+
   function renderOrders(r) {
     var tb = el('ord-rows');
     if (!r || r.status === 'error') {
@@ -343,6 +429,9 @@ footer p { margin: 0 0 6px; }
     el('stat-zero').textContent   = IS(r.zeroPrice);
     el('stat-na').textContent     = IS(r.notAvailable);
     el('stat-img').textContent    = IS(r.missingImage);
+    el('stat-oos').textContent    = statTxt(r.outOfStock);
+    el('stat-neg').textContent    = statTxt(r.negativeStock);
+    el('stat-nocat').textContent  = statTxt(r.noCategory);
 
     el('list-title').textContent = Number(r.flagged || 0) === 0
       ? 'Engar vörur þarf að laga'
@@ -360,6 +449,22 @@ footer p { margin: 0 0 6px; }
     }
 
     renderRows(r.sample, Number(r.flagged || 0));
+
+    var negTotal = measured(r.negativeStock);
+    el('neg-title').textContent = negTotal === null
+      ? 'Vörur með neikvæðan lager'
+      : (negTotal === 0 ? 'Enginn neikvæður lager'
+          : (IS(negTotal) + (negTotal === 1 ? ' vara með neikvæðan lager' : ' vörur með neikvæðan lager')));
+    renderSimple('neg-rows', 'neg-note', r.negativeSample, negTotal,
+                 'NEIKVAEDUR_LAGER', 'Engin vara með neikvæðan lager');
+
+    var ncat = measured(r.noCategory);
+    el('nocat-title').textContent = ncat === null
+      ? 'Vörur án flokks'
+      : (ncat === 0 ? 'Allar vörur eiga flokk'
+                    : (IS(ncat) + (ncat === 1 ? ' vara án flokks' : ' vörur án flokks')));
+    renderSimple('nocat-rows', 'nocat-note', r.noCategorySample, ncat,
+                 'AN_FLOKKS', 'Allar vörur í birtingu eiga flokk');
 
     var clean = Number(r.flagged || 0) === 0;
     status.classList.toggle('bad', !clean);
