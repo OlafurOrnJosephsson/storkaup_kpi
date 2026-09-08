@@ -1149,17 +1149,32 @@ function logNewwebEvent_(lvl, msg, extra) {
 /************************************************************
  * Safe Poll wrapper (v2)
  ************************************************************/
-function safePoll_v2() {
+/**
+ * opts.force = true hunsar tímagluggann (getNewwebRunWindowDecision_v2_).
+ *
+ * Tímataktarinn kallar á safePoll_v2(e) þar sem e er trigger-atburður —
+ * e.force er undefined, svo tímagluggi taktarans er ósnertur. Aðeins
+ * handvirkar leiðir (safePollNow_v2, menu_refreshNEWWEB) senda force.
+ *
+ * Skilar { ran, reason } svo valmyndin geti sagt sannleikann: áður kallaði
+ * menu_refreshNEWWEB á þetta fall og sagði "NEWWEB updated" jafnvel þegar
+ * keyrslan stöðvaðist á tímaglugganum eða á lásnum og gerði ekkert.
+ */
+function safePoll_v2(opts) {
+  var force = !!(opts && opts.force === true);
   var windowDecision = getNewwebRunWindowDecision_v2_();
-  if (!windowDecision.shouldRun) {
+  if (!force && !windowDecision.shouldRun) {
     logNewwebEvent_('INFO', 'Skipping run by schedule window', windowDecision);
-    return;
+    return { ran: false, reason: 'window', forced: false, windowDecision: windowDecision };
+  }
+  if (force && !windowDecision.shouldRun) {
+    logNewwebEvent_('INFO', 'Manual run: overriding schedule window', windowDecision);
   }
 
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
     logNewwebEvent_('WARN', 'Another v2 run in progress');
-    return;
+    return { ran: false, reason: 'locked', forced: force, windowDecision: windowDecision };
   }
   try {
     pollMagentoOrders_v2();
@@ -1179,19 +1194,36 @@ function safePoll_v2() {
     } catch (hbErr) {
       Logger.log('[NEWWEB][WARN] Heartbeat write failed: ' + hbErr);
     }
+
+    return { ran: true, reason: null, forced: force, windowDecision: windowDecision };
   } catch (e) {
     var errObj = serializeError_(e);
     logNewwebEvent_('ERROR', 'safePoll_v2 exception', errObj);
-    if (typeof notifyTriggerFailure_ === 'function') {
+    // Handvirk keyrsla vekur ekki rekstrarviðvörun — sá sem ýtti á hnappinn
+    // sér villuna í loggnum. Aðeins taktarinn á að senda tilkynningu.
+    if (!force && typeof notifyTriggerFailure_ === 'function') {
       try {
         notifyTriggerFailure_('safePoll_v2', errObj, { windowDecision: windowDecision });
       } catch (alertErr) {
         Logger.log('[NEWWEB][WARN] Failure alert failed: ' + alertErr);
       }
     }
+    if (force) throw e;
+    return { ran: false, reason: 'error', forced: force, error: errObj, windowDecision: windowDecision };
   } finally {
     lock.releaseLock();
   }
+}
+
+/************************************************************
+ * Handvirk keyrsla — sýnileg í Run-valmynd Apps Script.
+ * Hunsar tímagluggann; annars gerir hún nákvæmlega það sama
+ * og taktarinn gerir.
+ ************************************************************/
+function safePollNow_v2() {
+  var out = safePoll_v2({ force: true });
+  logNewwebEvent_('INFO', 'Manual safePoll finished', out);
+  return out;
 }
 
 /************************************************************
@@ -1256,8 +1288,8 @@ function getNewwebRunWindowDecision_v2_() {
     };
   }
 
-  // Business hours: every 5-minute trigger run (07:00-15:59)
-  if (hour >= 7 && hour < 16) {
+  // Business hours: every 5-minute trigger run (07:00-21:59)
+  if (hour >= 7 && hour < 22) {
     return {
       shouldRun: true,
       mode: 'business_5m',
@@ -1267,7 +1299,8 @@ function getNewwebRunWindowDecision_v2_() {
     };
   }
 
-  // Evening: run only on quarter-hours (effective 15m on top of 5m trigger).
+  // Late night (22:00-23:59): run only on quarter-hours
+  // (effective 15m on top of the 5m trigger).
   var quarter = (minute % 15 === 0);
   return {
     shouldRun: quarter,

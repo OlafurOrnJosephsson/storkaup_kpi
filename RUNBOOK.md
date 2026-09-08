@@ -42,6 +42,12 @@ Notes:
 ### 1) NEWWEB ingestion
 - Function: `safePoll_v2`
 - Purpose: Pull new web orders from Magento, write to `NEWWEB`, upsert to Supabase.
+- Run window (`getNewwebRunWindowDecision_v2_`): off 00:00-06:59, every trigger
+  run 07:00-21:59, quarter-hours only 22:00-23:59. The trigger fires every 5 min
+  regardless; runs outside the window log `Skipping run by schedule window` and
+  exit. So a 5-minute trigger does not mean a 5-minute cadence.
+- Manual run: `safePollNow_v2` (Run menu) or the NEWWEB menu item. Both pass
+  `force: true` and ignore the window. Plain `safePoll_v2()` does not.
 - Expected logs:
   - `[NEWWEB][INFO] NEWWEB v2 start ...`
   - `[NEWWEB][INFO] NEWWEB v2 page fetched ...`

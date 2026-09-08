@@ -74,6 +74,10 @@ function onOpen() {
         .addItem('Debug Gemini Models', 'menu_debugGeminiModels')
     )
     .addSubMenu(
+      ui.createMenu('Vöruinnihald')
+        .addItem('Byggja vinnusheet úr Plytix-útdrætti', 'menu_buildPimWorksheet')
+    )
+    .addSubMenu(
       ui.createMenu('Tools')
         .addItem('Test Config', 'menu_testConfig')
         .addItem('Clear Magento Token Cache', 'menu_clearMagentoTokenCache')
@@ -137,8 +141,14 @@ function menu_refreshNEWWEB() {
   if (typeof safePoll_v2 !== 'function') {
     throw new Error('safePoll_v2() not found. Ensure core/newsales_v2.js is deployed.');
   }
-  safePoll_v2();
+  // force: handvirk keyrsla á að virka líka utan tímagluggans (nótt / 22-24).
+  // Án hennar stöðvaðist keyrslan þegjandi og valmyndin laug "NEWWEB updated".
+  var out = safePoll_v2({ force: true });
 
+  if (out && out.reason === 'locked') {
+    toast_('NEWWEB: önnur keyrsla í gangi — ekkert gert. Prófaðu aftur.', 'KPI CORE');
+    return;
+  }
   toast_('NEWWEB updated.', 'KPI CORE');
 }
 
@@ -698,23 +708,22 @@ function menu_processBcDrop() {
     return;
   }
 
-  var r = (out.sync && out.sync.results) || {};
+  // Þessi dialog las 'p.rows' og 'out.sync' frá 75305d2 til 2026-08-31. Hvorugt
+  // hefur processBcDrop_v1 nokkurn tíma skilað — hann skilar {ok, processed,
+  // errors} og pushar {file, schema, total, new, uploaded}. Því stóð alltaf
+  // "undefined raðir" og upload-tölurnar birtust aldrei.
   var lines = (out.processed || []).map(function(p) {
-    return '✅ ' + p.file + ' (' + p.rows + ' raðir → ' + p.schema + ')';
+    var total    = p.total    || 0;
+    var uploaded = p.uploaded || 0;
+    var skipped  = total - (p['new'] || 0);
+    return '✅ ' + p.schema + ' — ' + uploaded + ' uploaded af ' + total + ' röðum' +
+           (skipped > 0 ? ' (' + skipped + ' þegar til)' : '') +
+           '\n   ' + p.file;
   }).concat((out.errors || []).map(function(e) {
-    return '❌ ' + e.file + ': ' + e.error;
+    return '❌ ' + e.schema + ' — ' + e.file + ':\n   ' + e.error;
   }));
 
-  if (out.sync) {
-    lines.push('');
-    lines.push('Supabase sync:');
-    lines.push('  Invoices: ' + ((r.invoices && r.invoices.uploaded) || 0) + ' uploaded' +
-      (r.invoices && r.invoices.remaining > 0 ? ' (' + r.invoices.remaining + ' remaining — run sync again)' : ''));
-    lines.push('  Credit: ' + ((r.creditInvoices && r.creditInvoices.uploaded) || 0) + ' uploaded');
-    lines.push('  Lines: ' + ((r.lines && r.lines.uploaded) || 0) + ' uploaded');
-  }
-
-  SpreadsheetApp.getUi().alert('BC Drive Drop\n\n' + lines.join('\n'));
+  SpreadsheetApp.getUi().alert('BC Drive Drop', lines.join('\n\n'), SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 function menu_processBcDropForce() {

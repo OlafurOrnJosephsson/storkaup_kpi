@@ -28,3 +28,17 @@ core/sql/_audit_output/
 # credentials/state. The CLI cannot reach the DB from the office network anyway
 # (ports 5432/6543 are blocked, 443 is not) — see core/sql/_dump_definitions.sql.
 supabase/
+
+# PIM drop — local staging for Plytix exports (not committed).
+# Repo is public: exports carry supplier product numbers and internal
+# attributes that are not on the website. Same pattern as bc_drop/.
+pim_drop/
+
+# Product images never belong in git. Drop folder is Pictures\Vorumyndir.
+pim/**/*.jpg
+pim/**/*.jpeg
+pim/**/*.png
+pim/**/*.webp
+
+# Local AI super-resolution executable and models; never commit binaries.
+pim/.tools/

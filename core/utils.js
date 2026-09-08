@@ -1608,6 +1608,27 @@ function parseBcXlsxRows_(data, schemaKey) {
   return rows;
 }
 
+// Which rows in a chunk still need uploading.
+// BC_CUSTOMERS is always a full upsert (merge on company_id), so nothing is
+// filtered. BC_LINES deliberately filters on the INVOICE key set, not a line
+// key set — a line is new iff its invoice is new. Both key sets are fetched
+// once before any upload, so lines uploaded in the same run as their invoice
+// are still seen as new.
+function selectNewBcRows_(rows, schemaKey, force, existingInvoiceKeys, existingCreditKeys) {
+  if (schemaKey === 'BC_CUSTOMERS' || force) return rows;
+  var keys = (schemaKey === 'BC_CREDIT_INVOICES') ? existingCreditKeys : existingInvoiceKeys;
+  return rows.filter(function(r) {
+    return !keys[String(r.DOCUMENT_NO || '').trim()];
+  });
+}
+
+function uploadBcRows_(rows, schemaKey) {
+  if (schemaKey === 'BC_CUSTOMERS')       return upsertBcCustomersToSupabase_(rows);
+  if (schemaKey === 'BC_INVOICES')        return upsertBcInvoicesToSupabase_(rows);
+  if (schemaKey === 'BC_CREDIT_INVOICES') return upsertBcCreditInvoicesToSupabase_(rows);
+  return upsertBcLinesToSupabase_(rows);
+}
+
 function processBcDrop_v1(opts) {
   var force = !!(opts && opts.force);
   var cfg = loadConfig_();
@@ -1703,46 +1724,54 @@ function processBcDrop_v1(opts) {
       }
 
       tempFileId = JSON.parse(copyRes.getContentText()).id;
-      var data = SpreadsheetApp.openById(tempFileId).getSheets()[0].getDataRange().getValues();
-      if (data.length < 2) throw new Error('Empty file');
 
-      var allRows = parseBcXlsxRows_(data, item.schemaKey);
-      Logger.log('[BC_DROP] Parsed rows: ' + allRows.length);
+      // Chunked read + upload PER CHUNK. This used to be a single
+      // getDataRange().getValues(), which on the lines export (465k rows ×
+      // 14 cols ≈ 6.5M cells) crashes V8 with "Error code INTERNAL" — no JS
+      // exception, so the catch below never fired and the run died silently
+      // with the file left in the drop folder. It died on 2026-08-31 when the
+      // BC export gained two columns (+17% memory on an already marginal read).
+      //
+      // Chunking the READ alone would not have helped: 465k parsed objects
+      // outweigh the raw arrays. The rows must leave memory each chunk, so the
+      // filter and the upload move inside the loop.
+      var sheet0   = SpreadsheetApp.openById(tempFileId).getSheets()[0];
+      var lastRow  = sheet0.getLastRow();
+      var lastCol  = sheet0.getLastColumn();
+      if (lastRow < 2 || lastCol < 1) throw new Error('Empty file');
 
-      var newRows, result;
+      var headerRow  = sheet0.getRange(1, 1, 1, lastCol).getValues()[0];
+      var READ_CHUNK = 20000;
+      var totalRows = 0, newCount = 0, uploadedCount = 0;
 
-      if (item.schemaKey === 'BC_CUSTOMERS') {
-        Logger.log('[BC_DROP] Customers: ' + allRows.length + ' rows — full upsert (merge)');
-        result = allRows.length ? upsertBcCustomersToSupabase_(allRows) : { uploaded: 0 };
-        newRows = allRows;
+      for (var start = 2; start <= lastRow; start += READ_CHUNK) {
+        var take  = Math.min(READ_CHUNK, lastRow - start + 1);
+        var block = sheet0.getRange(start, 1, take, lastCol).getValues();
 
-      } else if (item.schemaKey === 'BC_INVOICES') {
-        newRows = force ? allRows : allRows.filter(function(r) {
-          return !existingInvoiceKeys[String(r.DOCUMENT_NO || '').trim()];
-        });
-        Logger.log('[BC_DROP] Invoices: ' + newRows.length + ' / ' + allRows.length + (force ? ' (force)' : ' new'));
-        result = newRows.length ? upsertBcInvoicesToSupabase_(newRows) : { uploaded: 0 };
+        var chunkRows = parseBcXlsxRows_([headerRow].concat(block), item.schemaKey);
+        block = null;
+        totalRows += chunkRows.length;
 
-      } else if (item.schemaKey === 'BC_CREDIT_INVOICES') {
-        newRows = force ? allRows : allRows.filter(function(r) {
-          return !existingCreditKeys[String(r.DOCUMENT_NO || '').trim()];
-        });
-        Logger.log('[BC_DROP] Credits: ' + newRows.length + ' / ' + allRows.length + (force ? ' (force)' : ' new'));
-        result = newRows.length ? upsertBcCreditInvoicesToSupabase_(newRows) : { uploaded: 0 };
+        var chunkNew = selectNewBcRows_(
+          chunkRows, item.schemaKey, force, existingInvoiceKeys, existingCreditKeys
+        );
+        chunkRows = null;
+        newCount += chunkNew.length;
 
-      } else {
-        newRows = force ? allRows : allRows.filter(function(r) {
-          return !existingInvoiceKeys[String(r.DOCUMENT_NO || '').trim()];
-        });
-        Logger.log('[BC_DROP] Lines: ' + newRows.length + ' / ' + allRows.length + (force ? ' (force)' : ' new'));
-        result = newRows.length ? upsertBcLinesToSupabase_(newRows) : { uploaded: 0 };
+        if (chunkNew.length) {
+          uploadedCount += (uploadBcRows_(chunkNew, item.schemaKey).uploaded || 0);
+        }
+        chunkNew = null;
       }
+
+      Logger.log('[BC_DROP] ' + item.schemaKey + ': ' + newCount + ' / ' + totalRows +
+                 (force ? ' (force)' : (item.schemaKey === 'BC_CUSTOMERS' ? ' (full merge)' : ' new')));
 
       processed.push({
         file: item.fileName, schema: item.schemaKey,
-        total: allRows.length, new: newRows.length, uploaded: result.uploaded || 0
+        total: totalRows, new: newCount, uploaded: uploadedCount
       });
-      Logger.log('[BC_DROP] ✅ ' + item.fileName + ' — uploaded: ' + (result.uploaded || 0));
+      Logger.log('[BC_DROP] ✅ ' + item.fileName + ' — uploaded: ' + uploadedCount);
       fileOk = true;
 
     } catch (e) {
@@ -4545,7 +4574,8 @@ function auditTriggers_v1() {
     scheduledZeroPriceScan_v1:        'daily ~06:50',
     runDailySanityChecks_v1:          'daily ~07:40',
     scheduledNewwebStatusSync_v2:     'daily ~11:30 & ~17:30 (2 triggers)',
-    scheduledWeeklyDigest:            'Mondays ~08:00'
+    scheduledWeeklyDigest:            'Mondays ~08:00',
+    scheduledMonthlyDigest:           'monthly, 1st ~08:00'
   };
 
   // ── KNOWN BUT OPTIONAL — recognised so they do not log as "Unknown handler",
@@ -4554,7 +4584,6 @@ function auditTriggers_v1() {
   var OPTIONAL = {
     onOpen:                       'spreadsheet ON_OPEN (not time-based)',
     pruneCompletedApplications:   'no installer in repo — installed by hand',
-    scheduledMonthlyDigest:       'monthly, 1st ~08:00 — install on demand',
     runScheduledSeoAutomation_v1: 'every 30 min — SEO batch, install on demand',
     collectInvoicesToDrive_v1:    'daily ~07:10 — invoice collector'
   };
@@ -4678,6 +4707,7 @@ function resetRecommendedTimeTriggers_v1() {
     'scheduledKlaviyoSync_v1',
     'scheduledNewwebStatusSync_v2',
     'scheduledWeeklyDigest',
+    'scheduledMonthlyDigest',
     'scheduledZeroPriceScan_v1',
     'scheduledSearchConsoleSync_v1'
   ];
@@ -4694,6 +4724,7 @@ function resetRecommendedTimeTriggers_v1() {
     installScheduledGa4SyncTrigger_v1(),
     installNewwebStatusSyncTrigger_v2(),
     installWeeklyDigestTrigger_v1(),
+    installMonthlyDigestTrigger_v1(),
     installZeroPriceScanTrigger_v1(),
     installScheduledSearchConsoleSyncTrigger_v1()
   ];

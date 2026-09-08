@@ -8,3 +8,11 @@ admin/**
 .vscode/**
 .git/**
 .gitignore
+
+# Email design previews — browser-only mockups plus a Node renderer.
+# NOT ignored until 2026-09-01, which meant every email-preview/*.html was being
+# pushed into the Apps Script project as an HTML file. Harmless bloat on its own,
+# but adding a .js renderer here would have been pushed as a SCRIPT file, and its
+# top-level require('fs') would have thrown on every single execution — killing
+# every trigger in the project. Keep this rule.
+email-preview/**

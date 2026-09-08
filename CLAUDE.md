@@ -5,17 +5,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Deploy workflow
 
 ```bash
-clasp push          # push MAIN project GAS code to Apps Script
+.\gas_deploy.ps1 "short description"   # push + new version, BOTH projects
 git add .
 git commit -m "..."
 git push
 ```
 
 Two Apps Script projects live in this repo (see [Web-app projects](#web-app-projects)):
-- **Main** (repo root) — ingest + anonymous web app. `clasp push` from root.
-- **Admin-apps** (`admin/`) — internal PII apps behind Google login. `cd admin && clasp push`, then `clasp deploy -i <deploymentId>` to cut a new version. `admin/**` is excluded from the main push via `.claspignore`.
+- **Main** (repo root) — ingest + anonymous web app.
+- **Admin-apps** (`admin/`) — internal PII apps behind Google login. `admin/**` is excluded from the main push via `.claspignore`.
 
-Web app changes only go live when a **new version is deployed** (`clasp deploy -i <deploymentId>`), not on `clasp push` alone — `push` updates `@HEAD`, but `/exec` runs the pinned version.
+`clasp` only ever works on one project at a time — it reads `.clasp.json` from
+the current directory. **A bare `clasp push` from the root therefore covers only
+half the code.** [gas_deploy.ps1](gas_deploy.ps1) wraps both projects and is the
+single source of truth for the two deployment IDs; it refuses to target either
+`@HEAD` deployment. Never create a *new* deployment — that changes the `/exec`
+URL and breaks the Webflow iframe plus the nav links to the admin apps.
+
+Web app changes only go live when a **new version is deployed**, not on
+`clasp push` alone — `push` updates `@HEAD`, but `/exec` runs the pinned
+version. **This applies to the main project too, for a non-obvious reason:** the
+admin app's "Keyra aftur" button calls `doPost` on the *main* project's `/exec`,
+which is also pinned. Push the main project without deploying it and that button
+runs the old code, overwriting fresh scan results with stale ones.
+
+A root `clasp push` also uploads **every** uncommitted change under `core/`, and
+any `.js` in a non-ignored subdirectory (`pim/` included). Check `git status`
+first, and make sure a new `.js` is real Apps Script — a top-level `require()`
+throws on load and kills every trigger in the project (see the `email-preview/**`
+note in `.claspignore`).
 
 Webflow JS files (`Webflow/*.js`) are **not** pushed via clasp — deploy by copy/paste into Webflow custom code and updating jsDelivr commit pins in `README.md` and `NEXT_TASKS.md`.
 
@@ -129,6 +147,32 @@ functions. Run it before trusting any list of what is scheduled.
 | `runDailySanityChecks_v1` | Daily ~07:40 | Cross-source validation |
 | `scheduledNewwebStatusSync_v2` | Daily ~11:30 & ~17:30 | Magento order status |
 | `scheduledWeeklyDigest` | Mondays ~08:00 | Weekly email |
+| `scheduledMonthlyDigest` | Monthly, 1st ~08:00 | Monthly email + records |
+
+**`safePoll_v2`'s 5-minute trigger is not a 5-minute cadence.**
+`getNewwebRunWindowDecision_v2_()` gates it: off 00:00-06:59, every run
+07:00-21:59, quarter-hours only 22:00-23:59. Runs outside the window log
+`Skipping run by schedule window` and do nothing. For a manual run use
+`safePollNow_v2()` or the NEWWEB menu item — they pass `force: true` and ignore
+the window; bare `safePoll_v2()` obeys it and will silently no-op at 03:00.
+
+**The monthly digest was dead code until 2026-09-01.** `scheduledMonthlyDigest`
+([core/email.js](core/email.js)) and its installer both existed, but nothing
+called `installMonthlyDigestTrigger_v1()` and `auditTriggers_v1` listed the
+handler under `OPTIONAL` ("install on demand"), so an absent trigger was never
+warned about — the same silence that hid four uninstalled triggers for three
+months. It is now in `EXPECTED` and in `resetRecommendedTimeTriggers_v1`.
+**Run `installMonthlyDigestTrigger_v1()` once** (or `resetRecommendedTimeTriggers_v1()`)
+— pushing the code does not create the trigger.
+
+The digest's "Met og áfangar" block comes from a **second** RPC,
+`public.web_records_v1` ([core/sql/web_records_v1.sql](core/sql/web_records_v1.sql)),
+which must be applied in the Supabase SQL editor. It is deliberately separate
+from `monthly_digest_stats`: that function already exceeds the 8s anon
+statement_timeout, and `fetchWebRecords_` swallows any failure so a broken
+records query costs one section, not the whole email. Records rank **NEWWEB +
+OLDWEB** unioned, and revenue records are **m/VSK** — OLDWEB has no usable excl
+figure (see RUNBOOK.md).
 
 **BC has no trigger.** `scheduledBcSync_v1` was deleted 2026-04-30 (`d83c7c5`);
 this table listed it as "twice daily" for three months after it stopped existing.
@@ -136,6 +180,21 @@ BC now loads only from the **BC Sync menu** (`processBcDrop_v1`), reading XLSX
 dropped in Drive. Files uploaded by `bc_sync.ps1` sit unread until someone clicks
 it. Never run `processBcDropForce_v1` on the invoice file — it nulls `order_no`
 and `email` across all history (see `core/sql/generate_shopping_list_v2.sql`).
+
+**Export a rolling ~3-month window from BC, not the full history.** Decided
+2026-08-31. Lines are deduped against a 2-year-windowed *invoice* key set
+([core/utils.js](core/utils.js), `cutoff` in `processBcDrop_v1`), so every line
+whose invoice predates that window counts as new on every run. With a
+full-history export that was 217,790 of 484,768 rows re-sent per import —
+harmless (`resolution=ignore-duplicates` drops them server-side) but 4m14s of a
+6-minute execution budget, growing ~6%/month.
+
+Two consequences of the narrow window:
+- Because nothing triggers this, **a skipped month is a real gap** in
+  `bc_lines_raw`. Three months of overlap is the margin; don't cut it to one.
+- `processBcDropForce_v1` is no longer a full rebuild — it force-upserts only
+  what the file contains. A genuine rebuild needs a deliberate full-history
+  export for that one run.
 
 Four triggers were found **uninstalled** on 2026-08-06, lost around 2026-05-07..11:
 Klaviyo, Customer Analysis, Cludo, Search Console. Nobody noticed for three

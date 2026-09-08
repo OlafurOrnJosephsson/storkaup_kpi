@@ -188,22 +188,21 @@ function buildWeeklyDigestHtml_(s) {
 
   var newCustRows = newCustList.length
     ? newCustList.map(function(c) {
-        return '<div class="sk-row">'
-          + '<span style="font-weight:600;">' + emailEsc_(c.name || '?')
-          + ' <span class="sk-new">Nýr</span></span>'
-          + '<span style="color:#3B6D11;font-size:12px;">Fyrsta pöntun: '
-          + emailIskShort_(c.revenue) + '</span></div>';
-      }).join('')
-    : '<div class="sk-row"><span style="color:#888;">Engir nýir viðskiptavinir þessa viku.</span></div>';
+        return emailListRow_(
+          '<span style="font-weight:600;">' + emailEsc_(c.name || '?')
+            + ' <span class="sk-new">Nýr</span></span>',
+          '<span style="color:#3B6D11;font-size:12px;">Fyrsta pöntun: '
+            + emailIskShort_(c.revenue) + '</span>');
+      })
+    : [emailListRow_('<span style="color:#888;">Engir nýir viðskiptavinir þessa viku.</span>', '')];
 
   var topRows = topCust.length
     ? topCust.map(function(c) {
-        return '<div class="sk-row">'
-          + '<span style="font-weight:600;">' + emailEsc_(c.name || '?') + '</span>'
-          + '<span style="color:#1a1a6e;font-weight:600;">' + emailIskShort_(c.revenue_excl) + '</span>'
-          + '</div>';
-      }).join('')
-    : '<div class="sk-row"><span style="color:#888;">–</span></div>';
+        return emailListRow_(
+          '<span style="font-weight:600;">' + emailEsc_(c.name || '?') + '</span>',
+          '<span style="color:#1a1a6e;font-weight:600;">' + emailIskShort_(c.revenue_excl) + '</span>');
+      })
+    : [emailListRow_('<span style="color:#888;">–</span>', '')];
 
   var CSS = '<style>'
     + '.sk-email{max-width:600px;margin:0 auto;font-family:Arial,sans-serif;font-size:14px;color:#1a1a2e}'
@@ -212,16 +211,16 @@ function buildWeeklyDigestHtml_(s) {
     + '.sk-footer{background:#f5f5f5;border:1px solid #e0e0e0;border-top:none;padding:16px 32px;border-radius:0 0 8px 8px}'
     + '.sk-divider{border:none;border-top:1px solid #e8e8e8;margin:20px 0}'
     + '.sk-lbl{margin:0 0 12px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.8px}'
-    + '.sk-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}'
     + '.sk-kpi{background:#f8f8fb;border:1px solid #e8e8e8;border-radius:8px;padding:14px 16px}'
     + '.sk-kpi-lbl{font-size:11px;color:#888;margin:0 0 4px}'
     + '.sk-kpi-val{font-size:22px;font-weight:700;color:#1a1a6e;margin:0 0 4px}'
     + '.up{font-size:12px;color:#1a7a4a;font-weight:600}'
     + '.dn{font-size:12px;color:#c0392b;font-weight:600}'
     + '.ne{font-size:12px;color:#888}'
-    + '.sk-list{background:#f8f8fb;border:1px solid #e8e8e8;border-radius:8px;padding:4px 16px;margin-bottom:10px}'
-    + '.sk-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px}'
-    + '.sk-row:last-child{border-bottom:none}'
+    + '.sk-list{background:#f8f8fb;border:1px solid #e8e8e8;border-radius:8px;margin-bottom:10px;width:100%;border-collapse:collapse}'
+    + '.sk-rowc{padding:8px 16px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#1a1a2e;vertical-align:top}'
+    + '.sk-rowr{text-align:right}'
+    + '.sk-rowlast{border-bottom:none}'
     + '.sk-badge{background:#eaf3de;border-radius:6px;padding:10px 14px;font-size:12px;color:#3B6D11;font-weight:600}'
     + '.sk-new{display:inline-block;background:#eaf3de;color:#3B6D11;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:6px;vertical-align:middle}'
     + '.sk-btn{display:inline-block;background:#1a1a6e;color:#fff!important;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none}'
@@ -250,29 +249,27 @@ function buildWeeklyDigestHtml_(s) {
 
     // Vefsala
     + '<p class="sk-lbl">Vefsala</p>'
-    + '<div class="sk-grid">'
-    + kpi('Vefvelta vikuna',   emailIskShort_(webRev),    emailPctSpan_(webRev,    prevWebRev))
-    + kpi('Vefpantanir',       String(webOrd),             emailPctSpan_(webOrd,    prevWebOrd))
-    + '</div>'
+    + emailGrid2_(
+        kpi('Vefvelta vikuna', emailIskShort_(webRev), emailPctSpan_(webRev, prevWebRev)),
+        kpi('Vefpantanir',     String(webOrd),          emailPctSpan_(webOrd, prevWebOrd)))
     + '<hr class="sk-divider">'
 
     // Nýir viðskiptavinir
     + '<p class="sk-lbl">Nýir viðskiptavinir vikuna</p>'
-    + '<div class="sk-list">' + newCustRows + '</div>'
+    + emailList_(newCustRows)
     + '<div class="sk-badge">' + newCust + ' nýir viðskiptavinir þessa viku — ' + newCust30d + ' síðustu 30 daga</div>'
     + '<hr class="sk-divider">'
 
     // Stærstu viðskiptavinir
     + '<p class="sk-lbl">Stærstu viðskiptavinir vikuna</p>'
-    + '<div class="sk-list">' + topRows + '</div>'
+    + emailList_(topRows)
     + '<hr class="sk-divider">'
 
     // Klaviyo
     + '<p class="sk-lbl">Markaðsherferðir (Klaviyo)</p>'
-    + '<div class="sk-grid">'
-    + kpi('Pantanir frá Klaviyo', String(klOrd),              '<span class="ne">30 daga gluggi</span>')
-    + kpi('Sala frá Klaviyo',     emailIskShort_(klRevExcl),  '<span class="ne">án VSK &middot; 30 dagar</span>')
-    + '</div>'
+    + emailGrid2_(
+        kpi('Pantanir frá Klaviyo', String(klOrd),             '<span class="ne">30 daga gluggi</span>'),
+        kpi('Sala frá Klaviyo',     emailIskShort_(klRevExcl), '<span class="ne">án VSK &middot; 30 dagar</span>'))
     + '<hr class="sk-divider">'
 
     // CTA
@@ -501,8 +498,36 @@ function menu_testMonthlyDigest() {
 function fetchMonthlyDigestStats_(monthStartIso) {
   var raw = callSupabaseRpc_('monthly_digest_stats', { p_month_start: monthStartIso });
   var parsed = safeJsonParse_(raw, null);
-  if (Array.isArray(parsed) && parsed.length) return parsed[0];
-  return parsed || {};
+  if (Array.isArray(parsed) && parsed.length) parsed = parsed[0];
+  var stats = parsed || {};
+
+  // Records ride along on the stats object so all three senders (scheduled,
+  // menu, test) pick them up without repeating the call. Attached here rather
+  // than merged into monthly_digest_stats because it is a second RPC that must
+  // be allowed to fail on its own — see fetchWebRecords_.
+  stats.records = fetchWebRecords_(monthStartIso);
+  return stats;
+}
+
+// Secondary RPC: all-time records/milestones for the reported month.
+// Returns null on ANY failure — a missing "Met og áfangar" section is a far
+// better outcome than no monthly digest, same principle the Webflow dashboards
+// follow for secondary RPCs. web_records_v1 is granted to service_role only.
+function fetchWebRecords_(monthStartIso) {
+  try {
+    var raw = callSupabaseRpc_('web_records_v1', { p_month_start: monthStartIso });
+    var parsed = safeJsonParse_(raw, null);
+    if (Array.isArray(parsed) && parsed.length) parsed = parsed[0];
+    if (!parsed || parsed.month_orders == null) {
+      Logger.log(EMAIL_LOG_ + '[WARN] web_records_v1 returned no month row for ' + monthStartIso);
+      return null;
+    }
+    return parsed;
+  } catch (e) {
+    Logger.log(EMAIL_LOG_ + '[WARN] web_records_v1 failed; digest continues without records: '
+      + (e && e.message ? e.message : String(e)));
+    return null;
+  }
 }
 
 // ── HTML: monthly digest ──────────────────────────────────────────────────────
@@ -532,31 +557,29 @@ function buildMonthlyDigestHtml_(s) {
 
   var newCustRows = newCustList.length
     ? newCustList.map(function(c) {
-        return '<div class="sk-row">'
-          + '<span style="font-weight:600;">' + emailEsc_(c.name || '?')
-          + ' <span class="sk-new">Nýr</span></span>'
-          + '<span style="color:#3B6D11;font-size:12px;">Fyrsta pöntun: '
-          + emailIskShort_(c.revenue) + '</span></div>';
-      }).join('')
-    : '<div class="sk-row"><span style="color:#888;">Engir nýir viðskiptavinir þennan mánuð.</span></div>';
+        return emailListRow_(
+          '<span style="font-weight:600;">' + emailEsc_(c.name || '?')
+            + ' <span class="sk-new">Nýr</span></span>',
+          '<span style="color:#3B6D11;font-size:12px;">Fyrsta pöntun: '
+            + emailIskShort_(c.revenue) + '</span>');
+      })
+    : [emailListRow_('<span style="color:#888;">Engir nýir viðskiptavinir þennan mánuð.</span>', '')];
 
   var topRows = topCust.length
     ? topCust.map(function(c) {
-        return '<div class="sk-row">'
-          + '<span style="font-weight:600;">' + emailEsc_(c.name || '?') + '</span>'
-          + '<span style="color:#1a1a6e;font-weight:600;">' + emailIskShort_(c.revenue_excl) + '</span>'
-          + '</div>';
-      }).join('')
-    : '<div class="sk-row"><span style="color:#888;">–</span></div>';
+        return emailListRow_(
+          '<span style="font-weight:600;">' + emailEsc_(c.name || '?') + '</span>',
+          '<span style="color:#1a1a6e;font-weight:600;">' + emailIskShort_(c.revenue_excl) + '</span>');
+      })
+    : [emailListRow_('<span style="color:#888;">–</span>', '')];
 
   var prodRows = topProd.length
     ? topProd.map(function(p) {
-        return '<div class="sk-row">'
-          + '<span style="font-weight:600;">' + emailEsc_(p.name || '?') + '</span>'
-          + '<span style="color:#1a1a6e;font-weight:600;">' + emailIskShort_(p.revenue_excl) + '</span>'
-          + '</div>';
-      }).join('')
-    : '<div class="sk-row"><span style="color:#888;">–</span></div>';
+        return emailListRow_(
+          '<span style="font-weight:600;">' + emailEsc_(p.name || '?') + '</span>',
+          '<span style="color:#1a1a6e;font-weight:600;">' + emailIskShort_(p.revenue_excl) + '</span>');
+      })
+    : [emailListRow_('<span style="color:#888;">–</span>', '')];
 
   var CSS = '<style>'
     + '.sk-email{max-width:600px;margin:0 auto;font-family:Arial,sans-serif;font-size:14px;color:#1a1a2e}'
@@ -565,7 +588,6 @@ function buildMonthlyDigestHtml_(s) {
     + '.sk-footer{background:#f5f5f5;border:1px solid #e0e0e0;border-top:none;padding:16px 32px;border-radius:0 0 8px 8px}'
     + '.sk-divider{border:none;border-top:1px solid #e8e8e8;margin:20px 0}'
     + '.sk-lbl{margin:0 0 12px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.8px}'
-    + '.sk-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}'
     + '.sk-kpi{background:#f8f8fb;border:1px solid #e8e8e8;border-radius:8px;padding:14px 16px}'
     + '.sk-kpi-lbl{font-size:11px;color:#888;margin:0 0 4px}'
     + '.sk-kpi-val{font-size:22px;font-weight:700;color:#1a1a6e;margin:0 0 4px}'
@@ -575,11 +597,13 @@ function buildMonthlyDigestHtml_(s) {
     + '.up{font-size:12px;color:#1a7a4a;font-weight:600}'
     + '.dn{font-size:12px;color:#c0392b;font-weight:600}'
     + '.ne{font-size:12px;color:#888}'
-    + '.sk-list{background:#f8f8fb;border:1px solid #e8e8e8;border-radius:8px;padding:4px 16px;margin-bottom:10px}'
-    + '.sk-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px}'
-    + '.sk-row:last-child{border-bottom:none}'
+    + '.sk-list{background:#f8f8fb;border:1px solid #e8e8e8;border-radius:8px;margin-bottom:10px;width:100%;border-collapse:collapse}'
+    + '.sk-rowc{padding:8px 16px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#1a1a2e;vertical-align:top}'
+    + '.sk-rowr{text-align:right}'
+    + '.sk-rowlast{border-bottom:none}'
     + '.sk-badge{background:#eaf3de;border-radius:6px;padding:10px 14px;font-size:12px;color:#3B6D11;font-weight:600}'
     + '.sk-new{display:inline-block;background:#eaf3de;color:#3B6D11;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:6px;vertical-align:middle}'
+    + '.sk-met{display:inline-block;background:#fdf1cf;color:#8a6100;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:6px;vertical-align:middle}'
     + '.sk-note{font-size:11px;color:#999;margin:2px 0 0;line-height:1.5}'
     + '.sk-btn{display:inline-block;background:#1a1a6e;color:#fff!important;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none}'
     + '</style>';
@@ -600,12 +624,11 @@ function buildMonthlyDigestHtml_(s) {
   if (showRunRate) {
     runRateHtml = '<p class="sk-lbl">Þessi mánuður hingað til ('
       + rrDaysElapsed + ' af ' + emailNum_(rr.days_in_month) + ' dögum)</p>'
-      + '<div class="sk-grid">'
-      + kpi('Vefpantanir hingað til', String(rrMtdOrders),
-          (rr.projected_orders != null ? '<span class="ne">spá mánaðar: ' + emailNum_(rr.projected_orders) + '</span>' : '<span class="ne">–</span>'))
-      + kpi('Vefvelta hingað til', emailIskShort_(emailNum_(rr.mtd_revenue_excl)),
-          (rr.projected_revenue_excl != null ? '<span class="ne">spá: ' + emailIskShort_(emailNum_(rr.projected_revenue_excl)) + '</span>' : '<span class="ne">–</span>'))
-      + '</div>'
+      + emailGrid2_(
+          kpi('Vefpantanir hingað til', String(rrMtdOrders),
+            (rr.projected_orders != null ? '<span class="ne">spá mánaðar: ' + emailNum_(rr.projected_orders) + '</span>' : '<span class="ne">–</span>')),
+          kpi('Vefvelta hingað til', emailIskShort_(emailNum_(rr.mtd_revenue_excl)),
+            (rr.projected_revenue_excl != null ? '<span class="ne">spá: ' + emailIskShort_(emailNum_(rr.projected_revenue_excl)) + '</span>' : '<span class="ne">–</span>')))
       + '<p class="sk-note">Spá er einföld hlutfallsleg framreikning (run-rate) og er aðeins til viðmiðunar.</p>'
       + '<hr class="sk-divider">';
   }
@@ -621,31 +644,33 @@ function buildMonthlyDigestHtml_(s) {
     // Body
     + '<div class="sk-body">'
     + '<div style="font-size:18px;font-weight:700;color:#282828;margin:4px 0 10px;">Mánaðaryfirlit — ' + monthLabel + '</div>'
-    + '<p style="margin:0 0 12px;color:#444;line-height:1.6;font-size:13px;">Yfirlit yfir helstu tölur mánaðarins hjá Stórkaup. Allar tölur eru sjálfvirkt sóttar úr kerfinu.</p>'
-    + '<p style="margin:0 0 20px;font-size:13px;background:#f5f6ff;border:1px solid #e9e9e9;border-radius:6px;padding:10px 14px;color:#5b5b5b;">Aðgangsorð: <strong style="color:#282828;">Stortkaup_2026</strong></p>'
+    + '<p style="margin:0 0 20px;color:#444;line-height:1.6;font-size:13px;">Yfirlit yfir helstu tölur mánaðarins hjá Stórkaup. Allar tölur eru sjálfvirkt sóttar úr KPI-kerfinu.</p>'
 
     // Vefsala
     + '<p class="sk-lbl">Vefsala</p>'
-    + '<div class="sk-grid">'
-    + kpi('Vefvelta mánaðar', emailIskShort_(webRev),   emailPctSpan_(webRev,   prevWebRev,   'fyrri mánuð'))
-    + kpi('Vefpantanir',      String(webOrd),            emailPctSpan_(webOrd,   prevWebOrd,   'fyrri mánuð'))
-    + '</div>'
+    + emailGrid2_(
+        kpi('Vefvelta mánaðar', emailIskShort_(webRev), emailPctSpan_(webRev, prevWebRev, 'fyrri mánuð')),
+        kpi('Vefpantanir',      String(webOrd),         emailPctSpan_(webOrd, prevWebOrd, 'fyrri mánuð')))
     + '<hr class="sk-divider">'
 
+    // Met og áfangar — placed directly under Vefsala so a record sits next to
+    // the number it is a record for. Empty string when web_records_v1 failed.
+    + buildMonthlyRecordsHtml_(s.records)
+
     // Nýir viðskiptavinir
-    + '<p class="sk-lbl">Nýir viðskiptavinir mánaðar</p>'
-    + '<div class="sk-list">' + newCustRows + '</div>'
+    + '<p class="sk-lbl">Nýir viðskiptavinir þennan mánuðinn:</p>'
+    + emailList_(newCustRows)
     + '<div class="sk-badge">' + newCust + ' nýir viðskiptavinir í ' + monthLabel + ' — ' + prevNewCust + ' í ' + prevLabel + '</div>'
     + '<hr class="sk-divider">'
 
     // Stærstu viðskiptavinir
-    + '<p class="sk-lbl">Stærstu viðskiptavinir mánaðar (vefur)</p>'
-    + '<div class="sk-list">' + topRows + '</div>'
+    + '<p class="sk-lbl">Stærstu viðskiptavinir á vef í þessum mánuði:</p>'
+    + emailList_(topRows)
     + '<hr class="sk-divider">'
 
     // Vinsælustu vörur
-    + '<p class="sk-lbl">Vinsælustu vörur (síðustu 30 daga)</p>'
-    + '<div class="sk-list">' + prodRows + '</div>'
+    + '<p class="sk-lbl">Vinsælustu vörurnar í þessum mánuði (síðustu 30 dagar)</p>'
+    + emailList_(prodRows)
     + '<hr class="sk-divider">'
 
     // Run-rate (conditional)
@@ -661,11 +686,155 @@ function buildMonthlyDigestHtml_(s) {
     + '<div class="sk-footer">'
     + '<p style="margin:0;font-size:11px;color:#888;">Stórkaup ehf. &middot; Sent sjálfvirkt 1. hvers mánaðar &middot; '
     + '<a href="https://storkaup.webflow.io/kpi/dashboard" style="color:#888;">storkaup.webflow.io</a></p>'
+    + '<p style="margin:10px 0 0;font-size:13px;background:#f5f6ff;border:1px solid #e9e9e9;border-radius:6px;padding:10px 14px;color:#5b5b5b;">Aðgangsorð: <strong style="color:#282828;">Stortkaup_2026</strong></p>'
     + '</div>'
 
     + '</div></body></html>';
 
   return html;
+}
+
+// ── HTML: "Met og áfangar" block ──────────────────────────────────────────────
+//
+// Fed by public.web_records_v1 (core/sql/web_records_v1.sql). Returns '' when
+// the RPC failed or the month has no closed day in it, so the caller can
+// concatenate unconditionally.
+//
+// Two labelling rules the SQL forces on us, both worth keeping honest here:
+//   * order counts are exact all the way back to 2022-04;
+//   * the revenue record is m/VSK, because OLDWEB has no usable excl figure.
+// The note at the bottom of the block says both out loud rather than letting a
+// reader assume the revenue record is on the same basis as the excl card above.
+function buildMonthlyRecordsHtml_(rec) {
+  if (!rec) return '';
+
+  var day        = rec.best_day || null;
+  var histLabel  = digestMonthLabel_(rec.history_start);
+  var monthsCmp  = emailNum_(rec.months_compared);
+  var mOrders    = emailNum_(rec.month_orders);
+
+  var rows = [];
+
+  // ── Headline: orders ────────────────────────────────────────────────────────
+  var headline = '';
+  if (rec.is_record_orders) {
+    headline = '<div class="sk-share">'
+      + '<p class="sk-share-lbl">FLESTAR VEFPANTANIR Í EINUM MÁNUÐI — FRÁ UPPHAFI</p>'
+      + '<p class="sk-share-val">' + emailInt_(mOrders) + ' pantanir</p>'
+      + '<p style="margin:8px 0 0;font-size:12px;color:#b0b8e0;">'
+      + (rec.prev_best_orders
+          ? 'Fyrra met: ' + digestMonthLabel_(rec.prev_best_orders.month)
+            + ' (' + emailInt_(emailNum_(rec.prev_best_orders.orders)) + ')'
+          : 'Ekkert eldra met til samanburðar')
+      + ' &middot; ' + monthsCmp + ' mánuðir frá ' + histLabel + '</p>'
+      + '</div>';
+  } else if (emailNum_(rec.rank_orders) > 0 && emailNum_(rec.rank_orders) <= 5) {
+    rows.push(recordRow_('Vefpantanir',
+      emailNum_(rec.rank_orders) + '. mesti mánuður frá ' + histLabel, false));
+  }
+
+  // ── Revenue ─────────────────────────────────────────────────────────────────
+  if (rec.is_record_revenue) {
+    rows.push(recordRow_('Vefvelta m/VSK',
+      emailIskShort_(rec.month_revenue_incl)
+      + (rec.prev_best_revenue
+          ? ' | fyrra met ' + digestMonthLabel_(rec.prev_best_revenue.month)
+          : ''),
+      true));
+  } else if (emailNum_(rec.rank_revenue) > 0 && emailNum_(rec.rank_revenue) <= 5) {
+    rows.push(recordRow_('Vefvelta m/VSK',
+      emailNum_(rec.rank_revenue) + '. hæsta mánuður frá ' + histLabel, false));
+  }
+
+  // ── Busiest day of the month ────────────────────────────────────────────────
+  if (day && day.date) {
+    var dayTxt = emailInt_(emailNum_(day.orders)) + ' pantanir';
+    if (day.is_record_orders && rec.prev_best_day) {
+      dayTxt += ' | fyrra dagsmet ' + digestDayLabel_(rec.prev_best_day.date)
+             + ' (' + emailInt_(emailNum_(rec.prev_best_day.orders)) + ')';
+    }
+    rows.push(recordRow_('Stærsti dagurinn hingað til: ' + digestDayLabel_(day.date),
+      dayTxt, !!day.is_record_orders));
+  }
+
+  // ── Cumulative-order milestone ──────────────────────────────────────────────
+  if (rec.milestone && rec.milestone.nth) {
+    rows.push(recordRow_('Áfangi',
+      emailInt_(emailNum_(rec.milestone.nth)) + '. vefpöntunin barst þann '
+      + digestDayLabel_(rec.milestone.date), false));
+  }
+
+  // ── Same month last year ────────────────────────────────────────────────────
+  if (rec.yoy_orders != null && emailNum_(rec.yoy_orders) > 0) {
+    var yoyLabel = digestMonthLabel_(prevYearYm_(rec.month));
+    rows.push(recordRow_('Pantanir vs ' + yoyLabel,
+      emailInt_(emailNum_(rec.yoy_orders)) + ' → ' + emailInt_(mOrders) + ' '
+      + emailPctText_(mOrders, emailNum_(rec.yoy_orders)), false));
+  }
+
+  if (!headline && !rows.length) return '';
+
+  return '<p class="sk-lbl">Met og áfangar</p>'
+    + headline
+    + (rows.length ? emailList_(rows, 'margin-top:' + (headline ? '10px' : '0') + ';') : '')
+    + '<p class="sk-note">Met eru mæld yfir alla vefsöguna (nýi og gamli vefurinn, frá '
+    + histLabel + ') og aðeins heilir mánuðir og liðnir dagar eru í menginu. '
+    + 'Veltumet eru <strong>m/VSK</strong>, gamli vefurinn hefur ekki nothæfa tölu án VSK, '
+    + 'svo það er eina veltan sem er samanburðarhæf frá því nýji vefurinn fór í loftið '
+    + 'í ágúst 2025.</p>'
+    + '<hr class="sk-divider">';
+}
+
+// One row in the records list. `hot` marks it with the gold NÝTT MET chip.
+function recordRow_(label, value, hot) {
+  return emailListRow_(
+    '<span style="font-weight:600;">' + emailEsc_(label)
+      + (hot ? ' <span class="sk-met">NÝTT MET</span>' : '') + '</span>',
+    '<span style="color:#1a1a6e;font-weight:600;">' + value + '</span>');
+}
+
+// ── Plain-text: "Met og áfangar" ──────────────────────────────────────────────
+
+function buildMonthlyRecordsPlain_(rec) {
+  if (!rec) return [];
+  var lines = ['', 'MET OG ÁFANGAR'];
+  var histLabel = digestMonthLabel_(rec.history_start);
+
+  if (rec.is_record_orders) {
+    lines.push('** FLESTAR VEFPANTANIR Í EINUM MÁNUÐI FRÁ UPPHAFI: '
+      + emailInt_(emailNum_(rec.month_orders)) + ' **');
+    if (rec.prev_best_orders) {
+      lines.push('   Fyrra met: ' + digestMonthLabel_(rec.prev_best_orders.month)
+        + ' (' + emailInt_(emailNum_(rec.prev_best_orders.orders)) + ')');
+    }
+  } else if (emailNum_(rec.rank_orders) > 0) {
+    lines.push('Pantanir : ' + emailNum_(rec.rank_orders) + '. mesti mánuður frá ' + histLabel);
+  }
+
+  if (rec.is_record_revenue) {
+    lines.push('** HÆSTA VEFVELTA FRÁ UPPHAFI: '
+      + emailIskShort_(rec.month_revenue_incl) + ' m/VSK **');
+  } else if (emailNum_(rec.rank_revenue) > 0) {
+    lines.push('Velta    : ' + emailNum_(rec.rank_revenue) + '. hæsta mánuður (m/VSK)');
+  }
+
+  var day = rec.best_day;
+  if (day && day.date) {
+    lines.push('Stærsti dagurinn hingað til: ' + digestDayLabel_(day.date) + ' — '
+      + emailInt_(emailNum_(day.orders)) + ' pantanir'
+      + (day.is_record_orders ? '  << NÝTT DAGSMET' : ''));
+  }
+  if (rec.milestone && rec.milestone.nth) {
+    lines.push('Áfangi   : ' + emailInt_(emailNum_(rec.milestone.nth))
+      + '. vefpöntunin barst þann ' + digestDayLabel_(rec.milestone.date));
+  }
+  if (rec.yoy_orders != null && emailNum_(rec.yoy_orders) > 0) {
+    lines.push('Vs í fyrra: ' + emailInt_(emailNum_(rec.yoy_orders)) + ' -> '
+      + emailInt_(emailNum_(rec.month_orders)) + ' pantanir');
+  }
+  lines.push('(Met mæld yfir nýja + gamla vefinn frá ' + histLabel
+    + '; veltumet eru m/VSK, sjá skýringu í HTML útgáfu.)');
+  return lines;
 }
 
 // ── Plain-text fallback: monthly ──────────────────────────────────────────────
@@ -677,18 +846,23 @@ function buildMonthlyDigestPlain_(s) {
     'VEFSALA (vs ' + digestMonthLabel_(s.prev_month) + ')',
     'Vefvelta  : ' + emailIskShort_(emailNum_(s.web_revenue_excl)) + ' (án VSK)',
     'Vefpant.  : ' + emailNum_(s.web_orders), '',
-    'NÝIR VIÐSKIPTAVINIR',
+    'NÝIR VIÐSKIPTAVINIR ÞENNAN MÁNUÐINN',
     'Í ' + monthLabel + ' : ' + emailNum_(s.new_customers),
     'Í ' + digestMonthLabel_(s.prev_month) + ' : ' + emailNum_(s.prev_new_customers)
   ];
+  // Records go between Vefsala and Nýir viðskiptavinir, matching the HTML order.
+  // Index 5 is the blank line that follows 'Vefpant.'; splicing there keeps the
+  // block ahead of it, and inserts nothing at all when the RPC returned null.
+  var recLines = buildMonthlyRecordsPlain_(s.records);
+  if (recLines.length) lines.splice.apply(lines, [5, 0].concat(recLines));
   emailParseArr_(s.new_customers_list).forEach(function(c, i) {
     lines.push((i + 1) + '. ' + (c.name || '?') + ' — ' + emailIskShort_(c.revenue));
   });
-  lines.push('', 'STÆRSTU VIÐSKIPTAVINIR (vefur)');
+  lines.push('', 'STÆRSTU VIÐSKIPTAVINIR Á VEF Í ÞESSUM MÁNUÐI');
   emailParseArr_(s.top_customers).forEach(function(c, i) {
     lines.push((i + 1) + '. ' + (c.name || '?') + ' — ' + emailIskShort_(c.revenue_excl));
   });
-  lines.push('', 'VINSÆLUSTU VÖRUR (síðustu 30 daga)');
+  lines.push('', 'VINSÆLUSTU VÖRURNAR Í ÞESSUM MÁNUÐI (síðustu 30 dagar)');
   emailParseArr_(s.top_products).forEach(function(p, i) {
     lines.push((i + 1) + '. ' + (p.name || '?') + ' — ' + emailIskShort_(p.revenue_excl));
   });
@@ -764,6 +938,50 @@ function emailNum_(v) {
   return isNaN(n) ? 0 : Math.round(n);
 }
 
+// Integer with Icelandic thousand separators: 1234 -> "1.234". Order counts
+// elsewhere in the digest are printed raw via String(); this is for the records
+// block, where a four-digit count is the headline of the email.
+function emailInt_(v) {
+  var n = Number(v);
+  if (isNaN(n)) return '–';
+  var sign = n < 0 ? '-' : '';
+  var s = String(Math.abs(Math.round(n)));
+  var out = '';
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 === 0) out += '.';
+    out += s[i];
+  }
+  return sign + out;
+}
+
+// 'YYYY-MM-DD' -> '31. ágúst'. Parsed by hand rather than through Date to keep
+// it timezone-proof: new Date('2026-08-31') is UTC midnight, which is the 30th
+// in any negative offset.
+function digestDayLabel_(iso) {
+  if (!iso) return '?';
+  var p = String(iso).split('-');
+  var mi = parseInt(p[1], 10) - 1;
+  var d  = parseInt(p[2], 10);
+  if (isNaN(mi) || mi < 0 || mi > 11 || isNaN(d)) return String(iso);
+  return d + '. ' + ICE_MONTHS_FULL_[mi];
+}
+
+// 'YYYY-MM' -> same month one year earlier
+function prevYearYm_(ym) {
+  if (!ym) return '';
+  var p = String(ym).split('-');
+  return (parseInt(p[0], 10) - 1) + '-' + p[1];
+}
+
+// Bare "(↑ 34,2%)" text — emailPctSpan_ bakes in its own label and CSS class,
+// which does not fit inside a records row.
+function emailPctText_(current, prev) {
+  if (!prev || prev === 0) return '';
+  var p = ((current - prev) / Math.abs(prev)) * 100;
+  var abs = Math.abs(p).toFixed(1).replace('.', ',');
+  return '(' + (p >= 0 ? '↑ ' : '↓ ') + abs + '%)';
+}
+
 function emailIskShort_(v) {
   var n = Number(v);
   if (isNaN(n)) return '–';
@@ -804,6 +1022,56 @@ function emailPctVal_(v) {
 // Stórkaup logo <img> for email headers (same asset as umsókn/rafræn templates)
 function emailLogoImg_() {
   return '<img src="https://images.prismic.io/storkaup/agbVeKYofJOwHQ9Y_klavyio-storkauplogo.jpg" alt="Stórkaup" style="height:64px;width:auto;">';
+}
+
+// ── Outlook-safe layout primitives ────────────────────────────────────────────
+//
+// This whole family exists because Outlook is the only client that matters here
+// (confirmed 2026-09-01: the digest is read in-house on Outlook), and Outlook
+// drops both `display:flex` and `display:grid`. Classic Outlook renders through
+// the Word engine; New Outlook/OWA strips them from the sanitised CSS. Class
+// selectors, colours, padding, borders and background all survive — that is why
+// the rest of the design came through fine and only the layout collapsed.
+//
+// The symptom was not a missing layout but WRONG TEXT: a two-column flex row
+// collapses into one run, so "Vefvelta m/VSK" + "123,2 m.kr." rendered as
+// "Vefvelta m/VSK NÝTT MET123,2 m.kr.". Tables are the fix. Do not convert
+// these back to flex/grid.
+
+// One row of a sk-list: label left, value right. Returns a <tr> — pass the
+// collected rows to emailList_.
+function emailListRow_(leftHtml, rightHtml) {
+  return '<tr>'
+    + '<td class="sk-rowc">' + leftHtml + '</td>'
+    + '<td class="sk-rowc sk-rowr">' + (rightHtml || '') + '</td>'
+    + '</tr>';
+}
+
+// Wraps rows (an array of emailListRow_ strings) in the bordered list box.
+// The divider under the final row is removed by adding a CLASS to that row
+// rather than with .sk-row:last-child — Outlook honours classes but ignores
+// pseudo-classes, so :last-child left a stray line above the box padding.
+function emailList_(rows, extraStyle) {
+  if (!rows || !rows.length) return '';
+  var last = rows.length - 1;
+  var body = rows.map(function(r, i) {
+    return i === last ? r.replace(/class="sk-rowc/g, 'class="sk-rowc sk-rowlast') : r;
+  }).join('');
+  return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+    + ' class="sk-list"' + (extraStyle ? ' style="' + extraStyle + '"' : '') + '>'
+    + body + '</table>';
+}
+
+// Two KPI cards side by side. Replaces .sk-grid (display:grid), which Outlook
+// ignored — the cards stacked full-width instead of sitting 2-up. Widths and
+// valign are attributes, not CSS, because the Word engine honours those first.
+function emailGrid2_(leftHtml, rightHtml) {
+  return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+    + ' style="margin-bottom:10px;">'
+    + '<tr>'
+    + '<td width="50%" valign="top" style="padding-right:5px;">' + leftHtml + '</td>'
+    + '<td width="50%" valign="top" style="padding-left:5px;">'  + rightHtml + '</td>'
+    + '</tr></table>';
 }
 
 function emailEsc_(str) {

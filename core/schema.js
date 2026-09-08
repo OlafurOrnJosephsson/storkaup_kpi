@@ -177,6 +177,15 @@ BC_LINES: {
                                     // dálkur sem greinir í sundur tvær annars
                                     // eins línur; án hans falla ~2% af línum
                                     // saman í on_conflict lyklinum.
+
+    // VILJANDI ÓMAPPAÐIR — birtust í exportinu 2026-08-31 og koma upp sem
+    // "+ óþekkt" í diagnoseBcDropHeaders_v1. Hvorugur er mappaður að ástæðu;
+    // ekki mappa þá nema það sé ný krafa:
+    //   'Nafn viðskiptamanns sem selt er til' — óþarfi, COMPANY_ID joinar
+    //       þegar á bc_customers_raw.company_name.
+    //   'Upphæð með VSK' — AMOUNT_INCL er þegar til á BC_INVOICES og
+    //       BC_CREDIT_INVOICES; á línustigi bætir hann engu við og fleiri
+    //       dálkar þýða meira minni í lestrinum (sjá processBcDrop_v1).
   }
 },
 

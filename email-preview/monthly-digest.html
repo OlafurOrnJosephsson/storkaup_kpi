@@ -22,6 +22,8 @@
   --sk-error:          #c23340;
   --sk-green-50:       #eaf3de;
   --sk-green-text:     #3B6D11;
+  --sk-gold-50:        #fdf1cf;
+  --sk-gold-text:      #8a6100;
   --sk-header-bg:      #1a1a6e;
   --sk-header-sub:     #b0b8e0;
 }
@@ -138,6 +140,20 @@ body { margin: 40px; background: #f0f0f0; }
   vertical-align: middle;
 }
 
+/* Gullni "NÝTT MET" merkimiðinn — eini liturinn utan grunnpallettunnar,
+   viljandi: met eiga ekki að lesast eins og "nýr viðskiptavinur" (grænt). */
+.sk-met {
+  display: inline-block;
+  background: var(--sk-gold-50);
+  color: var(--sk-gold-text);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 .sk-note { font-size: 11px; color: #999; margin: 2px 0 0; line-height: 1.5; }
 
 .sk-btn {
@@ -153,6 +169,14 @@ body { margin: 40px; background: #f0f0f0; }
 </style>
 </head>
 <body>
+
+<!-- ⚠️ LAYOUT HÉR ER EKKI ÞAÐ SEM OUTLOOK SÝNIR.
+     Þessi skrá notar display:flex / display:grid, sem virkar í vafra en ekki í
+     Outlook (Word-engine í klassíska, CSS-sanitizer í New Outlook/OWA). Póstarnir
+     sjálfir voru færðir í töflur 2026-09-01 — sjá emailListRow_/emailList_/
+     emailGrid2_ í core/email.js. Notaðu þessa skrá fyrir liti og spacing;
+     staðfestu layout í monthly-digest-rendered.html (node email-preview/render-monthly.js),
+     sem er raunveruleg úttak úr GAS. -->
 
 <div class="sk-email">
 
@@ -185,6 +209,45 @@ body { margin: 40px; background: #f0f0f0; }
         <span class="up">↑ 9,5% vs fyrri mánuð</span>
       </div>
     </div>
+
+    <hr class="sk-divider">
+
+    <!-- MET OG ÁFANGAR
+         Rendered by buildMonthlyRecordsHtml_ (core/email.js) from
+         public.web_records_v1. The whole block is omitted when that RPC fails.
+         Values here are illustrative; the shape is what the builder emits. -->
+    <p class="sk-lbl">Met og áfangar</p>
+    <div class="sk-share">
+      <p class="sk-share-lbl">FLESTAR VEFPANTANIR Í EINUM MÁNUÐI — FRÁ UPPHAFI</p>
+      <p class="sk-share-val">1.284 pantanir</p>
+      <p style="margin:8px 0 0; font-size:12px; color:var(--sk-header-sub);">
+        Fyrra met: maí 2026 (1.201) &middot; 52 mánuðir frá apríl 2022
+      </p>
+    </div>
+    <div class="sk-list" style="margin-top:10px;">
+      <div class="sk-row">
+        <span style="font-weight:600;">Vefvelta m/VSK <span class="sk-met">NÝTT MET</span></span>
+        <span style="color:var(--sk-blue); font-weight:600; text-align:right;">262,0 m.kr. — fyrra met maí 2026</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Mesti dagur: 31. ágúst <span class="sk-met">NÝTT MET</span></span>
+        <span style="color:var(--sk-blue); font-weight:600; text-align:right;">87 pantanir — fyrra dagsmet 12. maí (79)</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Áfangi</span>
+        <span style="color:var(--sk-blue); font-weight:600; text-align:right;">42.000. vefpöntunin barst 19. ágúst</span>
+      </div>
+      <div class="sk-row">
+        <span style="font-weight:600;">Pantanir vs ágúst 2025</span>
+        <span style="color:var(--sk-blue); font-weight:600; text-align:right;">958 → 1.284 (↑ 34,0%)</span>
+      </div>
+    </div>
+    <p class="sk-note">
+      Met eru mæld yfir alla vefsöguna (nýi og gamli vefurinn, frá apríl 2022) og aðeins
+      fullir mánuðir og liðnir dagar keppa. Veltumet eru <strong>m/VSK</strong> — gamli
+      vefurinn hefur ekki nothæfa tölu án VSK, svo það er eina veltan sem er
+      samanburðarhæf yfir vefskiptin 2025.
+    </p>
 
     <hr class="sk-divider">
 
