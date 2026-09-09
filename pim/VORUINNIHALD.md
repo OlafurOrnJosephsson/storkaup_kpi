@@ -189,6 +189,26 @@ Allt hér er mælt á útdrættinum, ekki ágiskað. Tölur eru frá 2026-09-08.
   handahófsvalinn og þá sér hinn eigandinn hana aldrei. `Eigandi` plús filter
   view leysir það sem flipar áttu að leysa, án þess að klofna gögnin.
 
+- **PRODUCTS getur ekki svarað „er varan á vef".** Hann er fylltur af
+  Cludo-syncinu, sem sækir SKU úr `collectAllSkusFromSystems_` — og það fall
+  hefur ÞRJÁR uppsprettur, allar **söluskrár**: NEWWEB, OLDWEB, BC_LINES.
+  Þar er engin vörulistauppspretta. Vara sem hefur **aldrei verið keypt**
+  kemst því aldrei í PRODUCTS.
+
+  Það gaf `Ekki í leitarvísi = 605` (13,5% af 4.477) og fyllti `EKKI_A_VEF`
+  af vörum sem er ekkert að. Þrjár efstu úr flipanum fundust allar á vefnum
+  við handvirka prófun 2026-09-09. Skilyrta sniðið litaði þær 605 raðir
+  rauðar að ósekju, svo starfsfólk sá viðvörun á heilbrigðum vörum.
+
+  Lagfært: ný kólumna `Á vef` kemur úr `getProductsV2` (opinber, engir
+  lyklar, sami listi sem vefurinn birtir) og er endanleg. `Í leitarvísi`
+  segir `Já` þegar PRODUCTS-röð er til en er **tómt** annars, því fjarvist er
+  ekki sönnun. `EKKI_A_VEF` er nú borinn við vörulistann sjálfan.
+
+  Rótin er ólöguð: Cludo-collectorinn ætti að fá vörulistann sem fjórðu
+  uppsprettu, annars vantar PRODUCTS áfram þessar 605 og flokkalögin fyrir
+  þær koma úr Plytix-varaleiðinni í stað brauðmylsnunnar.
+
 - **`Rammasamningur` kom úr RANGRI uppsprettu.** Kólumnan las
   `RAMMASAMNINGAR`-flipann, en sá flipi geymir rammasamningsvörur **án
   verðs** — heilbrigðiseftirlit úr `storkaup_pricing.js`, lítið hlutmengi

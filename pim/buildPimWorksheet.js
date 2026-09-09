@@ -95,6 +95,7 @@ const PIM_COLS_ = [
   { key: 'status',    head: 'Staða',                   w: 125, kind: 'edit' },
   { key: 'note',      head: 'Athugasemd',              w: 260, kind: 'edit', wrap: true },
   { key: 'image',     head: 'Mynd í lagi',             w: 100, kind: 'join' },
+  { key: 'onWeb',     head: 'Á vef',                   w:  85, kind: 'join' },
   { key: 'indexed',   head: 'Í leitarvísi',            w: 100, kind: 'join' },
   { key: 'framework', head: 'Rammasamningur',          w: 120, kind: 'join' },
   { key: 'done',      head: 'Fullbúið',                w:  85, kind: 'calc' },
@@ -227,7 +228,11 @@ function buildPimWorksheet_() {
     row[idx.cat2]      = (web && web.cat2) ? web.cat2 : plytixCategory_(p.categories, 2);
     row[idx.cat3]      = (web && web.cat3) ? web.cat3 : plytixCategory_(p.categories, 3);
     row[idx.url]       = web ? web.url : '';
-    row[idx.indexed]   = web ? 'Já' : 'Nei';
+    // A vef: endanlegt ur birta vorulistanum. Tomt = vid nadum ekki i listann.
+    row[idx.onWeb]     = enrich.onWeb ? (enrich.onWeb[p.sku] ? 'Já' : 'Nei') : '';
+    // I leitarvisi: PRODUCTS-rodh er sonnun fyrir JA, en FJARVIST er ekki
+    // sonnun fyrir NEI — sja athugasemdina i readKpiEnrichment_. Tomt = othekkt.
+    row[idx.indexed]   = web ? 'Já' : '';
     row[idx.image]     = enrich.missingImage[p.sku] ? 'Nei' : (p.thumbnail ? 'Já' : 'Nei');
     // Rammasamningur kemur UR PLYTIX, ekki ur RAMMASAMNINGAR-flipanum.
     // Sa flipi geymir rammasamningsvorur AN VERDS (heilbrigdiseftirlit i
@@ -243,7 +248,13 @@ function buildPimWorksheet_() {
     if (!prev) { row[idx.status] = 'Ekki byrjað'; added++; } else { updated++; }
 
     out.push(row);
-    if (!web) orphans.push([label, p.sku, p.name, p.brand]);
+    // EKKI_A_VEF er nu THAD sem nafnid segir: i Plytix i birtingu en EKKI i
+    // birta vorulistanum. Adur var thad "engin PRODUCTS-rodh", sem er allt
+    // annad og gaf 605 falskar. Naum vid ekki i listann er flipinn tomur i
+    // theirri keyrslu i stad thess ad vera fullur af tilviljun.
+    if (enrich.onWeb && !enrich.onWeb[p.sku]) {
+      orphans.push([label, p.sku, p.name, p.brand]);
+    }
   });
 
   // --- horfið úr Plytix: halda, merkja, ekki eyða ---
@@ -350,7 +361,31 @@ function readKpiEnrichment_() {
   collectSkus_(ss, 'VANTAR_MYND', missingImage);
   collectSkus_(ss, 'RAMMASAMNINGAR', framework);
 
-  return { bySku: bySku, missingImage: missingImage, framework: framework };
+  // Birti vorulistinn — ENDANLEGT svar um hvort vara se a vef.
+  //
+  // PRODUCTS getur ekki svarad thessu. Hann er fylltur af Cludo-syncinu, sem
+  // saekir SKU ur collectAllSkusFromSystems_ — og thad fall hefur THRJAR
+  // uppsprettur, allar SOLUSKRAR (NEWWEB, OLDWEB, BC_LINES). Vara sem hefur
+  // aldrei verid keypt kemst thvi aldrei i PRODUCTS, og sagdi thar med
+  // "Ekki i leitarvisi" thott hun se bædi a vef og finnanleg. Thad voru 605
+  // vorur af 4.477 (13,5%), og thrjar efstu ur EKKI_A_VEF fundust allar a
+  // vefnum vid handvirka profun 2026-09-09.
+  //
+  // getProductsV2 er opinber, tharf enga lykla og er sami listi sem vefurinn
+  // birtir. Bilar hann er onWeb null = OTHEKKT, ekki "Nei".
+  var onWeb = null;
+  try {
+    onWeb = {};
+    fetchActiveProducts_().forEach(function (a) {
+      if (a && a.parent) onWeb[normSku_(a.parent)] = true;
+    });
+    Logger.log('🌐 Birti vorulistinn: ' + Object.keys(onWeb).length + ' parent-SKU');
+  } catch (e) {
+    onWeb = null;
+    Logger.log('⚠️ Nadi ekki i birta vorulistann — "A vef" verdur OTHEKKT: ' + e.message);
+  }
+
+  return { bySku: bySku, missingImage: missingImage, framework: framework, onWeb: onWeb };
 }
 
 /** Les SKU-kólumnu af undantekningaflipa yfir í mengi. Flipi sem vantar er ekki villa. */
@@ -416,7 +451,7 @@ function writePimSheet_(sh, rows) {
   // rangar um leið og kólumnu var bætt við.
   const L = {};
   ['label', 'brandNew', 'nameNew', 'descNew', 'words', 'datasheet', 'sds',
-   'status', 'image', 'indexed', 'done'].forEach(function (k) { L[k] = pimColLetter_(k); });
+   'status', 'image', 'onWeb', 'indexed', 'done'].forEach(function (k) { L[k] = pimColLetter_(k); });
   const R = function (k) { return L[k] + '2:' + L[k]; };
 
   // ARRAYFORMULA: ein formúla á kólumnu í stað einnar á röð.
@@ -467,7 +502,7 @@ function writePimSheet_(sh, rows) {
       .whenFormulaSatisfied('=$' + L.status + '2="Spurning"')
       .setBackground('#fdf7ec').setRanges([all]).build(),
     SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=$' + L.indexed + '2="Nei"')
+      .whenFormulaSatisfied('=$' + L.onWeb + '2="Nei"')
       .setFontColor('#9e2438').setRanges([all]).build(),
     SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=AND($' + L.descNew + '2<>"",OR($' + L.words + '2<60,$' +
@@ -508,9 +543,11 @@ function writeOrphanTab_(ss, rows) {
     sh.getRange(2, 1, rows.length, 4).setValues(rows).setFontFamily('Arial').setFontSize(10);
   }
   sh.getRange(rows.length + 3, 1).setValue(
-    'Vörur sem eru Í BIRTINGU í Plytix en leitarvísirinn hefur aldrei skriðið. Archived vörur ' +
-    'eru ekki hér — þær eiga ekki að vera á vefnum. Þetta er því raunverulegt vandamál: ' +
-    'varan á að vera finnanleg en er það ekki. Textavinna lagar hana ekki, þetta er sér verkefni.'
+    'Vörur sem eru Í BIRTINGU í Plytix (Completed) en eru EKKI í birta vörulistanum á ' +
+    'storkaup.is. Archived vörur eru ekki hér. Þetta er ósamræmi milli kerfa og textavinna ' +
+    'lagar það ekki — sér verkefni. ATH: þessi flipi mældi áður fjarvist PRODUCTS-raðar og ' +
+    'gaf 605 falskar vörur, því PRODUCTS er fyllt úr SÖLUSKRÁM og vara sem hefur aldrei ' +
+    'verið keypt kemst ekki þangað. Hann er nú borinn við vörulistann sjálfan.'
   ).setFontFamily('Arial').setFontStyle('italic').setFontColor('#5c5c63');
   sh.setColumnWidth(1, 120); sh.setColumnWidth(2, 90);
   sh.setColumnWidth(3, 300); sh.setColumnWidth(4, 140);
@@ -553,7 +590,11 @@ function buildPimStats_(ss, nRows) {
                             ')<>"")*SIGN((TRIM(' + Cn('descOld') + ')=TRIM(' + Cn('nameOld') +
                             '))+(TRIM(' + Cn('descOld') + ')=TRIM(' + Cn('label') + '))))'],
     ['Núv. lýsing tóm',    '=SUMPRODUCT((' + Cn('label') + '<>"")*(TRIM(' + Cn('descOld') + ')=""))'],
-    ['Ekki í leitarvísi',  '=COUNTIF(' + C('indexed') + ',"Nei")'],
+    // Adur: COUNTIF(indexed,"Nei") = 605, sem var fjarvist PRODUCTS-radar og
+    // ekki leitarvisir. Nu er "A vef" endanlegt og "I leitarvisi" tomt thegar
+    // vid vitum ekki — sja readKpiEnrichment_.
+    ['Ekki á vef',         '=COUNTIF(' + C('onWeb') + ',"Nei")'],
+    ['Leitarvísir óþekktur', '=SUMPRODUCT((' + Cn('label') + '<>"")*(' + Cn('indexed') + '=""))'],
     ['Í rammasamningi',    '=COUNTIF(' + C('framework') + ',"Já")'],
     ['', '']
   ];
@@ -612,7 +653,7 @@ function buildPimGuide_(ss) {
     ['', ''],
     ['Gult', 'Þú fyllir þetta út.'],
     ['Grátt', 'Kemur úr Plytix og Business Central. Læst — Label er tengingin milli kerfanna.'],
-    ['Fjólublátt', 'Kemur úr KPI-skjalinu: flokkalögin þrjú, vefslóð, mynd, leitarvísir, rammasamningur.'],
+    ['Fjólublátt', 'Kemur úr öðrum kerfum: flokkalögin þrjú, vefslóð, mynd, hvort varan sé á vef, rammasamningur.'],
     ['Ljósblátt', 'Reiknast sjálfkrafa.'],
     ['', ''],
     ['Vöruheiti', 'Vörutegund, týpa, afbrigði, stærð  —  t.d.  Ryksuga, VP400 HEPA XT, 700W'],
