@@ -186,6 +186,26 @@ Allt hér er mælt á útdrættinum, ekki ágiskað. Tölur eru frá 2026-09-08.
   handahófsvalinn og þá sér hinn eigandinn hana aldrei. `Eigandi` plús filter
   view leysir það sem flipar áttu að leysa, án þess að klofna gögnin.
 
+- **`Rammasamningur` kom úr RANGRI uppsprettu.** Kólumnan las
+  `RAMMASAMNINGAR`-flipann, en sá flipi geymir rammasamningsvörur **án
+  verðs** — heilbrigðiseftirlit úr `storkaup_pricing.js`, lítið hlutmengi
+  sem var tómt. Kólumnan sagði því 0 fyrir allar 4.477, á meðan
+  Leiðbeiningar-flipinn segir starfsfólki að taka rammasamningsvörur fyrst.
+  Ráðgjöfin var gagnslaus. Rétta talan er í útdrættinum sjálfum:
+  `Framework Agreement Product` = True á **248** vörum, þar af þurfa 76
+  lýsingu skrifaða.
+
+- **Framvinda vantaldi ónýtar lýsingar um 2,5x.** „Lýsing = vöruheitið" bar
+  aðeins við `Commercial Name` og gaf 486. Lýsingin er LÍKA oft afrit af
+  `Label`, og sú tala er 1.190. Rétta talan er hvort sem er: **1.212**, plús
+  7 alveg tómar. SUMPRODUCT tvítelur vöru sem stemmir við bæði, því
+  samlagning er OR en 1+1=2 — `SIGN()` klemmir það.
+
+- **„Með tóma lýsingu" var villandi merking, ekki villandi tala.** Hún taldi
+  NÝJA reitinn, sem er tómur af því enginn hefur skrifað enn, en las eins og
+  4.477 vörur hefðu enga lýsingu. 3.280 HAFA raunverulega lýsingu. Heitir nú
+  „Ný lýsing óskrifuð" og fékk „Núv. lýsing tóm" við hliðina.
+
 - **Linter-úttakið er líka `.csv`** og lifir í sömu möppu. Bæði `pim_sync.ps1`
   og GAS-scriptan sía `_brot`, `_commercial_name` og `_tillogur` út. Án þess
   gæti „nýjasta .csv" verið brotaskráin.
@@ -298,6 +318,11 @@ Sex atriði, í þeirri röð sem þau geta verið þegjandi röng.
 | `Orðafjöldi` | 0 í hverri röð, ekki villa. Prófar endurbyggðu formúluna |
 | `Fullbúið` | NEI í hverri röð, ekki villa |
 | Framvinda → „Eftir undirflokki" | um 213 raðir með flokksheitum og tölum. Sjái þú **vörumerki** þar er QUERY-svæðið skakkt |
+
+**Sannreynt 2026-09-09:** allt sex í lagi. Taflan „Eftir undirflokki" sýnir
+flokksheiti (`Fylgihlutir fyrir ryksugur` 196, `Burstar og sópar` 118 …), svo
+QUERY-svæðið heldur. Tvær Framvinda-tölur voru hins vegar rangar og eru
+lagfærðar — sjá `Rammasamningur` og „vantaldi ónýtar lýsingar" í gildrunum.
 
 Fjórir flipar eiga að vera til: `Leiðbeiningar`, `Vinnusheet`, `Framvinda`,
 `EKKI_A_VEF`. Gular kólumnur tómar.

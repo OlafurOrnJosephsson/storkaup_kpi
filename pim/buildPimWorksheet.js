@@ -39,7 +39,8 @@ const PIM_HEADER_MAP_ = {
   description: ['Long Description', 'Löng lýsing', 'Description'],
   categories:  ['Categories', 'Category', 'Vöruflokkur'],
   thumbnail:   ['Thumbnail', 'Main image', 'Aðalmynd'],
-  plytixStatus: ['Status', 'Staða í Plytix']
+  plytixStatus: ['Status', 'Staða í Plytix'],
+  framework:   ['Framework Agreement Product']
 };
 
 // Hvaða Plytix-Status telst innihaldsverk. Mælt á útdrættinum 2026-09-08,
@@ -228,7 +229,13 @@ function buildPimWorksheet_() {
     row[idx.url]       = web ? web.url : '';
     row[idx.indexed]   = web ? 'Já' : 'Nei';
     row[idx.image]     = enrich.missingImage[p.sku] ? 'Nei' : (p.thumbnail ? 'Já' : 'Nei');
-    row[idx.framework] = enrich.framework[p.sku] ? 'Já' : '';
+    // Rammasamningur kemur UR PLYTIX, ekki ur RAMMASAMNINGAR-flipanum.
+    // Sa flipi geymir rammasamningsvorur AN VERDS (heilbrigdiseftirlit i
+    // storkaup_pricing.js, sja athugasemd vid frameworkRows). Hann er thvi
+    // litid hlutmengi og var TOMUR, svo kolumnan sagdi 0 fyrir allar 4.477.
+    // Leidbeiningarnar segja starfsfolki ad taka rammasamningsvorur fyrst,
+    // svo su radgjof var gagnslaus. Rett tala ur utdraettinum er 248.
+    row[idx.framework] = (p.framework || enrich.framework[p.sku]) ? 'Já' : '';
 
     // frá starfsfólki — varðveitt (úr endurkortlagðri röð, sjá remapPrev_)
     const prevRow = prev ? remapPrev_(prev) : null;
@@ -532,9 +539,20 @@ function buildPimStats_(ss, nRows) {
     ['Vörur alls',        '=COUNTA(' + C('label') + ')'],
     ['Fullbúnar',         '=COUNTIF(' + C('done') + ',"JÁ")'],
     ['Hlutfall fullbúið', '=IFERROR(B5/B4,0)'],
-    ['Með tóma lýsingu',  '=SUMPRODUCT((' + Cn('label') + '<>"")*(TRIM(' + Cn('descNew') + ')=""))'],
-    ['Lýsing = vöruheitið', '=SUMPRODUCT((' + Cn('label') + '<>"")*(TRIM(' + Cn('descOld') +
-                            ')=TRIM(' + Cn('nameOld') + '))*(TRIM(' + Cn('nameOld') + ')<>""))'],
+    // Hét áður "Með tóma lýsingu", sem las eins og 4.477 vörur hefðu enga
+    // lýsingu. Talan er rétt en merkingin var röng: hún telur NÝJA reitinn,
+    // sem er tómur af því enginn hefur skrifað enn. 3.280 vörur HAFA
+    // raunverulega lýsingu.
+    ['Ný lýsing óskrifuð', '=SUMPRODUCT((' + Cn('label') + '<>"")*(TRIM(' + Cn('descNew') + ')=""))'],
+    // Núverandi lýsing sem er bara heitið aftur. Bar áður aðeins við
+    // Vöruheiti (núv.) = Commercial Name og gaf 486. Lýsingin er LÍKA oft
+    // afrit af Label, og sú tala er 1.190. Rétta talan er hvort sem er:
+    // 1.212 vörur. SIGN klemmir samlagninguna, annars tvítelst vara sem
+    // stemmir við bæði (samlagning = OR í SUMPRODUCT, en 1+1=2).
+    ['Núv. lýsing = heitið', '=SUMPRODUCT((' + Cn('label') + '<>"")*(TRIM(' + Cn('descOld') +
+                            ')<>"")*SIGN((TRIM(' + Cn('descOld') + ')=TRIM(' + Cn('nameOld') +
+                            '))+(TRIM(' + Cn('descOld') + ')=TRIM(' + Cn('label') + '))))'],
+    ['Núv. lýsing tóm',    '=SUMPRODUCT((' + Cn('label') + '<>"")*(TRIM(' + Cn('descOld') + ')=""))'],
     ['Ekki í leitarvísi',  '=COUNTIF(' + C('indexed') + ',"Nei")'],
     ['Í rammasamningi',    '=COUNTIF(' + C('framework') + ',"Já")'],
     ['', '']
@@ -700,7 +718,8 @@ function parsePlytixCsv_(text) {
       categories:  pick(r, 'categories'),
       thumbnail:   pick(r, 'thumbnail') !== '',
       plytixStatus: pick(r, 'plytixStatus'),
-      statusKnown: col.plytixStatus !== undefined
+      statusKnown: col.plytixStatus !== undefined,
+      framework:   /^(true|1|já|ja|yes)$/i.test(pick(r, 'framework'))
     };
   }).filter(function (p) { return p.label; });
 }
