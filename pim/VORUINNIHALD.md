@@ -40,7 +40,7 @@ og engu öðru. GAS afritar það sem þarf — ekki IMPORTRANGE.
 | `STORKAUP_CONFIG` → SHEET_IDS röð 14 | `PIM \| Vinnusheet \| <id>` ✅ |
 | `STORKAUP_CONFIG` → SETTINGS | `PIM_DROP_FOLDER_ID` ✅ (röð 17) |
 | `PIM_CSV_DELIMITER` | **þarf ekki** — útdrátturinn er kommu-aðgreindur |
-| `STORKAUP_CONFIG` → SETTINGS → `PIM_OWNERS` | **vantar** — dropdown á Eigandi kviknar þegar hún kemur |
+| `STORKAUP_CONFIG` → SETTINGS → `PIM_OWNERS` | ✅ 13 nöfn — dropdown á Eigandi virkur |
 | `pim_drop/plytix_export.csv` | fullur útdráttur, 7.986 raðir, 18 kólumnur |
 | `pim/`, `pim_sync.*`, `gas_deploy.ps1` | **ótrackuð í git** |
 
@@ -53,26 +53,26 @@ skjalið. Þetta skjal sagði áður STÓRKAUP_KPI_CORE og það var rangt.
 
 ## Næstu skref
 
-Skref 1 til 6 eru búin (2026-09-08). Vinnusheetið er byggt. Það sem stendur:
+**Undirbúningur er búinn (2026-09-09).** Vinnusheetið er byggt og sannreynt,
+allir sex punktar á gátlistanum neðst standast, `PIM_OWNERS` er kominn með 13
+nöfn og dropdown á `Eigandi` virkur. Verkefnið sjálft er ekki hafið.
 
-1. **Sannreyna sheetið.** Fjórir flipar, gular kólumnur tómar, og þrjú
-   flokkalög fyllt. Sjá gátlistann neðst.
+Fyrsti hópurinn er úthlutaður sem prófun: **Óli fékk `Álpappír filmur og
+bakkar`, 25 vörur.** Þar af þurfa 10 lýsingu skrifaða og 15 aðeins yfirlestur.
+Það er hópur nr. 52 af 213 eftir stærð, svo hann er yfir miðgildinu (14) en
+ekki risi.
 
-2. **Setja `PIM_OWNERS` í STORKAUP_CONFIG → SETTINGS,** kommu-aðskilin nöfn
-   starfsmanna. Þá fær `Eigandi`-kólumnan dropdown með þeim nöfnum, og villur
-   í innslætti hætta að brjóta síunina. Vanti stillingin er reiturinn frjáls
-   texti og það er skráð í keyrsluskrá — viljandi, því tómur dropdown með
-   `setAllowInvalid(false)` gerði kólumnuna ónothæfa.
+Það sem stendur:
 
-   Gagnaprófunin er sett í `writePimSheet_`, svo hún kviknar við **næstu
-   byggingu**. Endurbygging er óhætt: gulu kólumnurnar varðveitast (lyklað á
-   SKU), svo ekkert skrifað efni tapast.
+1. **Hlusta á Óla.** Tvær spurningar ráða því hvort app verður byggt:
+   sá hann hvað hann skrifaði (wrap er komið), og vissi hann hvað var gott?
+   Ef svarið við hinu síðara er nei liggur vandinn í ritstílnum og
+   leiðbeiningunum, og app leysir hvorugt. Sjá „App í stað sheets?" í Opið.
 
-3. **Úthluta eigendum.** `Eigandi` er gula kólumnan sem skiptir vinnunni.
+2. **Úthluta hinum tólf** þegar prófunin heldur.
+
    Verkbúturinn er **Undirflokkur** (Level 3): 213 hópar, miðgildi 14 vörur,
-   stærsti 209. Það eru ekki 213 starfsmenn — hver tekur nokkra hópa. Búið
-   í bunka undir 200 vörum gefur um 25 bunka.
-
+   stærsti 209. Það eru ekki 213 starfsmenn — hver tekur nokkra hópa.
    Sheetið er raðað Level 1 → 2 → 3 → heiti, svo hópar undir sama Flokki
    liggja saman og eru búnir í jafna bunka með augunum.
 
@@ -110,14 +110,17 @@ Skref 1 til 6 eru búin (2026-09-08). Vinnusheetið er byggt. Það sem stendur:
    Mekanikin: síaðu á `Flokkur`, veldu `Eigandi`-kólumnuna, fylltu niður.
    39 aðgerðir, ekki 4.477.
 
-4. **Filter view á mann,** ekki flipa og ekki sér skjöl. Data → Filter views
+3. **Filter view á mann,** ekki flipa og ekki sér skjöl. Data → Filter views
    → Create new, síað á `Eigandi`. Filter view er per notanda og raskar ekki
    hinum. Sjá „Flipar per Level 1" í gildrunum um hvers vegna ekki flipar.
+   Athugaðu að scriptan býr til GRUNNSÍU, sem er sameiginleg — hún er ekki
+   það sama og filter view.
 
-5. **`git add pim/ pim_sync.ps1 pim_sync.bat gas_deploy.ps1`**
-
-6. **Leiðrétta þetta skjal** eftir kickoff — sérstaklega tölurnar, sem eru
+4. **Leiðrétta þetta skjal** eftir kickoff — sérstaklega tölurnar, sem eru
    allar mældar á útdrættinum frá 2026-09-07 og eldast.
+
+Git er ekki lengur á listanum: `pim/`, `pim_sync.*` og `gas_deploy.ps1` eru
+committuð og pushuð (2026-09-09).
 
 ---
 
