@@ -16,11 +16,20 @@ KPI-skjalið (STÓRKAUP_KPI_CORE) ───────────────�
    RAMMASAMNINGAR                    → forgangsröðun                  (sér Google Sheet)
 ```
 
-**Plytix er hryggjarstykkið, Cludo er mælikvarði — ekki öfugt.** PRODUCTS er vefskrið
-og veit bara um það sem er birt og finnanlegt. Ef nefnarinn kæmi þaðan myndu vörur
-sem eru í catalognum en hvergi á vefnum mælast sem ekki-til, í stað þess að mælast
-sem verstu tilfellin. Ávinningurinn af Cludo sem dálki er `EKKI_A_VEF`-flipinn:
-vörur í Plytix sem leitarvísirinn hefur aldrei séð.
+**Plytix er hryggjarstykkið, Cludo er mælikvarði — ekki öfugt.** Ef nefnarinn kæmi
+úr PRODUCTS myndu vörur sem eru í catalognum en hvergi á vefnum mælast sem
+ekki-til, í stað þess að mælast sem verstu tilfellin.
+
+⚠️ Þessi kafli sagði áður að PRODUCTS „veit bara um það sem er birt og
+finnanlegt". Það var **ósatt**: hann vissi aðeins um það sem hafði **selst**.
+Cludo-collectorinn sótti SKU úr þrem söluskrám og hafði enga
+vörulistauppsprettu, svo 605 birtar vörur af 4.477 vantaði. Fjórða uppsprettan
+(`getProductsV2`) var bætt við 2026-09-09; PRODUCTS nær því yfir birta listann
+eftir að `scheduledCludoSync_v1` hefur unnið sig í gegn, um sex daga á 50 SKU
+í keyrslu tvisvar á dag.
+
+Þangað til kemur svarið um vefnærveru úr `Á vef`-kólumnunni, sem er spurð beint
+og er endanleg.
 
 **Vinnusheetið er sér skjal, ekki flipi í KPI-skjalinu.** Starfsfólk fær aðgang að því
 og engu öðru. GAS afritar það sem þarf — ekki IMPORTRANGE.
@@ -205,9 +214,10 @@ Allt hér er mælt á útdrættinum, ekki ágiskað. Tölur eru frá 2026-09-08.
   segir `Já` þegar PRODUCTS-röð er til en er **tómt** annars, því fjarvist er
   ekki sönnun. `EKKI_A_VEF` er nú borinn við vörulistann sjálfan.
 
-  Rótin er ólöguð: Cludo-collectorinn ætti að fá vörulistann sem fjórðu
-  uppsprettu, annars vantar PRODUCTS áfram þessar 605 og flokkalögin fyrir
-  þær koma úr Plytix-varaleiðinni í stað brauðmylsnunnar.
+  Rótin er lögfærð 2026-09-09: `collectAllSkusFromSystems_` fékk vörulistann
+  sem **fjórðu** uppsprettu. Það tekur um sex daga að fylla þessar 605 inn í
+  PRODUCTS. Þangað til koma flokkalögin fyrir þær úr Plytix-varaleiðinni, sem
+  er rétt en grynnra en brauðmylsnan.
 
 - **`Rammasamningur` kom úr RANGRI uppsprettu.** Kólumnan las
   `RAMMASAMNINGAR`-flipann, en sá flipi geymir rammasamningsvörur **án

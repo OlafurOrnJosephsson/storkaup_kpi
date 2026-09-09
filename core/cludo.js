@@ -37,10 +37,24 @@ function getCludoEnv_() {
 
 
 /************************************************************
- * 🔢 Safna ALLSKO úr NEWWEB + OLDWEB + BC_INVOICE_LINES
- * Skilar:
- *  - skus:   unique sku list (normalized)
- *  - source: map[sku] = Set(["NEWWEB","BC_LINES",...])
+ * 🔢 Safna ÖLLUM SKU sem PRODUCTS á að þekkja
+ *
+ * FJÓRAR uppsprettur. Þrjár fyrstu eru söluskrár; sú fjórða er birti
+ * vörulistinn og var VIÐBÓT 2026-09-09.
+ *
+ * Hvers vegna: fram að því voru aðeins söluskrárnar hér, svo vara sem hefur
+ * ALDREI VERIÐ KEYPT komst aldrei í PRODUCTS. Þetta er kallað "master
+ * catalog úr Cludo" í hausnum á skránni, en það var í raun "katalógur yfir
+ * það sem hefur selst". Það voru 605 vörur af 4.477 birtum (13,5%) sem
+ * vantaði, og þær komu fram í PIM-vinnusheetinu sem "Ekki í leitarvísi" og
+ * fylltu EKKI_A_VEF-flipann þótt þrjár efstu fyndust allar á vefnum við
+ * handvirka prófun.
+ *
+ * getProductsV2 er opinber og krefst engra lykla. Bili hann heldur
+ * söfnunin áfram með söluskránum þrem — PRODUCTS verður þá ófullkominn eins
+ * og áður, en ekki tómur.
+ *
+ * Skilar unique, normalized SKU-fylki.
  ************************************************************/
 function collectAllSkusFromSystems_() {
   const skus = [];
@@ -83,7 +97,22 @@ function collectAllSkusFromSystems_() {
     Logger.log("⚠️ BC_LINES not array in collector");
   }
 
-  // --- 4) CLEANUP ---
+  // --- 4) BIRTI VÖRULISTINN (storkaup.is GraphQL, opinber) ---
+  // Sér-try: bili þetta á söfnunin ekki að stöðvast. Sjá hausinn.
+  try {
+    const active = fetchActiveProducts_();
+    let added = 0;
+    active.forEach(a => {
+      const sku = normalizeSkuGlobal_(a && a.parent);
+      if (sku) { skus.push(sku); added++; }
+    });
+    Logger.log(`🌐 collector: +${added} SKU úr birta vörulistanum`);
+  } catch (e) {
+    Logger.log(`⚠️ collector: náði ekki í birta vörulistann — PRODUCTS verður `
+      + `ófullkominn fyrir vörur sem hafa ekki selst: ${e.message}`);
+  }
+
+  // --- 5) CLEANUP ---
   const clean = skus
     .map(s => normalizeSkuGlobal_(s))
     .filter(s => s && s.length >= 3 && /^\d+$/.test(s));
