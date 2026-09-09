@@ -59,6 +59,42 @@ Webflow (Webflow/*.js)             ← read-only dashboards
 
 No backend server. All ingest runs in Apps Script via time-based triggers managed by `resetRecommendedTimeTriggers_v1()`.
 
+## Where things live
+
+**In Apps Script the file does not matter for running a function.** Every
+function is global across the project, so the editor's function picker lists
+them all regardless of which file they sit in. The file only matters when you
+are reading or editing. `clasp` flattens `core/x.js` to `core/x` in the project.
+
+| File | Holds |
+|---|---|
+| [core/utils.js](core/utils.js) | The grab-bag, and the biggest file (4.7k lines, 123 fns). **Trigger management** — `auditTriggers_v1`, `resetRecommendedTimeTriggers_v1`, ten `install*Trigger*`. Also `loadTableBySchema_`, `applySheetStyling_`, Supabase upserts, backfills, and the date/string/number/fuzzy helpers. |
+| [core/menu.js](core/menu.js) | `onOpen` and every `menu_*` entry point. Start here to find what a menu item actually calls. |
+| [core/config.js](core/config.js) | `loadConfig_()` and the STORKAUP_CONFIG reader. |
+| [core/schema.js](core/schema.js) | `STORKAUP_SCHEMA` header maps. Data only, no functions. |
+| [core/newsales_v2.js](core/newsales_v2.js) | Magento NEWWEB ingest, `safePoll_v2` and its run-window gate. |
+| [core/salessummaries.js](core/salessummaries.js) | Sales summary sheets and marts. |
+| [core/customers.js](core/customers.js) · [core/customer_analysis.js](core/customer_analysis.js) | Magento customers; customer profiles and scoring. |
+| [core/cludo.js](core/cludo.js) | Cludo search API and the PRODUCTS master catalog (breadcrumb crawl). |
+| [core/storkaup_pricing.js](core/storkaup_pricing.js) | storkaup.is GraphQL. Price health **and** product health (out of stock, negative stock, uncategorised) — feeds the vöruvöktun app. |
+| [core/email.js](core/email.js) | Weekly/monthly digests, `installMonthlyDigestTrigger_v1`, cache-help templates. |
+| [core/seo_manager.js](core/seo_manager.js) | SEO copy generation queue. |
+| [core/search_console.js](core/search_console.js) · [core/ga4.js](core/ga4.js) | Search Console and GA4 ingest. |
+| [core/solution_pages.js](core/solution_pages.js) | Cross-category solution pages. |
+| [core/applications.js](core/applications.js) | Typeform applications (kennitölur, credit scores). |
+| [core/invoices.js](core/invoices.js) | Gmail → Drive invoice collector. |
+| [core/order_monitor.js](core/order_monitor.js) | Magento pending-order monitor. |
+| [core/auth.js](core/auth.js) | Magento admin token cache. |
+| [webapp.js](webapp.js) | `doPost`/`doGet` for the anonymous deployment — key-guarded actions only. |
+| [pim/buildPimWorksheet.js](pim/buildPimWorksheet.js) | PIM work sheet from the Plytix export. **Pushed with the main project** (`pim/` is not in `.claspignore`). |
+| [admin/](admin/) | The second GAS project. `app.js` routes, `auth.js` guards, `delegate.js` calls the main project, plus the two HTML apps. |
+
+Two things that trip people up. `core/utils.js` section headers are
+double-encoded UTF-8 (`ðŸ§©` where an emoji belongs) — cosmetic, comments only.
+And a `_` suffix means private: those functions do **not** appear in the Apps
+Script function picker, so anything you need to run by hand ends in `_v1` or
+has no suffix.
+
 ## Web-app projects
 
 Access to internal data is split across two GAS deployments so PII never sits behind mere URL-secrecy:
