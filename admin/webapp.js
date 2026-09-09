@@ -3,7 +3,7 @@
 /************************************************************
  * webapp.js — umsóknar-föllin (afrit úr core/webapp.js í aðal-projectinu)
  * Breytingar frá upprunanum:
- *   - adminGuard_() fremst í hverju falli sem google.script.run nær í
+ *   - adminGuard_('umsokn') fremst í hverju falli sem google.script.run nær í
  *   - webapp_pruneApplications delegerar á aðal-projectið (vélin býr þar)
  * Ef fjallað er við frumritið þarf að spegla breytinguna hér (og öfugt).
  ************************************************************/
@@ -11,7 +11,7 @@
 // ── Data fetch ────────────────────────────────────────────────────────────────
 
 function webapp_getApplications() {
-  adminGuard_();
+  adminGuard_('umsokn');
   var cfg = loadConfig_();
   var rafSrc = APP_SOURCES.find(function(s) { return s.key === 'RAFRAEN_INNSKRANING'; });
   var umsSrc = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
@@ -184,7 +184,7 @@ function webapp_findRowIndexByEmail_(sheet, emailHeader, email, companyKtHeader,
 }
 
 function webapp_sendRafraenRedirect(rowData) {
-  adminGuard_();
+  adminGuard_('umsokn');
   var cfg     = loadConfig_();
   var src     = APP_SOURCES.find(function(s) { return s.key === 'RAFRAEN_INNSKRANING'; });
   var sheetId = cfg.SHEETS.RAFRAEN_INNSKRANING.ID;
@@ -217,7 +217,7 @@ function webapp_sendRafraenRedirect(rowData) {
 // Applicant entered the company kennitala in both fields — ask them to resubmit
 // with their personal kennitala. Archives to "Vantar kennitölu" (re-found by email).
 function webapp_sendRafraenNeedKt(rowData) {
-  adminGuard_();
+  adminGuard_('umsokn');
   var cfg     = loadConfig_();
   var src     = APP_SOURCES.find(function(s) { return s.key === 'RAFRAEN_INNSKRANING'; });
   var sheetId = cfg.SHEETS.RAFRAEN_INNSKRANING.ID;
@@ -247,7 +247,7 @@ function webapp_sendRafraenNeedKt(rowData) {
 }
 
 function webapp_saveCreditScore(rowIndex, score) {
-  adminGuard_();
+  adminGuard_('umsokn');
   var cfg   = loadConfig_();
   var src   = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
   var sheet = SpreadsheetApp.openById(cfg.SHEETS.UMSOKN_VIDSKIPTI.ID).getSheetByName(src.mainTab);
@@ -262,14 +262,14 @@ function webapp_saveCreditScore(rowIndex, score) {
 }
 
 function webapp_pruneApplications() {
-  adminGuard_();
+  adminGuard_('umsokn');
   // Pruning-vélin (pruneCompletedApplications_ í customers.js) býr í
   // aðal-projectinu — delegerað þangað um key-vörðu API-leiðina.
   return callCoreApi_('prune_applications');
 }
 
 function webapp_markUmsokn_Done(rowData) {
-  adminGuard_();
+  adminGuard_('umsokn');
   var cfg     = loadConfig_();
   var src     = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
   var ss      = SpreadsheetApp.openById(cfg.SHEETS.UMSOKN_VIDSKIPTI.ID);
@@ -291,7 +291,7 @@ function webapp_markUmsokn_Done(rowData) {
 }
 
 function webapp_sendUmsokn_Email(rowData, templateId) {
-  adminGuard_();
+  adminGuard_('umsokn');
   var subjects = [
     'Frekari upplýsingar vegna skráningar hjá Stórkaup',
     'Frekari upplýsingar vegna reikningsviðskipta hjá Stórkaup',

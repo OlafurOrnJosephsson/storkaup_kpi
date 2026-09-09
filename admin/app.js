@@ -15,7 +15,9 @@
 function doGet(e) {
   var user;
   try {
-    user = adminGuard_();
+    // Vardan raedst af ?app= svo starfsmadur med adgang ad einu appi komist
+    // ekki i annad. app er lesid nedar; hér er sama gildi reiknad fyrst.
+    user = adminGuard_(String((e && e.parameter && e.parameter.app) || 'umsokn'));
   } catch (err) {
     return accessDeniedPage_(err.message);
   }

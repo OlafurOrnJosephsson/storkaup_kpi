@@ -39,17 +39,17 @@ function callCoreApi_(action, extra) {
 }
 
 function syncMagentoCustomers() {
-  adminGuard_();
+  adminGuard_('listaverd');
   return callCoreApi_('sync_magento_customers');
 }
 
 function getZeroPriceResultForUi() {
-  adminGuard_();
+  adminGuard_('listaverd');
   return callCoreApi_('zero_price_result');
 }
 
 function getPendingOrdersForUi() {
-  adminGuard_();
+  adminGuard_('listaverd');
   try {
     return callCoreApi_('pending_orders');
   } catch (e) {
@@ -61,7 +61,7 @@ function getPendingOrdersForUi() {
 // á tíma heldur skönnunin samt áfram í aðal-projectinu, svo hér er pollað
 // eftir ferskri niðurstöðu (lastRun breytist) í allt að 2 mínútur til viðbótar.
 function runZeroPriceScanForUi() {
-  adminGuard_();
+  adminGuard_('listaverd');
 
   var beforeRun = null;
   try {
