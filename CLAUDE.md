@@ -198,8 +198,31 @@ called `installMonthlyDigestTrigger_v1()` and `auditTriggers_v1` listed the
 handler under `OPTIONAL` ("install on demand"), so an absent trigger was never
 warned about — the same silence that hid four uninstalled triggers for three
 months. It is now in `EXPECTED` and in `resetRecommendedTimeTriggers_v1`.
-**Run `installMonthlyDigestTrigger_v1()` once** (or `resetRecommendedTimeTriggers_v1()`)
-— pushing the code does not create the trigger.
+
+**The trigger is installed and verified** — `auditTriggers_v1` on 2026-09-09
+returned `[AUDIT][OK] All 13 required triggers are installed`, 16 triggers
+total (14 required instances plus `onOpen` and `pruneCompletedApplications`),
+no warnings. Nothing left to run here.
+
+**Do not reach for `resetRecommendedTimeTriggers_v1()` to install one trigger.**
+It calls `removeTriggersByHandler_v1` on all thirteen handlers *first* and then
+reinstalls them, `safePoll_v2` included. Stop it between the delete and the
+install — execution limit, quota, a closed tab — and they stay deleted. That is
+the exact failure this section is about. The individual `install*Trigger*`
+functions are idempotent: each checks for an existing trigger and returns
+`{created:false}` instead of adding a second one.
+
+**Two OPTIONAL jobs have no trigger, and the audit will never tell you.**
+By design — `OPTIONAL` handlers are recognised so they do not log as unknown,
+but their absence is never warned about. As of 2026-09-09 neither
+`collectInvoicesToDrive_v1` (the Gmail → Drive invoice collector, mapped as
+"daily ~07:10") nor `runScheduledSeoAutomation_v1` ("every 30 min, install on
+demand") is installed. Both therefore run only when someone clicks. If the
+invoice collector is meant to be daily, run
+`installInvoiceCollectorTrigger_v1` ([core/invoices.js](core/invoices.js)) once
+— it is idempotent and returns `{created:false}` if a trigger already exists.
+`runScheduledSeoAutomation_v1` is deliberately hand-run: SEO batches are
+reviewed in the sheet before anything ships, so a schedule would not help.
 
 The digest's "Met og áfangar" block comes from a **second** RPC,
 `public.web_records_v1` ([core/sql/web_records_v1.sql](core/sql/web_records_v1.sql)),
