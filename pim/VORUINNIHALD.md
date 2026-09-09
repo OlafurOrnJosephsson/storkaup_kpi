@@ -66,19 +66,29 @@ skjalið. Þetta skjal sagði áður STÓRKAUP_KPI_CORE og það var rangt.
 allir sex punktar á gátlistanum neðst standast, `PIM_OWNERS` er kominn með 13
 nöfn og dropdown á `Eigandi` virkur. Verkefnið sjálft er ekki hafið.
 
-Fyrsti hópurinn er úthlutaður sem prófun: **Óli fékk `Álpappír filmur og
-bakkar`, 25 vörur.** Þar af þurfa 10 lýsingu skrifaða og 15 aðeins yfirlestur.
-Það er hópur nr. 52 af 213 eftir stærð, svo hann er yfir miðgildinu (14) en
-ekki risi.
+Fyrsti hópurinn er úthlutaður sem prófun: **`Álpappír filmur og bakkar`, 25
+vörur, á Óla — sem er höfundur þessa kerfis.** Þar af þurfa 10 lýsingu
+skrifaða og 15 aðeins yfirlestur. Það er hópur nr. 52 af 213 eftir stærð, svo
+hann er yfir miðgildinu (14) en ekki risi.
+
+**Sú prófun mælir mekanikina, ekki notendaupplifunina.** Höfundurinn þekkir
+gögnin, flokkatréð og ritstílinn betur en nokkur annar. Að honum finnist
+sheetið í lagi segir lítið um hvort það sé of mikið fyrir starfsmann, sem var
+upphaflega spurningin.
 
 Það sem stendur:
 
-1. **Hlusta á Óla.** Tvær spurningar ráða því hvort app verður byggt:
-   sá hann hvað hann skrifaði (wrap er komið), og vissi hann hvað var gott?
-   Ef svarið við hinu síðara er nei liggur vandinn í ritstílnum og
-   leiðbeiningunum, og app leysir hvorugt. Sjá „App í stað sheets?" í Opið.
+1. **Fyrsta prófun: mekanikin.** Brotnar lýsingin í línur (wrap)? Virkar
+   dropdown á Eigandi? Er búturinn samhangandi og af réttri stærð?
 
-2. **Úthluta hinum tólf** þegar prófunin heldur.
+2. **ÖNNUR prófun, og hún er sú sem ræður: einn af hinum tólf.** Gefðu
+   starfsmanni sem kom ekki nálægt smíðinni einn Level 3 hóp og fylgstu með
+   án að hjálpa. Tvær spurningar: sá hann hvað hann skrifaði, og vissi hann
+   hvað var gott? Ef svarið við hinu síðara er nei liggur vandinn í
+   ritstílnum og leiðbeiningunum, og app leysir hvorugt. Sjá „App í stað
+   sheets?" í Opið.
+
+3. **Úthluta hinum tólf** þegar prófunin heldur.
 
    Verkbúturinn er **Undirflokkur** (Level 3): 213 hópar, miðgildi 14 vörur,
    stærsti 209. Það eru ekki 213 starfsmenn — hver tekur nokkra hópa.
@@ -119,13 +129,13 @@ ekki risi.
    Mekanikin: síaðu á `Flokkur`, veldu `Eigandi`-kólumnuna, fylltu niður.
    39 aðgerðir, ekki 4.477.
 
-3. **Filter view á mann,** ekki flipa og ekki sér skjöl. Data → Filter views
+4. **Filter view á mann,** ekki flipa og ekki sér skjöl. Data → Filter views
    → Create new, síað á `Eigandi`. Filter view er per notanda og raskar ekki
    hinum. Sjá „Flipar per Level 1" í gildrunum um hvers vegna ekki flipar.
    Athugaðu að scriptan býr til GRUNNSÍU, sem er sameiginleg — hún er ekki
    það sama og filter view.
 
-4. **Leiðrétta þetta skjal** eftir kickoff — sérstaklega tölurnar, sem eru
+5. **Leiðrétta þetta skjal** eftir kickoff — sérstaklega tölurnar, sem eru
    allar mældar á útdrættinum frá 2026-09-07 og eldast.
 
 Git er ekki lengur á listanum: `pim/`, `pim_sync.*` og `gas_deploy.ps1` eru
