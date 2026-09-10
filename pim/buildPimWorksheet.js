@@ -487,14 +487,30 @@ function writePimSheet_(sh, rows) {
     ',"JÁ","NEI")))'
   );
 
+  // Stada og vidhengin eru afram STRONG: their listar eru fastir i kodanum og
+  // geta ekki glidnad fra config, og reitirnir eru handvaldir i sheetinu.
   const dvStatus = SpreadsheetApp.newDataValidation()
     .requireValueInList(PIM_STATUSES_, true).setAllowInvalid(false).build();
   const dvYesNo = SpreadsheetApp.newDataValidation()
     .requireValueInList(PIM_YESNO_, true).setAllowInvalid(false).build();
   const owners = pimOwners_();
   if (owners.length) {
+    // setAllowInvalid(TRUE): vidvorun, ekki hofnun. Skipt ur false 2026-09-10.
+    //
+    // HVERS VEGNA: gagnaprofunin er ljosmynd af config-rodhinni tekin VID
+    // BYGGINGU. Leidrettirdu rodhina en byggir ekki (eda byggir innan fimm
+    // minutna medan loadConfig_ cache-ar ennþa gamla gildid) heldur sheetid
+    // gamla listann. Tha hafnar thad thvi sem appid skrifar og skraning
+    // brotnar med skilabodum sem nefna gamla listann — sem las eins og
+    // config-rodhin vaeri enn rong.
+    //
+    // Strong hofnun var til ad verja handinnslatt. Nu skrifar APPID thennan
+    // reit og gildid kemur ur adminGuard_, svo thad getur ekki verid
+    // innslattarvilla. Handinnslattur faer enn appelsinugulan thrihyrning.
+    // Vidvorun laetur gliðnun milli config og sheets kosta merki, ekki
+    // utfall.
     const dvOwner = SpreadsheetApp.newDataValidation()
-      .requireValueInList(owners, true).setAllowInvalid(false).build();
+      .requireValueInList(owners, true).setAllowInvalid(true).build();
     sh.getRange(2, pimColNum_('owner'), lastRow - 1, 1).setDataValidation(dvOwner);
   } else {
     Logger.log('ℹ️ PIM_OWNERS vantar í STORKAUP_CONFIG → SETTINGS. Eigandi-kólumnan ' +
