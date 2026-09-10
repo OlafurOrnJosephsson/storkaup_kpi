@@ -810,18 +810,28 @@ function plytixCategory_(path, level) {
 }
 
 /** Eigendalistinn fyrir dropdown a Eigandi-kolumnunni.
- *  STORKAUP_CONFIG -> SETTINGS -> PIM_OWNERS, kommu-adskilin NETFONG (sama
- *  hattur og ADMIN_APP_EMAILS). Vanti stillingin er EKKI sett gagnaprofun — reiturinn
+ *  STORKAUP_CONFIG -> SETTINGS -> VORUINNIHALD_APP_EMAILS, kommu-adskilin
+ *  NETFONG. Sama rodh sem adminGuard_ notar fyrir adgang — ein rodh, ekki
+ *  tvaer sem verda ad stemma. Vanti stillingin er EKKI sett gagnaprofun — reiturinn
  *  verdur frjals texti. Tomt val med setAllowInvalid(false) myndi gera
  *  kolumnuna onothaefa, og thad er verri utkoma en enginn dropdown.
  *  Ad breyta listanum krefst ekki push, adeins radar i STORKAUP_CONFIG. */
 function pimOwners_() {
   const cfg = loadConfig_();
-  const raw = String((cfg.SETTINGS || {}).PIM_OWNERS || '');
-  // NETFÖNG, ekki nöfn. Vöruinnihalds-appið stimplar innskráðan notanda í
-  // þessa kólumnu og `adminGuard_` skilar netfangi — nöfn hér þýddu að
-  // gagnaprófunin hafnaði því sem appið skrifar. Sjá vi_me_ í
-  // admin/voruinnihald.js.
+  const sets = cfg.SETTINGS || {};
+  // EIN RÖÐ, EKKI TVÆR. `VORUINNIHALD_APP_EMAILS` er þegar til: hún segir
+  // hverjir mega opna vöruinnihalds-appið (sjá `adminGuard_`). Þeir sömu eru
+  // þeir sem eiga að geta stimplað sig á flokk, svo fellilistinn les hana í
+  // stað þess að hafa sinn eigin lista sem verður að stemma. Tvær raðir sem
+  // eiga að vera eins gliðna alltaf í sundur að lokum.
+  //
+  // NETFÖNG, ekki nöfn: appið stimplar innskráðan notanda í kólumnuna og
+  // `adminGuard_` skilar netfangi, svo nafn hér þýddi að gagnaprófunin
+  // hafnaði því sem appið skrifar.
+  //
+  // `PIM_OWNERS` er lesin til vara fyrir sheet sem var byggt áður en appið
+  // varð til. Sé hvorug til er ENGIN gagnaprófun sett — sjá kallstaðinn.
+  const raw = String(sets.VORUINNIHALD_APP_EMAILS || sets.PIM_OWNERS || '');
   return raw.split(',').map(function (x) { return String(x).trim(); }).filter(Boolean);
 }
 

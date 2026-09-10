@@ -98,29 +98,35 @@ function vi_open_() {
  * Hver er innskráður. NETFANGIÐ er auðkennið, alla leið.
  *
  * ÞETTA VAR VILLA OG HÚN HAFÐI EINA RÓT: `adminGuard_` skilar netfangi en
- * `Eigandi`-kólumnan hafði gagnaprófun úr `PIM_OWNERS` sem geymdi FORNÖFN.
- * Appið skrifaði netfang í reit sem tók aðeins „Óli" og Sheets kastaði
+ * `Eigandi`-kólumnan hafði gagnaprófun úr lista sem geymdi FORNÖFN. Appið
+ * skrifaði netfang í reit sem tók aðeins „Óli" og Sheets kastaði
  * „violates the data validation rules". Sama ósamræmi lét „Mitt" aldrei
- * finna eigin flokka og „Sleppa" sleppa engu, því bæði báru nafn við netfang.
+ * finna eigin flokka og „Sleppa" sleppa engu.
  *
  * Lagað með því að fjarlægja annað auðkennisrýmið, ekki með því að þýða á
- * milli þeirra. `PIM_OWNERS` geymir NETFÖNG. Nafn er birtingarmerki sem getur
- * stangast á (tveir Jónar); netfangið er það sem Google-innskráningin,
- * `adminGuard_` og allowlistarnir vinna öll með þegar hvort sem er.
+ * milli þeirra. Nafn er birtingarmerki sem getur stangast á (tveir Jónar);
+ * netfangið er það sem Google-innskráningin, `adminGuard_` og allowlistarnir
+ * vinna öll með hvort sem er.
  *
- * Vörðurinn hér er samt eftir: aðgangur að appinu er `VORUINNIHALD_APP_EMAILS`
- * en gagnaprófunin er `PIM_OWNERS`, svo maður getur haft aðgang og samt ekki
- * verið í fellilistanum. Þá er skýr villa betri en sú frá Sheets.
+ * EIN RÖÐ: `VORUINNIHALD_APP_EMAILS` bæði fyrir aðgang og fellilista, svo
+ * `pimOwners_` í aðal-projectinu les hana líka. Þess vegna er athugunin hér
+ * næstum óþörf — hleypti `adminGuard_` þér inn ertu í listanum og því í
+ * fellilistanum. Hún er samt eftir af EINNI ástæðu: eigandinn (deployerinn)
+ * sleppur alltaf gegnum `adminGuard_`, líka þótt hann sé ekki í listanum, og
+ * myndi þá skrifa gildi sem gagnaprófunin hafnar. Skýr villa hér er betri en
+ * Sheets-undantekning sem segir ekkert um hvað eigi að gera.
  */
 function vi_me_() {
   var email = adminGuard_('voruinnihald');
   var cfg = loadConfig_();
-  var list = String((cfg.SETTINGS || {}).PIM_OWNERS || '')
-    .split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+  var sets = cfg.SETTINGS || {};
+  var raw = String(sets.VORUINNIHALD_APP_EMAILS || sets.PIM_OWNERS || '');
+  var list = raw.split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
   if (list.indexOf(email) === -1) {
-    throw new Error('Netfangið ' + email + ' er ekki í PIM_OWNERS, svo það má ekki ' +
-      'stimpla í Eigandi-kólumnuna. Bættu því við STORKAUP_CONFIG → SETTINGS → ' +
-      'PIM_OWNERS og byggðu vinnusheetið aftur (gagnaprófunin er sett við byggingu).');
+    throw new Error('Netfangið ' + email + ' er ekki í VORUINNIHALD_APP_EMAILS. ' +
+      'Eigandi-kólumnan tekur aðeins netföngin úr þeim lista, svo bættu því við ' +
+      'STORKAUP_CONFIG → SETTINGS og byggðu vinnusheetið aftur (gagnaprófunin er ' +
+      'sett við byggingu).');
   }
   return email;
 }
