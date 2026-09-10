@@ -94,6 +94,37 @@ function vi_open_() {
   return { sh: sh, idx: idx, vals: vals };
 }
 
+/**
+ * Hver er innskráður. NETFANGIÐ er auðkennið, alla leið.
+ *
+ * ÞETTA VAR VILLA OG HÚN HAFÐI EINA RÓT: `adminGuard_` skilar netfangi en
+ * `Eigandi`-kólumnan hafði gagnaprófun úr `PIM_OWNERS` sem geymdi FORNÖFN.
+ * Appið skrifaði netfang í reit sem tók aðeins „Óli" og Sheets kastaði
+ * „violates the data validation rules". Sama ósamræmi lét „Mitt" aldrei
+ * finna eigin flokka og „Sleppa" sleppa engu, því bæði báru nafn við netfang.
+ *
+ * Lagað með því að fjarlægja annað auðkennisrýmið, ekki með því að þýða á
+ * milli þeirra. `PIM_OWNERS` geymir NETFÖNG. Nafn er birtingarmerki sem getur
+ * stangast á (tveir Jónar); netfangið er það sem Google-innskráningin,
+ * `adminGuard_` og allowlistarnir vinna öll með þegar hvort sem er.
+ *
+ * Vörðurinn hér er samt eftir: aðgangur að appinu er `VORUINNIHALD_APP_EMAILS`
+ * en gagnaprófunin er `PIM_OWNERS`, svo maður getur haft aðgang og samt ekki
+ * verið í fellilistanum. Þá er skýr villa betri en sú frá Sheets.
+ */
+function vi_me_() {
+  var email = adminGuard_('voruinnihald');
+  var cfg = loadConfig_();
+  var list = String((cfg.SETTINGS || {}).PIM_OWNERS || '')
+    .split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+  if (list.indexOf(email) === -1) {
+    throw new Error('Netfangið ' + email + ' er ekki í PIM_OWNERS, svo það má ekki ' +
+      'stimpla í Eigandi-kólumnuna. Bættu því við STORKAUP_CONFIG → SETTINGS → ' +
+      'PIM_OWNERS og byggðu vinnusheetið aftur (gagnaprófunin er sett við byggingu).');
+  }
+  return email;
+}
+
 function vi_words_(t) {
   var m = String(t == null ? '' : t).trim().match(/\S+/g);
   return m ? m.length : 0;
@@ -116,7 +147,7 @@ function vi_isDone_(descNew) {
  * vörum 125. Vörufjöldi á borðinu lætur fólk taka rangt.
  */
 function voruinnihald_getTree() {
-  var user = adminGuard_('voruinnihald');
+  var user = vi_me_();
   var o = vi_open_(), idx = o.idx, vals = o.vals;
   var map = {};
 
@@ -161,7 +192,9 @@ function voruinnihald_getTree() {
     };
   });
 
-  return { user: user, groups: out, wordsMin: VI_WORDS_MIN_, wordsMax: VI_WORDS_MAX_ };
+  // `user` er NETFANGIÐ, sama gildi sem stendur i Eigandi-kolumnunni.
+  return { user: user, groups: out,
+           wordsMin: VI_WORDS_MIN_, wordsMax: VI_WORDS_MAX_ };
 }
 
 /** Raðirnar í einum Undirflokki, í þeirri röð sem sheetið hefur þær. */
@@ -221,7 +254,9 @@ function voruinnihald_getGroup(cat3) {
  * vafranum er ekki nothæf.
  */
 function voruinnihald_saveRows(rows) {
-  var user = adminGuard_('voruinnihald');
+  var user = adminGuard_('voruinnihald');   // netfang naegir hér — engin
+                                            // skrif i Eigandi-kolumnuna
+
   if (!Array.isArray(rows) || !rows.length) return { saved: 0 };
 
   var lock = LockService.getScriptLock();
@@ -300,7 +335,7 @@ function voruinnihald_saveRows(rows) {
  * baka og skilaboð, í stað þess að skrifa yfir hann.
  */
 function voruinnihald_claim(cat3) {
-  var user = adminGuard_('voruinnihald');
+  var user = vi_me_();
   var want = String(cat3 == null ? '' : cat3).trim();
   if (!want) throw new Error('Enginn undirflokkur gefinn.');
 
@@ -340,7 +375,7 @@ function voruinnihald_claim(cat3) {
 /** Sleppir flokki: tæmir `Eigandi` á röðum sem ÞESSI notandi á. Raðir sem
  *  annar á eru látnar í friði, svo „sleppa“ getur ekki tekið flokk af öðrum. */
 function voruinnihald_release(cat3) {
-  var user = adminGuard_('voruinnihald');
+  var user = vi_me_();
   var want = String(cat3 == null ? '' : cat3).trim();
 
   var lock = LockService.getScriptLock();

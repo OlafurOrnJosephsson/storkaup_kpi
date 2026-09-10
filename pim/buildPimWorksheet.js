@@ -810,15 +810,19 @@ function plytixCategory_(path, level) {
 }
 
 /** Eigendalistinn fyrir dropdown a Eigandi-kolumnunni.
- *  STORKAUP_CONFIG -> SETTINGS -> PIM_OWNERS, kommu-adskilid (sama hattur og
- *  ADMIN_APP_EMAILS). Vanti stillingin er EKKI sett gagnaprofun — reiturinn
+ *  STORKAUP_CONFIG -> SETTINGS -> PIM_OWNERS, kommu-adskilin NETFONG (sama
+ *  hattur og ADMIN_APP_EMAILS). Vanti stillingin er EKKI sett gagnaprofun — reiturinn
  *  verdur frjals texti. Tomt val med setAllowInvalid(false) myndi gera
  *  kolumnuna onothaefa, og thad er verri utkoma en enginn dropdown.
  *  Ad breyta listanum krefst ekki push, adeins radar i STORKAUP_CONFIG. */
 function pimOwners_() {
   const cfg = loadConfig_();
   const raw = String((cfg.SETTINGS || {}).PIM_OWNERS || '');
-  return raw.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  // NETFÖNG, ekki nöfn. Vöruinnihalds-appið stimplar innskráðan notanda í
+  // þessa kólumnu og `adminGuard_` skilar netfangi — nöfn hér þýddu að
+  // gagnaprófunin hafnaði því sem appið skrifar. Sjá vi_me_ í
+  // admin/voruinnihald.js.
+  return raw.split(',').map(function (x) { return String(x).trim(); }).filter(Boolean);
 }
 
 /** Lagtalan sem PIM_OWNER_LEVEL_ segir til um ('Level 3' -> 3).
