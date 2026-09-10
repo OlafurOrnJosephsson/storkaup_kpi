@@ -482,3 +482,78 @@ function voruinnihald_release(sel) {
     lock.releaseLock();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Greining
+// ---------------------------------------------------------------------------
+
+/**
+ * Hvernig flokkarnir liggja í VINNUSHEET, í raun.
+ *
+ * TIL AÐ SVARA EINNI SPURNINGU: borðið sýndi 746 vörur undir `Rekstrarvörum`
+ * en Plytix-útdrátturinn hefur 1.717. Ég giskaði á að hópar rynnu saman af
+ * því ég lykla þá á undirflokksheiti, en það var rangt — í Plytix eru heitin
+ * einkvæm (213 heiti, 213 slóðir).
+ *
+ * Eftir stendur að sheetið blandar TVEIMUR flokkatrjám: kólumnurnar koma úr
+ * PRODUCTS (brauðmylsna Cludo) þar sem röð er til, og úr Plytix-slóðinni
+ * annars. Þau tvö þurfa ekki að vera samhljóða, og hvorugt er þar að auki
+ * einkvæmt: vara getur verið í mörgum flokkum og bæði kerfin velja EINN.
+ *
+ * Þetta fall mælir það í stað þess að giska: hvað er í hvorum Yfirflokki,
+ * hversu margar raðir hafa tómt lag, og hvort sama undirflokksheiti liggi
+ * undir fleiri en einum flokki (sem myndi renna saman í `getTree`).
+ *
+ * Keyrt handvirkt úr Apps Script-ritlinum. Skrifar í keyrsluskrá.
+ */
+function voruinnihald_diagnoseTree() {
+  var o = vi_open_(), idx = o.idx, vals = o.vals;
+  var l1 = {}, byName = {}, empty = { cat1: 0, cat2: 0, cat3: 0 }, total = 0;
+
+  for (var r = 1; r < vals.length; r++) {
+    if (!String(vals[r][idx.sku] || '').trim()) continue;
+    total++;
+    var a = String(vals[r][idx.cat1] || '').trim();
+    var b = String(vals[r][idx.cat2] || '').trim();
+    var c = String(vals[r][idx.cat3] || '').trim();
+    if (!a) empty.cat1++;
+    if (!b) empty.cat2++;
+    if (!c) empty.cat3++;
+
+    var k1 = a || '(tomt)';
+    l1[k1] = l1[k1] || { n: 0, l2: {}, l3: {} };
+    l1[k1].n++;
+    l1[k1].l2[b || '(tomt)'] = true;
+    l1[k1].l3[c || '(tomt)'] = true;
+
+    if (c) {
+      byName[c] = byName[c] || {};
+      byName[c][a + ' > ' + b] = (byName[c][a + ' > ' + b] || 0) + 1;
+    }
+  }
+
+  Logger.log('[VI][DIAG] radir med SKU: ' + total);
+  Logger.log('[VI][DIAG] tomt Yfirflokkur=' + empty.cat1 +
+             ' Flokkur=' + empty.cat2 + ' Undirflokkur=' + empty.cat3);
+
+  Object.keys(l1).sort().forEach(function (k) {
+    Logger.log('[VI][DIAG] ' + k + ': ' + l1[k].n + ' vorur, ' +
+               Object.keys(l1[k].l2).length + ' flokkar, ' +
+               Object.keys(l1[k].l3).length + ' undirflokkar');
+  });
+
+  // Undirflokksheiti undir fleiri en einni slod -> getTree rennur thau saman
+  var merged = [];
+  Object.keys(byName).forEach(function (c) {
+    var paths = Object.keys(byName[c]);
+    if (paths.length > 1) {
+      merged.push(c + ' -> ' + paths.map(function (p2) {
+        return p2 + ' (' + byName[c][p2] + ')';
+      }).join(' | '));
+    }
+  });
+  Logger.log('[VI][DIAG] undirflokksheiti undir fleiri en einni slod: ' + merged.length);
+  merged.slice(0, 25).forEach(function (m) { Logger.log('[VI][DIAG]   ' + m); });
+
+  return { total: total, empty: empty, mergedNames: merged.length, merged: merged };
+}
