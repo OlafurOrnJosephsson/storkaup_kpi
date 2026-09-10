@@ -22,9 +22,17 @@ function doGet(e) {
     return accessDeniedPage_(err.message);
   }
 
+  // Kort i stad thriggja samhliða ternary-a. Nytt app er ein rodh her plus
+  // ein rodh i STORKAUP_CONFIG (<APP>_APP_EMAILS) — sja adminGuard_.
+  var APPS = {
+    umsokn:       { file: 'umsokn_app',       title: 'Stórkaup — Umsóknir' },
+    listaverd:    { file: 'listaverd_konnun', title: 'Stórkaup — Vöruvöktun' },
+    voruinnihald: { file: 'voruinnihald_app', title: 'Stórkaup — Vöruinnihald' }
+  };
   var app  = String((e && e.parameter && e.parameter.app) || 'umsokn');
-  var file = app === 'listaverd' ? 'listaverd_konnun' : 'umsokn_app';
-  var title = app === 'listaverd' ? 'Stórkaup — Listaverð könnun' : 'Stórkaup — Umsóknir';
+  var spec = APPS[app] || APPS.umsokn;
+  var file = spec.file;
+  var title = spec.title;
 
   console.log('[ADMIN][AUDIT] ' + user + ' opened ' + file);
   // Enginn setXFrameOptionsMode(ALLOWALL) — appið er opnað beint (nýr flipi),
