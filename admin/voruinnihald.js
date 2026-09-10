@@ -190,19 +190,49 @@ function vi_lev_(a, b) {
  */
 function vi_rows_(vals, idx, sel) {
   // Strengur er skilinn sem undirflokkur, svo kall ur Apps Script-ritlinum
-  // (voruinnihald_claim('Kokosmjolk')) virki eins og vaenta ma.
+  // (voruinnihald_claim('Kokosmjolk')) virki eins og vaenta ma. Hann er
+  // TVIRAEDUR thar sem heitid endurtekur sig — sja hausinn a vi_key_.
   if (typeof sel === 'string') sel = { cat3: sel };
+  var c1 = String((sel && sel.cat1) || '').trim();
   var c2 = String((sel && sel.cat2) || '').trim();
   var c3 = String((sel && sel.cat3) || '').trim();
   if (!c2 && !c3) throw new Error('Enginn flokkur gefinn.');
+
+  // ÖLL LÖG SEM ERU GEFIN VERÐA AÐ STEMMA. Áður var aðeins það dýpsta
+  // borið saman, og þá tók `{cat3:'Hanskar'}` 61 röð yfir TVO Yfirflokka.
   var out = [];
   for (var r = 1; r < vals.length; r++) {
     if (!String(vals[r][idx.sku] || '').trim()) continue;
-    if (c3) { if (String(vals[r][idx.cat3] || '').trim() !== c3) continue; }
-    else    { if (String(vals[r][idx.cat2] || '').trim() !== c2) continue; }
+    if (c1 && String(vals[r][idx.cat1] || '').trim() !== c1) continue;
+    if (c2 && String(vals[r][idx.cat2] || '').trim() !== c2) continue;
+    if (c3 && String(vals[r][idx.cat3] || '').trim() !== c3) continue;
     out.push(r);
   }
   return out;
+}
+
+/**
+ * Lykill hops: FULL SLOÐ, ekki undirflokksheitid eitt.
+ *
+ * MÆLT Í SHEETINU 2026-09-10 (`voruinnihald_diagnoseTree`): 77 undirflokks-
+ * heiti liggja undir fleiri en einni slóð. `Hanskar` er bæði
+ * `Heilbrigðisvörur > Heilbrigðisrekstrarvara` (22 vörur) og
+ * `Rekstrarvörur > Einnota rekstrarvörur` (39). `Hlífðarfatnaður` er á fimm
+ * slóðum, `Yfirborðshreinsar` á fjórum.
+ *
+ * Í PLYTIX eru heitin einkvæm — 213 heiti á 213 slóðum — svo þetta sést ekki
+ * þar. Sheetið blandar tveimur trjám: kólumnurnar koma úr PRODUCTS
+ * (brauðmylsna Cludo) þar sem röð er til og úr Plytix-slóðinni annars.
+ *
+ * Lyklun á heitið eitt lét þessa 77 renna saman í einn hóp sem tók Yfirflokk
+ * frá fyrstu röð sem sást. Borðið sýndi þá 746 vörur undir `Rekstrarvörum`
+ * þar sem sheetið hefur 1.598, og þrjá undirflokka undir `Einnota
+ * rekstrarvörum` þar sem vefurinn hefur sjö. Verra: `getGroup` og `claim`
+ * völdu eftir sama lykli, svo skráning á `Hanskar` hefði tekið raðir í tveimur
+ * Yfirflokkum.
+ */
+function vi_key_(a, b, c) {
+  return [a || '', b || '', c || ''].join('\u0000');
 }
 
 function vi_words_(t) {
@@ -235,16 +265,13 @@ function voruinnihald_getTree() {
     var row = vals[r];
     var sku = String(row[idx.sku] || '').trim();
     if (!sku) continue;
+    var a1 = String(row[idx.cat1] || '').trim();
+    var a2 = String(row[idx.cat2] || '').trim();
     var c3 = String(row[idx.cat3] || '').trim();
-    var key = c3 || '(ekkert undirlag)';
+    var key = vi_key_(a1, a2, c3);        // FULL SLOÐ — sja vi_key_
     var g = map[key];
     if (!g) {
-      g = map[key] = {
-        cat3: c3,
-        cat1: String(row[idx.cat1] || '').trim(),
-        cat2: String(row[idx.cat2] || '').trim(),
-        n: 0, w: 0, done: 0, owners: {}
-      };
+      g = map[key] = { cat1: a1, cat2: a2, cat3: c3, n: 0, w: 0, done: 0, owners: {} };
     }
     g.n++;
 
@@ -277,19 +304,25 @@ function voruinnihald_getTree() {
            wordsMin: VI_WORDS_MIN_, wordsMax: VI_WORDS_MAX_ };
 }
 
-/** Raðirnar í einum Undirflokki, í þeirri röð sem sheetið hefur þær. */
-function voruinnihald_getGroup(cat3) {
+/**
+ * Raðirnar í einum Undirflokki, í þeirri röð sem sheetið hefur þær.
+ *
+ * `sel` er FULL SLOÐ (`{cat1, cat2, cat3}`), ekki heitið eitt: 77 heiti
+ * liggja undir fleiri en einni slóð og heitið eitt hefði skilað röðum úr
+ * tveimur Yfirflokkum. Sjá `vi_key_`.
+ */
+function voruinnihald_getGroup(sel) {
   adminGuard_('voruinnihald');
-  var want = String(cat3 == null ? '' : cat3).trim();
+  if (typeof sel === 'string') sel = { cat3: sel };
   var o = vi_open_(), idx = o.idx, vals = o.vals;
+  var want = vi_rows_(vals, idx, sel);
   var items = [];
 
-  for (var r = 1; r < vals.length; r++) {
+  for (var q = 0; q < want.length; q++) {
+    var r = want[q];
     var row = vals[r];
-    var sku = String(row[idx.sku] || '').trim();
-    if (!sku) continue;
-    if (String(row[idx.cat3] || '').trim() !== want) continue;
 
+    var sku = String(row[idx.sku] || '').trim();
     var descOld = String(row[idx.descOld] || '').trim();
     var label = String(row[idx.label] || '').trim();
     items.push({
@@ -316,7 +349,10 @@ function voruinnihald_getGroup(cat3) {
       note: String(row[idx.note] || '').trim()
     });
   }
-  if (!items.length) throw new Error('Enginn flokkur með undirflokkinn „' + want + '“.');
+  if (!items.length) {
+    throw new Error('Enginn flokkur með slóðina ' +
+      [sel.cat1, sel.cat2, sel.cat3].filter(Boolean).join(' › ') + '.');
+  }
   return items;
 }
 
@@ -424,7 +460,10 @@ function voruinnihald_claim(sel) {
   try {
     var o = vi_open_(), sh = o.sh, idx = o.idx, vals = o.vals;
     var rows = vi_rows_(vals, idx, sel);
-    if (!rows.length) throw new Error('Flokkurinn finnst ekki.');
+    if (!rows.length) {
+      throw new Error('Flokkurinn finnst ekki: ' +
+        [sel.cat1, sel.cat2, sel.cat3].filter(Boolean).join(' › '));
+    }
 
     // Hver a rodh sem er thegar tekin? Skilum theim til baka i stad thess ad
     // skrifa yfir. Blandadur flokkur (tveir eigendur) er lika svar.

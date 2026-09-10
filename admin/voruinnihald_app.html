@@ -467,6 +467,18 @@ var inFlight = null;     // raðirnar sem eru í loftinu núna
 var flushTimer = null;
 var netErr = false;
 
+/* FULL SLOÐ ER LYKILLINN, ekki undirflokksheitið.
+   Mælt í sheetinu 2026-09-10: 77 heiti liggja undir fleiri en einni slóð.
+   `Hanskar` er bæði undir Heilbrigðisrekstrarvöru (22 vörur) og Einnota
+   rekstrarvörum (39). Lyklun á heitið eitt lét borðið sýna 746 vörur undir
+   Rekstrarvörum þar sem sheetið hefur 1.598. */
+var keyOf = function (t) { return [t.cat1 || '', t.cat2 || '', t.cat3 || ''].join('|'); };
+var findByKey = function (k) {
+  for (var n = 0; n < TREE.length; n++) if (keyOf(TREE[n]) === k) return TREE[n];
+  return null;
+};
+var selOf = function (t) { return { cat1: t.cat1, cat2: t.cat2, cat3: t.cat3 }; };
+
 var el = function (id) { return document.getElementById(id); };
 var esc = function (s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -649,14 +661,15 @@ function drawMine() {
         (partial ? ' &middot; hluti' : '') + '</div>' +
         '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
         '<div class="kidlist">' + mine.map(function (t) {
-          return '<button type="button" class="kid" data-open="' + esc(t.cat3) +
+          return '<button type="button" class="kid" data-key="' + esc(keyOf(t)) +
             '" data-done="' + (t.w && t.done >= t.w ? 1 : 0) + '">' +
             '<span class="kn">' + esc(t.cat3 || '(ekkert undirlag)') + '</span>' +
             '<span class="kp">' + IS(t.done) + '/' + IS(t.w) + '</span>' +
             '<span class="kp">' + IS(t.n) + ' v.</span></button>';
         }).join('') + '</div>' +
-        '<div class="mrow"><button type="button" class="rel" data-rel2="' +
-        esc(l2) + '">Sleppa flokknum</button></div></div>');
+        '<div class="mrow"><button type="button" class="rel" data-rel1="' +
+        esc(l1) + '" data-rel2="' + esc(l2) +
+        '">Sleppa flokknum</button></div></div>');
     });
   });
   el('mine-empty').hidden = cards.length > 0;
@@ -699,7 +712,7 @@ function drawTree() {
           var t3 = s3 === 'free' ? 'Taka' : s3 === 'mine' ? 'Mitt'
             : s3 === 'done' ? 'Klarad' : esc(t.owner);
           return '<button type="button" class="grp" data-st="' + s3 +
-            '" data-c3="' + esc(t.cat3) + '"' + (s3 === 'taken' ? ' disabled' : '') + '>' +
+            '" data-key="' + esc(keyOf(t)) + '"' + (s3 === 'taken' ? ' disabled' : '') + '>' +
             '<span class="nm">' + esc(t.cat3 || '(ekkert undirlag)') + '</span>' +
             '<span class="w">' + IS(t.w) + '<em>skrif</em></span>' +
             '<span class="n">' + IS(t.n) + ' vorur</span>' +
@@ -755,11 +768,16 @@ function take(sel) {
       busy(false);
       if (!r.ok) { toast(r.takenBy + ' er þegar með þennan flokk.'); loadTree(); return; }
       // Speglum staðbundið svo borðið svari strax, og sækjum svo ferskt.
+      // Öll lög sem valarinn gefur verða að stemma — annars merktist
+      // `Hanskar` undir tveimur Yfirflokkum í einu.
       TREE.forEach(function (t) {
-        if (sel.cat3 ? t.cat3 === sel.cat3 : t.cat2 === sel.cat2) t.owner = USER;
+        if (sel.cat1 && t.cat1 !== sel.cat1) return;
+        if (sel.cat2 && t.cat2 !== sel.cat2) return;
+        if (sel.cat3 && t.cat3 !== sel.cat3) return;
+        t.owner = USER;
       });
       drawBoard();
-      if (sel.cat3) openGroup(sel.cat3);
+      if (sel.cat3) openGroup(sel);
       else loadTree();
     })
     .withFailureHandler(function (e) {
@@ -776,12 +794,13 @@ function release(sel) {
     .voruinnihald_release(sel);
 }
 
-function openGroup(c3) {
+function openGroup(sel) {
   busy(true, 'Hleð vörum…');
   google.script.run
     .withSuccessHandler(function (rows) {
       busy(false);
-      grp = TREE.find(function (x) { return x.cat3 === c3; }) || { cat1: '', cat2: '', cat3: c3, w: 0 };
+      grp = findByKey([sel.cat1 || '', sel.cat2 || '', sel.cat3 || ''].join('|')) ||
+            { cat1: sel.cat1 || '', cat2: sel.cat2 || '', cat3: sel.cat3 || '', w: 0 };
       items = rows;
       st = rows.map(function (p) {
         return {
@@ -797,7 +816,7 @@ function openGroup(c3) {
     .withFailureHandler(function (e) {
       busy(false); toast((e && e.message) || 'Náði ekki í vörurnar.');
     })
-    .voruinnihald_getGroup(c3);
+    .voruinnihald_getGroup(sel);
 }
 
 /* ------------------------------------------------------------- skrifsýn */
@@ -971,9 +990,13 @@ el('filters').addEventListener('click', function (e) {
   drawTree();
 });
 el('minelist').addEventListener('click', function (e) {
-  var o = e.target.closest('[data-open]'), r = e.target.closest('[data-rel2]');
-  if (o) openGroup(o.dataset.open);
-  else if (r) release({ cat2: r.dataset.rel2 });
+  var o = e.target.closest('[data-key]'), r = e.target.closest('[data-rel2]');
+  if (o) {
+    var t = findByKey(o.dataset.key);
+    if (t) openGroup(selOf(t));
+  } else if (r) {
+    release({ cat1: r.dataset.rel1, cat2: r.dataset.rel2 });
+  }
 });
 
 el('tree').addEventListener('click', function (e) {
@@ -982,9 +1005,9 @@ el('tree').addEventListener('click', function (e) {
   var g = e.target.closest('.grp');
   if (g) {
     if (g.disabled) return;
-    var c3 = g.dataset.c3;
-    var t = TREE.find(function (x) { return x.cat3 === c3; });
-    if (statusOf(t) === 'free') take({ cat3: c3 }); else openGroup(c3);
+    var t = findByKey(g.dataset.key);
+    if (!t) return;
+    if (statusOf(t) === 'free') take(selOf(t)); else openGroup(selOf(t));
     return;
   }
   var b = e.target.closest('.l2');
@@ -993,7 +1016,7 @@ el('tree').addEventListener('click', function (e) {
   // Laus flokkur: fyrsta klikk opnar hann svo madur SJAI hvad hann inniheldur
   // adur en hann er tekinn. Takan er svo a hnappnum haegra megin.
   if (e.target.closest('.st') && b.dataset.st === 'free') {
-    take({ cat2: b.dataset.l2 });
+    take({ cat1: b.dataset.l1, cat2: b.dataset.l2 });
     return;
   }
   expanded[key] = !expanded[key];
