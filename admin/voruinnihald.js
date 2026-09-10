@@ -123,12 +123,59 @@ function vi_me_() {
   var raw = String(sets.VORUINNIHALD_APP_EMAILS || sets.PIM_OWNERS || '');
   var list = raw.split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
   if (list.indexOf(email) === -1) {
-    throw new Error('Netfangið ' + email + ' er ekki í VORUINNIHALD_APP_EMAILS. ' +
-      'Eigandi-kólumnan tekur aðeins netföngin úr þeim lista, svo bættu því við ' +
-      'STORKAUP_CONFIG → SETTINGS og byggðu vinnusheetið aftur (gagnaprófunin er ' +
-      'sett við byggingu).');
+    var msg = 'Netfangið ' + email + ' er ekki í VORUINNIHALD_APP_EMAILS.';
+    var near = vi_nearest_(email, list);
+    if (near) {
+      msg += ' Í listanum stendur ' + near + ' — er það innsláttarvilla?';
+    }
+    throw new Error(msg + ' Eigandi-kólumnan tekur aðeins netföngin úr þeim ' +
+      'lista, svo bættu réttu við STORKAUP_CONFIG → SETTINGS og byggðu ' +
+      'vinnusheetið aftur (gagnaprófunin er sett við byggingu).');
   }
   return email;
+}
+
+/**
+ * Næsta netfang í listanum, ef það er nógu líkt til að vera innsláttarvilla.
+ *
+ * HVERS VEGNA: fyrsta tilraunin til að opna appið féll á því að aðgangurinn er
+ * `umsokn@storkaup.is` (umsókn, með k) en í config stóð `umsjon@storkaup.is`
+ * (umsjón, með j). Villan nefndi bæði netfangið og röðina, en ekki að svarið
+ * væri í listanum með tveimur stöfum víxlað. Sá sem les hana á ekki að þurfa
+ * að bera saman tvo næstum eins strengi með augunum.
+ *
+ * Levenshtein á local-part, aðeins innan sama domains, og aðeins ef fjarlægðin
+ * er 1 eða 2 — þá er það villa, ekki annar maður.
+ */
+function vi_nearest_(email, list) {
+  var at = email.indexOf('@');
+  if (at < 1) return '';
+  var me = email.slice(0, at), dom = email.slice(at);
+  var best = '', bestD = 3;
+  list.forEach(function (cand) {
+    if (cand.slice(cand.indexOf('@')) !== dom) return;
+    var d = vi_lev_(me, cand.slice(0, cand.indexOf('@')));
+    // d > 0: fjarlaegd 0 vaeri sami strengur, og bending um innslattarvillu
+    // a sjalfan sig er vitleysa. Getur ekki gerst i raun (fallid er adeins
+    // kallad thegar netfangid er EKKI i listanum) en er utilokad her samt.
+    if (d > 0 && d < bestD) { bestD = d; best = cand; }
+  });
+  return best;
+}
+
+function vi_lev_(a, b) {
+  if (a === b) return 0;
+  var prev = [], cur = [], i, j;
+  for (j = 0; j <= b.length; j++) prev[j] = j;
+  for (i = 1; i <= a.length; i++) {
+    cur[0] = i;
+    for (j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1,
+                        prev[j - 1] + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1));
+    }
+    prev = cur.slice();
+  }
+  return prev[b.length];
 }
 
 /**
