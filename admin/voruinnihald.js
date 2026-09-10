@@ -142,6 +142,9 @@ function vi_me_() {
  * `Ræstiáhöldum` 441 röð í einni beit.
  */
 function vi_rows_(vals, idx, sel) {
+  // Strengur er skilinn sem undirflokkur, svo kall ur Apps Script-ritlinum
+  // (voruinnihald_claim('Kokosmjolk')) virki eins og vaenta ma.
+  if (typeof sel === 'string') sel = { cat3: sel };
   var c2 = String((sel && sel.cat2) || '').trim();
   var c3 = String((sel && sel.cat3) || '').trim();
   if (!c2 && !c3) throw new Error('Enginn flokkur gefinn.');
