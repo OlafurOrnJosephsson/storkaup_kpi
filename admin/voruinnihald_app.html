@@ -250,6 +250,47 @@ footer b{color:var(--ink-2);font-weight:600}
   background:var(--ink);color:var(--paper);font-size:13.5px;font-weight:500;
   padding:10px 18px;border-radius:99px;box-shadow:0 6px 20px -6px rgba(0,0,0,.5);z-index:9}
 
+/* --- hreidrid: Yfirflokkur > Flokkur > Undirflokkur --- */
+.l2{width:100%;display:grid;grid-template-columns:18px 1fr auto auto auto;
+  gap:10px 12px;align-items:center;text-align:left;font-family:inherit;
+  background:var(--surface-2);color:var(--ink);border:1px solid var(--rule);
+  border-radius:5px;padding:11px 14px;cursor:pointer;margin:0 0 4px}
+.l2:hover{border-color:var(--brand)}
+.l2[data-st="mine"]{border-color:var(--mine);background:var(--mine-wash)}
+.l2[data-st="taken"]{color:var(--ink-2)}
+.l2 .cv{color:var(--ink-3);font-size:11px;display:inline-block;text-align:center;
+  transition:transform .12s ease}
+.l2[aria-expanded="true"] .cv{transform:rotate(90deg)}
+.l2 .nm{font-weight:600;font-size:15px;overflow-wrap:anywhere}
+.l2 .nm em{display:block;font-style:normal;font-weight:400;font-size:11.5px;
+  color:var(--ink-3);font-family:var(--f-mono)}
+.l2 .w{font-family:var(--f-mono);font-size:16px;font-weight:600;
+  font-variant-numeric:tabular-nums;text-align:right;min-width:44px}
+.l2 .w em{display:block;font-style:normal;font-size:10px;font-weight:400;
+  color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase}
+.l2 .n{font-family:var(--f-mono);font-size:12px;color:var(--ink-3);
+  font-variant-numeric:tabular-nums;min-width:60px;text-align:right}
+.l2 .st{font-size:11.5px;font-weight:600;font-family:var(--f-mono);
+  min-width:104px;text-align:right}
+.l2[data-st="free"] .st{color:var(--brand-ink)}
+.l2[data-st="mine"] .st{color:var(--mine)}
+.l2[data-st="taken"] .st{color:var(--ink-3)}
+.l2[data-st="done"] .st{color:var(--good)}
+.kids{margin:0 0 10px 18px;padding-left:12px;border-left:2px solid var(--rule);
+  display:flex;flex-direction:column;gap:4px}
+.kids .grp{margin:0;background:var(--surface);padding:8px 12px}
+.kids .grp .nm{font-weight:500;font-size:13.5px}
+.kids .grp .w{font-size:14px}
+.mcard .kidlist{display:flex;flex-direction:column;gap:3px;margin-top:2px}
+.mcard .kid{display:grid;grid-template-columns:1fr auto auto;gap:9px;
+  align-items:center;font-size:12.5px;background:var(--surface);
+  border:1px solid var(--rule);border-radius:4px;padding:5px 9px;
+  cursor:pointer;font-family:inherit;color:var(--ink);text-align:left}
+.mcard .kid:hover{border-color:var(--brand)}
+.mcard .kid .kp{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-3);
+  font-variant-numeric:tabular-nums}
+.mcard .kid[data-done="1"] .kp{color:var(--good)}
+
 /* --- vistunarstada --- */
 .tick[data-s="failed"]{background:var(--crit-wash);border-color:var(--crit)}
 .netstate{font-size:12px;color:var(--ink-3);font-family:var(--f-mono);
@@ -419,6 +460,7 @@ var FLUSH_MS = 1200;
 var USER = '', MINW = 20, MAXW = 150;
 var TREE = [], filter = 'free';
 var grp = null, items = [], st = [], i = 0, landedAt = Date.now();
+var expanded = {};   // 'Yfirflokkur|Flokkur' -> opinn
 
 var queue = {};          // sku -> { sku, ...reitir sem breyttust }
 var inFlight = null;     // raðirnar sem eru í loftinu núna
@@ -555,55 +597,127 @@ function drawJob() {
   el('sub').textContent = IS(TREE.length) + ' flokkar · ' + IS(w) + ' lýsingar að skrifa';
 }
 
+/**
+ * Hreidrid: Yfirflokkur -> Flokkur -> Undirflokkur, eins og vefurinn sjalfur.
+ *
+ * Fyrri utgafa radadi Undirflokkum eftir vinnu undir hverjum Yfirflokki. Thad
+ * gerdi storu hopana synilega, sem er rettmaett, EN sundradi trenu: hopar undir
+ * sama Flokki logu ekki saman og `Rekstrarvorur` vard 152 linur i einni bunu.
+ * Level 2 er lika lagid sem folk hugsar i - enginn segir "eg tek niu osamstaeda
+ * undirflokka", thad segir "eg tek hreinsiefni".
+ *
+ * Maelt: 6 Yfirflokkar, 39 Flokkar, 218 Undirflokkar. Samanbrotid er bordid
+ * 39 radir i stad 218.
+ */
+function nest() {
+  var out = {};
+  TREE.forEach(function (t) {
+    var k1 = t.cat1 || '(enginn flokkur)';
+    var k2 = t.cat2 || '(ekkert lag)';
+    var a = out[k1] = out[k1] || {};
+    var b = a[k2] = a[k2] || { n: 0, w: 0, done: 0, owners: {}, groups: [] };
+    b.n += t.n; b.w += t.w; b.done += t.done; b.groups.push(t);
+    if (t.owner) b.owners[t.owner] = (b.owners[t.owner] || 0) + 1;
+  });
+  return out;
+}
+
+/** Stada a Flokki. `mine` adeins ef ALLIR undirflokkar eru minir; `mine` med
+ *  hluta er lika mitt, en textinn segir fra thvi. */
+function status2(b) {
+  if (b.w > 0 && b.done >= b.w) return 'done';
+  var names = Object.keys(b.owners);
+  if (!names.length) return 'free';
+  if (names.indexOf(USER) >= 0) return 'mine';
+  return 'taken';
+}
+
 function drawMine() {
-  var mine = TREE.filter(function (t) { return t.owner === USER; });
-  el('mine-empty').hidden = mine.length > 0;
-  el('minelist').innerHTML = mine.map(function (t) {
-    var pct = t.w ? Math.min(100, Math.round(t.done / t.w * 100)) : 100;
-    return '<div class="mcard"><div class="t">' + esc(t.cat3 || t.cat2 || t.cat1) + '</div>' +
-      '<div class="p">' + IS(t.done) + ' / ' + IS(t.w) + ' lýsingar · ' + IS(t.n) + ' vörur' +
-      (t.mixed ? ' · blandaður' : '') + '</div>' +
-      '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
-      '<div class="mrow"><button type="button" class="go" data-open="' + esc(t.cat3) + '">Skrifa</button>' +
-      '<button type="button" class="rel" data-rel="' + esc(t.cat3) + '">Sleppa</button></div></div>';
-  }).join('');
+  var n2 = nest(), cards = [];
+  Object.keys(n2).sort().forEach(function (l1) {
+    Object.keys(n2[l1]).sort().forEach(function (l2) {
+      var b = n2[l1][l2];
+      var mine = b.groups.filter(function (t) { return t.owner === USER; });
+      if (!mine.length) return;
+      var w = 0, done = 0;
+      mine.forEach(function (t) { w += t.w; done += t.done; });
+      var pct = w ? Math.min(100, Math.round(done / w * 100)) : 100;
+      var partial = mine.length < b.groups.length;
+      cards.push('<div class="mcard"><div class="t">' + esc(l2) + '</div>' +
+        '<div class="p">' + IS(done) + ' / ' + IS(w) + ' lysingar &middot; ' +
+        IS(mine.length) + ' af ' + IS(b.groups.length) + ' undirflokkum' +
+        (partial ? ' &middot; hluti' : '') + '</div>' +
+        '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
+        '<div class="kidlist">' + mine.map(function (t) {
+          return '<button type="button" class="kid" data-open="' + esc(t.cat3) +
+            '" data-done="' + (t.w && t.done >= t.w ? 1 : 0) + '">' +
+            '<span class="kn">' + esc(t.cat3 || '(ekkert undirlag)') + '</span>' +
+            '<span class="kp">' + IS(t.done) + '/' + IS(t.w) + '</span>' +
+            '<span class="kp">' + IS(t.n) + ' v.</span></button>';
+        }).join('') + '</div>' +
+        '<div class="mrow"><button type="button" class="rel" data-rel2="' +
+        esc(l2) + '">Sleppa flokknum</button></div></div>');
+    });
+  });
+  el('mine-empty').hidden = cards.length > 0;
+  el('minelist').innerHTML = cards.join('');
 }
 
 function drawTree() {
-  var byL1 = {};
-  TREE.forEach(function (t) { (byL1[t.cat1] = byL1[t.cat1] || []).push(t); });
-  var html = Object.keys(byL1).sort().map(function (l1) {
-    var all = byL1[l1];
-    var gs = all;
-    if (filter === 'free') gs = all.filter(function (t) { return statusOf(t) === 'free' && t.w > 0; });
-    if (!gs.length) return '';
-    // Óstæk og stór fyrst: kirsuberjaval verður sýnilegt, ekki þögult.
-    gs = gs.slice().sort(function (a, b) { return b.w - a.w || a.n - b.n; });
-    var tw = 0, tn = 0;
-    all.forEach(function (t) { tw += t.w; tn += t.n; });
-    return '<div class="l1"><h3>' + esc(l1 || '(enginn flokkur)') + '</h3>' +
-      '<div class="l1m">' + IS(tw) + ' lýsingar · ' + IS(tn) + ' vörur · ' +
-      IS(all.length) + ' flokkar</div>' +
-      gs.map(function (t) {
-        var s = statusOf(t);
-        var txt = s === 'free' ? 'Taka' : s === 'mine' ? 'Mitt'
-          : s === 'done' ? 'Klárað' : esc(t.owner);
-        return '<button type="button" class="grp' + (t.w > 92 ? ' big' : '') +
-          '" data-st="' + s + '" data-c3="' + esc(t.cat3) + '"' +
-          (s === 'taken' ? ' disabled' : '') + '>' +
-          '<span class="nm">' + esc(t.cat3 || '(ekkert undirlag)') +
-          '<em>' + esc(t.cat2 || l1) + '</em></span>' +
-          '<span class="w">' + IS(t.w) + '<em>skrif</em></span>' +
-          '<span class="n">' + IS(t.n) + ' vörur</span>' +
-          '<span class="st">' + txt +
-          (s === 'mine' && t.done ? ' ' + IS(t.done) + '/' + IS(t.w) : '') +
-          '</span></button>';
-      }).join('') + '</div>';
+  var n2 = nest();
+  var html = Object.keys(n2).sort().map(function (l1) {
+    var fl = n2[l1];
+    var keys = Object.keys(fl).sort();
+    var tw = 0, tn = 0, tu = 0;
+    keys.forEach(function (k) { tw += fl[k].w; tn += fl[k].n; tu += fl[k].groups.length; });
+
+    var rows = keys.map(function (l2) {
+      var b = fl[l2], s2 = status2(b);
+      if (filter === 'free' && (s2 !== 'free' || b.w === 0)) return '';
+      var open = !!expanded[l1 + '|' + l2];
+      var names = Object.keys(b.owners);
+      var txt = s2 === 'free' ? 'Taka flokkinn'
+        : s2 === 'done' ? 'Klarad'
+        : s2 === 'mine' ? (b.owners[USER] === b.groups.length ? 'Mitt' : 'Mitt ad hluta')
+        : names.join(', ');
+      // Gulur kantur: flokkur staerri en 92 skrif, vidmidid a mann. Hann
+      // VERDUR ad klofna a undirflokka. I dag er thad adeins Ryksugur (172).
+      var kids = b.groups.slice().sort(function (a, c) { return c.w - a.w || a.n - c.n; });
+      return '<button type="button" class="l2' + (b.w > 92 ? ' big' : '') +
+        '" data-st="' + s2 + '" data-l1="' + esc(l1) + '" data-l2="' + esc(l2) +
+        '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+        '<span class="cv">&#9654;</span>' +
+        '<span class="nm">' + esc(l2) +
+        '<em>' + IS(b.groups.length) + ' undirflokkar</em></span>' +
+        '<span class="w">' + IS(b.w) + '<em>skrif</em></span>' +
+        '<span class="n">' + IS(b.n) + ' vorur</span>' +
+        '<span class="st">' + esc(txt) +
+        (s2 === 'mine' && b.done ? ' ' + IS(b.done) + '/' + IS(b.w) : '') +
+        '</span></button>' +
+        (open ? '<div class="kids">' + kids.map(function (t) {
+          var s3 = statusOf(t);
+          var t3 = s3 === 'free' ? 'Taka' : s3 === 'mine' ? 'Mitt'
+            : s3 === 'done' ? 'Klarad' : esc(t.owner);
+          return '<button type="button" class="grp" data-st="' + s3 +
+            '" data-c3="' + esc(t.cat3) + '"' + (s3 === 'taken' ? ' disabled' : '') + '>' +
+            '<span class="nm">' + esc(t.cat3 || '(ekkert undirlag)') + '</span>' +
+            '<span class="w">' + IS(t.w) + '<em>skrif</em></span>' +
+            '<span class="n">' + IS(t.n) + ' vorur</span>' +
+            '<span class="st">' + t3 +
+            (s3 === 'mine' && t.done ? ' ' + IS(t.done) + '/' + IS(t.w) : '') +
+            '</span></button>';
+        }).join('') + '</div>' : '');
+    }).filter(Boolean).join('');
+
+    if (!rows) return '';
+    return '<div class="l1"><h3>' + esc(l1) + '</h3>' +
+      '<div class="l1m">' + IS(tw) + ' lysingar &middot; ' + IS(tn) + ' vorur &middot; ' +
+      IS(keys.length) + ' flokkar &middot; ' + IS(tu) + ' undirflokkar</div>' +
+      rows + '</div>';
   }).join('');
   el('tree').innerHTML = html ||
-    '<p class="empty">Ekkert laust í þessari sýn. Skiptu á „Allt".</p>';
+    '<p class="empty">Ekkert laust i thessari syn. Skiptu a Allt.</p>';
 }
-
 function drawBoard() { drawJob(); drawMine(); drawTree(); }
 
 /* ------------------------------------------------------------ þjónskoll */
@@ -634,29 +748,32 @@ function loadTree(then) {
     .voruinnihald_getTree();
 }
 
-function take(c3) {
+function take(sel) {
   busy(true, 'Tek flokkinn…');
   google.script.run
     .withSuccessHandler(function (r) {
       busy(false);
       if (!r.ok) { toast(r.takenBy + ' er þegar með þennan flokk.'); loadTree(); return; }
-      var t = TREE.find(function (x) { return x.cat3 === c3; });
-      if (t) t.owner = USER;
+      // Speglum staðbundið svo borðið svari strax, og sækjum svo ferskt.
+      TREE.forEach(function (t) {
+        if (sel.cat3 ? t.cat3 === sel.cat3 : t.cat2 === sel.cat2) t.owner = USER;
+      });
       drawBoard();
-      openGroup(c3);
+      if (sel.cat3) openGroup(sel.cat3);
+      else loadTree();
     })
     .withFailureHandler(function (e) {
       busy(false); toast((e && e.message) || 'Náði ekki að taka flokkinn.');
     })
-    .voruinnihald_claim(c3);
+    .voruinnihald_claim(sel);
 }
 
-function release(c3) {
+function release(sel) {
   busy(true, 'Sleppi…');
   google.script.run
     .withSuccessHandler(function () { busy(false); loadTree(); toast('Flokkur laus aftur.'); })
     .withFailureHandler(function (e) { busy(false); toast((e && e.message) || 'Villa.'); })
-    .voruinnihald_release(c3);
+    .voruinnihald_release(sel);
 }
 
 function openGroup(c3) {
@@ -854,16 +971,33 @@ el('filters').addEventListener('click', function (e) {
   drawTree();
 });
 el('minelist').addEventListener('click', function (e) {
-  var o = e.target.closest('[data-open]'), r = e.target.closest('[data-rel]');
+  var o = e.target.closest('[data-open]'), r = e.target.closest('[data-rel2]');
   if (o) openGroup(o.dataset.open);
-  else if (r) release(r.dataset.rel);
+  else if (r) release({ cat2: r.dataset.rel2 });
 });
+
 el('tree').addEventListener('click', function (e) {
-  var b = e.target.closest('.grp');
-  if (!b || b.disabled) return;
-  var c3 = b.dataset.c3;
-  var t = TREE.find(function (x) { return x.cat3 === c3; });
-  if (statusOf(t) === 'free') take(c3); else openGroup(c3);
+  // Undirflokkur fyrst — hann er innan i l2-rodhinni, svo .closest fyndi
+  // hana lika og opnadi/lokadi um leid.
+  var g = e.target.closest('.grp');
+  if (g) {
+    if (g.disabled) return;
+    var c3 = g.dataset.c3;
+    var t = TREE.find(function (x) { return x.cat3 === c3; });
+    if (statusOf(t) === 'free') take({ cat3: c3 }); else openGroup(c3);
+    return;
+  }
+  var b = e.target.closest('.l2');
+  if (!b) return;
+  var key = b.dataset.l1 + '|' + b.dataset.l2;
+  // Laus flokkur: fyrsta klikk opnar hann svo madur SJAI hvad hann inniheldur
+  // adur en hann er tekinn. Takan er svo a hnappnum haegra megin.
+  if (e.target.closest('.st') && b.dataset.st === 'free') {
+    take({ cat2: b.dataset.l2 });
+    return;
+  }
+  expanded[key] = !expanded[key];
+  drawTree();
 });
 
 showView('board');

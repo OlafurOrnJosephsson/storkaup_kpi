@@ -131,6 +131,30 @@ function vi_me_() {
   return email;
 }
 
+/**
+ * Raðir sem valari nær yfir. `{cat3: x}` er einn undirflokkur, `{cat2: y}`
+ * allur flokkurinn.
+ *
+ * SKRÁNING ER Á LEVEL 2, SKRIFAÐ ER Á LEVEL 3. Level 2 er úthlutunarbúturinn
+ * — mælt á útdrættinum: 39 flokkar, allir undir 92 skrifum nema `Ryksugur`
+ * með 172, svo hann er sá eini sem verður að klofna. Level 3 er verkbúturinn
+ * innan hans, 1 til 14 per flokk. Að opna Level 2 til skrifta hefði gefið
+ * `Ræstiáhöldum` 441 röð í einni beit.
+ */
+function vi_rows_(vals, idx, sel) {
+  var c2 = String((sel && sel.cat2) || '').trim();
+  var c3 = String((sel && sel.cat3) || '').trim();
+  if (!c2 && !c3) throw new Error('Enginn flokkur gefinn.');
+  var out = [];
+  for (var r = 1; r < vals.length; r++) {
+    if (!String(vals[r][idx.sku] || '').trim()) continue;
+    if (c3) { if (String(vals[r][idx.cat3] || '').trim() !== c3) continue; }
+    else    { if (String(vals[r][idx.cat2] || '').trim() !== c2) continue; }
+    out.push(r);
+  }
+  return out;
+}
+
 function vi_words_(t) {
   var m = String(t == null ? '' : t).trim().match(/\S+/g);
   return m ? m.length : 0;
@@ -340,10 +364,8 @@ function voruinnihald_saveRows(rows) {
  * báðir flokkinn. Sá sem kemur seinni fær nafn þess sem var á undan til
  * baka og skilaboð, í stað þess að skrifa yfir hann.
  */
-function voruinnihald_claim(cat3) {
+function voruinnihald_claim(sel) {
   var user = vi_me_();
-  var want = String(cat3 == null ? '' : cat3).trim();
-  if (!want) throw new Error('Enginn undirflokkur gefinn.');
 
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(VI_LOCK_MS_)) {
@@ -351,53 +373,61 @@ function voruinnihald_claim(cat3) {
   }
   try {
     var o = vi_open_(), sh = o.sh, idx = o.idx, vals = o.vals;
-    var rowsToSet = [], held = {};
+    var rows = vi_rows_(vals, idx, sel);
+    if (!rows.length) throw new Error('Flokkurinn finnst ekki.');
 
-    for (var r = 1; r < vals.length; r++) {
-      if (String(vals[r][idx.cat3] || '').trim() !== want) continue;
+    // Hver a rodh sem er thegar tekin? Skilum theim til baka i stad thess ad
+    // skrifa yfir. Blandadur flokkur (tveir eigendur) er lika svar.
+    var held = {};
+    rows.forEach(function (r) {
       var own = String(vals[r][idx.owner] || '').trim();
       if (own && own !== user) held[own] = (held[own] || 0) + 1;
-      rowsToSet.push(r);
-    }
-    if (!rowsToSet.length) throw new Error('Flokkurinn „' + want + '“ finnst ekki.');
-
+    });
     var holders = Object.keys(held);
     if (holders.length) {
       return { ok: false, takenBy: holders.join(', '), rows: 0 };
     }
 
-    rowsToSet.forEach(function (r) {
-      sh.getRange(r + 1, idx.owner + 1).setValue(user);
-    });
+    // Samfelldar radir -> eitt setValues. Sama rok sem i saveRows.
+    var lo = rows[0], hi = rows[rows.length - 1];
+    var col = [], set = {};
+    rows.forEach(function (r) { set[r] = true; });
+    for (var r2 = lo; r2 <= hi; r2++) {
+      col.push([set[r2] ? user : (vals[r2][idx.owner] || '')]);
+    }
+    sh.getRange(lo + 1, idx.owner + 1, hi - lo + 1, 1).setValues(col);
     SpreadsheetApp.flush();
-    console.log('[VORUINNIHALD][AUDIT] ' + user + ' tok „' + want + '“ (' +
-                rowsToSet.length + ' radir)');
-    return { ok: true, owner: user, rows: rowsToSet.length };
+    console.log('[VORUINNIHALD][AUDIT] ' + user + ' tok ' + JSON.stringify(sel) +
+                ' (' + rows.length + ' radir)');
+    return { ok: true, owner: user, rows: rows.length };
   } finally {
     lock.releaseLock();
   }
 }
 
 /** Sleppir flokki: tæmir `Eigandi` á röðum sem ÞESSI notandi á. Raðir sem
- *  annar á eru látnar í friði, svo „sleppa“ getur ekki tekið flokk af öðrum. */
-function voruinnihald_release(cat3) {
+ *  annar á eru látnar í friði, svo „sleppa" getur ekki tekið flokk af öðrum. */
+function voruinnihald_release(sel) {
   var user = vi_me_();
-  var want = String(cat3 == null ? '' : cat3).trim();
-
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(VI_LOCK_MS_)) throw new Error('Reyndu aftur eftir smá stund.');
   try {
     var o = vi_open_(), sh = o.sh, idx = o.idx, vals = o.vals;
-    var n = 0;
-    for (var r = 1; r < vals.length; r++) {
-      if (String(vals[r][idx.cat3] || '').trim() !== want) continue;
-      if (String(vals[r][idx.owner] || '').trim() !== user) continue;
-      sh.getRange(r + 1, idx.owner + 1).setValue('');
-      n++;
+    var rows = vi_rows_(vals, idx, sel).filter(function (r) {
+      return String(vals[r][idx.owner] || '').trim() === user;
+    });
+    if (!rows.length) return { ok: true, rows: 0 };
+    var lo = rows[0], hi = rows[rows.length - 1], set = {};
+    rows.forEach(function (r) { set[r] = true; });
+    var col = [];
+    for (var r2 = lo; r2 <= hi; r2++) {
+      col.push([set[r2] ? '' : (vals[r2][idx.owner] || '')]);
     }
+    sh.getRange(lo + 1, idx.owner + 1, hi - lo + 1, 1).setValues(col);
     SpreadsheetApp.flush();
-    console.log('[VORUINNIHALD][AUDIT] ' + user + ' slepti „' + want + '“ (' + n + ' radir)');
-    return { ok: true, rows: n };
+    console.log('[VORUINNIHALD][AUDIT] ' + user + ' slepti ' + JSON.stringify(sel) +
+                ' (' + rows.length + ' radir)');
+    return { ok: true, rows: rows.length };
   } finally {
     lock.releaseLock();
   }
