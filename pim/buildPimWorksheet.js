@@ -102,6 +102,19 @@ const PIM_COLS_ = [
   { key: 'url',       head: 'Vefslóð',                 w: 220, kind: 'join' }
 ];
 
+// Ordafjoldamark a longu lysingu. EIN stilling, notud i threm stodum:
+// Fullbuid-formulunni, skilyrta snidinu a Ordafjolda, og leidbeiningunum.
+//
+// Lækkað úr 60 í 20 þann 2026-09-10, eftir raunprófun. Höfundur ritstílsins
+// skrifaði þrjár lýsingar á kókosmjólk og lenti á 40, 29 og 24 orðum. 400 ml
+// dós af kókosmjólk hefur ekki 60 orð af sönnu innihaldi, og ritstíllinn
+// bannar markaðsorð — svo 60 kallaði á fylliorð eða á að `Fullbúið` yrði
+// aldrei sönn. Efra markið er óbreytt.
+//
+// Þetta gildi VERÐUR að vera það sama og MIN_W/MAX_W í skrifsýninni.
+const PIM_WORDS_MIN_ = 20;
+const PIM_WORDS_MAX_ = 150;
+
 const PIM_STATUSES_ = ['Ekki byrjað', 'Í vinnslu', 'Til yfirlesturs', 'Spurning', 'Samþykkt', 'Flutt inn'];
 const PIM_YESNO_    = ['Já', 'Nei', 'Á ekki við'];
 
@@ -466,7 +479,8 @@ function writePimSheet_(sh, rows) {
   sh.getRange(L.done + '2').setFormula(
     '=ARRAYFORMULA(IF(' + R('label') + '="","",IF(' +
     '(' + R('brandNew') + '<>"")*(' + R('nameNew') + '<>"")*' +
-    '(' + R('words') + '>=60)*(' + R('words') + '<=150)*(' + R('image') + '="Já")*' +
+    '(' + R('words') + '>=' + PIM_WORDS_MIN_ + ')*(' +
+    R('words') + '<=' + PIM_WORDS_MAX_ + ')*(' + R('image') + '="Já")*' +
     '((' + R('datasheet') + '="Já")+(' + R('datasheet') + '="Á ekki við"))*' +
     '((' + R('sds') + '="Já")+(' + R('sds') + '="Á ekki við"))*' +
     '((' + R('status') + '="Samþykkt")+(' + R('status') + '="Flutt inn"))' +
@@ -505,8 +519,8 @@ function writePimSheet_(sh, rows) {
       .whenFormulaSatisfied('=$' + L.onWeb + '2="Nei"')
       .setFontColor('#9e2438').setRanges([all]).build(),
     SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=AND($' + L.descNew + '2<>"",OR($' + L.words + '2<60,$' +
-                            L.words + '2>150))')
+      .whenFormulaSatisfied('=AND($' + L.descNew + '2<>"",OR($' + L.words + '2<' +
+                            PIM_WORDS_MIN_ + ',$' + L.words + '2>' + PIM_WORDS_MAX_ + '))')
       .setFontColor('#9e2438').setBold(true).setRanges([words]).build()
   ]);
 
@@ -657,7 +671,7 @@ function buildPimGuide_(ss) {
     ['Ljósblátt', 'Reiknast sjálfkrafa.'],
     ['', ''],
     ['Vöruheiti', 'Vörutegund, týpa, afbrigði, stærð  —  t.d.  Ryksuga, VP400 HEPA XT, 700W'],
-    ['Löng lýsing', '60–150 orð. Fyrsta setningin segir hvað varan er og fyrir hvern, og verður að standa sjálfstæð.'],
+    ['Löng lýsing', PIM_WORDS_MIN_ + '–' + PIM_WORDS_MAX_ + ' orð. Fyrsta setningin segir hvað varan er og fyrir hvern, og verður að standa sjálfstæð. Einfaldar vörur ná ekki mörgum orðum og eiga ekki að teygja sig.'],
     ['Ritstíllinn', 'Fullar reglur, bannlisti og gátlisti eru í uppflettisíðunni „Ritstíll vörukorta".'],
     ['', ''],
     ['Rammasamningur = Já', 'Þessar vörur kaupa stórir viðskiptavinir reglulega. Taktu þær fyrst.']
