@@ -624,8 +624,18 @@ function writePimSheet_(sh, rows) {
 
   // Stada og vidhengin eru afram STRONG: their listar eru fastir i kodanum og
   // geta ekki glidnad fra config, og reitirnir eru handvaldir i sheetinu.
+  // setAllowInvalid(TRUE) — vidvorun, ekki hofnun. Skipt ur false 2026-09-11.
+  //
+  // Gagnaprofunin er LJOSMYND tekin vid byggingu. Baetist stada vid i kodanum
+  // (`Óbreytt` gerdi thad) thekkir sheetid hana ekki fyrr en thad er byggt
+  // aftur — og thar til er hvert skrif ur appinu HORD VILLA sem stodvar
+  // vistun. Sama rok og fyrir Eigandi-kolumnuna: rek milli kodans og
+  // sheetsins a ad kosta raudan thrihyrning, ekki bilad app.
+  //
+  // Thetta veikir ekkert: `Fullbúið` reiknast ur formulunni, sem ber stoduna
+  // saman vid fost gildi og laetur ranga stodu einfaldlega ekki telja.
   const dvStatus = SpreadsheetApp.newDataValidation()
-    .requireValueInList(PIM_STATUSES_, true).setAllowInvalid(false).build();
+    .requireValueInList(PIM_STATUSES_, true).setAllowInvalid(true).build();
   const dvYesNo = SpreadsheetApp.newDataValidation()
     .requireValueInList(PIM_YESNO_, true).setAllowInvalid(false).build();
   const owners = pimOwners_();

@@ -419,47 +419,62 @@ function voruinnihald_saveRows(rows) {
       if (s) rowBySku[s] = r;            // 0-basað í vals, +1 fyrir getRange
     }
 
-    // EITT KALL PER KÓLUMNU, EKKI PER REIT.
+    // VIÐ SKRIFUM ALDREI REIT SEM VIÐ FENGUM EKKI GILDI Í.
     //
-    // setValue í lykkju gefur 100 API-köll á 25 vörur og fjórar breytingar,
-    // sem tekur tugi sekúndna. Það myndi láta appið tapa fyrir töflureikni
-    // á hraða þótt það ynni á þægindum — og þá mælir prófið útfærsluna í
-    // stað hugmyndarinnar.
+    // Fyrri útgáfa tók eitt setValues-kall per kólumnu yfir SPÖNNINA
+    // lo..hi og skrifaði ósnertar raðir til baka „með sínu eigin gildi".
+    // Það lítur út eins og núll-aðgerð og er það ekki:
     //
-    // Raðir flokks eru SAMFELLDAR í sheetinu því buildPimWorksheet raðar
-    // eftir Level 1 → 2 → 3, svo hver kólumna er eitt setValues-kall
-    // óháð fjölda raða. Sé eitthvað ósamfellt (blandaður bunki) nær spönnin
-    // yfir bilið og ósnertar raðir eru skrifaðar með sínu eigin gildi.
-    var saved = 0, unknown = [], touched = {}, lo = null, hi = null;
+    //   1. `setValues` KEYRIR GAGNAPRÓFUN. Ein rödh innan spannarinnar með
+    //      gildi sem listinn þekkir ekki felldi ALLA lotuna — þar með talið
+    //      raðirnar sem starfsmaðurinn var raunverulega að vista. Þetta kom
+    //      fram 2026-09-11: „The data you entered in cell P2646 violates the
+    //      data validation rules", á vöru sem enginn hafði snert.
+    //   2. TAPAÐ SKRIF. Milli þess að `vi_open_` les og við skrifum getur
+    //      annar starfsmaður hafa breytt röð innan spannarinnar. Að skrifa
+    //      gamla gildið til baka afturkallar hans vinnu ÞEGJANDI. Það er
+    //      verra en villuskilaboðin.
+    //
+    // Nú er hver kólumna skrifuð í SAMFELLDUM RUNUM af röðum sem sendu
+    // gildi í hana. Kostnaðurinn er fjöldi runa, ekki fjöldi reita, og
+    // raðir flokks liggja saman því buildPimWorksheet raðar eftir
+    // Level 1 → 2 → 3. Í reynd er þetta eitt kall eins og áður.
+    var saved = 0, unknown = [], touched = {};
     rows.forEach(function (inRow) {
       var sku = String((inRow && inRow.sku) || '').trim();
       var r0 = rowBySku[sku];
       if (!sku || r0 === undefined) { if (sku) unknown.push(sku); return; }
       touched[r0] = inRow;
-      if (lo === null || r0 < lo) lo = r0;
-      if (hi === null || r0 > hi) hi = r0;
       saved++;
     });
 
     if (saved) {
-      var span = hi - lo + 1;
       VI_WRITABLE_.forEach(function (k) {
         var col = idx[k] + 1;
-        var out = [], changed = false;
-        for (var r = lo; r <= hi; r++) {
-          var inRow = touched[r];
-          var cur = vals[r][idx[k]];
-          if (inRow && (k in inRow) && inRow[k] !== null && inRow[k] !== undefined) {
-            var v = String(inRow[k]);
-            if (v !== String(cur == null ? '' : cur)) changed = true;
-            out.push([v]);
-          } else {
-            out.push([cur == null ? '' : cur]);
-          }
-        }
-        // Sleppum kólumnu sem engin röð breytti — annars skrifum við sömu
-        // gildi til baka og eyðum kvóta á ekkert.
-        if (changed) sh.getRange(lo + 1, col, span, 1).setValues(out);
+
+        // Raðirnar sem sendu gildi í ÞESSA kólumnu, í röð.
+        var want = [];
+        Object.keys(touched).forEach(function (key) {
+          var r = Number(key), inRow = touched[r];
+          if (!(k in inRow) || inRow[k] === null || inRow[k] === undefined) return;
+          if (String(inRow[k]) === String(vals[r][idx[k]] == null ? '' : vals[r][idx[k]])) return;
+          want.push(r);
+        });
+        if (!want.length) return;
+        want.sort(function (a, b) { return a - b; });
+
+        // Samfelldar runur — ein per setValues-kall.
+        var runs = [];
+        want.forEach(function (r) {
+          var last = runs.length ? runs[runs.length - 1] : null;
+          if (last && r === last[last.length - 1] + 1) last.push(r);
+          else runs.push([r]);
+        });
+
+        runs.forEach(function (run) {
+          var out = run.map(function (r) { return [String(touched[r][k])]; });
+          sh.getRange(run[0] + 1, col, run.length, 1).setValues(out);
+        });
       });
     }
 
