@@ -221,6 +221,13 @@ input[type=text]:focus,textarea:focus{border-color:var(--brand);background:var(-
   padding:15px 16px}
 .panel h2{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;
   font-weight:600;color:var(--ink-3);margin:0 0 10px}
+.ai{margin:10px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ai button{font-family:inherit;font-size:13px;font-weight:600;padding:8px 14px;
+  border-radius:6px;cursor:pointer;background:#10069f;color:#fff;border:1px solid #10069f}
+.ai button[disabled]{opacity:.45;cursor:default}
+.ai .note{font-size:12.5px;color:var(--ink-3);line-height:1.45;flex:1 1 220px}
+.ai .warn{color:#8a4b12}
+.origin{font-size:12px;color:var(--ink-3);margin-left:auto}
 .docs{margin:10px 0 0;display:flex;flex-wrap:wrap;gap:8px}
 .docs a{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;
   font-weight:600;text-decoration:none;padding:6px 11px;border-radius:6px;
@@ -421,6 +428,10 @@ footer b{color:var(--ink-2);font-weight:600}
           <h2>Varan</h2>
           <dl class="spec" id="spec"></dl>
           <div class="docs" id="docs"></div>
+          <div class="ai">
+            <button type="button" id="ai">Orða punktana mína</button>
+            <span class="note" id="ainote"></span>
+          </div>
         </div>
         <div class="panel">
           <h2>Núverandi lýsing</h2>
@@ -584,6 +595,60 @@ window.addEventListener('beforeunload', function (e) {
   e.preventDefault();
   e.returnValue = '';
 });
+
+/* --------------------------------------------------------------- AI-drög
+   Likanid ordar thad sem MADUR sagdi thvi. Thad finnur ekkert upp.
+
+   Se reiturinn tomur er beidninni hafnad i thjoninum — og thad er ekki
+   takmorkun heldur tilgangurinn. Gagnslausi AI-textinn i safninu (785
+   ordrett eins lysingar) vard til af thvi likan fekk ekkert nema
+   voruheitid. Sama likan med tolum ur gagnabladinu skrifar allt annad. */
+var ORIGIN_AI = 'AI-drög';
+var ORIGIN_AI_EDITED = 'AI-drög, ritstýrt';
+var ORIGIN_HUMAN = 'Handskrifað';
+
+function aiNote(msg, warn) {
+  el('ainote').className = 'note' + (warn ? ' warn' : '');
+  el('ainote').textContent = msg || '';
+}
+
+el('ai').onclick = function () {
+  var p = items[i], s = st[i];
+  mark();
+  el('ai').disabled = true;
+  aiNote('Orða…');
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      el('ai').disabled = false;
+      if (!r) { aiNote('Ekkert svar.', true); return; }
+      if (r.refused) { aiNote(r.message, true); return; }
+
+      el('ds').value = r.text;
+      s.ds = r.text;
+      s.origin = ORIGIN_AI;
+      aiDraftText = r.text;          // til ad sja hvort manneskja breyti
+      gauge(); mark(); drawTicks();
+
+      var msg = r.words + ' orð.';
+      if (r.hint) msg += ' Greinirinn merkir þetta: ' + r.hint + '. Lagaðu áður en þú vistar.';
+      else msg += ' Lestu yfir — þú berð ábyrgð á því sem þú vistar.';
+      aiNote(msg, !!r.hint);
+    })
+    .withFailureHandler(function (e) {
+      el('ai').disabled = false;
+      aiNote((e && e.message) || 'Náði ekki sambandi við líkanið.', true);
+    })
+    .voruinnihald_draft({
+      sku: p.sku, label: p.label, name: s.nm || p.nameOld, brand: p.brandOld,
+      cat1: p.cat1, cat2: p.cat2, cat3: p.cat3,
+      notes: s.ds, descOld: p.descOld,
+      hasDatasheet: !!p.dsFile
+    });
+};
+
+/** Textinn eins og likanid skilaði honum. Breytist hann telst hann ritstyrdur. */
+var aiDraftText = null;
 
 /** Merkin i mannamali. Kodinn einn segir starfsmanni ekkert. */
 function hintWhy(h) {
@@ -877,7 +942,7 @@ function openGroup(sel) {
         return {
           nm: p.nameNew || '', ds: p.descNew || '',
           tri_ds: p.datasheet || '', tri_sds: p.sds || '',
-          status: p.status || '',
+          status: p.status || '', origin: p.origin || '',
           touched: !!(p.nameNew || p.descNew || p.status === NOCHANGE),
           save: (p.nameNew || p.descNew || p.status === NOCHANGE) ? 'saved' : 'new',
           ms: 0
@@ -985,16 +1050,30 @@ function render() {
   // "22 kPa sogkraftur", ekki "oflug" — og thaer tolur eru i gagnabladinu.
   // 1.454 vorur hafa eitt hengt vid sem skrifarinn gat ekki sed, og
   // leidbeiningarnar banna honum ad fara i Plytix ad saekja thad.
+  // 16% af slodunum ur Plytix bera staf sem brytur href: 200 med BILI,
+  // 114 med hornklofum, auk islenskra stafa. Maelt og stadfest 2026-09-11 —
+  // sama skra svaradi 200 kodud og 000 hra.
+  var safeUrl = function (u) {
+    u = String(u || '').trim();
+    if (!u) return '';
+    return /%[0-9A-Fa-f]{2}/.test(u) ? u : encodeURI(u);
+  };
+
   var docs = [];
   if (p.dsFile) docs.push(['Gagnablað', p.dsFile]);
   if (p.sdsFile) docs.push(['Öryggisblað', p.sdsFile]);
   if (p.brFile) docs.push(['Bæklingur', p.brFile]);
   el('docs').innerHTML = docs.length
     ? docs.map(function (d) {
-        return '<a href="' + esc(d[1]) + '" target="_blank" rel="noopener">' +
+        return '<a href="' + esc(safeUrl(d[1])) + '" target="_blank" rel="noopener">' +
                esc(d[0]) + ' \u2197</a>';
       }).join('')
     : '<span class="none">Engin skjöl í Plytix</span>';
+
+  aiDraftText = null;
+  aiNote(p.dsFile
+    ? 'Opnaðu gagnablaðið, skrifaðu tölurnar og notkunina í punktum hér að ofan, og ýttu svo á hnappinn.'
+    : 'Skrifaðu í punktum hvað varan er og hvaða tölur eiga við, og ýttu svo á hnappinn.');
 
   el('was').textContent = p.descOld || '(engin)';
   var cls = p.descIsName ? 'crit' : p.descWords >= MINW ? 'good' : 'warn';
@@ -1025,6 +1104,18 @@ function render() {
 }
 
 function mark() {
+  // Snerti manneskja AI-drogin breytist uppruninn. Handskrifad er
+  // sjalfgefid um leid og eitthvad er skrifad an hnappsins.
+  (function () {
+    var s = st[i];
+    if (!s) return;
+    var t = el('ds').value;
+    if (aiDraftText !== null && t !== aiDraftText && s.origin === ORIGIN_AI) {
+      s.origin = ORIGIN_AI_EDITED;
+    } else if (!s.origin && t) {
+      s.origin = ORIGIN_HUMAN;
+    }
+  })();
   var s = st[i], p = items[i];
   var nm = el('nm').value, ds = el('ds').value;
   var changed = nm !== s.nm || ds !== s.ds;
@@ -1062,6 +1153,10 @@ function commit(status) {
   var patch = {};
   if (s.nm !== (p.nameNew || '')) patch.nameNew = s.nm;
   if (s.ds !== (p.descNew || '')) patch.descNew = s.ds;
+  // UPPRUNI FYLGIR TEXTANUM. Hann er skradur vid upptokin, ekki agiskadur
+  // eftir a — og hann uppfaerist i "AI-drög, ritstýrt" um leid og manneskja
+  // breytir stafkrok i drogunum.
+  if (s.origin !== (p.origin || '')) patch.origin = s.origin;
   if (status) { patch.status = status; s.status = status; }
   if (!Object.keys(patch).length) return false;
   p.nameNew = s.nm; p.descNew = s.ds;      // spegill svo tvivistun geri ekkert

@@ -83,3 +83,16 @@ function runZeroPriceScanForUi() {
   }
   return { status: 'error', message: 'Skönnun kláraði ekki í tæka tíð — opnaðu síðuna aftur eftir smá stund.' };
 }
+
+/**
+ * AI-drog ad vorulysingu. Sendir SAMHENGID sem starfsmadurinn hefur gefid
+ * afram i adal-projectid, sem a lykilinn.
+ *
+ * Adgangsvardan er `voruinnihald` — ekki `listaverd` eins og hin follin her.
+ * Sa sem ma skoda verdvoktun a ekkert erindi i ad eyda tokenum a skrifum.
+ */
+function voruinnihald_draft(ctx) {
+  adminGuard_('voruinnihald');
+  if (!ctx || typeof ctx !== 'object') throw new Error('Ekkert samhengi sent.');
+  return callCoreApi_('pim_draft', { ctx: ctx });
+}

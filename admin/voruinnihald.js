@@ -44,6 +44,7 @@ var VI_H_ = {
   brandOld:'Vörumerki (núv.)',   brandNew: 'Vörumerki (nýtt)',
   datasheet:'Gagnablað',         sds:      'Öryggisblað',
   status: 'Staða',               note:     'Athugasemd',
+  origin: 'Uppruni',
   onWeb:  'Á vef',               framework:'Rammasamningur',  url: 'Vefslóð',
   hint:   'Vísbending',
   dsFile: 'Gagnablað (skrá)', sdsFile: 'Öryggisblað (skrá)', brFile: 'Bæklingur (skrá)'
@@ -54,12 +55,13 @@ var VI_H_ = {
  *  Listinn er hvítlisti af ásettu ráði: nýr reitur í vafranum getur ekki
  *  skrifað í læsta kólumnu fyrir slysni. */
 var VI_WRITABLE_ = ['owner', 'brandNew', 'nameNew', 'descNew',
-                    'datasheet', 'sds', 'status', 'note'];
+                    'datasheet', 'sds', 'status', 'note', 'origin'];
 
 /** Kolumnur sem mega vanta. Sja vi_open_ — thaer fella ekki appid, thaer
  *  koma bara tomar. Adeins hreinar upplysingakolumnur eiga heima her;
  *  allt sem skrifad er i eda reiknad af verdur ad vera skyldad. */
-var VI_OPTIONAL_ = { hint: true, dsFile: true, sdsFile: true, brFile: true };
+var VI_OPTIONAL_ = { hint: true, dsFile: true, sdsFile: true, brFile: true,
+                     origin: true };
 
 /** Orðamark á langri lýsingu. VERÐUR að vera það sama sem PIM_WORDS_MIN_/MAX_
  *  í `pim/buildPimWorksheet.js` — lækkað úr 60 í 20 þann 2026-09-10 eftir
@@ -383,6 +385,7 @@ function voruinnihald_getGroup(sel) {
       datasheet: String(row[idx.datasheet] || '').trim(),
       sds: String(row[idx.sds] || '').trim(),
       status: String(row[idx.status] || '').trim(),
+      origin: idx.origin === undefined ? '' : String(row[idx.origin] || '').trim(),
       note: String(row[idx.note] || '').trim()
     });
   }
@@ -456,6 +459,7 @@ function voruinnihald_saveRows(rows) {
 
     if (saved) {
       VI_WRITABLE_.forEach(function (k) {
+        if (idx[k] === undefined) return;   // valfrjals kolumna vantar
         var col = idx[k] + 1;
 
         // Raðirnar sem sendu gildi í ÞESSA kólumnu, í röð.

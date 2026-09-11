@@ -34,6 +34,9 @@ function handleApiAction_(body) {
   if (action === 'zero_price_result')      return jsonResponse_(adminDelegateViaApi_(body, function () { return getZeroPriceResultForUi(); }));
   if (action === 'pending_orders')         return jsonResponse_(adminDelegateViaApi_(body, function () { return getPendingOrdersForUi(); }));
   if (action === 'run_zero_price_scan')    return jsonResponse_(adminDelegateViaApi_(body, function () { return runZeroPriceScanForUi(); }));
+  // AI-drog ad vorulysingu. Keyrir HER thvi Anthropic-lykillinn byr i thessu
+  // projecti; admin-appid kallar gegnum admin/delegate.js.
+  if (action === 'pim_draft')              return jsonResponse_(adminDelegateViaApi_(body, function () { return pimDraftDescription_(body.ctx || {}); }));
   return jsonResponse_({ error: 'Unknown action' });
 }
 

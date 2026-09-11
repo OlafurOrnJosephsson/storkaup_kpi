@@ -106,6 +106,10 @@ const PIM_COLS_ = [
   { key: 'sdsFile',   head: 'Öryggisblað (skrá)',      w:  95, kind: 'join' },
   { key: 'brFile',    head: 'Bæklingur (skrá)',        w:  95, kind: 'join' },
   { key: 'status',    head: 'Staða',                   w: 125, kind: 'edit' },
+  // UPPRUNI slaer greiningu ut. `Vísbending` giskar a hvort GAMALL texti se
+  // velritadur og mun bæði sleppa godum AI-texta og merkja mann sem skrifar
+  // thurrt. Fyrir NYJAN texta tharf enga agiskun: appid veit hver skrifadi.
+  { key: 'origin',    head: 'Uppruni',                 w: 130, kind: 'edit' },
   { key: 'note',      head: 'Athugasemd',              w: 260, kind: 'edit', wrap: true },
   { key: 'image',     head: 'Mynd í lagi',             w: 100, kind: 'join' },
   { key: 'onWeb',     head: 'Á vef',                   w:  85, kind: 'join' },
