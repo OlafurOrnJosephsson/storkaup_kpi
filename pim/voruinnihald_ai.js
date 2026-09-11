@@ -166,13 +166,76 @@ function pimAiSystem_() {
   ].join('\n');
 }
 
-function pimAiCall_(prompt) {
-  var cfg = loadConfig_();
+/**
+ * Sækir lykilinn og SEGIR HVAÐ ER TIL ef hann finnst ekki.
+ *
+ * Villuboð sem segja bara „vantar lykil" láta mann leita í blindni. Röðin
+ * er líklega til en heitir ekki alveg það sem kóðinn leitar að — það er
+ * nákvæmlega sama villa og `umsjon@` gegn `umsokn@` var, og hún kostaði
+ * heilan hring. Því telur þetta upp þau Service-heiti sem eru raunverulega
+ * í API-flipanum og lætur manneskjuna bera saman.
+ */
+function pimAiKey_(cfg) {
   var api = (cfg.API && (cfg.API.Anthropic || cfg.API.Claude)) || {};
   var key = api.API_KEY || api.KEY;
-  if (!key) {
-    throw new Error('Vantar API → Anthropic | API_KEY í STORKAUP_CONFIG.');
+  if (key) return key;
+
+  var names = Object.keys((cfg && cfg.API) || {}).sort();
+  throw new Error(
+    'Fann engan Anthropic-lykil. Kóðinn leitar að Service = "Anthropic" ' +
+    '(eða "Claude") með Key = "API_KEY" í STORKAUP_CONFIG → API. ' +
+    'Service-heitin sem eru í flipanum núna: ' + (names.join(', ') || '(engin)') +
+    '. Stafi þau ekki nákvæmlega eins er það stafsetningin, ekki lykillinn. ' +
+    'ATH: loadConfig_ geymir config í 5 mínútur — keyrðu clearConfigCache ' +
+    'ef þú varst að bæta röðinni við.');
+}
+
+/**
+ * Sjálfspróf, keyrt handvirkt úr Apps Script-ritlinum.
+ *
+ * Staðfestir alla leiðina í einu: að lykillinn finnist, að Anthropic svari,
+ * að hreinsunin virki og að greinirinn dæmi útkomuna. Skrifar í keyrsluskrá.
+ * Betra en að prófa gegnum appið, því hér sést hvar keðjan slitnar.
+ */
+function pimAiSelfTest_v1() {
+  clearConfigCache();                 // ný config-röð sést strax
+  var cfg = loadConfig_();
+
+  var names = Object.keys((cfg && cfg.API) || {}).sort();
+  Logger.log('[PIM][AI] Service-heiti i API-flipanum: ' + names.join(', '));
+
+  var key = pimAiKey_(cfg);           // kastar með gagnlegum texta ef vantar
+  Logger.log('[PIM][AI] Lykill fannst. Lengd ' + String(key).length +
+             ', byrjar a "' + String(key).slice(0, 12) + '…"');
+
+  var model = ((cfg.API && (cfg.API.Anthropic || cfg.API.Claude)) || {}).MODEL ||
+    (cfg.SETTINGS && cfg.SETTINGS.SEO_CLAUDE_MODEL) || 'claude-sonnet-5';
+  Logger.log('[PIM][AI] Modelid sem verdur notad: ' + model);
+
+  var r = pimDraftDescription_({
+    sku: '9003293', label: 'Ryksuga VP400', name: 'Ryksuga, VP400 HEPA XT',
+    brand: 'Nilfisk', cat1: 'Vélar og tæki', cat2: 'Ryksugur',
+    hasDatasheet: true,
+    notes: '22 kPa sogkraftur, 32 L/s loftflæði, 700 W, 56 dB(A), ' +
+           'tankur 10 L, snúra 15 m, þyngd 5,5 kg, HEPA-sía, ' +
+           'fyrir skóla hótel og heilbrigðisstofnanir, dagleg ræsting'
+  });
+
+  if (r.refused) {
+    Logger.log('[PIM][AI] HAFNAD (a ekki ad gerast her): ' + r.message);
+    return r;
   }
+  Logger.log('[PIM][AI] Tilraunir: ' + r.attempts + ', ord: ' + r.words);
+  Logger.log('[PIM][AI] Visbending: ' + (r.hint || '(engin — hreint)'));
+  Logger.log('[PIM][AI] Drogin:');
+  Logger.log(r.text);
+  return r;
+}
+
+function pimAiCall_(prompt) {
+  var cfg = loadConfig_();
+  var key = pimAiKey_(cfg);
+  var api = (cfg.API && (cfg.API.Anthropic || cfg.API.Claude)) || {};
   var model = api.MODEL ||
     (cfg.SETTINGS && cfg.SETTINGS.SEO_CLAUDE_MODEL) ||
     'claude-sonnet-5';
