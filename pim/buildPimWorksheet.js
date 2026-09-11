@@ -137,6 +137,19 @@ function menu_buildPimWorksheet() {
   if (r.unknownOwners) {
     msg += ' ⚠️ ' + r.unknownOwners + ' nöfn ekki í PIM_OWNERS — sjá keyrsluskrá.';
   }
+
+  // Í KEYRSLUSKRÁNA LÍKA, EKKI BARA Í TOASTIÐ.
+  //
+  // Toast stendur i ~5 sekundur og er hvergi geymt. Thessar tolur eru samt
+  // eina merkid um ad samruninn hafi tekist: se `nyjar` stort og `uppfaerdar`
+  // litid hittust SKU-lyklarnir ekki og hver skrifud lysing kom ut tom.
+  // Sa sem litur undan i fimm sekundur hafdi enga leid til ad na theim aftur.
+  Logger.log('[PIM][BYGGING] ' + msg);
+  if (r.added > 0 && r.updated === 0 && r.total > r.added / 2) {
+    Logger.log('[PIM][VARUD] Engin rodh fann fyrirrennara sinn. Hafi sheetid ' +
+               'innihaldid skrifadar lysingar eru their reitir nu tomir — ' +
+               'berdu saman vid afrit adur en nokkur skrifar meira.');
+  }
   toast_(msg);
 }
 
