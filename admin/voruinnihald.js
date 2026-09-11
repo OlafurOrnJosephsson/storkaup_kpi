@@ -45,7 +45,8 @@ var VI_H_ = {
   datasheet:'Gagnablað',         sds:      'Öryggisblað',
   status: 'Staða',               note:     'Athugasemd',
   onWeb:  'Á vef',               framework:'Rammasamningur',  url: 'Vefslóð',
-  hint:   'Vísbending'
+  hint:   'Vísbending',
+  dsFile: 'Gagnablað (skrá)', sdsFile: 'Öryggisblað (skrá)', brFile: 'Bæklingur (skrá)'
 };
 
 /** Aðeins þessar má skrifa. `Orðafjöldi` og `Fullbúið` eru formúlur, og
@@ -58,7 +59,7 @@ var VI_WRITABLE_ = ['owner', 'brandNew', 'nameNew', 'descNew',
 /** Kolumnur sem mega vanta. Sja vi_open_ — thaer fella ekki appid, thaer
  *  koma bara tomar. Adeins hreinar upplysingakolumnur eiga heima her;
  *  allt sem skrifad er i eda reiknad af verdur ad vera skyldad. */
-var VI_OPTIONAL_ = { hint: true };
+var VI_OPTIONAL_ = { hint: true, dsFile: true, sdsFile: true, brFile: true };
 
 /** Orðamark á langri lýsingu. VERÐUR að vera það sama sem PIM_WORDS_MIN_/MAX_
  *  í `pim/buildPimWorksheet.js` — lækkað úr 60 í 20 þann 2026-09-10 eftir
@@ -367,6 +368,11 @@ function voruinnihald_getGroup(sel) {
       // Lesin, ALDREI skrifud: byggingin reiknar hana ur `descOld`. Hun er
       // thvi ekki i VI_WRITABLE_.
       hint: idx.hint === undefined ? '' : String(row[idx.hint] || '').trim(),
+      // Slodir a skjolin i Plytix. Their eru thad sem skrifarinn tharf: tolurnar
+      // sem ritstillinn krefst (22 kPa i stad "oflug") bua i gagnabladinu.
+      dsFile: idx.dsFile === undefined ? '' : String(row[idx.dsFile] || '').trim(),
+      sdsFile: idx.sdsFile === undefined ? '' : String(row[idx.sdsFile] || '').trim(),
+      brFile: idx.brFile === undefined ? '' : String(row[idx.brFile] || '').trim(),
       framework: String(row[idx.framework] || '').trim() === 'Já',
       url: String(row[idx.url] || '').trim(),
       // Það sem starfsfólk hefur þegar skrifað

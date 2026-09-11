@@ -40,7 +40,15 @@ const PIM_HEADER_MAP_ = {
   categories:  ['Categories', 'Category', 'Vöruflokkur'],
   thumbnail:   ['Thumbnail', 'Main image', 'Aðalmynd'],
   plytixStatus: ['Status', 'Staða í Plytix'],
-  framework:   ['Framework Agreement Product']
+  framework:   ['Framework Agreement Product'],
+  // Vidhengin. MAELT I UTDRAETTINUM 2026-09-11 a 4.477 vorum i vinnusetti:
+  //   Datasheet Files        1.454 (32,5%)
+  //   Safety Datasheet Files   356 ( 8,0%)
+  //   Brochure Files           138 ( 3,1%)
+  // Gildid er bein slod a files.plytix.com, nanast alltaf ein skra.
+  dsFile:      ['Datasheet Files'],
+  sdsFile:     ['Safety Datasheet Files'],
+  brFile:      ['Brochure Files']
 };
 
 // Hvaða Plytix-Status telst innihaldsverk. Mælt á útdrættinum 2026-09-08,
@@ -93,6 +101,10 @@ const PIM_COLS_ = [
   { key: 'words',     head: 'Orðafjöldi',              w:  85, kind: 'calc' },
   { key: 'datasheet', head: 'Gagnablað',               w: 105, kind: 'edit' },
   { key: 'sds',       head: 'Öryggisblað',             w: 105, kind: 'edit' },
+  // Skrarnar sjalfar ur Plytix. LESNAR, aldrei skrifadar.
+  { key: 'dsFile',    head: 'Gagnablað (skrá)',        w:  95, kind: 'join' },
+  { key: 'sdsFile',   head: 'Öryggisblað (skrá)',      w:  95, kind: 'join' },
+  { key: 'brFile',    head: 'Bæklingur (skrá)',        w:  95, kind: 'join' },
   { key: 'status',    head: 'Staða',                   w: 125, kind: 'edit' },
   { key: 'note',      head: 'Athugasemd',              w: 260, kind: 'edit', wrap: true },
   { key: 'image',     head: 'Mynd í lagi',             w: 100, kind: 'join' },
@@ -161,6 +173,22 @@ const PIM_TELLS_ = [
   /þökk sé/, /hentar (?:fullkomlega|einstaklega)/, /í senn/,
   /hi[ðn]{1,2} fullkomn/, /sem hentar/, /einfaldleik/, /þarf(?:ir|a) þín/
 ];
+
+/**
+ * Forfyllir Ja thegar skrain er til OG manneskja hefur ekki svarad.
+ *
+ * Threfold regla, og hver lidur hennar er akvordun:
+ *   svar fyrir hendi  -> stendur, LIKA thegar thad stangast a vid Plytix.
+ *                        Byggingin skrifar aldrei yfir manneskju.
+ *   skra til          -> 'Já'. Stadreynd, ekki mat.
+ *   engin skra        -> TOMT. Fjarvist skrar er ekki svar: `Nei` og
+ *                        `Á ekki við` tyda sitt hvad og adeins madur veit hvort.
+ */
+function pimPrefillYesNo_(current, file) {
+  var cur = String(current == null ? '' : current).trim();
+  if (cur) return cur;
+  return String(file == null ? '' : file).trim() ? 'Já' : '';
+}
 
 function pimWords_(t) {
   const m = String(t == null ? '' : t).trim().match(/\S+/g);
@@ -384,11 +412,31 @@ function buildPimWorksheet_() {
     // Leidbeiningarnar segja starfsfolki ad taka rammasamningsvorur fyrst,
     // svo su radgjof var gagnslaus. Rett tala ur utdraettinum er 248.
     row[idx.framework] = (p.framework || enrich.framework[p.sku]) ? 'Já' : '';
+    row[idx.dsFile]    = p.dsFile || '';
+    row[idx.sdsFile]   = p.sdsFile || '';
+    row[idx.brFile]    = p.brFile || '';
 
     // frá starfsfólki — varðveitt (úr endurkortlagðri röð, sjá remapPrev_)
     const prevRow = prev ? remapPrev_(prev) : null;
     KEEP.forEach(function (k) { row[idx[k]] = prevRow ? prevRow[idx[k]] : ''; });
     if (!prev) { row[idx.status] = 'Ekki byrjað'; added++; } else { updated++; }
+
+    // FORFYLLING UR PLYTIX: skrain er til, svo svarid er JA.
+    //
+    // Thetta er STADREYND, ekki mat, og starfsmadur getur ekki bætt neinu vid
+    // hana — hann getur bara haft rangt fyrir ser. Maelt 2026-09-11: 1.454
+    // vorur hafa gagnablad og 356 oryggisblad, svo thetta tekur 1.810
+    // handvirkar faerslur ut ur verkefninu.
+    //
+    // SKRIFAR ALDREI YFIR MANNESKJU. Hafi starfsmadur svarad stendur hans
+    // svar, lika thegar thad stangast a vid Plytix — thad rek er eitthvad sem
+    // manneskja a ad leysa, ekki bygging sem keyrir i bakgrunni.
+    //
+    // Ad skrain VANTI er ekki svar. Tha stendur domurinn eftir og hann er
+    // raunverulegur: `Nei` = a ad vera til, tharf ad utvega. `Á ekki við` =
+    // thessi vara tharf ekkert. Thvi er ekkert sett i tha reiti.
+    row[idx.datasheet] = pimPrefillYesNo_(row[idx.datasheet], p.dsFile);
+    row[idx.sds]       = pimPrefillYesNo_(row[idx.sds], p.sdsFile);
 
     out.push(row);
     // EKKI_A_VEF er nu THAD sem nafnid segir: i Plytix i birtingu en EKKI i
@@ -954,6 +1002,9 @@ function parsePlytixCsv_(text) {
       categories:  pick(r, 'categories'),
       thumbnail:   pick(r, 'thumbnail') !== '',
       plytixStatus: pick(r, 'plytixStatus'),
+      dsFile:      pick(r, 'dsFile'),
+      sdsFile:     pick(r, 'sdsFile'),
+      brFile:      pick(r, 'brFile'),
       statusKnown: col.plytixStatus !== undefined,
       framework:   /^(true|1|já|ja|yes)$/i.test(pick(r, 'framework'))
     };

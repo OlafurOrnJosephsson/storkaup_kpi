@@ -221,6 +221,13 @@ input[type=text]:focus,textarea:focus{border-color:var(--brand);background:var(-
   padding:15px 16px}
 .panel h2{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;
   font-weight:600;color:var(--ink-3);margin:0 0 10px}
+.docs{margin:10px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+.docs a{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;
+  font-weight:600;text-decoration:none;padding:6px 11px;border-radius:6px;
+  background:var(--brand-tint,#eef0fb);color:var(--brand-ink,#10069f);
+  border:1px solid rgba(16,6,159,.18)}
+.docs a:hover{background:#e2e6f8}
+.docs .none{font-size:12.5px;color:var(--ink-3)}
 .hint{margin:0 0 10px;padding:9px 12px;border-radius:7px;font-size:13px;
   line-height:1.5;background:#fdf1d8;border:1px solid #e8c98a;color:#6b4b12}
 .hint b{font-weight:650}
@@ -413,6 +420,7 @@ footer b{color:var(--ink-2);font-weight:600}
           <p class="hint" id="hint" hidden></p>
           <h2>Varan</h2>
           <dl class="spec" id="spec"></dl>
+          <div class="docs" id="docs"></div>
         </div>
         <div class="panel">
           <h2>Núverandi lýsing</h2>
@@ -972,6 +980,21 @@ function render() {
   } else {
     el('hint').hidden = true;
   }
+
+  // SKJOLIN UR PLYTIX. Ritstillinn krefst tolunnar i stad lysingarordsins —
+  // "22 kPa sogkraftur", ekki "oflug" — og thaer tolur eru i gagnabladinu.
+  // 1.454 vorur hafa eitt hengt vid sem skrifarinn gat ekki sed, og
+  // leidbeiningarnar banna honum ad fara i Plytix ad saekja thad.
+  var docs = [];
+  if (p.dsFile) docs.push(['Gagnablað', p.dsFile]);
+  if (p.sdsFile) docs.push(['Öryggisblað', p.sdsFile]);
+  if (p.brFile) docs.push(['Bæklingur', p.brFile]);
+  el('docs').innerHTML = docs.length
+    ? docs.map(function (d) {
+        return '<a href="' + esc(d[1]) + '" target="_blank" rel="noopener">' +
+               esc(d[0]) + ' \u2197</a>';
+      }).join('')
+    : '<span class="none">Engin skjöl í Plytix</span>';
 
   el('was').textContent = p.descOld || '(engin)';
   var cls = p.descIsName ? 'crit' : p.descWords >= MINW ? 'good' : 'warn';
