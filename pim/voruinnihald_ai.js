@@ -80,19 +80,27 @@ function pimDraftDescription_(ctx) {
   var first = pimAiCall_(pimAiPrompt_(ctx, notes, null));
   var h1 = pimDescHint_(first, 1);
 
-  // Falli hún á ORÐALAGI fær hún eina tilraun í viðbót, með brotin nefnd.
-  // AFRITUÐ og HTML geta ekki komið héðan; OF STUTT er sagt frá en ekki
-  // reynt aftur — stutt svar þýðir að efnið var stutt, og þá er rétt að
-  // manneskjan bæti við frekar en að líkanið teygi.
-  if (h1.indexOf('ORÐALAG') >= 0) {
-    var bad = pimAiOffenders_(first);
-    var second = pimAiCall_(pimAiPrompt_(ctx, notes, bad));
+  // Tvennt kallar á aðra tilraun, og hvort tveggja er hlutlægt:
+  //
+  //   ORÐALAG — bannlistinn. Brotin eru nefnd í seinni beiðninni.
+  //   OF LANGT — yfir PIM_WORDS_MAX_. Mælt á fyrstu raunverulegu drögunum
+  //              2026-09-11: 167 orð þar sem markið er 150. Líkanið hlýðir
+  //              lengdarmarki verr en bannlista, svo það þarf að fá töluna
+  //              sem kröfu en ekki sem leiðbeiningu.
+  //
+  // AFRITUÐ og HTML geta ekki komið héðan. OF STUTT er sagt frá en ekki reynt
+  // aftur — stutt svar þýðir að efnið var stutt, og þá á manneskjan að bæta
+  // við frekar en að líkanið teygi sig.
+  var needsRetry = h1.indexOf('ORÐALAG') >= 0 || h1.indexOf('OF LANGT') >= 0;
+  if (needsRetry) {
+    var second = pimAiCall_(pimAiPrompt_(ctx, notes, {
+      words: pimAiOffenders_(first),
+      tooLong: h1.indexOf('OF LANGT') >= 0 ? pimWords_(first) : 0
+    }));
     var h2 = pimDescHint_(second, 1);
-    if (h2.indexOf('ORÐALAG') < 0) {
-      return { text: second, words: pimWords_(second), hint: h2, attempts: 2 };
-    }
-    // Enn fallin. Við skilum henni samt — með merkinu — því manneskjan
-    // ritstýrir hvort sem er og þögult brottfall væri verra en sýnilegt brot.
+    // Skilum seinni tilrauninni hvort sem hún stóðst eða ekki — með merkinu.
+    // Manneskjan ritstýrir hvort sem er, og þögult brottfall væri verra en
+    // sýnilegt brot.
     return { text: second, words: pimWords_(second), hint: h2, attempts: 2 };
   }
 
@@ -111,7 +119,7 @@ function pimAiOffenders_(t) {
   return out;
 }
 
-function pimAiPrompt_(ctx, notes, offenders) {
+function pimAiPrompt_(ctx, notes, fix) {
   var path = [ctx.cat1, ctx.cat2, ctx.cat3].filter(Boolean).join(' › ');
   var p = [];
 
@@ -124,9 +132,16 @@ function pimAiPrompt_(ctx, notes, offenders) {
   p.push('Efnið frá starfsmanni Stórkaups — ÞETTA ER ALLT SEM ÞÚ VEIST:');
   p.push(notes);
   p.push('');
-  if (offenders && offenders.length) {
+  if (fix && fix.words && fix.words.length) {
     p.push('Fyrri tilraun þín notaði þetta orðalag, sem er bannað: ' +
-           offenders.join(', ') + '. Skrifaðu upp á nýtt án þess.');
+           fix.words.join(', ') + '. Skrifaðu upp á nýtt án þess.');
+    p.push('');
+  }
+  if (fix && fix.tooLong) {
+    p.push('Fyrri tilraun þín var ' + fix.tooLong + ' orð. HÁMARKIÐ ER ' +
+           PIM_WORDS_MAX_ + ' ORÐ og það er krafa, ekki viðmið. Styttu með því ' +
+           'að fella burt setningar sem draga saman eða endurorða það sem ' +
+           'þegar er sagt — ALDREI með því að henda tölu eða staðreynd.');
     p.push('');
   }
   p.push('Skrifaðu langa lýsingu fyrir vörukortið. Skilaðu EINGÖNGU ' +
@@ -161,8 +176,11 @@ function pimAiSystem_() {
     'Aldrei verð, tilboð, lagerstöðu, afhendingartíma eða nöfn samkeppnisaðila.',
     'Aldrei endurtaka vöruheitið sem alla lýsinguna.',
     '',
-    'Lengd: ' + PIM_WORDS_MIN_ + '–' + PIM_WORDS_MAX_ + ' orð. Miðaðu við 60–90',
-    'á flókinni vöru með tölum. Einföld vara á ekki að teygja sig.'
+    'LENGD: ' + PIM_WORDS_MIN_ + '–' + PIM_WORDS_MAX_ + ' orð. ' + PIM_WORDS_MAX_ +
+    ' er ÞAK sem má ekki fara yfir. Miðaðu við 60–90 orð á flókinni vöru',
+    'með tölum; einföld vara á ekki að teygja sig.',
+    'Ekki skrifa lokasetningu sem dregur saman það sem á undan kom — hún',
+    'bætir engu við og étur plássið.'
   ].join('\n');
 }
 

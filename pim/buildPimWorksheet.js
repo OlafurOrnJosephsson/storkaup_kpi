@@ -233,7 +233,14 @@ function pimDescHint_(desc, dupCount) {
   // Of stutt er adeins visbending thegar lysingin er RAUNVERULEG. Tom lysing
   // og lysing sem er bara voruheitid teljast nu thegar i `w`, og tvitalning
   // thar vaeri villandi — kallandinn sleppir theim.
-  if (pimWords_(t) < PIM_WORDS_MIN_) out.push('OF STUTT (' + pimWords_(t) + ')');
+  //
+  // OF LANGT vantadi i fyrstu utgafu, og thad var ekki smaatridi: `Fullbúið`
+  // krefst ordafjolda <= PIM_WORDS_MAX_, svo 167 orda lysing var "hrein" ad
+  // mati greinisins en "NEI" ad mati formulunnar. Tveir maelar sem stangast a
+  // eru verri en enginn. Komid fram 2026-09-11 a fyrstu AI-drogunum.
+  var n = pimWords_(t);
+  if (n < PIM_WORDS_MIN_) out.push('OF STUTT (' + n + ')');
+  else if (n > PIM_WORDS_MAX_) out.push('OF LANGT (' + n + ')');
 
   return out.join(' · ');
 }
