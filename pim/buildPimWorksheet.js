@@ -174,9 +174,22 @@ function buildPimWorksheet_() {
       const j = head.indexOf(normHeader_(c.head));
       if (j !== -1) prevIdx[c.key] = j;
     });
+    // STOPP, EKKI VIDVORUN.
+    //
+    // Finnist SKU-kolumnan ekki er `existing` tomt, og tha skrifar
+    // byggingin ut 4.477 radir med TOMUM KEEP-reitum ofan i sheet sem er
+    // fullt af handskrifudum lysingum. `sh.clear()` er buid ad eyda thvi
+    // gamla adur en nokkur ser toastid. Adur var thetta Logger.log og
+    // keyrslan hélt afram -- thad breytir "eg finn ekki lykilinn" i
+    // "eg thurrkadi ut vinnu threttan manna", thegjandi.
+    //
+    // Tho hausinn hafi aldrei brugdist er kostnadurinn vid mistokin
+    // osamhverfur: stodvud bygging kostar eina keyrslu, hin kostar vikur.
     if (prevIdx.sku === undefined) {
-      Logger.log('⚠️ SKU-kólumna fannst ekki á ' + PIM_SHEET_ + ' — fyrri gildi ' +
-                 'ekki varðveitt í þessari keyrslu. Hausar: ' + grid[0].join(' | '));
+      throw new Error(
+        'SKU-kólumna fannst ekki á ' + PIM_SHEET_ + '. Bygging STOPPUÐ án ' +
+        'þess að snerta sheetið — héðan af myndi hver skrifuð lýsing týnast. ' +
+        'Hausar sem fundust: ' + grid[0].join(' | '));
     } else {
       for (let i = 1; i < grid.length; i++) {
         const k = normSku_(grid[i][prevIdx.sku]);
