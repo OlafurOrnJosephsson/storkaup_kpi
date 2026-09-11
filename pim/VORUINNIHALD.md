@@ -81,7 +81,16 @@ upphaflega spurningin.
 1. **Fyrsta prófun: mekanikin.** Brotnar lýsingin í línur (wrap)? Virkar
    dropdown á Eigandi? Er búturinn samhangandi og af réttri stærð?
 
-2. **ÖNNUR prófun, og hún er sú sem ræður: einn af hinum tólf.** Gefðu
+2. **ÖNNUR prófun: gerð 2026-09-11 og hún hélt.** Starfsmaður sem kom ekki
+   nálægt smíðinni valdi flokk, skrifaði í nokkrar vörur og textinn rataði í
+   vinnusheetið. Hún svaraði ekki seinni spurningunni — hvort hann vissi hvað
+   var *gott* — en mekanikin og flæðið standa. Hún skilaði einni raunverulegri
+   vöntun: sjá „Engin breyting" hér að neðan.
+
+   Upprunalegi textinn stendur hér að neðan því hann lýsir því sem enn á eftir
+   að mæla:
+
+   **Gefðu**
    starfsmanni sem kom ekki nálægt smíðinni einn Level 3 hóp og fylgstu með
    án að hjálpa. Tvær spurningar: sá hann hvað hann skrifaði, og vissi hann
    hvað var gott? Ef svarið við hinu síðara er nei liggur vandinn í
@@ -382,3 +391,54 @@ Fjórir flipar eiga að vera til: `Leiðbeiningar`, `Vinnusheet`, `Framvinda`,
   „Stórkaup VEFUR KPI". Skilgreiningin á „fullbúið", gagnaflæði í Supabase, áfangaskipting.
 - **`pim/heitalinter.py`** — sömu heitareglur sem keyranleg rökfræði. Ritstíllinn og
   linterinn verða að haldast í takt; R1–R5 eru skjalfestar í `pim/README.md`.
+
+---
+
+## „Engin breyting" (staðan `Óbreytt`) — 2026-09-11
+
+Fyrsta prófunin utan höfundar skilaði spurningu sem kerfið átti ekkert svar
+við: **hvað gerir starfsmaður við vöru sem þarf enga breytingu?**
+
+Hnappirnir voru tveir, `Vista og næsta` (→ `Til yfirlesturs`) og
+`Merkja spurningu` (→ `Spurning`). Hvorugur segir „ég skoðaði þetta og það er
+í lagi".
+
+**Þetta var ekki bara vantandi hnappur heldur skekkja í talningunni.**
+`w` (lýsingar að skrifa) telur raðir þar sem gamla lýsingin er tóm eða jöfn
+vöruheitinu. `done` taldi raðir þar sem NÝ lýsing er 20–150 orð. Röð sem er í
+`w` en þarfnast í raun einskis komst því aldrei úr teljaranum: flokkurinn sat
+undir 100% að eilífu og eina leiðin til að hreinsa hann var að skrifa eitthvað
+— hvað sem er — í reitinn. Kerfið verðlaunaði fylliefni.
+
+Lausn: ný staða **`Óbreytt`** og þriðji hnappur, `Engin breyting`.
+
+Reglan er ein og hún er eins á öllum þremur stöðum:
+
+> Röð er afgreidd ef ný lýsing er skrifuð og innan orðamarks — **annars** ef
+> hún var merkt `Óbreytt`.
+
+Skrifaður texti gildir því alltaf eftir orðamarki. Hálfskrifuð röð sem eitt
+sinn var merkt `Óbreytt` telst ekki afgreidd. Þetta er útfært í
+`vi_isDone_` ([admin/voruinnihald.js](../admin/voruinnihald.js)), í `isDone`
+í vafranum og í `Fullbúið`-ARRAYFORMÚLUNNI
+([pim/buildPimWorksheet.js](buildPimWorksheet.js)). **Skriði þau í sundur fer
+borðið að stangast á við sheetið** — `test_nochange.js` ber formúluna saman
+við `VI_STATUS_NOCHANGE_` af þeirri ástæðu.
+
+`w` breytist ekki. Flokkur með 108 lýsingar að skrifa sýnir áfram 108 í
+nefnaranum þótt tíu þeirra endi sem `Óbreytt`; það er talan sem sagði fólki
+hvað það var að taka að sér og hún á ekki að hreyfast eftir á.
+
+**Áhættan sem fylgir, sögð upphátt:** `Engin breyting` er ódýrasti hnappurinn
+á skjánum. Sé fólk mælt á hraða er skynsamlegast að ýta á hann á öllu.
+Mótvægið er að staðan er rakin — `Eigandi` geymir netfangið og `Staða` geymir
+dóminn — svo `Staða = Óbreytt` er síuanleg í sheetinu. **Enginn hefur enn
+skoðað þá síu.** Ef hlutfallið rýkur upp er það merki, ekki afrek.
+
+### Sheetið þarf endurbyggingu
+
+Gagnaprófunin á `Staða` er ljósmynd tekin við byggingu og hún þekkir ekki
+`Óbreytt` fyrr en sheetið er byggt aftur (valmynd **Vöruinnihald → Byggja
+vinnusheet úr Plytix-útdrætti**). Sama gildir um `Fullbúið`-formúluna.
+Endurbygging varðveitir allt sem starfsfólk hefur skrifað (`KEEP`-listinn) og
+raðast eftir SKU, en **gerðu hana þegar enginn er að skrifa**.

@@ -6,6 +6,7 @@
  *   .../exec               → umsóknar-appið (default)
  *   .../exec?app=umsokn    → umsóknar-appið
  *   .../exec?app=listaverd → listaverðs-/vörueftirlitsappið
+ *   .../exec?app=voruinnihald → vöruinnihalds-skrifborðið
  *
  * Engin nafnlaus aðgangur: manifest er access=DOMAIN og adminGuard_
  * þrengir að allowlist. Ekkert doPost — webhookar búa áfram í

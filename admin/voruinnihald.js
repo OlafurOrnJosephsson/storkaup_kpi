@@ -57,6 +57,11 @@ var VI_WRITABLE_ = ['owner', 'brandNew', 'nameNew', 'descNew',
 /** Orðamark á langri lýsingu. VERÐUR að vera það sama sem PIM_WORDS_MIN_/MAX_
  *  í `pim/buildPimWorksheet.js` — lækkað úr 60 í 20 þann 2026-09-10 eftir
  *  raunprófun (þrjár lýsingar lentu á 40, 29 og 24 orðum). */
+/** Stada sem segir: skodad, tharf enga breytingu. VERDUR ad vera i
+ *  PIM_STATUSES_ i `pim/buildPimWorksheet.js`, annars hafnar gagnaprofun
+ *  sheetsins gildinu og vistun fellur. */
+var VI_STATUS_NOCHANGE_ = 'Óbreytt';
+
 var VI_WORDS_MIN_ = 20;
 var VI_WORDS_MAX_ = 150;
 
@@ -240,9 +245,19 @@ function vi_words_(t) {
   return m ? m.length : 0;
 }
 
-function vi_isDone_(descNew) {
+/**
+ * Rod telst afgreidd ef (a) ny lysing er skrifud og innan ordamarks, eda
+ * (b) hun var merkt 'Óbreytt' og engin ny lysing skrifud.
+ *
+ * HVERS VEGNA (b) THARF AD VERA TIL: `w` telur radir thar sem gamla lysingin
+ * er tom eda jofn voruheitinu. Rod i theim hopi sem tharfnast i raun einskis
+ * gat aldrei farid ur teljaranum, svo flokkurinn sat undir 100% ad eilifu og
+ * eini utvegurinn var ad skrifa eitthvad — hvad sem er — i reitinn.
+ */
+function vi_isDone_(descNew, status) {
   var n = vi_words_(descNew);
-  return n >= VI_WORDS_MIN_ && n <= VI_WORDS_MAX_;
+  if (n) return n >= VI_WORDS_MIN_ && n <= VI_WORDS_MAX_;
+  return String(status == null ? '' : status).trim() === VI_STATUS_NOCHANGE_;
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +293,7 @@ function voruinnihald_getTree() {
     var descOld = String(row[idx.descOld] || '').trim();
     var label = String(row[idx.label] || '').trim();
     if (!descOld || descOld === label) g.w++;
-    if (vi_isDone_(row[idx.descNew])) g.done++;
+    if (vi_isDone_(row[idx.descNew], row[idx.status])) g.done++;
 
     var own = String(row[idx.owner] || '').trim();
     if (own) g.owners[own] = (g.owners[own] || 0) + 1;

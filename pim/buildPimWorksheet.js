@@ -115,7 +115,12 @@ const PIM_COLS_ = [
 const PIM_WORDS_MIN_ = 20;
 const PIM_WORDS_MAX_ = 150;
 
-const PIM_STATUSES_ = ['Ekki byrjað', 'Í vinnslu', 'Til yfirlesturs', 'Spurning', 'Samþykkt', 'Flutt inn'];
+// 'Óbreytt' baettist vid 2026-09-11: varan var SKODUD og tharf enga
+// breytingu. Án hennar gat rod sem tharfnast einskis aldrei talist
+// fullbuin, svo flokkur naedhi aldrei 100% og folk var rekid til ad
+// skrifa fylliefni til ad hreinsa teljarann.
+const PIM_STATUSES_ = ['Ekki byrjað', 'Í vinnslu', 'Til yfirlesturs', 'Spurning',
+                       'Óbreytt', 'Samþykkt', 'Flutt inn'];
 const PIM_YESNO_    = ['Já', 'Nei', 'Á ekki við'];
 
 const PIM_FILL_ = { lock: '#d9d9de', join: '#e8e6f5', edit: '#fff3c4', calc: '#e4e7f5' };
@@ -477,14 +482,19 @@ function writePimSheet_(sh, rows) {
   );
   // ARRAYFORMULA ræður ekki við AND()/OR(): margföldun = AND, samlagning = OR.
   sh.getRange(L.done + '2').setFormula(
-    '=ARRAYFORMULA(IF(' + R('label') + '="","",IF(' +
+    '=ARRAYFORMULA(IF(' + R('label') + '="","",' +
+    // 'Óbreytt' er stuttleid AD THVI GEFNU ad engin ny lysing hafi verid
+    // skrifud. Se buid ad skrifa gildir ordamarkid eins og adur — annars
+    // gaeti half-skrifud rod talist fullbuin af thvi hun var eitt sinn
+    // merkt obreytt.
+    'IF((' + R('status') + '="Óbreytt")*(' + R('words') + '=0),"JÁ",IF(' +
     '(' + R('brandNew') + '<>"")*(' + R('nameNew') + '<>"")*' +
     '(' + R('words') + '>=' + PIM_WORDS_MIN_ + ')*(' +
     R('words') + '<=' + PIM_WORDS_MAX_ + ')*(' + R('image') + '="Já")*' +
     '((' + R('datasheet') + '="Já")+(' + R('datasheet') + '="Á ekki við"))*' +
     '((' + R('sds') + '="Já")+(' + R('sds') + '="Á ekki við"))*' +
     '((' + R('status') + '="Samþykkt")+(' + R('status') + '="Flutt inn"))' +
-    ',"JÁ","NEI")))'
+    ',"JÁ","NEI"))))'
   );
 
   // Stada og vidhengin eru afram STRONG: their listar eru fastir i kodanum og

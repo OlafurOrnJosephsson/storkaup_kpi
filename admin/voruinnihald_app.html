@@ -397,6 +397,7 @@ footer b{color:var(--ink-2);font-weight:600}
 
         <div class="acts">
           <button class="btn" id="next" type="button">Vista og næsta</button>
+          <button class="btn ghost" id="same" type="button">Engin breyting</button>
           <button class="btn ghost" id="skip" type="button">Merkja spurningu</button>
           <span class="saveline" id="saveline">—</span>
           <span class="netstate" id="netstate">allt vistað</span>
@@ -572,15 +573,25 @@ window.addEventListener('beforeunload', function (e) {
 });
 
 /* ------------------------------------------------------------------ fullbúið */
+var NOCHANGE = 'Óbreytt';
+
+/* Sama regla og `vi_isDone_` a thjoninum: skrifud lysing gildir eftir
+   ordamarki, annars telst rodhin afgreidd ef hun var merkt obreytt.
+   Skriftu their tvo i sundur fer teljarinn a bordhinu ad stangast a vid
+   sheetid. */
 function isDone(s) {
   if (!s) return false;
   var n = words(s.ds);
-  return n >= MINW && n <= MAXW;
+  if (n) return n >= MINW && n <= MAXW;
+  return s.status === NOCHANGE;
 }
 function stateText(s) {
   if (s.save === 'failed') return 'VISTUN BRÁST';
   if (s.save === 'saving') return 'vistar…';
   var n = words(s.ds);
+  if (!n && s.status === NOCHANGE) {
+    return s.save === 'saved' ? 'engin breyting · vistað' : 'engin breyting';
+  }
   if (!s.touched && !n) return '—';
   if (n === 0) return 'engin lýsing';
   if (n < MINW) return (MINW - n) + ' orð vantar';
@@ -806,8 +817,10 @@ function openGroup(sel) {
         return {
           nm: p.nameNew || '', ds: p.descNew || '',
           tri_ds: p.datasheet || '', tri_sds: p.sds || '',
-          status: p.status || '', touched: !!(p.nameNew || p.descNew),
-          save: (p.nameNew || p.descNew) ? 'saved' : 'new', ms: 0
+          status: p.status || '',
+          touched: !!(p.nameNew || p.descNew || p.status === NOCHANGE),
+          save: (p.nameNew || p.descNew || p.status === NOCHANGE) ? 'saved' : 'new',
+          ms: 0
         };
       });
       i = 0; landedAt = Date.now();
@@ -971,6 +984,7 @@ function advance(status) {
   render(); pace();
 }
 el('next').onclick = function () { advance('Til yfirlesturs'); };
+el('same').onclick = function () { advance(NOCHANGE); };
 el('skip').onclick = function () { advance('Spurning'); };
 
 el('back').onclick = function () {
