@@ -88,6 +88,7 @@ const PIM_COLS_ = [
   { key: 'nameOld',   head: 'Vöruheiti (núv.)',        w: 250, kind: 'lock' },
   { key: 'nameNew',   head: 'Vöruheiti (nýtt)',        w: 250, kind: 'edit' },
   { key: 'descOld',   head: 'Löng lýsing (núv.)',      w: 260, kind: 'lock' },
+  { key: 'hint',      head: 'Vísbending',              w: 170, kind: 'join' },
   { key: 'descNew',   head: 'Löng lýsing (ný)',        w: 460, kind: 'edit', wrap: true },
   { key: 'words',     head: 'Orðafjöldi',              w:  85, kind: 'calc' },
   { key: 'datasheet', head: 'Gagnablað',               w: 105, kind: 'edit' },
@@ -124,6 +125,86 @@ const PIM_STATUSES_ = ['Ekki byrjað', 'Í vinnslu', 'Til yfirlesturs', 'Spurnin
 const PIM_YESNO_    = ['Já', 'Nei', 'Á ekki við'];
 
 const PIM_FILL_ = { lock: '#d9d9de', join: '#e8e6f5', edit: '#fff3c4', calc: '#e4e7f5' };
+
+// ---------------------------------------------------------------------------
+// Visbending: hvers vegna lysing sem ER til dugar samt ekki
+// ---------------------------------------------------------------------------
+//
+// MAELT I UTDRAETTINUM 2026-09-11 (4.477 vorur, 3.258 med raunverulega lysingu):
+//   785 (24%) deila lysingu ORDRETT med annarri voru — 216 olikir textar.
+//             Santa Maria a 35, Abena 21, Noi Sirius 16, Goa 14, Pukka 14.
+//             Thetta eru VORUMERKJATEXTAR, ekki vorulysingar.
+//   555 (17%) innihalda hraa HTML-merkingu limda af vefsidum birgja.
+//   243       kveikja a tveimur eda fleiri merkjum ur bannlista ritstilsins.
+//   Samengi: 1.264 af 3.258.
+//
+// AN THESSARAR KOLUMNU ER THETTA OSYNILEGT. `w` (lysingar ad skrifa) telur
+// adeins tomar lysingar og thaer sem eru = voruheitid, svo vara med 35-faldan
+// vorumerkjatexta telst AFGREIDD. Starfsmadur sem opnar hana ser fullan
+// textareit og heldur ad hun se i lagi.
+//
+// KOLUMNAN BREYTIR EKKI `w`. Hun gerir astaeduna synilega; hvort thetta
+// teljist vinna er akvordun sem folk tekur, ekki eg.
+
+const PIM_BANNED_ = ['hágæða', 'vandað', 'vandaður', 'vönduð', 'frábær',
+  'einstakt', 'einstakur', 'einstök', 'byltingarkennt', 'markaðsleiðandi',
+  'gæðavara', 'fjölhæf', 'faglegt', 'faglegur', 'breitt úrval',
+  'allt sem þú þarft', 'fyrir öll tilefni'];
+
+// Ordasambond sem malmodel endurtaka i islensku. Hvert um sig er saklaust —
+// `sem hentar` er venjulegt mal — svo markid er TVO eda fleiri.
+const PIM_TELLS_ = [
+  /hvort sem/, /sem gerir (?:það|hana|hann|þau) að/,
+  /fullkomi\S* (?:lausn|val|kostur)/, /tilvali\S* (?:fyrir|í)/,
+  /sameinar \S+ og \S+/, /býður upp á/, /tryggir /, /notendavæn/,
+  /hámarks[^.]{0,20}lágmarks/, /ekki (?:aðeins|einungis)[^.]{0,60}heldur/,
+  /þökk sé/, /hentar (?:fullkomlega|einstaklega)/, /í senn/,
+  /hi[ðn]{1,2} fullkomn/, /sem hentar/, /einfaldleik/, /þarf(?:ir|a) þín/
+];
+
+function pimWords_(t) {
+  const m = String(t == null ? '' : t).trim().match(/\S+/g);
+  return m ? m.length : 0;
+}
+
+/** Lykill fyrir "sama lysing": bil jofnud, hastafir felldir. */
+function pimDescKey_(t) {
+  return String(t == null ? '' : t).replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * Visbending fyrir EINA rodh. `dupCount` er hve margar vorur bera sama texta.
+ * Skilar tomum streng thegar ekkert er ad — tomt er godu frettirnar.
+ */
+function pimDescHint_(desc, dupCount) {
+  const t = String(desc == null ? '' : desc).trim();
+  if (!t) return '';
+  const out = [];
+
+  if (dupCount > 1) out.push('AFRITUÐ (' + dupCount + ')');
+
+  if (/<(p|div|ul|ol|li|br|strong|span|table|img|a)\b/i.test(t) ||
+      /&(nbsp|aacute|eacute|oacute|uacute|yacute|thorn|eth|amp|quot);/i.test(t)) {
+    out.push('HTML');
+  }
+
+  const low = t.toLowerCase();
+  let hits = 0;
+  for (let i = 0; i < PIM_BANNED_.length; i++) {
+    if (low.indexOf(PIM_BANNED_[i]) !== -1) hits++;
+  }
+  for (let i = 0; i < PIM_TELLS_.length; i++) {
+    if (PIM_TELLS_[i].test(low)) hits++;
+  }
+  if (hits >= 2) out.push('ORÐALAG (' + hits + ')');
+
+  // Of stutt er adeins visbending thegar lysingin er RAUNVERULEG. Tom lysing
+  // og lysing sem er bara voruheitid teljast nu thegar i `w`, og tvitalning
+  // thar vaeri villandi — kallandinn sleppir theim.
+  if (pimWords_(t) < PIM_WORDS_MIN_) out.push('OF STUTT (' + pimWords_(t) + ')');
+
+  return out.join(' · ');
+}
 
 // ---------------------------------------------------------------------------
 // Menu
@@ -222,6 +303,18 @@ function buildPimWorksheet_() {
     return r;
   };
 
+  // Forkeyrsla: hve margar vorur bera NAKVAEMLEGA somu lysingu. Verdur ad
+  // reiknast a ollu settinu adur en rodhunum er flett — tvitekning sest ekki
+  // a einni rodh.
+  const descCount = {};
+  products.forEach(function (q) {
+    const d = String(q.description || '').trim();
+    if (!d) return;
+    if (d === String(q.label || '').trim() || d === String(q.name || '').trim()) return;
+    const k = pimDescKey_(d);
+    descCount[k] = (descCount[k] || 0) + 1;
+  });
+
   const KEEP = ['owner', 'brandNew', 'nameNew', 'descNew', 'datasheet', 'sds', 'status', 'note'];
   const out = [];
   const orphans = [];
@@ -266,6 +359,12 @@ function buildPimWorksheet_() {
     row[idx.brandOld] = p.brand;
     row[idx.nameOld]  = p.name;
     row[idx.descOld]  = p.description;
+
+    // Visbending: adeins thegar lysingin er RAUNVERULEG. Se hun tom eda
+    // jofn heitinu er rodhin thegar i `w` og visbending baetir engu vid.
+    const dTrim = String(p.description || '').trim();
+    const isReal = dTrim && dTrim !== label && dTrim !== String(p.name || '').trim();
+    row[idx.hint] = isReal ? pimDescHint_(dTrim, descCount[pimDescKey_(dTrim)] || 1) : '';
 
     // úr KPI-skjalinu
     row[idx.cat1]      = (web && web.cat1) ? web.cat1 : plytixCategory_(p.categories, 1);
@@ -707,15 +806,23 @@ function buildPimStats_(ss, nRows) {
 // Leiðbeiningar — skrifað einu sinni, ekki yfirskrifað
 // ---------------------------------------------------------------------------
 function buildPimGuide_(ss) {
-  if (ss.getSheetByName(PIM_GUIDE_)) return;
-  const sh = ss.insertSheet(PIM_GUIDE_, 0);
+  // ENDURSKRIFAST I HVERRI BYGGINGU.
+  //
+  // Adur stod her `if (ss.getSheetByName(PIM_GUIDE_)) return;` — flipinn var
+  // skrifadur EINU SINNI og aldrei aftur. Hann sagdi thvi enn "Data → Filter
+  // views" longu eftir ad appid tok vid, og thekkti hvorki `Óbreytt` ne
+  // `Vísbending`. Leidbeiningar sem uppfaerast ekki verda ad rangfaerslum.
+  let sh = ss.getSheetByName(PIM_GUIDE_);
+  if (sh) sh.clear(); else sh = ss.insertSheet(PIM_GUIDE_, 0);
   const rows = [
-    ['Vöruinnihald 2026 — vinnusheet', ''],
+    ['Vöruinnihald 2026', ''],
     ['', ''],
-    ['1.  Síaðu á þinn bút', 'Data → Filter views → Create new. Síaðu á Eigandi = þitt nafn (dropdown). Filter view er þín ein — hún raskar ekki hinum.'],
-    ['2.  Fylltu út gulu kólumnurnar', 'Vörumerki, Vöruheiti, Löng lýsing, og hvort gagnablað og öryggisblað séu til.'],
-    ['3.  Settu stöðuna', '„Til yfirlesturs" þegar röðin er klár. „Spurning" ef þú strandar — skrifaðu hvað vantar.'],
-    ['4.  Ekki fara í Plytix', 'Innflutningurinn er ein samræmd keyrsla.'],
+    ['Vinnan fer fram í APPINU', 'Ekki í þessu skjali og ekki í Plytix. Appið skrifar hingað; hér er yfirlesturinn og framvindan.'],
+    ['1.  Veldu þér flokk', 'Í appinu: browse-aðu tréð (Yfirflokkur → Flokkur → Undirflokkur) og taktu flokk. Hann verður þinn og aðrir sjá það.'],
+    ['2.  Skrifaðu', 'Vöruheiti og löng lýsing, og merktu hvort gagnablað og öryggisblað séu til. Vara telst ekki fullbúin fyrr en viðhengin tvö eru merkt.'],
+    ['3.  Veldu hnapp', '„Vista og næsta" → Til yfirlesturs.  „Engin breyting" → Óbreytt, þegar varan er í lagi eins og hún er.  „Merkja spurningu" → Spurning, og skrifaðu hvað vantar.'],
+    ['4.  Lestu vísbendinguna', 'Sum lýsing lítur út fyrir að vera til en er það ekki: AFRITUÐ = sami vörumerkjatexti á mörgum vörum. HTML = límt af vefsíðu birgja. ORÐALAG = bannlistinn. OF STUTT = undir orðamarki.'],
+    ['5.  Ekki fara í Plytix', 'Innflutningurinn er ein samræmd keyrsla.'],
     ['', ''],
     ['Gult', 'Þú fyllir þetta út.'],
     ['Grátt', 'Kemur úr Plytix og Business Central. Læst — Label er tengingin milli kerfanna.'],
@@ -724,16 +831,28 @@ function buildPimGuide_(ss) {
     ['', ''],
     ['Vöruheiti', 'Vörutegund, týpa, afbrigði, stærð  —  t.d.  Ryksuga, VP400 HEPA XT, 700W'],
     ['Löng lýsing', PIM_WORDS_MIN_ + '–' + PIM_WORDS_MAX_ + ' orð. Fyrsta setningin segir hvað varan er og fyrir hvern, og verður að standa sjálfstæð. Einfaldar vörur ná ekki mörgum orðum og eiga ekki að teygja sig.'],
-    ['Ritstíllinn', 'Fullar reglur, bannlisti og gátlisti eru í uppflettisíðunni „Ritstíll vörukorta".'],
+    ['Ritstíllinn', 'Fullar reglur, bannlisti og gátlisti eru í uppflettisíðunni „Ritstíll vörukorta" (docs/voruinnihald/ritstill.html).'],
+    ['Vísbending', 'Reiknast við byggingu úr núverandi lýsingu. Mælt 2026-09-11: 2.242 af 3.258 raunverulegum lýsingum bera merki — 785 eru orðrétt eins og önnur vara, 556 innihalda HTML.'],
     ['', ''],
     ['Rammasamningur = Já', 'Þessar vörur kaupa stórir viðskiptavinir reglulega. Taktu þær fyrst.']
   ];
   sh.getRange(1, 1, rows.length, 2).setValues(rows).setFontFamily('Arial');
   sh.getRange(1, 1).setFontSize(14).setFontWeight('bold').setFontColor('#10069f');
-  sh.getRange(8, 1).setBackground(PIM_FILL_.edit);
-  sh.getRange(9, 1).setBackground(PIM_FILL_.lock);
-  sh.getRange(10, 1).setBackground(PIM_FILL_.join);
-  sh.getRange(11, 1).setBackground(PIM_FILL_.calc);
+  // Litalykillinn er FUNDINN, ekki talinn.
+  //
+  // Adur stod her getRange(8..11) — fost raðnumer i lista sem er ritstyrdur.
+  // Tvaer nyjar linur efst faerdu litina nidur a "Ekki fara i Plytix" og
+  // tomma linu, og enginn hefdi tekid eftir. Sama villa og hardskrifudu
+  // kolumnubokstafirnir voru (sja pimColLetter_).
+  const guideRow_ = function (label) {
+    for (let i = 0; i < rows.length; i++) if (rows[i][0] === label) return i + 1;
+    return 0;
+  };
+  [['Gult', 'edit'], ['Grátt', 'lock'], ['Fjólublátt', 'join'], ['Ljósblátt', 'calc']]
+    .forEach(function (pair) {
+      const r = guideRow_(pair[0]);
+      if (r) sh.getRange(r, 1).setBackground(PIM_FILL_[pair[1]]);
+    });
   sh.setColumnWidth(1, 200);
   sh.setColumnWidth(2, 660);
   sh.setHiddenGridlines(true);
@@ -941,3 +1060,5 @@ function normSku_(v) {
 function todayIso_() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
+
+// Utgafumerki: 2026-09-11, Visbending.

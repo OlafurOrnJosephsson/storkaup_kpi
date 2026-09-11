@@ -44,7 +44,8 @@ var VI_H_ = {
   brandOld:'Vörumerki (núv.)',   brandNew: 'Vörumerki (nýtt)',
   datasheet:'Gagnablað',         sds:      'Öryggisblað',
   status: 'Staða',               note:     'Athugasemd',
-  onWeb:  'Á vef',               framework:'Rammasamningur',  url: 'Vefslóð'
+  onWeb:  'Á vef',               framework:'Rammasamningur',  url: 'Vefslóð',
+  hint:   'Vísbending'
 };
 
 /** Aðeins þessar má skrifa. `Orðafjöldi` og `Fullbúið` eru formúlur, og
@@ -53,6 +54,11 @@ var VI_H_ = {
  *  skrifað í læsta kólumnu fyrir slysni. */
 var VI_WRITABLE_ = ['owner', 'brandNew', 'nameNew', 'descNew',
                     'datasheet', 'sds', 'status', 'note'];
+
+/** Kolumnur sem mega vanta. Sja vi_open_ — thaer fella ekki appid, thaer
+ *  koma bara tomar. Adeins hreinar upplysingakolumnur eiga heima her;
+ *  allt sem skrifad er i eda reiknad af verdur ad vera skyldad. */
+var VI_OPTIONAL_ = { hint: true };
 
 /** Orðamark á langri lýsingu. VERÐUR að vera það sama sem PIM_WORDS_MIN_/MAX_
  *  í `pim/buildPimWorksheet.js` — lækkað úr 60 í 20 þann 2026-09-10 eftir
@@ -89,8 +95,15 @@ function vi_open_() {
   Object.keys(VI_H_).forEach(function (k) {
     var want = VI_H_[k].toLowerCase().replace(/[\s_\-]/g, '');
     var j = head.indexOf(want);
-    if (j === -1) missing.push(VI_H_[k]);
-    else idx[k] = j;
+    if (j !== -1) { idx[k] = j; return; }
+    // VALFRJALSAR KOLUMNUR FELLA EKKI APPID.
+    //
+    // `Vísbending` er hrein upplysing sem byggingin reiknar. Vaeri hun
+    // skyldud myndi utgafa af thjoninum sem thekkir hana LAESA appid fyrir
+    // ollum thar til sheetid er byggt upp a nytt — og enginn gaeti skrifad
+    // a medan. Heitid vantar tha einfaldlega, og reiturinn kemur tomur.
+    if (VI_OPTIONAL_[k]) return;
+    missing.push(VI_H_[k]);
   });
   if (missing.length) {
     throw new Error('Kólumnur finnast ekki á ' + VI_SHEET_ + ': ' + missing.join(', ') +
@@ -351,6 +364,9 @@ function voruinnihald_getGroup(sel) {
       descWords: vi_words_(descOld),
       descIsName: !!descOld && descOld === label,
       onWeb: String(row[idx.onWeb] || '').trim(),
+      // Lesin, ALDREI skrifud: byggingin reiknar hana ur `descOld`. Hun er
+      // thvi ekki i VI_WRITABLE_.
+      hint: idx.hint === undefined ? '' : String(row[idx.hint] || '').trim(),
       framework: String(row[idx.framework] || '').trim() === 'Já',
       url: String(row[idx.url] || '').trim(),
       // Það sem starfsfólk hefur þegar skrifað

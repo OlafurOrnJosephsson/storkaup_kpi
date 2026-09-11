@@ -16,3 +16,12 @@ admin/**
 # top-level require('fs') would have thrown on every single execution — killing
 # every trigger in the project. Keep this rule.
 email-preview/**
+
+# Handbaekur og kynningarefni. Skrifad her 2026-09-11 eftir ad
+# docs/voruinnihald/ritstill.html for med i verkefnid vid deploy.
+#
+# HTML-skra ein og ser er meinlaus i Apps Script — hun keyrir ekki. En sama
+# regla og gildir um email-preview/** gildir her: um leid og einhver setur
+# .js i docs/ vaeri hun pushud sem SCRIPT, og top-level require() drepur
+# alla trigger-a i verkefninu. Betra ad moppan se utilokud fra byrjun.
+docs/**

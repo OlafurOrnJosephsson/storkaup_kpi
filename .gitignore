@@ -42,3 +42,8 @@ pim/**/*.webp
 
 # Local AI super-resolution executable and models; never commit binaries.
 pim/.tools/
+
+# Voruinnihald — kynning, vinnusheet-sniðmát og ritstíll. Innri skjöl sem bera
+# vörunúmer, flokkatré og innri stöðu; repo er opinbert (jsDelivr). Sama rök og
+# bc_drop/ og pim_drop/. Skrárnar lifa á disknum, bara ekki í git.
+docs/voruinnihald/

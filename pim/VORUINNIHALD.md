@@ -385,8 +385,17 @@ Fjórir flipar eiga að vera til: `Leiðbeiningar`, `Vinnusheet`, `Framvinda`,
 
 - **Ritstíll vörukorta** (uppflettisíða fyrir starfsfólk — reglur, fyrir/eftir dæmi
   af storkaup.is, gátlisti): https://claude.ai/code/artifact/ceabafcc-d730-424f-b039-38124131204c
-- **Kickoff-kynning** — `Vöruinnihald-kickoff.pptx`, 11 slæður með glósum.
-  Tvennt viljandi autt: nöfn á flokkaslæðunni og ein Cludo-tala.
+- **Kickoff-kynning** — `docs/voruinnihald/Voruinnihald-kickoff.pptx`, 11 slæður
+  með glósum. Tvennt viljandi autt: nöfn á flokkaslæðunni og ein Cludo-tala.
+- **Vinnusheet-sniðmát** — `docs/voruinnihald/Vinnusheet-voruinnihald.xlsx`.
+  Handvirka útgáfan af sheetinu; `buildPimWorksheet.js` býr til þá sjálfvirku.
+  Gagnleg til að sjá kólumnuskipanina án þess að keyra neitt.
+- **Ritstíllinn, local afrit** — `docs/voruinnihald/ritstill.html`, sjálfstæð
+  HTML-skrá. Þetta er skráin sem færi í Webflow custom code ef þú vilt hýsa
+  ritstílinn á storkaup.is í stað Claude-hlekksins.
+
+> `docs/voruinnihald/` er gitignored — repo er opinbert og þessi skjöl bera
+> vörunúmer, flokkatré og innri stöðu. Þau lifa á disknum, bara ekki í sögunni.
 - **Dashboard-spec** — `claude/voruinnihald-dashboard-spec.md` í Claude-verkefninu
   „Stórkaup VEFUR KPI". Skilgreiningin á „fullbúið", gagnaflæði í Supabase, áfangaskipting.
 - **`pim/heitalinter.py`** — sömu heitareglur sem keyranleg rökfræði. Ritstíllinn og

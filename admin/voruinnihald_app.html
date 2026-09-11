@@ -221,6 +221,10 @@ input[type=text]:focus,textarea:focus{border-color:var(--brand);background:var(-
   padding:15px 16px}
 .panel h2{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;
   font-weight:600;color:var(--ink-3);margin:0 0 10px}
+.hint{margin:0 0 10px;padding:9px 12px;border-radius:7px;font-size:13px;
+  line-height:1.5;background:#fdf1d8;border:1px solid #e8c98a;color:#6b4b12}
+.hint b{font-weight:650}
+.hint .why{display:block;margin-top:3px;color:#8a6a2e}
 .spec{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:13.5px;margin:0}
 .spec dt{color:var(--ink-3)}
 .spec dd{margin:0;font-family:var(--f-mono);font-size:12.5px;overflow-wrap:anywhere}
@@ -406,6 +410,7 @@ footer b{color:var(--ink-2);font-weight:600}
 
       <div class="ref">
         <div class="panel">
+          <p class="hint" id="hint" hidden></p>
           <h2>Varan</h2>
           <dl class="spec" id="spec"></dl>
         </div>
@@ -571,6 +576,25 @@ window.addEventListener('beforeunload', function (e) {
   e.preventDefault();
   e.returnValue = '';
 });
+
+/** Merkin i mannamali. Kodinn einn segir starfsmanni ekkert. */
+function hintWhy(h) {
+  var out = [];
+  if (h.indexOf('AFRITUÐ') >= 0) {
+    out.push('Sama lýsing stendur orðrétt á fleiri vörum — þetta er ' +
+             'vörumerkjatexti, ekki lýsing á þessari vöru.');
+  }
+  if (h.indexOf('HTML') >= 0) {
+    out.push('Textinn er límdur af vefsíðu birgja og ber með sér kóða.');
+  }
+  if (h.indexOf('ORÐALAG') >= 0) {
+    out.push('Orðalag af bannlistanum — segir ekkert sem viðskiptavinur getur notað.');
+  }
+  if (h.indexOf('OF STUTT') >= 0) {
+    out.push('Undir orðamarkinu.');
+  }
+  return out.join(' ');
+}
 
 /* ------------------------------------------------------------------ fullbúið */
 var NOCHANGE = 'Óbreytt';
@@ -935,6 +959,20 @@ function render() {
     return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>';
   }).join('');
 
+  // VISBENDING: hvers vegna lysing sem ER til dugar samt ekki.
+  //
+  // An hennar opnar starfsmadur voru med 35-foldum vorumerkjatexta, ser
+  // fullan textareit og heldur ad hun se i lagi. Maelt i utdraettinum:
+  // 2.242 af 3.258 raunverulegum lysingum bera eitthvad merki.
+  var hint = p.hint || '';
+  if (hint) {
+    el('hint').innerHTML = '<b>' + esc(hint) + '</b>' +
+      '<span class="why">' + esc(hintWhy(hint)) + '</span>';
+    el('hint').hidden = false;
+  } else {
+    el('hint').hidden = true;
+  }
+
   el('was').textContent = p.descOld || '(engin)';
   var cls = p.descIsName ? 'crit' : p.descWords >= MINW ? 'good' : 'warn';
   var meta = '<span class="chip ' + cls + '">' + p.descWords + ' orð</span>';
@@ -948,9 +986,14 @@ function render() {
   }).map(function (q) { return q.sku; });
   if (sibs.length && p.descOld) {
     el('sibpanel').hidden = false;
+    // ADUR STOD HER "Skrifadu eina og afritadu". Thad er nakvaemlega
+    // vinnubragdid sem bjo til 785 ordrett eins lysingar i safninu, og
+    // Google les thaer sem afritad efni. Textinn er nu upphafspunktur sem
+    // A ad adlaga — staerd, efni og notkun eru ekki their somu milli vara.
     el('sib').innerHTML = '<b>' + sibs.length + ' systurvörur</b> deila þessari lýsingu ' +
-      'orðrétt (' + esc(sibs.join(', ')) + '). Skrifaðu eina og afritaðu.' +
-      '<button type="button" id="reuse">Afrita núverandi texta</button>';
+      'orðrétt (' + esc(sibs.join(', ')) + '). Notaðu hana sem upphafspunkt, ' +
+      'en aðlagaðu hverja vöru — orðrétt eins lýsingar telja sem afritað efni.' +
+      '<button type="button" id="reuse">Afrita sem upphafspunkt</button>';
     el('reuse').onclick = function () { el('ds').value = p.descOld; gauge(); mark(); };
   } else { el('sibpanel').hidden = true; }
 
