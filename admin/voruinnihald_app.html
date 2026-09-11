@@ -687,17 +687,42 @@ function drawMine() {
   el('minelist').innerHTML = cards.join('');
 }
 
+/**
+ * Trebordid.
+ *
+ * SIAN SPYR UM LAUSA VINNU, EKKI UM STODU FLOKKSINS. Sa greinarmunur er
+ * ekki smaatridi: adur var skilyrdid `status2(b) !== 'free'`, og `status2`
+ * skilar 'mine' um leid og EINN undirflokkur er tekinn. Ad taka
+ * `Mjolkur og proteindrykkir` felldi thvi allan `Drykkjarvorur`-flokkinn ut
+ * ur trenu og tok tiu lausa undirflokka med ser -- osynilega ollum, lika
+ * theim tolf sem eiga eftir ad velja ser verk (maelt 2026-09-11).
+ *
+ * I `Laust`-syninni lysa tolurnar thvi sem er LAUST, ekki flokknum ollum,
+ * og `af N` segir fra mismuninum. Annars vaeri bodhid 11 undirflokkar thar
+ * sem adeins 10 eru i bodhi.
+ */
 function drawTree() {
   var n2 = nest();
   var html = Object.keys(n2).sort().map(function (l1) {
     var fl = n2[l1];
     var keys = Object.keys(fl).sort();
-    var tw = 0, tn = 0, tu = 0;
-    keys.forEach(function (k) { tw += fl[k].w; tn += fl[k].n; tu += fl[k].groups.length; });
+    var tw = 0, tn = 0, tu = 0, tk = 0;
 
     var rows = keys.map(function (l2) {
       var b = fl[l2], s2 = status2(b);
-      if (filter === 'free' && (s2 !== 'free' || b.w === 0)) return '';
+      var freeKids = b.groups.filter(function (t) { return statusOf(t) === 'free'; });
+      var freeW = 0, freeN = 0;
+      freeKids.forEach(function (t) { freeW += t.w; freeN += t.n; });
+
+      // Fellt ut adeins thegar ENGIN laus vinna er eftir i flokknum.
+      if (filter === 'free' && freeW === 0) return '';
+
+      var shown = filter === 'free' ? freeKids : b.groups;
+      var part = filter === 'free' && freeKids.length < b.groups.length;
+      var sw = filter === 'free' ? freeW : b.w;
+      var sn = filter === 'free' ? freeN : b.n;
+      tw += sw; tn += sn; tu += shown.length; tk++;
+
       var open = !!expanded[l1 + '|' + l2];
       var names = Object.keys(b.owners);
       var txt = s2 === 'free' ? 'Taka flokkinn'
@@ -706,15 +731,16 @@ function drawTree() {
         : names.join(', ');
       // Gulur kantur: flokkur staerri en 92 skrif, vidmidid a mann. Hann
       // VERDUR ad klofna a undirflokka. I dag er thad adeins Ryksugur (172).
-      var kids = b.groups.slice().sort(function (a, c) { return c.w - a.w || a.n - c.n; });
-      return '<button type="button" class="l2' + (b.w > 92 ? ' big' : '') +
+      var kids = shown.slice().sort(function (a, c) { return c.w - a.w || a.n - c.n; });
+      return '<button type="button" class="l2' + (sw > 92 ? ' big' : '') +
         '" data-st="' + s2 + '" data-l1="' + esc(l1) + '" data-l2="' + esc(l2) +
         '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
         '<span class="cv">&#9654;</span>' +
         '<span class="nm">' + esc(l2) +
-        '<em>' + IS(b.groups.length) + ' undirflokkar</em></span>' +
-        '<span class="w">' + IS(b.w) + '<em>skrif</em></span>' +
-        '<span class="n">' + IS(b.n) + ' vorur</span>' +
+        '<em>' + IS(shown.length) + (part ? ' af ' + IS(b.groups.length) : '') +
+        ' undirflokkar' + (part ? ' lausir' : '') + '</em></span>' +
+        '<span class="w">' + IS(sw) + '<em>' + (part ? 'laus skrif' : 'skrif') + '</em></span>' +
+        '<span class="n">' + IS(sn) + ' vorur</span>' +
         '<span class="st">' + esc(txt) +
         (s2 === 'mine' && b.done ? ' ' + IS(b.done) + '/' + IS(b.w) : '') +
         '</span></button>' +
@@ -734,9 +760,11 @@ function drawTree() {
     }).filter(Boolean).join('');
 
     if (!rows) return '';
+    // Samtalan er reiknud AF THVI SEM ER SYNT, ekki af ollum Yfirflokknum.
+    // Adur sagdi hun "13 flokkar" yfir tiu synilegum rodhum.
     return '<div class="l1"><h3>' + esc(l1) + '</h3>' +
       '<div class="l1m">' + IS(tw) + ' lysingar &middot; ' + IS(tn) + ' vorur &middot; ' +
-      IS(keys.length) + ' flokkar &middot; ' + IS(tu) + ' undirflokkar</div>' +
+      IS(tk) + ' flokkar &middot; ' + IS(tu) + ' undirflokkar</div>' +
       rows + '</div>';
   }).join('');
   el('tree').innerHTML = html ||

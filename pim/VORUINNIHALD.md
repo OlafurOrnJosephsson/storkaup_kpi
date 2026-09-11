@@ -442,3 +442,30 @@ Gagnaprófunin á `Staða` er ljósmynd tekin við byggingu og hún þekkir ekki
 vinnusheet úr Plytix-útdrætti**). Sama gildir um `Fullbúið`-formúluna.
 Endurbygging varðveitir allt sem starfsfólk hefur skrifað (`KEEP`-listinn) og
 raðast eftir SKU, en **gerðu hana þegar enginn er að skrifa**.
+
+---
+
+## „Laust"-sían faldi lausa vinnu — 2026-09-11
+
+Óli tók **einn** undirflokk (`Mjólkur og próteindrykkir`) og allur
+`Drykkjarvörur`-flokkurinn hvarf úr trénu — með tíu lausum undirflokkum sem
+enginn átti.
+
+Skilyrðið var `status2(b) !== 'free'`, og `status2` skilar `'mine'` um leið og
+**einn** undirflokkur er tekinn. Sían spurði því um **stöðu flokksins** þegar
+hún átti að spyrja um **lausa vinnu**. Sama gilti ef annar starfsmaður tók
+einn hóp: þá varð flokkurinn `'taken'` og hvarf öllum hinum.
+
+Þetta er verra en það lítur út fyrir. `Laust` er sjálfgefna sýnin og hún er
+það sem hinir tólf sjá þegar þeir velja sér verk. Hver tekinn undirflokkur
+faldi að meðaltali heilan Level 2 — vinna sem enginn átti varð ósýnileg um
+leið og einhver snerti nágranna hennar. Eftir því sem fleiri hefðu byrjað
+hefði meira horfið.
+
+Sían spyr núna hvort einhver **laus** undirflokkur með skrifum sé eftir. Í
+`Laust`-sýninni lýsa tölurnar því sem er laust — `10 af 11 undirflokkar
+lausir`, `40 laus skrif` — og samtalan efst á Yfirflokknum telur það sem er
+sýnt, ekki allan flokkinn. Áður sagði hún „13 flokkar" yfir tíu sýnilegum
+röðum. Í `Allt` er allt óbreytt.
+
+`test_freefilter.js`: 21 próf, þar af níu sem falla á gamla kóðanum.
