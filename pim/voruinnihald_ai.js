@@ -251,8 +251,11 @@ function pimAiCall_(prompt) {
     payload: JSON.stringify({
       model: model,
       max_tokens: 700,
-      // Lágt hitastig: við viljum endursögn á gefnu efni, ekki tilbrigði.
-      temperature: 0.2,
+      // ENGIN `temperature`. Anthropic svaraði 400 á claude-sonnet-5:
+      // "`temperature` is deprecated for this model" (mælt 2026-09-11).
+      // Nýrri módel stýra þessu sjálf. Það sem heldur textanum í skefjum er
+      // hvort sem er ekki hitastigið heldur tvennt annað: kerfisleiðbeiningin
+      // bannar að finna nokkuð upp, og `pimDescHint_` dæmir útkomuna.
       system: pimAiSystem_(),
       messages: [{ role: 'user', content: prompt }]
     }),
