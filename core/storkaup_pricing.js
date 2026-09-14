@@ -98,16 +98,26 @@ function storkaupProductUrl_(slug) {
  *   pontun en BC-samstillingin endurstillir aldrei; mest neikvaett er
  *   einfaldlega mest selda varan, ekki versta gagnavillan.
  *
- *   Rett tala er quantityPerLocation i GRUNNEININGU:
- *     864 faerslur eru foreldri med variants → grunneiningarbarnid
- *         (salesUnitOfMeasure === baseUnitOfMeasure; til i ollum 864)
- *   3.613 faerslur eru sjalfar variant-faerslur → their eigin reitur
- *   Foreldrid hefur sinn EIGIN quantityPerLocation en hann er onnur
- *   tala en barnsins (107652: foreldri 199, STK-barn 123) — BC segir
- *   123, svo barnid gildir. Sannreynt gegn BC 2026-09-14:
- *   107652 → 123 (nakvaemt), 9002572 → 248 (BC 258, 10 eininga rek).
+ *   Rett tala er SOLUEININGARLINAN margfoldud upp i grunneiningar:
+ *     quantityPerLocation a theim variant sem hefur
+ *     salesUnitOfMeasure === attributes.salesUnitOfMeasure,
+ *     sinnum attributes.salesUnitOfMeasureValue (stk i solueiningu).
+ *   Faerslur an variants (3.613 talsins) eru sjalfar solueiningin.
+ *
+ *   Sannreynt gegn BC 2026-09-14, nakvaemt i ollum thremur:
+ *     106268  KASSI 213 × 50 = 10.650   BC ytri birgdir 10.650
+ *     107652  STK   123 ×  1 =    123   BC 123
+ *     9002572 KASSI  43 ×  6 =    258   BC 258
+ *
+ *   GRUNNEININGARLINAN (_STK) er EKKI rett fyrir vorur seldar i
+ *   kassa: hun er teljari sem tharf ekki ad standa a nullu thegar
+ *   varan liggur oll i kossum. 106268 stendur i -2.576 thar medan
+ *   solueiningarlinan segir 10.650 — sama vara, nog til.
  *
  *   Skilar null ef ekkert nothaeft gildi finnst — OTHEKKT, ekki 0.
+ *   Threkja maeld 2026-09-14: allar 4.477 faerslur hafa
+ *   salesUnitOfMeasureValue og allar 864 med variants eiga
+ *   solueiningarbarn, svo fallbakkarnir eru belti og axlabond.
  ************************************************************/
 function storkaupBaseQty_(node) {
   if (!node) return null;
@@ -124,12 +134,20 @@ function storkaupBaseQty_(node) {
     return any ? total : null;
   };
 
+  const attrs = node.attributes || {};
+  const salesUnit = attrs.salesUnitOfMeasure || node.salesUnitOfMeasure;
+  const perUnit = Number(attrs.salesUnitOfMeasureValue);
+  const factor = (isFinite(perUnit) && perUnit > 0) ? perUnit : 1;
+
+  let qty = null;
   const variants = node.variants || [];
   if (variants.length) {
-    const base = variants.filter(v => v && v.salesUnitOfMeasure === node.baseUnitOfMeasure)[0];
-    if (base) return sumLocations_(base.quantityPerLocation);
+    const sold = variants.filter(v => v && v.salesUnitOfMeasure === salesUnit)[0];
+    if (sold) qty = sumLocations_(sold.quantityPerLocation);
   }
-  return sumLocations_(node.quantityPerLocation);
+  if (qty === null) qty = sumLocations_(node.quantityPerLocation);
+
+  return qty === null ? null : qty * factor;
 }
 
 /************************************************************
@@ -148,7 +166,8 @@ function fetchActiveProducts_() {
     '      quantityPerLocation { quantity }' +
     '      variants { sku salesUnitOfMeasure quantityPerLocation { quantity } }' +
     '      featuredImage { url fileName }' +
-    '      attributes { isFrameworkAgreementProduct isSpecialOrderProduct } } }' +
+    '      attributes { isFrameworkAgreementProduct isSpecialOrderProduct' +
+    '                   salesUnitOfMeasure salesUnitOfMeasureValue } } }' +
     '  }' +
     '}';
 
@@ -202,7 +221,8 @@ function fetchActiveProducts_() {
         // Faerslan sjalf i grunneiningu (eda foreldri med variants) — raedur
         // hvor vinnur thegar tvaer faerslur strippast i sama parent-SKU.
         isBase: !!(node.variants && node.variants.length) ||
-                node.salesUnitOfMeasure === node.baseUnitOfMeasure
+                node.salesUnitOfMeasure ===
+                  ((node.attributes && node.attributes.salesUnitOfMeasure) || node.salesUnitOfMeasure)
       };
 
       // Tvaer faerslur geta strippast i sama parent-SKU (maelt 2026-09-14:
@@ -289,6 +309,7 @@ function fetchUncategorizedProducts_(paths) {
     '    totalCount pageInfo { hasNextPage }' +
     '    edges { node { sku name slug baseUnitOfMeasure salesUnitOfMeasure' +
     '      quantityPerLocation { quantity }' +
+    '      attributes { salesUnitOfMeasure salesUnitOfMeasureValue }' +
     '      variants { sku salesUnitOfMeasure quantityPerLocation { quantity } } } }' +
     '  }' +
     '}';
