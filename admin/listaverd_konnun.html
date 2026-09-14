@@ -163,11 +163,11 @@ footer p { margin: 0 0 6px; }
     </div>
     <div class="stat flag">
       <div class="v mono" id="stat-oos">-</div>
-      <div class="l">Uppselt (lager 0 eða minna)</div>
+      <div class="l">Ekkert laust til ráðstöfunar</div>
     </div>
     <div class="stat bad">
       <div class="v mono" id="stat-neg">-</div>
-      <div class="l">Neikvæður lager</div>
+      <div class="l">Pantað umfram birgðir</div>
     </div>
     <div class="stat warn">
       <div class="v mono" id="stat-nocat">-</div>
@@ -182,7 +182,7 @@ footer p { margin: 0 0 6px; }
       <div class="tbl-scroll">
         <table>
           <thead>
-            <tr><th>SKU</th><th>Vöruheiti</th><th class="num">Lager</th><th>Staða</th></tr>
+            <tr><th>SKU</th><th>Vöruheiti</th><th class="num">Til ráðstöfunar</th><th>Staða</th></tr>
           </thead>
           <tbody id="flag-rows">
             <tr><td class="c-sku">—</td><td class="c-name">Listinn hleðst inni á KPI-vefnum þegar smellt er á „Keyra aftur“.</td><td class="num">—</td><td></td></tr>
@@ -200,7 +200,7 @@ footer p { margin: 0 0 6px; }
       <div class="tbl-scroll">
         <table>
           <thead>
-            <tr><th>SKU</th><th>Vöruheiti</th><th class="num">Lager</th></tr>
+            <tr><th>SKU</th><th>Vöruheiti</th><th class="num">Til ráðstöfunar</th></tr>
           </thead>
           <tbody id="img-rows">
             <tr><td class="c-sku">—</td><td class="c-name">Hleðst við keyrslu.</td><td class="num">—</td></tr>
@@ -212,14 +212,14 @@ footer p { margin: 0 0 6px; }
   </section>
 
   <section>
-    <div class="sec-label">Lager</div>
-    <h3 id="neg-title">Vörur með neikvæðan lager</h3>
-    <p class="body">Neikvæð lagerstaða er gagnavilla, ekki verslunarstaða — hún leysist í birgðakerfinu, ekki á vefnum. Mest neikvætt efst.</p>
+    <div class="sec-label">Ráðstöfun</div>
+    <h3 id="neg-title">Pantað umfram birgðir</h3>
+    <p class="body">Raunbirgðir mínus staða í sölupöntunum. Neikvæð tala þýðir að meira er lofað í opnar pantanir en til er á lager — varan er seld lengra en birgðirnar ná. Það leysist með innkaupapöntun, ekki á vefnum. Mest neikvætt efst.</p>
     <div class="tbl-wrap">
       <div class="tbl-scroll">
         <table>
           <thead>
-            <tr><th>SKU</th><th>Vöruheiti</th><th class="num">Lager</th></tr>
+            <tr><th>SKU</th><th>Vöruheiti</th><th class="num">Til ráðstöfunar</th></tr>
           </thead>
           <tbody id="neg-rows">
             <tr><td colspan="3" class="empty">Hleð…</td></tr>
@@ -238,7 +238,7 @@ footer p { margin: 0 0 6px; }
       <div class="tbl-scroll">
         <table>
           <thead>
-            <tr><th>SKU</th><th>Vöruheiti</th><th class="num">Lager</th></tr>
+            <tr><th>SKU</th><th>Vöruheiti</th><th class="num">Til ráðstöfunar</th></tr>
           </thead>
           <tbody id="nocat-rows">
             <tr><td colspan="3" class="empty">Hleð…</td></tr>
@@ -276,7 +276,7 @@ footer p { margin: 0 0 6px; }
       <div class="row"><div class="k">Verðin</div><div class="d">Verðkerfi vefsins (<code>getProductsPricing</code>), sama API og storkaup.is notar fyrir innskráða viðskiptavini.</div></div>
       <div class="row"><div class="k">Flöggun</div><div class="d"><span class="chip bad">Listaverð 0</span> = verð er 0 kr. &nbsp; <span class="chip warn">Vara ekki fáanleg</span> = engin verðlína (hangir inni án verðs — líklega archived í Plytix / lokuð í BC en óhreinsuð úr Elastic).</div></div>
       <div class="row"><div class="k">Útilokað</div><div class="d" id="excl-note">Rammasamningsvörur eru verðlagðar per samning og því ekki taldar með.</div></div>
-      <div class="row"><div class="k">Lager</div><div class="d"><code>quantityPerLocation</code> á sölueiningu vörunnar margfaldað með stykkjafjölda í einingunni — sama tala og BC sýnir (t.d. 213 kassar × 50 stk = 10.650). Uppselt = 0 eða minna; neikvætt er gagnavilla og talið sér. Reiturinn <code>totalQuantity</code> var notaður fram að 14.9.2026 en hann er teljari, ekki lagerstaða, og gaf 64 rangar neikvæðar vörur. Talan er dagsett við keyrslu, ekki lifandi.</div></div>
+      <div class="row"><div class="k">Til ráðstöfunar</div><div class="d"><code>quantityPerLocation</code> á sölueiningu vörunnar margfaldað með stykkjafjölda í einingunni (t.d. 213 kassar × 50 stk = 10.650). Vefurinn gefur nettótölu: <strong>raunbirgðir mínus stöðu í sölupöntunum</strong> — ekki lagerstöðu, heldur það sem laust er til sölu. Sannreynt gegn BC á 9001937: raunbirgðir 84, í sölupöntunum 240, til ráðstöfunar −156. Reiturinn <code>totalQuantity</code> var notaður fram að 14.9.2026 en hann er teljari sem enginn endurstillir. Talan er dagsett við keyrslu, ekki lifandi.</div></div>
       <div class="row"><div class="k">Flokkun</div><div class="d">Spurt beint um vörur utan allra toppflokka (<code>excludedCategories</code>). Toppflokkar erfa undirflokka, svo vara í undirflokki telst flokkuð.</div></div>
       <div class="row"><div class="k">Ómælt</div><div class="d">Strik (<span class="mono">—</span>) þýðir að mælingin komst ekki á í þessari keyrslu. Það er ekki núll.</div></div>
     </div>
@@ -452,11 +452,11 @@ footer p { margin: 0 0 6px; }
 
     var negTotal = measured(r.negativeStock);
     el('neg-title').textContent = negTotal === null
-      ? 'Vörur með neikvæðan lager'
-      : (negTotal === 0 ? 'Enginn neikvæður lager'
-          : (IS(negTotal) + (negTotal === 1 ? ' vara með neikvæðan lager' : ' vörur með neikvæðan lager')));
+      ? 'Pantað umfram birgðir'
+      : (negTotal === 0 ? 'Ekkert pantað umfram birgðir'
+          : (IS(negTotal) + (negTotal === 1 ? ' vara pöntuð umfram birgðir' : ' vörur pantaðar umfram birgðir')));
     renderSimple('neg-rows', 'neg-note', r.negativeSample, negTotal,
-                 'NEIKVAEDUR_LAGER', 'Engin vara með neikvæðan lager');
+                 'NEIKVAEDUR_LAGER', 'Engin vara pöntuð umfram birgðir');
 
     var ncat = measured(r.noCategory);
     el('nocat-title').textContent = ncat === null
