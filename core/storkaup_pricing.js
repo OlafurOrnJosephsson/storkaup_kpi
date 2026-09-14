@@ -88,9 +88,55 @@ function storkaupProductUrl_(slug) {
 }
 
 /************************************************************
+ * 📦 storkaupBaseQty_ — raunlager i grunneiningu
+ *
+ *   totalQuantity er EKKI lager, thott nafnid segi thad. Maelt
+ *   2026-09-14 yfir allan listann (4.477 faerslur):
+ *     1.264 med totalQuantity = 0 — 621 theirra med JAKVAEDAN lager
+ *        84 med totalQuantity < 0 — 64 theirra med JAKVAEDAN lager
+ *   Reiturinn hegdar ser eins og teljari sem vefurinn dregur nidur vid
+ *   pontun en BC-samstillingin endurstillir aldrei; mest neikvaett er
+ *   einfaldlega mest selda varan, ekki versta gagnavillan.
+ *
+ *   Rett tala er quantityPerLocation i GRUNNEININGU:
+ *     864 faerslur eru foreldri med variants → grunneiningarbarnid
+ *         (salesUnitOfMeasure === baseUnitOfMeasure; til i ollum 864)
+ *   3.613 faerslur eru sjalfar variant-faerslur → their eigin reitur
+ *   Foreldrid hefur sinn EIGIN quantityPerLocation en hann er onnur
+ *   tala en barnsins (107652: foreldri 199, STK-barn 123) — BC segir
+ *   123, svo barnid gildir. Sannreynt gegn BC 2026-09-14:
+ *   107652 → 123 (nakvaemt), 9002572 → 248 (BC 258, 10 eininga rek).
+ *
+ *   Skilar null ef ekkert nothaeft gildi finnst — OTHEKKT, ekki 0.
+ ************************************************************/
+function storkaupBaseQty_(node) {
+  if (!node) return null;
+
+  const sumLocations_ = function (list) {
+    if (!list || !list.length) return null;
+    let total = 0, any = false;
+    list.forEach(q => {
+      // Number(null) === 0 — tomt gildi ma ekki laumast inn sem nuII.
+      if (!q || q.quantity === null || q.quantity === undefined || q.quantity === '') return;
+      const n = Number(q.quantity);
+      if (isFinite(n)) { total += n; any = true; }
+    });
+    return any ? total : null;
+  };
+
+  const variants = node.variants || [];
+  if (variants.length) {
+    const base = variants.filter(v => v && v.salesUnitOfMeasure === node.baseUnitOfMeasure)[0];
+    if (base) return sumLocations_(base.quantityPerLocation);
+  }
+  return sumLocations_(node.quantityPerLocation);
+}
+
+/************************************************************
  * 🌐 fetchActiveProducts_ — allur virki vörulistinn (OPINBER)
  *   Pagear í gegnum getProductsV2 (first/offset).
  *   Skilar fylki af { parent, name, qty, slug } — dedupað á parent.
+ *   qty kemur ur storkaupBaseQty_, EKKI totalQuantity — sja thar.
  ************************************************************/
 function fetchActiveProducts_() {
   const PAGE = 200;
@@ -98,7 +144,11 @@ function fetchActiveProducts_() {
     'query getProductsV2($pagination: PaginationInput) {' +
     '  getProductsV2(pagination: $pagination) {' +
     '    totalCount pageInfo { hasNextPage }' +
-    '    edges { node { sku name totalQuantity slug featuredImage { url fileName } attributes { isFrameworkAgreementProduct isSpecialOrderProduct } } }' +
+    '    edges { node { sku name slug baseUnitOfMeasure salesUnitOfMeasure' +
+    '      quantityPerLocation { quantity }' +
+    '      variants { sku salesUnitOfMeasure quantityPerLocation { quantity } }' +
+    '      featuredImage { url fileName }' +
+    '      attributes { isFrameworkAgreementProduct isSpecialOrderProduct } } }' +
     '  }' +
     '}';
 
@@ -137,19 +187,30 @@ function fetchActiveProducts_() {
       if (!node) return;
       rawCount++;
       const parent = storkaupParentSku_(node.sku);
-      if (!parent || seen[parent]) return;
-      seen[parent] = true;
+      if (!parent) return;
+
       const fimg = node.featuredImage || {};
       const noImage = !fimg.url || /myndvantar/i.test((fimg.url || '') + ' ' + (fimg.fileName || ''));
-      out.push({
+      const row = {
         parent: parent,
         name: node.name || '',
-        qty: node.totalQuantity,
+        qty: storkaupBaseQty_(node),
         slug: node.slug || '',
         framework: !!(node.attributes && node.attributes.isFrameworkAgreementProduct),
         specialOrder: !!(node.attributes && node.attributes.isSpecialOrderProduct),
-        noImage: noImage
-      });
+        noImage: noImage,
+        // Faerslan sjalf i grunneiningu (eda foreldri med variants) — raedur
+        // hvor vinnur thegar tvaer faerslur strippast i sama parent-SKU.
+        isBase: !!(node.variants && node.variants.length) ||
+                node.salesUnitOfMeasure === node.baseUnitOfMeasure
+      };
+
+      // Tvaer faerslur geta strippast i sama parent-SKU (maelt 2026-09-14:
+      // 9003517 KASSI+KG, 117102 KASSI+STK). Fyrstur-vinnur letur tha
+      // hendinguna velja eininguna; grunneiningin a ad vinna.
+      const at = seen[parent];
+      if (at === undefined) { seen[parent] = out.length; out.push(row); return; }
+      if (row.isBase && !out[at].isBase) out[at] = row;
     });
 
     // Skref = fjoldi rada sem KOM, ekki fast PAGE. Skili sidha faerri
@@ -226,7 +287,9 @@ function fetchUncategorizedProducts_(paths) {
     'query Q($pagination: PaginationInput, $excludedCategories: [String!]) {' +
     '  getProductsV2(pagination: $pagination, excludedCategories: $excludedCategories) {' +
     '    totalCount pageInfo { hasNextPage }' +
-    '    edges { node { sku name totalQuantity slug } }' +
+    '    edges { node { sku name slug baseUnitOfMeasure salesUnitOfMeasure' +
+    '      quantityPerLocation { quantity }' +
+    '      variants { sku salesUnitOfMeasure quantityPerLocation { quantity } } } }' +
     '  }' +
     '}';
 
@@ -268,7 +331,7 @@ function fetchUncategorizedProducts_(paths) {
       const parent = storkaupParentSku_(node.sku);
       if (!parent || seenParent[parent]) return;
       seenParent[parent] = true;
-      rows.push([parent, node.name || '', node.totalQuantity, storkaupProductUrl_(node.slug)]);
+      rows.push([parent, node.name || '', storkaupBaseQty_(node), storkaupProductUrl_(node.slug)]);
     });
 
     // Skref = fjoldi rada sem KOM, ekki fast PAGE.
@@ -470,6 +533,10 @@ function findZeroListPriceProducts_v1() {
 
   // 2c) Birgdaeftirlit (ohad verdi) — talan fylgir vorulistanum, svo thetta
   // kostar engar nyjar fyrirspurnir. qty === null thydir OTHEKKT, ekki 0.
+  // Talan kemur ur storkaupBaseQty_ (quantityPerLocation i grunneiningu).
+  // Hun var adur totalQuantity, sem er teljari en ekki lager — sja
+  // storkaupBaseQty_ um hvers vegna sa reitur skilar ~70 folskum
+  // neikvaedum vorum og felur thaer verstu raunverulegu.
   const outOfStockRows = [];
   const negativeRows = [];
   products.forEach(p => {
