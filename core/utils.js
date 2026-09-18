@@ -3855,23 +3855,49 @@ function scheduledCludoSync_v1() {
       result.productsBackfill = backfillProductsToSupabase_v1();
     }
 
+    // Vefvörulistinn (raw.web_catalog) — fæðir birgjanúmera-uppflettinguna
+    // í public.search_products. VÍSVITANDI í try/catch: þetta er aukaskref
+    // sem má ekki fella Cludo-keyrsluna sjálfa, en það má heldur ekki hverfa
+    // þegjandi. Bilun skrifar 'partial' á ingestion_run, sem runDailySanityChecks_v1
+    // les — sama meðferð og misheppnaður mart-refresh fær.
+    var webCatalogErr = null;
+    if (typeof syncWebCatalogToSupabase_v1 === 'function') {
+      try {
+        result.webCatalogSync = syncWebCatalogToSupabase_v1();
+      } catch (wcErr) {
+        webCatalogErr = wcErr;
+        result.webCatalogSync = { error: String(wcErr && wcErr.message || wcErr) };
+        Logger.log('[CLUDOSYNC][WARN] syncWebCatalogToSupabase_v1 failed: ' + wcErr);
+      }
+    }
+
     if (typeof refreshSupabaseMarts_v1 === 'function') {
       result.martRefresh = refreshSupabaseMarts_v1({ strict: false });
     }
 
     result.finishedAt = new Date().toISOString();
 
+    var cludoStatus = webCatalogErr ? 'partial' : 'success';
+
     if (runId) {
       try {
         finishIngestionRun_(
           runId,
-          'success',
+          cludoStatus,
           toNum_(result.productsBackfill && result.productsBackfill.uploaded),
           result,
-          null
+          webCatalogErr ? ('web_catalog sync failed: ' + webCatalogErr.message) : null
         );
       } catch (logErr2) {
         Logger.log('[CLUDOSYNC][WARN] Could not finish ingestion run log (success): ' + logErr2);
+      }
+    }
+
+    if (webCatalogErr) {
+      try {
+        notifyTriggerFailure_('scheduledCludoSync_v1/web_catalog', webCatalogErr, result);
+      } catch (alertErr) {
+        Logger.log('[CLUDOSYNC][WARN] web_catalog alert failed: ' + alertErr);
       }
     }
 

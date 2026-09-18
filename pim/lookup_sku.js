@@ -10,24 +10,9 @@
  * birgjum þar sem ekkert Stórkaups-SKU fylgir. Handvirk uppfletting á
  * sautján númerum tók lengri tíma en að skrifa þetta.
  *
- * ── HVAÐAN GÖGNIN KOMA ──────────────────────────────────────────────
- * `attributes.brand_sku` úr getProductsV2 (OPINBERT, enginn Bearer —
- * sbr. core/storkaup_pricing.js). Það er birgjanúmerið sjálft og er
- * fyllt út á 4.408 af 4.473 vörum í birtingu (98,5%, mælt 2026-09-18).
- * Fjarvist er því raunveruleg fjarvist, ekki gloppa í skráningu.
- *
- * MIKILVÆGT: reiturinn er FYLKI af strengjum í svarinu (`["7276"]`),
- * ekki strengur, og `null` þar sem ekkert er. `String()` beint á hann
- * gefur rétta útkomu fyrir slysni á eins staks fylki en þegjandi ranga
- * á öðru — normBrandSku_ tekur fyrsta gildið vísvitandi.
- *
- * ── LEITIN Í VEFNUM DUGAR EKKI ──────────────────────────────────────
- * `getProductsV2(search: "7276")` skilar NÚLLI þótt varan sé til með
- * nákvæmlega því brand_sku. Leitarvísirinn nær ekki yfir reitinn. Þess
- * vegna er allur listinn sóttur og borinn saman hérna megin — 23
- * beiðnir, ~30 sek. Ekkert cache: spurningin sem er verið að spyrja er
- * „er þetta á vefnum NÚNA", og dagsgamalt svar við henni er verra en
- * ekkert.
+ * Gögnin og normalíserunin eru í core/web_catalog.js — þessi skrá er
+ * viðmótið eitt. Sá haus útskýrir hvaðan `brand_sku` kemur og hvers
+ * vegna `sku` og `web_sku` eru ekki sami hluturinn.
  *
  * ── AF HVERJU EKKI HLUTSTRENGSLEIT ──────────────────────────────────
  * Prófað á raunlista 2026-09-18. `contains` á 6054 skilaði Pepsi
@@ -35,21 +20,20 @@
  * röng, ekkert þeirra auðþekkt sem rangt við yfirlestur. Sá sem treystir
  * slíkri töflu skrifar vitleysu inn í tengdar vörur. Leyfð eru tvö stig:
  *   nákvæmt  — eftir hreinsun á bilum, hástöfum og forleiðandi núllum
- *   laust    — aðeins bókstafir og tölustafir eftir ("AC 1/2" = "AC1/2")
- * Laust treff er merkt sem slíkt í kólumnu C. Það er tillaga, ekki svar.
+ *   laust    — aðeins bókstafir og tölustafir eftir ("AC 070/23CS"
+ *              finnst þótt slegið sé inn "ac-070-23cs")
+ * Laust treff er merkt sem slíkt í kólumnu C og keyrir aðeins þegar
+ * nákvæmu lyklarnir skiluðu engu. Það er tillaga, ekki svar.
  *
- * ── BIRGJANÚMER ERU EKKI EINKVÆM ────────────────────────────────────
+ * ── EITT NÚMER GETUR ÁTT MARGAR VÖRUR ───────────────────────────────
  * 41 birgjanúmer af 4.360 eiga fleiri en eina vöru eftir normalíserun
  * (mælt 2026-09-18). Stutt númer frá ólíkum birgjum rekast á: "6135" er
  * bæði KC-ilmur og handþurrka frá Abena, og "1" — með "01" og "001" —
- * á sex matvörur. Þess vegna skilar fallið ÖLLUM treffum, hverju á sinni
- * röð, með vörumerkinu. Vörumerkið er ekki skraut í töflunni heldur það
- * sem sker úr.
- *
- * Okkar eigið SKU rekst á í nákvæmlega einu tilviki: STO_9004599_STK og
- * STO_9004599_KASSI (Brúsapumpa, Pelican) eru tvær færslur í birtingu,
- * sama vara í tveimur sölueiningum. Báðar raðir koma, sem er rétt svar —
- * það er einmitt það sem sá sem flettir upp þarf að vita.
+ * á sex matvörur. Okkar eigið SKU rekst á í nákvæmlega einu tilviki:
+ * STO_9004599_STK og STO_9004599_KASSI, sama Brúsapumpan í tveimur
+ * sölueiningum. Fallið skilar ÖLLUM treffum, hverju á sinni röð, með
+ * vörumerkinu. Vörumerkið er ekki skraut í töflunni heldur það sem
+ * sker úr.
  ************************************************************/
 
 const PIM_LOOKUP_SHEET_ = 'Uppfletting';
@@ -125,10 +109,9 @@ function pimLookupSkus_v1() {
  * 🔁 pimLookupList_v1 — sama uppfletting án sheets
  *   pimLookupList_v1(['7276', 'STO_114112'])
  * Skilar fylki af röðum í sömu kólumnuröð og PIM_LOOKUP_COLS_.
- * Hér inni liggur öll rökfræðin; sheet-fallið er umbúðir.
  ************************************************************/
 function pimLookupList_v1(values) {
-  const idx = pimBuildWebIndex_();
+  const idx = buildWebCatalogIndex_();
   const out = [];
 
   (values || []).forEach(function (v) {
@@ -137,13 +120,13 @@ function pimLookupList_v1(values) {
 
     const seen = {};
     let n = 0;
-    const push = function (node, label) {
-      if (!node || seen[node.sku]) return;
-      seen[node.sku] = true;
+    const push = function (rec, label) {
+      if (!rec || seen[rec.sku]) return;
+      seen[rec.sku] = true;
       n++;
       out.push([
-        q, 'Já', label, node.sku, node.brandSku, node.name, node.brand,
-        node.slug ? ('https://www.storkaup.is/vara/' + node.slug) : ''
+        q, 'Já', label, rec.sku, rec.brandSku, rec.name, rec.brand,
+        rec.slug ? ('https://www.storkaup.is/vara/' + rec.slug) : ''
       ]);
     };
 
@@ -165,147 +148,6 @@ function pimLookupList_v1(values) {
   });
 
   return out;
-}
-
-
-/************************************************************
- * 🌐 pimBuildWebIndex_ — allur birti vörulistinn, þrír lyklar
- *   bySku    normalíserað Stórkaups-SKU  (STO_117268_STK → 117268)
- *   byBrand  normalíserað birgjanúmer
- *   byLoose  aðeins bókstafir og tölustafir
- * Hvert gildi er FYLKI — sjá athugasemdina um einkvæmni efst.
- ************************************************************/
-function pimBuildWebIndex_() {
-  const PAGE = 200;
-  const query =
-    'query getProductsV2($pagination: PaginationInput) {' +
-    '  getProductsV2(pagination: $pagination) {' +
-    '    totalCount pageInfo { hasNextPage }' +
-    '    edges { node { sku name slug' +
-    '      attributes { brand_sku BrandName } } }' +
-    '  }' +
-    '}';
-
-  const bySku = {}, byBrand = {}, byLoose = {};
-  let offset = 0, total = null, count = 0, withBrand = 0;
-
-  const add = function (map, key, node) {
-    if (!key) return;
-    if (!map[key]) map[key] = [];
-    map[key].push(node);
-  };
-
-  while (true) {
-    const res = UrlFetchApp.fetch(STORKAUP_GQL_URL_, {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { Accept: '*/*', Origin: 'https://www.storkaup.is' },
-      muteHttpExceptions: true,
-      payload: JSON.stringify({
-        query: query,
-        variables: { pagination: { first: PAGE, offset: offset } },
-        operationName: 'getProductsV2'
-      })
-    });
-
-    if (res.getResponseCode() !== 200) {
-      throw new Error('getProductsV2 ' + res.getResponseCode() + ': ' +
-                      res.getContentText().slice(0, 300));
-    }
-    const data = JSON.parse(res.getContentText());
-    if (data.errors) {
-      throw new Error('getProductsV2 errors: ' + JSON.stringify(data.errors).slice(0, 300));
-    }
-
-    const conn = (data.data && data.data.getProductsV2) || {};
-    total = conn.totalCount;
-    const edges = conn.edges || [];
-
-    edges.forEach(function (e) {
-      const node = (e && e.node) || null;
-      if (!node || !node.sku) return;
-      const attrs = node.attributes || {};
-      const brandSku = normBrandSku_(attrs.brand_sku);
-      const rec = {
-        sku: node.sku,
-        name: node.name || '',
-        slug: node.slug || '',
-        brand: attrs.BrandName || '',
-        brandSku: brandSku
-      };
-      count++;
-      add(bySku, normStorkaupSku_(node.sku), rec);
-      add(byLoose, looseKey_(node.sku), rec);
-      if (brandSku) {
-        withBrand++;
-        add(byBrand, normLookupKey_(brandSku), rec);
-        add(byLoose, looseKey_(brandSku), rec);
-      }
-    });
-
-    offset += PAGE;
-    if (!(conn.pageInfo && conn.pageInfo.hasNextPage)) break;
-    if (offset > 50000) throw new Error('getProductsV2 pagination guard (>50000).');
-  }
-
-  Logger.log('🌐 Uppfletting: ' + count + ' vörur af ' + total + ', ' +
-             withBrand + ' með birgjanúmer.');
-  return { bySku: bySku, byBrand: byBrand, byLoose: byLoose };
-}
-
-
-// ---------------------------------------------------------------------------
-// Normalíserun
-// ---------------------------------------------------------------------------
-
-/**
- * brand_sku er `[String]` eða `null` — ALDREI strengur. Mælt á öllum
- * 4.473 vörum 2026-09-18: 4.408 fylki af lengd 1, 65 null.
- * Fyrsta gildið er tekið; komi lengra fylki einhvern tíma er restin
- * hunsuð vísvitandi frekar en að þau renni saman í "7276,7277".
- */
-function normBrandSku_(v) {
-  if (v === null || v === undefined) return '';
-  const first = Array.isArray(v) ? (v.length ? v[0] : '') : v;
-  return String(first === null || first === undefined ? '' : first).trim();
-}
-
-/**
- * Almennur samanburðarlykill: hástafir, bil felld saman, forleiðandi
- * núll af hreinum tölum. "007276" og "7276" eru sama númerið; "AC 1/2"
- * og "AC  1/2" líka.
- */
-function normLookupKey_(v) {
-  const s = String(v === null || v === undefined ? '' : v)
-    .trim().replace(/\s+/g, ' ').toUpperCase();
-  if (!s) return '';
-  return /^\d+$/.test(s) ? String(parseInt(s, 10)) : s;
-}
-
-/**
- * Stórkaups-SKU á fjóra rithætti í kerfunum:
- *   STO_114112        STO_117268_STK        STO_9002572_KASSI      114112
- * Sölueiningarviðskeytið er ekki hluti af auðkenninu — sama vara, önnur
- * pökkun — svo það er skorið af. Án þess skilar `117268` engu þótt
- * `STO_117268_STK` sé til, sem er nákvæmlega uppflettingin sem fólk gerir.
- *
- * ATH: þetta er VÍSVITANDI ekki normSku_ úr buildPimWorksheet.js. Það fall
- * sker ekki viðskeytið (STO_117268_STK → 117268_STK) af því að þar er
- * matchað á Plytix/Cludo þar sem viðskeytið er ekki til. Hér er matchað á
- * GraphQL, þar sem 3.608 af 4.473 SKU-um BERA viðskeyti. Að sameina föllin
- * myndi brjóta annað hvort.
- */
-function normStorkaupSku_(v) {
-  let s = String(v === null || v === undefined ? '' : v).trim().toUpperCase();
-  if (!s) return '';
-  s = s.replace(/^STO[_\-\s]+/, '');
-  s = s.replace(/[_\-](STK|KASSI|BRETTI|PK|PAKKI)$/, '');
-  return normLookupKey_(s);
-}
-
-/** Aðeins bókstafir og tölustafir. Notað eingöngu í lausa treffið. */
-function looseKey_(v) {
-  return normLookupKey_(v).replace(/[^A-Z0-9ÁÉÍÓÚÝÐÞÆÖ]/g, '');
 }
 
 
@@ -354,4 +196,4 @@ function pimWriteLookupSheet_(sh, rows) {
   ).setFontFamily('Arial').setFontStyle('italic').setFontColor('#5c5c63');
 }
 
-// Utgafumerki: 2026-09-18, fyrsta utgafa.
+// Utgafumerki: 2026-09-18, gogn faerd i core/web_catalog.js.
