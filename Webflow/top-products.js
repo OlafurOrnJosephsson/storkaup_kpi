@@ -543,6 +543,16 @@
       if (e.key === "Escape") closeProductDrawer();
     });
 
+    // Byrjunarstadan var ALDREI sett hedan. openProductDrawer setur
+    // display="" (=fer aftur i thad sem stilsnidid segir) og
+    // closeProductDrawer setur "none", svo thangad til einhver smellti a
+    // X var syniileikinn hvad sem Webflow-elementid sjalft var stillt a.
+    // Thad er synilegt i honnudinum — thad THARF ad vera, annars myndi
+    // display="" opna ekki neitt — og thvi stod tomur modal opinn a
+    // hverri innhledslu med "Sku Voruheiti" og audar toflur.
+    // Ad eiga stodu i tveimur kerfum er villan; JS-id a hana nuna.
+    closeProductDrawer();
+
     panel.addEventListener("click", function (e) {
       var sortEl = e.target.closest("[data-sort]");
       if (!sortEl) return;
