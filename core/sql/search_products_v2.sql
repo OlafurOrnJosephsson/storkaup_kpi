@@ -130,6 +130,30 @@ as $$
     where q.ident is not null
       and (a.brand_ident = q.ident or a.sku = q.ident)
   ),
+  -- BC-rithættirnir á þeim vörum sem auðkennið hitti, reiknaðir á LITLU
+  -- hliðinni. Þetta er ekki snyrtimennska heldur 8 sekúndna þakið:
+  --
+  -- Fyrsta útgáfa skrifaði `regexp_replace(l.sku, …) in (select …)` beint
+  -- í OR-keðjuna. Af því að ILIKE-greinarnar á undan fella langflestar
+  -- raðir keyrði sá regex á NÆR HVERRI RÖÐ í bc_lines_raw, og fallið féll
+  -- á statement_timeout hjá anon þótt það gengi í SQL-ritlinum, sem hefur
+  -- ekkert slíkt þak. Einkennið var HTTP 500 í vafranum og ekkert að sjá
+  -- í ritlinum — versta samsetningin.
+  --
+  -- Hér eru rithættirnir taldir upp í staðinn: berja talan, hún með
+  -- þekktum sölueiningarviðskeytum, og það sem vefurinn segir sjálfur
+  -- (web_sku án STO_-forskeytis er nákvæmlega BC-rithátturinn). Listinn
+  -- telur í mesta lagi nokkra tugi, svo samanburðurinn verður jafnaðar-
+  -- merki í stað regex á hverja röð.
+  cat_bc as (
+    select h.sku || s.suffix as bc_sku
+    from cat_hits h
+    cross join (values (''), ('_STK'), ('_KASSI'), ('_BRETTI'), ('_PK'), ('_PAKKI')) as s(suffix)
+    union
+    select regexp_replace(c.web_sku, '^STO[_\-\s]+', '')
+    from raw.web_catalog c
+    join cat_hits h2 on h2.sku = c.sku
+  ),
   sales as (
     select regexp_replace(l.sku, '_[A-Za-z0-9]+$', '') as sku,
            max(l.product_name)                          as product_name,
@@ -142,7 +166,7 @@ as $$
       and (
         l.sku          ilike q.pat or
         l.product_name ilike q.pat or
-        regexp_replace(l.sku, '_[A-Za-z0-9]+$', '') in (select ch.sku from cat_hits ch)
+        l.sku in (select cb.bc_sku from cat_bc cb)
       )
       and coalesce(i.booking_date, i.order_date) >= current_date - p_days_back
     group by 1
