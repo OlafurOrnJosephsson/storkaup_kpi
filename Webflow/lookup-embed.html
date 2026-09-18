@@ -28,6 +28,20 @@
     </p>
   </div>
 
+  <!--
+    RÆSIVÍSIR. Sýnilegur í markupinu og falinn af scriptinu við ræsingu.
+    Sé hann sýnilegur keyrði scriptið ALDREI — og það er nákvæmlega það
+    sem gerist á Designer-canvas, þar sem Webflow sprautar embed-innihaldi
+    inn með innerHTML: <style> virkar, <script> ekki. Án hans er einkennið
+    „ekkert gerist, engin villa", sem lítur út eins og bilun í kóðanum og
+    er það ekki. Prófaðu á BIRTU síðunni.
+  -->
+  <p class="sk-lookup__boot" id="sk-lookup-boot">
+    ⚠️ Búnaðurinn hefur ekki ræst. Scriptið í þessum Embed keyrir ekki á
+    Designer-canvas — opnaðu birtu síðuna. Haldist þetta þar vantar
+    líklega <code>STORKAUP_CONFIG</code> í head-kóða síðunnar.
+  </p>
+
   <textarea class="sk-lookup__input" id="sk-lookup-input" rows="4"
             placeholder="7265, 7266, 7276&#10;STO_114112&#10;117268"></textarea>
 
@@ -86,6 +100,12 @@
   .sk-lookup__btn[disabled] { opacity: .45; cursor: default; }
   .sk-lookup__btn--ghost { background: transparent; color: var(--sk-brand); border: 1px solid var(--sk-border); }
   .sk-lookup__status { font-size: 13px; color: var(--sk-muted); }
+  .sk-lookup__boot {
+    margin: 0 0 12px; padding: 10px 12px; border-radius: 6px;
+    background: var(--sk-bad-bg); border: 1px solid #f0b4ad;
+    font-size: 13px; line-height: 1.45;
+  }
+  .sk-lookup__boot code { font-family: ui-monospace, Menlo, Consolas, monospace; }
   .sk-lookup__tablewrap { overflow-x: auto; }
   .sk-lookup__table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .sk-lookup__table th {
@@ -112,6 +132,11 @@
 
   var root = document.getElementById("sk-lookup");
   if (!root) return;
+
+  // Fyrsta verk: fela raesivisinn. Kemst kodinn hingad er hann ad keyra,
+  // og tha a notandinn ekki ad sja vidvorun um ad hann geri thad ekki.
+  var bootEl = document.getElementById("sk-lookup-boot");
+  if (bootEl) bootEl.hidden = true;
 
   var cfg = window.STORKAUP_CONFIG || {};
   var URL_BASE = cfg.supabaseUrl;
