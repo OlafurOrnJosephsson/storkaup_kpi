@@ -215,10 +215,15 @@
       statusEl.textContent = "Leita... " + done + "/" + total;
     });
 
+    // Villa er EKKI treff. Fyrri útgáfa taldi hana með, svo þrjár
+    // misheppnaðar fyrirspurnir lásust sem „3 treff, 0 ófundin" — talning
+    // sem fullyrti að allt hefði gengið á meðan taflan undir var rauð.
     var misses = resultRows.filter(function (r) { return r[1] === "ekki til"; }).length;
+    var errors = resultRows.filter(function (r) { return r[1] === "villa"; }).length;
     var weak   = resultRows.filter(function (r) { return r[1] === "leit"; }).length;
-    var msg = queries.length + " fyrirspurnir → " + (resultRows.length - misses) +
-              " treff, " + misses + " ófundin.";
+    var hits   = resultRows.length - misses - errors;
+    var msg = queries.length + " fyrirspurnir → " + hits + " treff, " + misses + " ófundin.";
+    if (errors) msg += " " + errors + " VILLA — sjá töfluna.";
     if (weak) msg += " " + weak + " óviss (grá) — lestu þau yfir.";
     if (skorid) msg += " " + skorid + " sleppt yfir " + HAMARK_FYRIRSPURNA + " marki.";
     statusEl.textContent = msg;
