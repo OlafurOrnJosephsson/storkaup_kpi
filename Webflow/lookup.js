@@ -92,7 +92,28 @@
       },
       body: JSON.stringify({ p_query: query, p_days_back: DAGAR, p_limit: SVOR_A_FYRIRSPURN })
     });
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    if (!res.ok) {
+      // PostgREST sendir raunverulegu Postgres-villuna i svarbolnum
+      // ({message, details, hint, code}). Fyrri utgafa kastadi bara
+      // "HTTP 500" og henti thvi einu upplysingunum sem segja hvad for
+      // urskeidis — sem gerdi 500 ad radgatu i stad skilabods.
+      var raw = "";
+      try { raw = await res.text(); } catch (e) { raw = ""; }
+      var msg = "HTTP " + res.status;
+      try {
+        var j = JSON.parse(raw);
+        if (j && j.message) {
+          msg += " — " + j.message;
+          if (j.code) msg += " [" + j.code + "]";
+          if (j.hint) msg += " (" + j.hint + ")";
+        } else if (raw) {
+          msg += " — " + raw.slice(0, 300);
+        }
+      } catch (e) {
+        if (raw) msg += " — " + raw.slice(0, 300);
+      }
+      throw new Error(msg);
+    }
     return res.json();
   }
 
