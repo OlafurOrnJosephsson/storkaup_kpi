@@ -25,6 +25,37 @@
 -- netfang viðskiptavinar hafið upp per sölumannsnafn — hvaða viðskiptavinur
 -- það verður ræðst af skönnunarröð. Það er hlutkesti, ekki villa í einni röð.
 --
+-- ── MÆLT UPPHAFSÁSTAND, 2026-09-21 ──────────────────────────────────
+-- Seinni fyrirspurnin (netfangalistinn) skilaði NÍU röðum. `notes` segir
+-- hvaðan hver kom, og það er lærdómurinn:
+--
+--   solumaduratli      lagerkrm@hagkaup.is         CUSTOMERS | Admin
+--   solumadurbjossi    glenn@ambrosialkitchen.is   CUSTOMERS | Admin | NEWWEB
+--   solumadurolof      svenni@hertz.is             CUSTOMERS | Admin
+--   solumadurbirgir    <uuid>@example.com          NEWWEB
+--   solumadurstorkaup  <uuid>@example.com          NEWWEB
+--   solumadurvefur     <uuid>@example.com          NEWWEB
+--   storkauphaddy      <uuid>@example.com          NEWWEB
+--   storkaupolafur     <uuid>@example.com          NEWWEB
+--   storkaupsigrun     <uuid>@example.com          NEWWEB
+--
+-- Öll ÞRJÚ raunverulegu netföng viðskiptavina bera `CUSTOMERS | Admin`:
+-- BC-tengiliðurinn „Sölumaður - <nafn>" samstillist yfir í Magento sem
+-- viðskiptavinur með hlutverkið Admin, og ber netfang fyrirtækisins.
+--
+-- ATH: `Admin` ber EKKI sölumannsmerki. Það var NAFNIÐ sem kom þeim inn,
+-- ekki hlutverkið — og þess vegna lyklar vörnin í `addRef_` á nafnið.
+-- Röð sem á sér sölumann í ROLE en venjulegt mannsnafn heldur netfangi sínu.
+--
+-- Sex `@example.com` raðirnar koma allar úr NEWWEB: pantanir undir
+-- sölumannsnafni þar sem `real_email` var staðgengill. Þær gera ekkert
+-- gagn og ekkert tjón; þær hverfa með sömu lagfæringu.
+--
+-- Viðskiptavinirnir þrír eru ekki smáir: Hertz-Bílaþjónustan á 42
+-- vefpantanir síðustu 365 daga og Hagkaup-verslanirnar 80 samtals.
+--
+--   faerast_i_sjalfsafgreidslu (fyrri fyrirspurn): ____  ← fylltu út
+--
 -- ── KEYRÐU ÞETTA ÁÐUR EN `addRef_` ER LAGAÐ ─────────────────────────
 -- Lagfæringin hækkar sjálfsafgreiðsluhlutfallið á aðalmælaborðinu. Sú
 -- hækkun er leiðrétting, ekki árangur, og GOALS.md rekur þessa tölu sem
