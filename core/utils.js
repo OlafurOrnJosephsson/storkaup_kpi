@@ -2135,11 +2135,29 @@ function normalizeSalesRepRefEmail_(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-// Sölumaður Stórkaups hefur netfang á léni Stórkaups. Netfang af öðru léni
-// á sölumannsnafni er nær undantekningarlaust netfang VIÐSKIPTAVINARINS.
-// Sjá skýringuna í addRef_ og core/sql/_measure_rep_email_misclass.sql.
-function isStorkaupEmailForRef_(value) {
-  return /@storkaup\.is$/.test(String(value || '').trim().toLowerCase());
+// Netfang sem MÁ standa á sölumannsnafni.
+//
+// Tvennt sleppur í gegn og það er ekki tilviljun:
+//
+//   @storkaup.is — sölumaðurinn sjálfur.
+//
+//   <uuid>@example.com — staðgengill sem Magento býr til fyrir aðgang án
+//   raunverulegs netfangs. Hann LÍTUR ÚT eins og rusl en er burðarvirki:
+//   mælt 2026-09-21 bera sex slíkir staðgenglar SJÖ raunverulegar
+//   sölumannspantanir, og af því `samsvorun_a_nafni` er núll (vefpöntun ber
+//   fyrirtækjanafnið, ekki aðgangsnafnið) er staðgengillinn eina tengingin
+//   milli þeirrar pöntunar og sölumanns. Að fella hann niður hefði
+//   rangflokkað þær sjö sem sjálfsafgreiðslu — þveröfugt við tilganginn.
+//
+//   example.com er frátekið lén (RFC 2606) og getur aldrei verið netfang
+//   raunverulegs viðskiptavinar. Þess vegna er óhætt að hleypa því í gegn:
+//   nákvæmlega sú hætta sem vörnin er til við getur ekki komið þaðan.
+//
+// Allt annað lén á sölumannsnafni er nær undantekningarlaust netfang
+// VIÐSKIPTAVINARINS. Sjá addRef_ og core/sql/_measure_rep_email_misclass.sql.
+function isAllowedRepEmailForRef_(value) {
+  var e = String(value || '').trim().toLowerCase();
+  return /@storkaup\.is$/.test(e) || /@example\.com$/.test(e);
 }
 
 function looksLikeSalesRepLabelForRef_(value) {
@@ -2193,29 +2211,28 @@ function collectSalesRepsRefRows_() {
     // of lágt. Staðfest 2026-09-21: glenn@ambrosialkitchen.is var skráð á
     // `solumadurbjossi`.
     //
-    // ⚠️ ÞETTA ER EKKI TAPLAUST. Fyrri útgáfa þessarar athugasemdar sagði
-    // að nafnið eitt héldi flokkuninni réttri. Mælt 2026-09-21: af 10.718
-    // vefpöntunum síðustu 365 daga samsvarar NÚLL á sölumannsnafni —
-    // vefpöntun ber FYRIRTÆKJANAFNIÐ, ekki tengiliðsnafnið. Allar 412
-    // sölumannspantanirnar koma frá netfangi.
+    // NETFANGIÐ ER EINA MERKIÐ. Mælt 2026-09-21: af 10.722 vefpöntunum
+    // síðustu 365 daga samsvarar NÚLL á sölumannsnafni — vefpöntun ber
+    // FYRIRTÆKJANAFNIÐ, ekki aðgangsnafnið. Öll flokkun sölumannspantana
+    // hvílir á netfangi, svo það að fella netfang niður er aldrei taplaust.
+    // Þess vegna er `isAllowedRepEmailForRef_` þröng og rökstudd frekar en
+    // einfaldlega „bara storkaup.is".
     //
-    // Af því leiðir að umboðstengiliður sem deilir netfangi með
-    // viðskiptavininum gerir pantanir hans og sölumannsins ÓAÐGREINANLEGAR.
-    // Að halda netfanginu kallar þær allar sölumannspantanir; að fella það
-    // kallar þær allar sjálfsafgreiðslu. Hvort tveggja er ágiskun.
+    // Umboðstengiliður sem deilir netfangi með viðskiptavininum gerir
+    // pantanir hans og sölumannsins óaðgreinanlegar: báðar bera sama
+    // netfang. Aðallausnin er því í BC — hver „Sölumaður - X" tengiliður
+    // fái netfang sölumannsins — og hún LENDIR, því CUSTOMERS er lesið á
+    // undan NEWWEB hér að neðan og taflan er endurbyggð frá grunni.
     //
-    // Raunverulega lausnin er í BC: gefðu hverjum „Sölumaður - X" tengilið
-    // netfang sölumannsins á @storkaup.is. Þá aðgreinast pantanirnar, og
-    // lagfæringin lendir því CUSTOMERS er lesið á undan NEWWEB hér að neðan
-    // og taflan er endurbyggð frá grunni í hverri samstillingu.
-    //
-    // Þessi vörn er því ÖRYGGISNET, ekki aðallausnin: hún kemur í veg fyrir
-    // að netfang viðskiptavinar verði sölumannsnetfang aftur. Sé BC lagað
-    // fyrst hefur hún ekkert að gera, sem er nákvæmlega markmiðið.
+    // Það var gert 2026-09-21: þrjú netföng viðskiptavina (Hagkaup, Hertz,
+    // Ambrosial Kitchen) hurfu úr töflunni og sölumannspantanir leiðréttust
+    // úr 412 í 379. Þessi vörn hefur því EKKERT að laga í dag og á að hafa
+    // það áfram — hún er til svo 45 umboðsaðgangar á hvern sölumann geti
+    // ekki eitrað töfluna aftur við næstu skönnun.
     //
     // ATH: aðeins skoðað þegar NAFNIÐ sjálft ber merkið. Röð sem á sér
     // sölumann í ROLE en venjulegt mannsnafn heldur sínu netfangi.
-    if (emailNorm && looksLikeSalesRepLabelForRef_(nameRaw) && !isStorkaupEmailForRef_(emailNorm)) {
+    if (emailNorm && looksLikeSalesRepLabelForRef_(nameRaw) && !isAllowedRepEmailForRef_(emailNorm)) {
       rejectedEmails += 1;
       emailNorm = '';
     }

@@ -89,11 +89,51 @@
 -- 96,16% í 96,38%. Ómerkjanlegt í heild — en per viðskiptavin ræður það
 -- stöðu, og 2 pantanir Ambrosial Kitchen eru allur þeirra vefferill.
 --
--- ── KEYRÐU ÞETTA ÁÐUR EN `addRef_` ER LAGAÐ ─────────────────────────
--- Lagfæringin hækkar sjálfsafgreiðsluhlutfallið á aðalmælaborðinu. Sú
--- hækkun er leiðrétting, ekki árangur, og GOALS.md rekur þessa tölu sem
--- norðurstjörnu. Skrifaðu niðurstöðuna hér að neðan svo stökkið eigi sér
--- skýringu eftir á.
+-- ── EFTIR BC-LAGFÆRINGUNA, 2026-09-21 ───────────────────────────────
+--   vefpantanir_365d ................. 10.722
+--   taldar_solumannspantanir_nuna ....    379   (var 412)
+--   samsvorun_a_nafni ................      0
+--   faerast_i_sjalfsafgreidslu .......      7   (var 24)
+--
+-- ÞRJÚ NETFÖNG VIÐSKIPTAVINA HORFIN. Ólafur lagaði tengiliðina í BC, þeir
+-- samstilltust í Magento og `scheduledReferenceSync_v1` endurbyggði töfluna:
+--   solumaduratli   lagerkrm@hagkaup.is       → atlis@storkaup.is
+--   solumadurbjossi glenn@ambrosialkitchen.is → thorbjorn@storkaup.is
+--   solumadurolof   svenni@hertz.is           → oh@storkaup.is
+-- Raðirnar fóru úr 20 í 19: `bjossisolumadur` hvarf, svo eitt af fjórum
+-- samnefnapörum leystist af sjálfu sér. Enginn `person_key` dálkur þurfti.
+--
+-- Sölumannspantanir LÆKKUÐU, 412 → 379. Það var öfugt við spána: 45
+-- umboðsaðgangar Bjössa báru `thorbjorn@storkaup.is` þegar, gegnum
+-- `bjossisolumadur`, svo ekkert bættist við — aðeins netföng viðskiptavina
+-- hættu að telja. Þær ~33 pantanir voru rangflokkaðar allan tímann.
+--
+-- ⚠️ EN TALAN ER 7, EKKI 0 — OG ÞAÐ FELLDI SEINNI FORSENDUNA.
+-- Einu netföngin sem eftir stóðu utan @storkaup.is voru sex
+-- `<uuid>@example.com` staðgenglar, og þeir bera SJÖ raunverulegar
+-- sölumannspantanir. Þeir eru ekki hávaði heldur burðarvirki: af því
+-- `samsvorun_a_nafni` er núll er staðgengillinn eina tengingin milli
+-- þeirrar pöntunar og sölumanns.
+--
+-- Upphaflega vörnin hefði fellt þá og rangflokkað sjö sölumannspantanir
+-- sem sjálfsafgreiðslu — þveröfugt við tilganginn. Hún hleypir nú
+-- `@example.com` í gegn: lénið er frátekið (RFC 2606) og getur aldrei
+-- verið netfang raunverulegs viðskiptavinar, svo sú hætta sem vörnin er
+-- til við getur ekki komið þaðan. Fyrirspurnin hér að neðan var uppfærð
+-- til að mæla sömu reglu.
+--
+-- Hermt á lifandi töflu eftir breytinguna: NÚLL raðir missa netfang.
+-- Vörnin hefur ekkert að laga og á að hafa það áfram.
+--
+-- ── ÞETTA ER NÚNA EFTIRLIT, EKKI UNDIRBÚNINGUR ──────────────────────
+-- Keyrðu þetta aftur ef sölumannspantanir hreyfast óútskýrt. Fari
+-- `faerast_i_sjalfsafgreidslu` upp fyrir 7 hefur netfang viðskiptavinar
+-- ratað inn á sölumannsnafn á ný — sem vörnin á að hindra, svo þá er
+-- vörnin sjálf biluð eða mynstrið hefur breyst.
+--
+-- Fari `samsvorun_a_nafni` einhvern tíma UPP FYRIR NÚLL er það líka frétt:
+-- þá er farið að bera aðgangsnafnið á vefpöntunum og nafnasamsvörunin,
+-- sem hefur verið dauð allan tímann, byrjuð að vinna.
 -- ============================================================================
 
 -- ── LESTU ÞETTA FYRST: RITILLINN SÝNIR AÐEINS SÍÐUSTU SETNINGUNA ────
@@ -121,6 +161,7 @@ from raw.sales_reps_ref r
 where coalesce(r.active, true) = true
   and trim(coalesce(r.email_norm, '')) <> ''
   and r.email_norm not like '%@storkaup.is'
+  and r.email_norm not like '%@example.com'
 order by r.name_norm;
 
 
@@ -178,6 +219,11 @@ classified as (
       select 1 from reps r
       where r.rep_email_norm <> ''
         and r.rep_email_norm not like '%@storkaup.is'
+        -- <uuid>@example.com er staðgengill Magento, ekki netfang
+        -- viðskiptavinar, og hann BER raunverulegar sölumannspantanir.
+        -- Vörnin í addRef_ hleypir honum í gegn, svo mælingin verður að
+        -- gera það líka — annars mælir hún reglu sem er ekki í gildi.
+        and r.rep_email_norm not like '%@example.com'
         and r.rep_email_norm = w.customer_email_norm
     ) as by_email_bad
   from web w
