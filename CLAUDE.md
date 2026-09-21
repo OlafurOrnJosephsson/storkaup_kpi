@@ -315,13 +315,29 @@ page Embed), so each row carries its own date:
 
 | What | Value | Set |
 |---|---|---|
-| `data-storkaup-rev` — governs all bootstrap child files | `5368032` | 2026-09-21 |
-| `dashboard-bootstrap.js` script-tag src | `5368032` | 2026-09-21 |
-| `website-dashboard-bootstrap.js` script-tag src | `5368032` | 2026-09-21 |
+| `data-storkaup-rev` — governs all bootstrap child files | `2ecd444` | 2026-09-21 |
+| `dashboard-bootstrap.js` script-tag src | `2ecd444` | 2026-09-21 (pin only — see below) |
+| `website-dashboard-bootstrap.js` script-tag src | `2ecd444` | 2026-09-21 (pin only — see below) |
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
 | `activation.js`, **in page custom code** (independent) | `84372c6` | 2026-06-15, `/kpi/activation` only — read off the live page 2026-09-21 |
 | `portal.js` script-tag src, **inside the Embed** (independent) | `f7325c0` | 2026-09-21, `/kpi/voruportal` only |
-| `forgangslisti.js` script-tag src, **inside the Embed** (independent) | `2ecd444` | **ekki komið í loftið** — bíður innlímingar á `/kpi/forgangslisti` |
+| `forgangslisti.js` script-tag src, **inside the Embed** (independent) | `2ecd444` | 2026-09-21, **á `/kpi/forgangslisti-nyr` á meðan** — sjá neðan |
+
+`2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —
+gained `?customer=` deep-link support, so the new forgangslisti's row link has
+somewhere to land. **The two bootstrap files themselves did not change**
+(`git diff --stat 5368032 2ecd444 -- Webflow/*-bootstrap.js` is empty); their
+`src` pins were moved anyway on this deploy, which cost one cache-bust fetch
+and nothing else. Recorded as "pin only" so the question this table is supposed
+to answer — when did the frontend last actually change — stays answerable.
+
+**`/kpi/forgangslisti-nyr` is a staging slug, not the destination.** The new
+module is published there while it is being tried out; `/kpi/forgangslisti`
+still runs the old `data-module="customer-profiles"` list. Two pages therefore
+write to the same `customer_priority_flags_raw` rows right now — harmless, but
+finish the swap: move the Embed onto `/kpi/forgangslisti`, delete the old list
+markup **in the same publish**, and delete this staging page. Then this row's
+page reference changes and this paragraph goes away.
 
 ⚠️ **This table describes the site; it does not govern it.** On 2026-09-21 it
 still read `4131408` while the site was already serving `5368032`. A warning
