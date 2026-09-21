@@ -74,11 +74,14 @@ function syncProductRelationsToSupabase_v1() {
   // villa sem segir ekkert um raunverulegu orsokina.
   const seen = {};
   const payload = [];
+  const kept = { live: 0, suggested: 0 };
+  let afrit = 0;
   live.rows.concat(sugg.rows).forEach(function (r) {
     const k = r.kind + '|' + r.sku + '|' + r.related_sku;
-    if (seen[k]) return;
+    if (seen[k]) { afrit++; return; }
     seen[k] = true;
     r.synced_at = startedIso;
+    kept[r.kind]++;
     payload.push(r);
   });
 
@@ -132,9 +135,15 @@ function syncProductRelationsToSupabase_v1() {
                'Urelt tengsl eru odyrari villa en tom tafla.');
   }
 
+  // TALNINGIN ER EFTIR AFRITAHREINSUN. Fyrsta utgafa taldi live/suggested
+  // FYRIR hana og skiladi live:12349 + suggested:5874 = 18.223 vid hlidina
+  // a uploaded:17.301. Sa sem leggur saman faer 922 tyndar radir sem voru
+  // aldrei til. Samantekt sem gengur ekki upp sendir folk i leit ad
+  // villu sem er ekki thar.
   const out = {
-    live: live.rows.length,
-    suggested: sugg.rows.length,
+    live: kept.live,
+    suggested: kept.suggested,
+    afrit: afrit,
     uploaded: uploaded,
     deleted: deleted,
     skipped: {
