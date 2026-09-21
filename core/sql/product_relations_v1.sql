@@ -20,11 +20,18 @@
 -- með forleiðandi núllum. Sú regla kostaði 2.036 BC-línur fyrr sama dag
 -- þegar hún var brotin í web_catalog — sjá normStorkaupSku_.
 --
--- ── FLIPINN NÆR YFIR FLEIRA EN VEFINN ───────────────────────────────
--- TENGSL_HRA ber 8.088 einstök SKU en vefurinn 4.474. Munurinn er
--- archived vörur úr Plytix (útdrátturinn ber 7.986 alls). Þær eru
--- geymdar óáreittar: vara sem er ekki á vefnum verður aldrei flett upp,
--- og að sía þær burt hér myndi henda sögu að óþörfu.
+-- ── FLIPINN NÆR YFIR FLEIRA EN VEFINN, EN TENGSLIN GERA ÞAÐ EKKI ────
+-- TENGSL_HRA ber 8.088 einstök SKU en vefurinn 4.474, og það leit út
+-- fyrir að vera archived vörur úr Plytix. Fyrsta keyrslan afsannaði það:
+-- af öllum SKU sem BERA tengsl eru aðeins **2** ekki á vefnum.
+--
+-- Gapið eru því raðir með TÓMAN tengsladálk — vörur sem voru spurðar og
+-- höfðu engin tengsl. Hvað þær eru (archived, nýjar, ótengdar) er
+-- ómælt og stendur hér ekki sem fullyrðing.
+--
+-- Mælt við fyrstu samstillingu 2026-09-21:
+--   9.941 live tengsl · 5.874 tillögur · 15.793 raðir alls
+--   0 raðir normalíseruðust í tómt · 0 tengsl á sjálfa sig · 2 ekki á vef
 --
 -- ── FERSKLEIKI ER PER RÖÐ ───────────────────────────────────────────
 -- `fetched_at` kemur úr Sótt-dálki TENGSL_HRA. Tengslasóknin er
