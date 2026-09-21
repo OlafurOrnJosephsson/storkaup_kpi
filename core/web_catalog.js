@@ -46,7 +46,7 @@ const WEB_CATALOG_PAGE_  = 200;
 /************************************************************
  * 🌐 fetchWebCatalogRows_ — allur birti vörulistinn
  * Skilar { rows, totalCount, complete }.
- *   rows       [{ webSku, sku, brandSku, name, brand, slug }]
+ *   rows       [{ webSku, sku, brandSku, name, brand, slug, related[] }]
  *   totalCount talan sem vefurinn gaf upp, til að meta heilleika
  *   complete   satt ef pagineringin kláraðist eðlilega
  * getProductsV2 er OPINBERT — enginn Bearer (sbr. storkaup_pricing.js).
@@ -56,7 +56,7 @@ function fetchWebCatalogRows_() {
     'query getProductsV2($pagination: PaginationInput) {' +
     '  getProductsV2(pagination: $pagination) {' +
     '    totalCount pageInfo { hasNextPage }' +
-    '    edges { node { sku name slug' +
+    '    edges { node { sku name slug relatedProductSkus' +
     '      attributes { brand_sku BrandName } } }' +
     '  }' +
     '}';
@@ -95,13 +95,25 @@ function fetchWebCatalogRows_() {
       const node = (e && e.node) || null;
       if (!node || !node.sku) return;
       const attrs = node.attributes || {};
+      // relatedProductSkus kemur a STO_-formi, en EKKI endilega i sama
+      // rithaetti og varan sjalf: STO_9003663_STK getur visad a
+      // STO_136437 thott sú vara heiti STO_136437_STK i listanum. Bædi
+      // normaliserast i BC-formid, svo tengingin heldur — en ad bera
+      // gildin saman OBREYTT myndi missa af theim.
+      const related = [];
+      (node.relatedProductSkus || []).forEach(function (rs) {
+        const n = normStorkaupSku_(rs);
+        if (n) related.push(n);
+      });
+
       rows.push({
         webSku:   String(node.sku),
         sku:      normStorkaupSku_(node.sku),
         brandSku: normBrandSku_(attrs.brand_sku),
         name:     node.name || '',
         brand:    attrs.BrandName || '',
-        slug:     node.slug || ''
+        slug:     node.slug || '',
+        related:  related
       });
     });
 

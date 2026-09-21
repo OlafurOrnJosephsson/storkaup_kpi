@@ -1,21 +1,37 @@
 /************************************************************
- * 🔗 SAMSTILLING TENGSLA — flipar → raw.product_relations
+ * 🔗 SAMSTILLING TENGSLA — vefur + flipi → raw.product_relations
  *
- * Les tvo flipa í PIM-skjalinu og skrifar þá í eina Supabase-töflu svo
- * vöruportalinn komist í þá:
- *   TENGSL_HRA       tengslin sem ERU á storkaup.is   → kind='live'
- *   TENGSL_TILLOGUR  tillögur úr körfugreiningu       → kind='suggested'
+ * Tvær uppsprettur, ein tafla:
+ *   getProductsV2.relatedProductSkus  tengslin sem ERU á vefnum → 'live'
+ *   TENGSL_TILLOGUR (flipi)           tillögur úr körfugreiningu → 'suggested'
  *
  * Krefst core/sql/product_relations_v1.sql í Supabase fyrst.
- * Keyrt í höndunum: syncProductRelationsToSupabase_v1().
+ * Keyrt úr scheduledCludoSync_v1 (12h) og má keyra í höndunum.
  *
- * ── ÞRÍR RITHÆTTIR, HVER NORMALÍSERAÐUR FYRIR SIG ───────────────────
- * Mælt á raunverulegum flipum 2026-09-21:
- *   TENGSL_HRA      A  STO_9003174_KASSI
- *                   B  STO_A,STO_B,STO_C      KOMMUAÐSKILINN LISTI
- *                   C  Sótt (dagsetning)
- *   TENGSL_TILLOGUR A  9004596                 ber tala
- *                   D  104924 EÐA 9001525_KASSI  BLANDAÐ
+ * ── LIVE-TENGSLIN KOMA EKKI LENGUR ÚR FLIPA ─────────────────────────
+ * Fyrsta útgáfa las TENGSL_HRA, sem `pimRelatedFetch_v1` fyllir með því
+ * að spyrja getSingleProductV2 um hverja vöru fyrir sig — margra tíma
+ * keyrsla í skömmtum. Mælt 2026-09-21: `relatedProductSkus` fæst beint á
+ * LISTAfyrirspurninni sem við keyrum hvort eð er, og hún er bæði ferskari
+ * og HEILLI:
+ *
+ *   listafyrirspurn : 12.490 tengslapör, 2.068 vörur
+ *   TENGSL_HRA      :  9.941 tengslapör  (frá 16.9., náði aldrei yfir allt)
+ *
+ * 2.549 tengsl vantaði því í flipann. Live-hliðin kostar nú engar
+ * aukabeiðnir og endurnýjast sjálfkrafa á 12 tíma fresti.
+ *
+ * TENGSL_HRA er EKKI lagður niður: `pimRelatedSuggest_v1` les hann til að
+ * vita hvað er þegar tengt, svo tillöguvélin dettur út ef hann tæmist.
+ * Hann er bara ekki lengur heimild þessarar samstillingar.
+ *
+ * ── RITHÆTTIRNIR ERU ÓLÍKIR EFTIR UPPSPRETTU ────────────────────────
+ * Mælt 2026-09-21:
+ *   relatedProductSkus  STO_113282   — og EKKI endilega sami rithátturinn
+ *                       og varan sjálf ber: STO_9003663_STK vísar á
+ *                       STO_136437 þótt sú vara heiti STO_136437_STK.
+ *   TENGSL_TILLOGUR  A  9004596                   ber tala
+ *                    D  104924 EÐA 9001525_KASSI  BLANDAÐ
  *
  * Allt fer gegnum normStorkaupSku_, sem skilar BC-forminu stafréttu með
  * forleiðandi núllum. Það er TENGILYKILL. Að nota fyrirspurnarlykil hér
@@ -25,19 +41,18 @@
  * ── SJÁLFSSKOÐUN Í STAÐ TRAUSTS ─────────────────────────────────────
  * Fallið telur og skilar: raðir sem normalíseruðust í tómt, tengsl á
  * sjálfa sig, og hve mörg SKU eru ekki í vefvörulistanum. Ekkert af því
- * stöðvar keyrsluna — flipinn nær yfir archived vörur og á að gera það —
- * en tölur sem hlaupa til milli keyrslna eru merki um að eitthvað hafi
- * breyst í flipunum.
+ * stöðvar keyrsluna — tillöguflipinn nær yfir vörur sem eru ekki í
+ * birtingu og á að gera það — en tölur sem hlaupa til milli keyrslna eru
+ * merki um að eitthvað hafi breyst.
  *
  * ── EYÐING ER VARIN, EINS OG Í WEB_CATALOG ──────────────────────────
  * Raðir sem keyrslan snerti ekki eru fjarlægðar, svo tengsl sem hafa
- * verið slitin á storkaup.is hverfi líka hér. En EKKI nema báðir flipar
- * hafi skilað einhverju: tómur flipi þýðir nær alltaf að einhver var að
- * endurbyggja hann, ekki að öll tengsl hafi verið slitin.
+ * verið slitin á storkaup.is hverfi líka hér. En EKKI nema BÁÐAR
+ * uppsprettur hafi skilað einhverju: tómt svar þýðir nær alltaf bilun
+ * eða endurbyggingu, ekki að öll tengsl hafi verið slitin.
  ************************************************************/
 
 const REL_TABLE_      = 'product_relations';
-const REL_SHEET_LIVE_ = 'TENGSL_HRA';
 const REL_SHEET_SUGG_ = 'TENGSL_TILLOGUR';
 
 
@@ -46,12 +61,11 @@ function syncProductRelationsToSupabase_v1() {
   const cfg = loadConfig_();
   const ss = SpreadsheetApp.openById(cfg.SHEETS.PIM.ID);
 
-  const live = readLiveRelations_(ss);
+  const live = buildLiveRelations_();
   const sugg = readSuggestedRelations_(ss);
 
   if (!live.rows.length && !sugg.rows.length) {
-    throw new Error('Badir tengslaflipar tomir — engu breytt. ' +
-                    'Keyrdu pimRelatedFetch_v1 / pimRelatedSuggest_v1 fyrst.');
+    throw new Error('Hvorki vefurinn ne TENGSL_TILLOGUR skiladu tengslum — engu breytt.');
   }
 
   // Afritahreinsun a frumlyklinum (sku, related_sku, kind). Upsert med
@@ -113,7 +127,7 @@ function syncProductRelationsToSupabase_v1() {
   if (live.rows.length && sugg.rows.length) {
     deleted = deleteStaleRelations_(conf, startedIso);
   } else {
-    Logger.log('[REL][VARUD] Slepp eydingu: ' + (live.rows.length ? '' : 'TENGSL_HRA tomur. ') +
+    Logger.log('[REL][VARUD] Slepp eydingu: ' + (live.rows.length ? '' : 'vefurinn skiladi engum tengslum. ') +
                (sugg.rows.length ? '' : 'TENGSL_TILLOGUR tomur. ') +
                'Urelt tengsl eru odyrari villa en tom tafla.');
   }
@@ -135,37 +149,34 @@ function syncProductRelationsToSupabase_v1() {
 
 
 /**
- * TENGSL_HRA: SKU | Tengd SKU (kommuaðskilið) | Sótt
- * Ein röð í flipanum verður N raðir í töflunni, ein á hvert tengsl.
+ * Live-tengslin beint af vefnum. Engar aukabeiðnir: sami listi og
+ * web_catalog notar, með relatedProductSkus í sömu ferð.
+ *
+ * `fetched_at` er DAGURINN Í DAG, ekki dagsetning úr flipa. Það er satt
+ * hér þar sem það var ágiskun áður: gildið kemur úr fyrirspurn sem var
+ * að keyra, ekki úr skömmtum sem dreifðust yfir daga.
  */
-function readLiveRelations_(ss) {
-  const sh = ss.getSheetByName(REL_SHEET_LIVE_);
+function buildLiveRelations_() {
   const skipped = { empty: 0, self: 0 };
-  if (!sh || sh.getLastRow() < 2) return { rows: [], skipped: skipped };
-
-  const vals = sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues();
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const fetched = fetchWebCatalogRows_();
   const rows = [];
 
-  vals.forEach(function (v) {
-    const sku = normStorkaupSku_(v[0]);
-    if (!sku) { if (String(v[0] || '').trim()) skipped.empty++; return; }
-
-    const raw = String(v[1] === null || v[1] === undefined ? '' : v[1]).trim();
-    if (!raw) return;                       // vara an tengsla — eðlilegt
-
-    const fetched = relDateOnly_(v[2]);
-    raw.split(',').forEach(function (part) {
-      const rel = normStorkaupSku_(part);
-      if (!rel) { if (part.trim()) skipped.empty++; return; }
-      if (rel === sku) { skipped.self++; return; }
+  fetched.rows.forEach(function (r) {
+    if (!r.sku) return;
+    (r.related || []).forEach(function (rel) {
+      if (!rel) { skipped.empty++; return; }
+      if (rel === r.sku) { skipped.self++; return; }
       rows.push({
-        sku: sku, related_sku: rel, kind: 'live',
-        score: null, reason: null, fetched_at: fetched
+        sku: r.sku, related_sku: rel, kind: 'live',
+        score: null, reason: null, fetched_at: today
       });
     });
   });
 
-  Logger.log('[REL][INFO] ' + REL_SHEET_LIVE_ + ': ' + rows.length + ' tengsl.');
+  Logger.log('[REL][INFO] Vefurinn: ' + rows.length + ' live tengsl a ' +
+             fetched.rows.filter(function (r) { return (r.related || []).length; }).length +
+             ' vorum.');
   return { rows: rows, skipped: skipped };
 }
 
@@ -224,17 +235,6 @@ function countNotOnWeb_(payload) {
     if (!idx.bySku[normLookupKey_(r.sku)]) missing++;
   });
   return missing;
-}
-
-
-/** Dagsetning án tíma, eða null. Sheets skilar Date fyrir dagsetningarreiti. */
-function relDateOnly_(v) {
-  if (!v) return null;
-  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
-    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  }
-  const s = String(v).trim();
-  return s ? s : null;
 }
 
 

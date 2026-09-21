@@ -3877,7 +3877,23 @@ function scheduledCludoSync_v1() {
 
     result.finishedAt = new Date().toISOString();
 
-    var cludoStatus = webCatalogErr ? 'partial' : 'success';
+    // Tengslin (raw.product_relations). Live-hlidin kemur ur SOMU
+    // GraphQL-ferd og web_catalog, svo thetta kostar enga aukabeidni a
+    // storkaup.is — adeins upsertid. Sama try/catch og sama 'partial'
+    // medferd: aukaskref ma ekki fella Cludo-keyrsluna, en ma heldur ekki
+    // hverfa thegjandi.
+    var relationsErr = null;
+    if (typeof syncProductRelationsToSupabase_v1 === 'function') {
+      try {
+        result.productRelationsSync = syncProductRelationsToSupabase_v1();
+      } catch (relErr) {
+        relationsErr = relErr;
+        result.productRelationsSync = { error: String(relErr && relErr.message || relErr) };
+        Logger.log('[CLUDOSYNC][WARN] syncProductRelationsToSupabase_v1 failed: ' + relErr);
+      }
+    }
+
+    var cludoStatus = (webCatalogErr || relationsErr) ? 'partial' : 'success';
 
     if (runId) {
       try {
@@ -3886,7 +3902,9 @@ function scheduledCludoSync_v1() {
           cludoStatus,
           toNum_(result.productsBackfill && result.productsBackfill.uploaded),
           result,
-          webCatalogErr ? ('web_catalog sync failed: ' + webCatalogErr.message) : null
+          [webCatalogErr ? ('web_catalog sync failed: ' + webCatalogErr.message) : null,
+           relationsErr ? ('product_relations sync failed: ' + relationsErr.message) : null
+          ].filter(Boolean).join(' | ') || null
         );
       } catch (logErr2) {
         Logger.log('[CLUDOSYNC][WARN] Could not finish ingestion run log (success): ' + logErr2);
@@ -3898,6 +3916,13 @@ function scheduledCludoSync_v1() {
         notifyTriggerFailure_('scheduledCludoSync_v1/web_catalog', webCatalogErr, result);
       } catch (alertErr) {
         Logger.log('[CLUDOSYNC][WARN] web_catalog alert failed: ' + alertErr);
+      }
+    }
+    if (relationsErr) {
+      try {
+        notifyTriggerFailure_('scheduledCludoSync_v1/product_relations', relationsErr, result);
+      } catch (alertErr) {
+        Logger.log('[CLUDOSYNC][WARN] product_relations alert failed: ' + alertErr);
       }
     }
 
