@@ -2135,6 +2135,13 @@ function normalizeSalesRepRefEmail_(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+// Sölumaður Stórkaups hefur netfang á léni Stórkaups. Netfang af öðru léni
+// á sölumannsnafni er nær undantekningarlaust netfang VIÐSKIPTAVINARINS.
+// Sjá skýringuna í addRef_ og core/sql/_measure_rep_email_misclass.sql.
+function isStorkaupEmailForRef_(value) {
+  return /@storkaup\.is$/.test(String(value || '').trim().toLowerCase());
+}
+
 function looksLikeSalesRepLabelForRef_(value) {
   var norm = normalizeSalesRepRefName_(value || '');
   if (!norm) return false;
@@ -2150,6 +2157,7 @@ function collectSalesRepsRefRows_() {
   var byName = {};
   var byEmail = {};
   var dropped = 0;
+  var rejectedEmails = 0;
 
   function mergeNotes_(target, sourceTag, noteRaw) {
     var parts = [];
@@ -2172,6 +2180,31 @@ function collectSalesRepsRefRows_() {
   function addRef_(nameRaw, emailRaw, sourceTag, noteRaw) {
     var nameNorm = normalizeSalesRepRefName_(nameRaw || '');
     var emailNorm = normalizeSalesRepRefEmail_(emailRaw || '');
+
+    // Í BC er til mynstur: tengiliður UNDIR viðskiptavini sem heitir
+    // „Sölumaður - <nafn>" og hefur eigin vefverslunarinnskráningu, svo
+    // sölumaður geti pantað fyrir hans hönd. Sá tengiliður erfir NETFANG
+    // VIÐSKIPTAVINARINS, og hér að neðan er nafnið parað við það netfang.
+    //
+    // Afleiðingin var að netfang viðskiptavinar varð sölumannsnetfang, og
+    // `is_rep_order` (customer_priority_flags.sql, dashboard_compat.sql)
+    // samsvarar á netfangi. Pantanir sem viðskiptavinurinn lagði SJÁLFUR
+    // inn töldust því sölumannspantanir og sjálfsafgreiðsluhlutfallið var
+    // of lágt. Staðfest 2026-09-21: glenn@ambrosialkitchen.is var skráð á
+    // `solumadurbjossi`.
+    //
+    // Netfangið vann enga vinnu: nafnið „Sölumaður - Bjössi" normaliserast
+    // í `solumadurbjossi` bæði hér og í SQL-inu, svo pantanir gegnum
+    // umboðsaðganginn flokkast rétt á nafninu einu. Að fella netfangið
+    // niður tapar engu — báðir samsvörunarstaðirnir sía `<> ''` fyrst.
+    //
+    // ATH: aðeins skoðað þegar NAFNIÐ sjálft ber merkið. Röð sem á sér
+    // sölumann í ROLE en venjulegt mannsnafn heldur sínu netfangi.
+    if (emailNorm && looksLikeSalesRepLabelForRef_(nameRaw) && !isStorkaupEmailForRef_(emailNorm)) {
+      rejectedEmails += 1;
+      emailNorm = '';
+    }
+
     if (!nameNorm && !emailNorm) return;
 
     var rec = null;
@@ -2229,7 +2262,12 @@ function collectSalesRepsRefRows_() {
     out.push(rec);
   });
 
-  Logger.log('[SALES_REPS_REF][INFO] Candidates=' + out.length + ' dropped_conflicts=' + dropped);
+  // rejected_customer_emails er mælikvarði á hve margir umboðstengiliðir eru
+  // til. Fari hann í núll hefur mynstrið horfið úr BC; hækki hann snögglega
+  // er einhver byrjaður að búa þá til í stærri stíl.
+  Logger.log('[SALES_REPS_REF][INFO] Candidates=' + out.length +
+             ' dropped_conflicts=' + dropped +
+             ' rejected_customer_emails=' + rejectedEmails);
   return out;
 }
 
