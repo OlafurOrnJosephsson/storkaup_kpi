@@ -114,14 +114,18 @@ function fetchWebCatalogRows_() {
 
 
 /************************************************************
- * 🔑 buildWebCatalogIndex_ — uppflettivísir í minni
+ * 🔑 indexWebCatalogRows_ — byggir uppflettivísi úr röðum
  *   bySku    normalíserað Stórkaups-SKU  (STO_117268_STK → 117268)
  *   byBrand  normalíserað birgjanúmer
  *   byLoose  aðeins bókstafir og tölustafir — ÞRAUTALENDING
  * Hvert gildi er FYLKI. Hvorki birgjanúmer né `sku` er einkvæmt.
+ *
+ * Tekur við röðum hvaðan sem þær koma — GraphQL eða raw.web_catalog —
+ * svo lyklareglan sé ein og söm hvor leiðin sem er farin. Væri hún
+ * afrituð gæti Supabase-leiðin lyklað öðruvísi en GraphQL-leiðin og
+ * uppflettingin svarað ólíkt eftir því hvor var í gangi.
  ************************************************************/
-function buildWebCatalogIndex_() {
-  const out = fetchWebCatalogRows_();
+function indexWebCatalogRows_(rows) {
   const bySku = {}, byBrand = {}, byLoose = {};
   let withBrand = 0;
 
@@ -131,7 +135,7 @@ function buildWebCatalogIndex_() {
     map[key].push(rec);
   };
 
-  out.rows.forEach(function (r) {
+  (rows || []).forEach(function (r) {
     const rec = {
       sku: r.webSku, name: r.name, slug: r.slug,
       brand: r.brand, brandSku: r.brandSku
@@ -145,9 +149,99 @@ function buildWebCatalogIndex_() {
     }
   });
 
-  Logger.log('[WEBCAT][INFO] Visir: ' + out.rows.length + ' vorur, ' +
-             withBrand + ' med birgjanumer.');
-  return { bySku: bySku, byBrand: byBrand, byLoose: byLoose };
+  return { bySku: bySku, byBrand: byBrand, byLoose: byLoose,
+           count: (rows || []).length, withBrand: withBrand };
+}
+
+
+/************************************************************
+ * 🔑 buildWebCatalogIndex_ — vísir beint úr GraphQL (LIFANDI)
+ * ~30 sek, 23 beiðnir. Notað þegar svarið verður að vera af vefnum
+ * sjálfum þessa stundina. Fyrir venjulega uppflettingu er
+ * loadWebCatalogIndex_ réttari — sjá þar.
+ ************************************************************/
+function buildWebCatalogIndex_() {
+  const out = fetchWebCatalogRows_();
+  const idx = indexWebCatalogRows_(out.rows);
+  idx.source = 'graphql';
+  idx.syncedAt = null;
+  Logger.log('[WEBCAT][INFO] Visir ur GraphQL: ' + idx.count + ' vorur, ' +
+             idx.withBrand + ' med birgjanumer.');
+  return idx;
+}
+
+
+/************************************************************
+ * ⚡ loadWebCatalogIndex_ — vísir úr raw.web_catalog, GraphQL til vara
+ *
+ * Sömu gögn og buildWebCatalogIndex_ en úr töflunni: fimm REST-beiðnir
+ * í stað 23 GraphQL-beiðna, og svarið kemur á sekúndubroti í stað ~30
+ * sekúndna. Taflan er endurnýjuð á 12 tíma fresti í scheduledCludoSync_v1.
+ *
+ * ── FERSKLEIKINN ER MÁLAMIÐLUN, OG HÚN Á AÐ SJÁST ───────────────────
+ * Upphaflega sótti uppflettingin beint úr GraphQL með þeim rökum að
+ * spurningin væri „er þetta á vefnum NÚNA". Þau rök stóðust á meðan
+ * taflan var ekki til. Nú er hún til, og hálf mínúta á hverja uppflettingu
+ * er of hátt verð fyrir 12 tíma nákvæmni. Þess vegna skilar fallið
+ * `syncedAt` með — kallandinn á að BIRTA hann, ekki fela hann.
+ *
+ * ── TÓM TAFLA MÁ ALDREI LESAST SEM „EKKI TIL" ───────────────────────
+ * Þetta er hættan sem fylgir því að lesa afrit. Hafi samstillingin aldrei
+ * keyrt, fallið á miðri leið eða taflan verið tæmd, þá skilar hún engum
+ * röðum — og uppfletting á tómum vísi svarar „fannst ekki" um hverja
+ * einustu vöru. Það er þögult rangt svar af verstu gerð: það lítur
+ * nákvæmlega eins út og rétt svar.
+ *
+ * Þess vegna er fallbakkinn ekki þægindi heldur varnagli. Skili taflan
+ * engu, eða falli REST-kallið, er farið í GraphQL og það SAGT í
+ * keyrsluskránni og í `source`.
+ ************************************************************/
+function loadWebCatalogIndex_() {
+  let rows = [];
+  let syncedAt = null;
+
+  try {
+    const PAGE = 1000;   // PostgREST skilar mest 1000 röðum í senn
+    let offset = 0;
+    while (true) {
+      const path = WEB_CATALOG_TABLE_ +
+        '?select=web_sku,sku,brand_sku,product_name,brand_name,slug,synced_at' +
+        '&order=web_sku&limit=' + PAGE + '&offset=' + offset;
+      const batch = supabaseRestGetJson_(path, 'raw') || [];
+      batch.forEach(function (r) {
+        rows.push({
+          webSku:   r.web_sku,
+          sku:      r.sku,
+          brandSku: r.brand_sku || '',
+          name:     r.product_name || '',
+          brand:    r.brand_name || '',
+          slug:     r.slug || ''
+        });
+        if (r.synced_at && (!syncedAt || r.synced_at > syncedAt)) syncedAt = r.synced_at;
+      });
+      if (batch.length < PAGE) break;
+      offset += PAGE;
+      if (offset > 50000) throw new Error('web_catalog pagination guard (>50000).');
+    }
+  } catch (err) {
+    Logger.log('[WEBCAT][VARUD] Les ekki raw.web_catalog (' + err +
+               ') — fer i GraphQL. Uppfletting ma ALDREI keyra a tomum visi.');
+    return buildWebCatalogIndex_();
+  }
+
+  if (!rows.length) {
+    Logger.log('[WEBCAT][VARUD] raw.web_catalog er TOM — fer i GraphQL. ' +
+               'Keyrdu syncWebCatalogToSupabase_v1; tom tafla svarar annars ' +
+               '"fannst ekki" um hverja voru.');
+    return buildWebCatalogIndex_();
+  }
+
+  const idx = indexWebCatalogRows_(rows);
+  idx.source = 'supabase';
+  idx.syncedAt = syncedAt;
+  Logger.log('[WEBCAT][INFO] Visir ur raw.web_catalog: ' + idx.count + ' vorur, ' +
+             idx.withBrand + ' med birgjanumer, samstillt ' + syncedAt + '.');
+  return idx;
 }
 
 

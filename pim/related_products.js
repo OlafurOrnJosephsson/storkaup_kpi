@@ -337,51 +337,30 @@ function pimRelBase_(sku) {
  * við sjálfstæða mælingu var innbyggð í `pimRelatedRules_v1`.
  *
  * Þess vegna les þetta fall `node.sku` beint og strippar aldrei.
+ *
+ * ── PAGINERINGIN FLUTT ÚT 2026-09-21 ────────────────────────────────
+ * Fallið hafði sína eigin lykkju yfir getProductsV2 — 23 beiðnir til að
+ * ná í einn dálk. Hún var þriðja afritið af sömu lykkju í kóðabasanum.
+ * `fetchWebCatalogRows_()` í core/web_catalog.js skilar `webSku`
+ * ÓBREYTTU úr `node.sku`, sem er nákvæmlega krafan hér að ofan, svo
+ * þetta er sama gildi eftir sömu leið — bara ekki sótt tvisvar.
+ *
+ * ATH: það verður að vera `webSku`, ekki `sku`. Sá síðarnefndi er
+ * normalíseraður (STO_104924_KASSI → 104924) og er einmitt villan sem
+ * þessi haus lýsir. Sé þessu víxlað fellur mælingin úr 1.985 vörum
+ * niður í 117 — þögult, með HTTP 200 í hverju kalli.
  ************************************************************/
 function pimRelRawSkus_() {
-  const PAGE = 200;
-  const query =
-    'query getProductsV2($pagination: PaginationInput) {' +
-    '  getProductsV2(pagination: $pagination) {' +
-    '    totalCount edges { node { sku } } } }';
-
+  const fetched = fetchWebCatalogRows_();
   const out = [];
   const seen = {};
-  let offset = 0;
-  let total = null;
 
-  while (true) {
-    const res = UrlFetchApp.fetch(PIM_REL_GQL_, {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { Accept: '*/*', Origin: 'https://www.storkaup.is' },
-      muteHttpExceptions: true,
-      payload: JSON.stringify({
-        query: query, operationName: 'getProductsV2',
-        variables: { pagination: { first: PAGE, offset: offset } }
-      })
-    });
-    if (res.getResponseCode() !== 200) {
-      throw new Error('getProductsV2 -> HTTP ' + res.getResponseCode());
-    }
-    const d = safeJsonParse_(res.getContentText()) || {};
-    if (d.errors) throw new Error('getProductsV2: ' + JSON.stringify(d.errors).slice(0, 200));
+  fetched.rows.forEach(function (r) {
+    const sku = r.webSku;
+    if (sku && !seen[sku]) { seen[sku] = true; out.push(sku); }
+  });
 
-    const conn = (d.data && d.data.getProductsV2) || {};
-    total = conn.totalCount;
-    const edges = conn.edges || [];
-    if (!edges.length) break;
-
-    edges.forEach(function (e) {
-      const sku = e && e.node && e.node.sku;
-      if (sku && !seen[sku]) { seen[sku] = true; out.push(sku); }
-    });
-
-    offset += PAGE;
-    if (offset >= total) break;
-  }
-
-  Logger.log('🔑 ' + out.length + ' hrá SKU (totalCount ' + total + ')');
+  Logger.log('🔑 ' + out.length + ' hrá SKU (totalCount ' + fetched.totalCount + ')');
   return out;
 }
 

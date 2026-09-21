@@ -84,21 +84,25 @@ function pimLookupSkus_v1() {
   });
 
   if (!queries.length) {
-    pimWriteLookupSheet_(sh, []);
+    pimWriteLookupSheet_(sh, [], null);
     const m = 'Uppfletting: engin fyrirspurn í A-kólumnu. Límdu númer í A2 og niður.';
     Logger.log('[PIM][UPPFLETTING] ' + m);
     toast_(m);
     return { queries: 0, hits: 0, misses: 0, loose: 0 };
   }
 
-  const rows = pimLookupList_v1(queries);
-  pimWriteLookupSheet_(sh, rows);
+  const idx  = loadWebCatalogIndex_();
+  const rows = pimLookupList_v1(queries, idx);
+  pimWriteLookupSheet_(sh, rows, idx);
 
   const misses = rows.filter(function (r) { return r[1] === 'Nei'; }).length;
   const loose  = rows.filter(function (r) { return r[2] === 'Laust treff'; }).length;
   let msg = 'Uppfletting: ' + queries.length + ' fyrirspurnir → ' +
             (rows.length - misses) + ' treff, ' + misses + ' ófundin.';
   if (loose) msg += ' ' + loose + ' laus treff — lestu þau yfir.';
+  if (idx.source === 'graphql') {
+    msg += ' ⚠️ Las beint af vefnum — raw.web_catalog svaraði ekki.';
+  }
   Logger.log('[PIM][UPPFLETTING] ' + msg);
   toast_(msg);
   return { queries: queries.length, hits: rows.length - misses, misses: misses, loose: loose };
@@ -109,9 +113,14 @@ function pimLookupSkus_v1() {
  * 🔁 pimLookupList_v1 — sama uppfletting án sheets
  *   pimLookupList_v1(['7276', 'STO_114112'])
  * Skilar fylki af röðum í sömu kólumnuröð og PIM_LOOKUP_COLS_.
+ *
+ * `idx` má gefa með ef kallandinn er þegar búinn að hlaða vísinum —
+ * pimLookupSkus_v1 gerir það til að geta birt `syncedAt`. Sé hann ekki
+ * gefinn er hann sóttur úr raw.web_catalog (loadWebCatalogIndex_), sem
+ * fellur sjálfkrafa í GraphQL sé taflan tóm.
  ************************************************************/
-function pimLookupList_v1(values) {
-  const idx = buildWebCatalogIndex_();
+function pimLookupList_v1(values, idx) {
+  idx = idx || loadWebCatalogIndex_();
   const out = [];
 
   (values || []).forEach(function (v) {
@@ -154,7 +163,7 @@ function pimLookupList_v1(values) {
 // ---------------------------------------------------------------------------
 // Flipinn
 // ---------------------------------------------------------------------------
-function pimWriteLookupSheet_(sh, rows) {
+function pimWriteLookupSheet_(sh, rows, idx) {
   sh.clear();
   const nCols = PIM_LOOKUP_COLS_.length;
 
@@ -184,7 +193,24 @@ function pimWriteLookupSheet_(sh, rows) {
   PIM_LOOKUP_COLS_.forEach(function (c, i) { sh.setColumnWidth(i + 1, c.w); });
   sh.setFrozenRows(1);
 
+  // FERSKLEIKINN Á AÐ SJÁST. Uppflettingin les raw.web_catalog, sem er
+  // endurnýjuð á 12 tíma fresti — ekki vefinn sjálfan þessa stundina.
+  // Sá munur skiptir máli fyrir vöru sem var sett inn í morgun, og
+  // notandinn á ekki að þurfa að lesa kóðann til að vita af honum.
+  let uppruni = '';
+  if (idx && idx.source === 'supabase') {
+    uppruni = 'Gögn úr raw.web_catalog, samstillt ' +
+              String(idx.syncedAt || '').replace('T', ' ').slice(0, 16) +
+              ' (endurnýjast á 12 klst. fresti). Vara sem fór á vefinn eftir þann tíma ' +
+              'finnst ekki fyrr en næsta samstilling hefur keyrt — ' +
+              'syncWebCatalogToSupabase_v1 keyrir hana strax. ';
+  } else if (idx && idx.source === 'graphql') {
+    uppruni = '⚠️ Lesið BEINT af vefnum: raw.web_catalog var tóm eða svaraði ekki. ' +
+              'Svarið er ferskt en tók ~30 sek. Keyrðu syncWebCatalogToSupabase_v1. ';
+  }
+
   sh.getRange(rows.length + 3, 1).setValue(
+    uppruni +
     'Límdu birgjanúmer EÐA Stórkaups-SKU í A-kólumnu (frá A2 og niður) og keyrðu ' +
     'pimLookupSkus_v1. Blandaður listi er í lagi. Taflan er endurskrifuð í heild ' +
     'við hverja keyrslu og fyrirspurnir afritahreinsaðar. — Kólumna C segir hvað ' +
