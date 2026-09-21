@@ -290,19 +290,20 @@ page Embed), so each row carries its own date:
 
 | What | Value | Set |
 |---|---|---|
-| `data-storkaup-rev` — governs all bootstrap child files | `4131408` | 2026-09-21 |
-| `dashboard-bootstrap.js` script-tag src | `4131408` | 2026-09-21 |
-| `website-dashboard-bootstrap.js` script-tag src | `4131408` | 2026-09-21 |
+| `data-storkaup-rev` — governs all bootstrap child files | `5368032` | 2026-09-21 |
+| `dashboard-bootstrap.js` script-tag src | `5368032` | 2026-09-21 |
+| `website-dashboard-bootstrap.js` script-tag src | `5368032` | 2026-09-21 |
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
 
-⚠️ **`data-storkaup-rev` is currently REGRESSED.** It must contain `2d50477`
-(the `/kpi/top-products` drawer fix) and `4131408` does not — that page opens
-with an empty modal on every load until the attribute is moved to `5368032`.
+⚠️ **This table describes the site; it does not govern it.** On 2026-09-21 it
+still read `4131408` while the site was already serving `5368032`. A warning
+written *from the table* concluded the site was behind, so the live pin was
+rolled **back** to `4131408` — and the `/kpi/top-products` drawer fix
+(`2d50477`) dropped out of production. Restored the same day.
 
-This table caused that regression. On 2026-09-21 it still read `4131408` while
-the site was serving `5368032`, and the live pin was rolled *back* to match the
-table. **The table describes the site; it does not govern it.** When the two
-disagree, check which is right before changing either:
+The lesson is not "keep the table current". It is that a stale table reads
+exactly like a current one, so when the two disagree, find out which is right
+before changing either:
 
 ```bash
 node tools/check-webflow-pins.js
