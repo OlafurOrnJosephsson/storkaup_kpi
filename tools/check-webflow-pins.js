@@ -72,6 +72,7 @@ function parseExpected(md) {
     else if (/lookup\.js/.test(line)) set('lookup', sha);
     else if (/activation\.js/.test(line)) set('activation', sha);
     else if (/forgangslisti\.js/.test(line)) set('forgangslisti', sha);
+    else if (/portal\.js/.test(line)) set('portal', sha);
   });
   return out;
 }
@@ -164,7 +165,12 @@ const EMBED_PINNED = [
   // CLAUDE.md eina heimildin sem til er, og ferskleikaprofid keyrir a
   // henni. Veikara, en ekki thogn.
   { key: 'activation',    js: 'activation.js',    embed: null },
-  { key: 'forgangslisti', js: 'forgangslisti.js', embed: 'forgangslisti-embed.html' }
+  { key: 'forgangslisti', js: 'forgangslisti.js', embed: 'forgangslisti-embed.html' },
+  // portal.js fannst i FYRSTU keyrslu eftir ad thessi listi var buinn til:
+  // pinnadur i portal-embed.html fra 2026-09-21 og nefndur NULL sinnum i
+  // CLAUDE.md. Tveir oskradir embed-pinnar fundust um leid og hardkodunin
+  // a lookup.js var tekin ut. Their voru badir tharna allan timann.
+  { key: 'portal',        js: 'portal.js',        embed: 'portal-embed.html' }
 ];
 
 function embedPin(spec, expectedFromMd) {

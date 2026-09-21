@@ -274,7 +274,7 @@ Changing it moves `dashboard.js`, `customer-profiles.js`, `order-search.js`,
 This list used to give a separate commit per file, which implied a per-file
 control that does not exist for those.
 
-**Three files sit outside it**, each pinned to its own commit in page-level
+**Four files sit outside it**, each pinned to its own commit in page-level
 code. Bumping `data-storkaup-rev` does nothing to them, and bumping them does
 nothing to the dashboards. Change one, move that one.
 
@@ -283,14 +283,21 @@ nothing to the dashboards. Change one, move that one.
 | `Webflow/lookup.js` | `<script src>` inside the `lookup-embed.html` Embed | `/kpi/voruuppfletting` |
 | `Webflow/activation.js` | page custom code — **no embed file in this repo** | `/kpi/activation` |
 | `Webflow/forgangslisti.js` | `<script src>` inside the `forgangslisti-embed.html` Embed | `/kpi/forgangslisti` |
+| `Webflow/portal.js` | `<script src>` inside the `portal-embed.html` Embed | `/kpi/voruportal` |
 
 ⚠️ This list read "The exception is `Webflow/lookup.js`" until 2026-09-21 —
 singular, and wrong. `activation.js` had been pinned in page code on
 `/kpi/activation` since 2026-06-15 and appeared nowhere in this file. Nothing
 caught it because `tools/check-webflow-pins.js` hard-coded the same assumption:
 it knew about exactly one embed pin. Both now read from one list
-(`EMBED_PINNED` in that tool), so a fourth file has two places to be registered
+(`EMBED_PINNED` in that tool), so a fifth file has two places to be registered
 and a check that complains when it is in neither.
+
+That check earned itself on the first run. `portal.js` turned out to be pinned
+in `portal-embed.html` and mentioned **zero** times in this file — a second
+unregistered embed pin, found the moment the `lookup.js` hard-coding came out.
+Both had been there all along; the tool simply could not see past the one file
+it was written for.
 
 `/kpi/activation` is **live but unlinked** — it is not in the site nav (its own
 nav is the nine-link version from June), so it is reachable only by typing the
@@ -313,7 +320,8 @@ page Embed), so each row carries its own date:
 | `website-dashboard-bootstrap.js` script-tag src | `5368032` | 2026-09-21 |
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
 | `activation.js`, **in page custom code** (independent) | `84372c6` | 2026-06-15, `/kpi/activation` only — read off the live page 2026-09-21 |
-| `forgangslisti.js` script-tag src, **inside the Embed** (independent) | _óútgefið_ | — |
+| `portal.js` script-tag src, **inside the Embed** (independent) | `f7325c0` | 2026-09-21, `/kpi/voruportal` only |
+| `forgangslisti.js` script-tag src, **inside the Embed** (independent) | `2ecd444` | **ekki komið í loftið** — bíður innlímingar á `/kpi/forgangslisti` |
 
 ⚠️ **This table describes the site; it does not govern it.** On 2026-09-21 it
 still read `4131408` while the site was already serving `5368032`. A warning
