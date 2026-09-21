@@ -1,7 +1,21 @@
 -- raw.bc_lines_raw — vísitölur á sku
 --
--- ⚠️ KEYRIST EIN OG SÉR. `create index concurrently` má ekki vera inni í
--- transaction-blokk. Límdu hvora skipun fyrir sig ef ritillinn kvartar.
+-- ── EKKI CONCURRENTLY, OG ÞAÐ ER Í LAGI ─────────────────────────────
+-- Fyrsta útgáfa notaði `create index concurrently`. Supabase-ritillinn
+-- vefur hverja keyrslu í transaction og hafnar því:
+--   ERROR: 25001: CREATE INDEX CONCURRENTLY cannot run inside a
+--   transaction block
+-- Það gerist líka þegar skipunin er keyrð ein og sér — vefjan er
+-- ritilsins, ekki skránnar.
+--
+-- Venjulegt `create index` tekur SHARE-lás: LESTUR HELDUR ÁFRAM, skrif í
+-- `raw.bc_lines_raw` bíða á meðan. Á ~485 þúsund röðum eru það sekúndur.
+-- Og skrif í þessa töflu gerast aðeins þegar einhver smellir á BC Sync
+-- (`processBcDrop_v1`) — það er ekkert samfellt innstreymi sem getur
+-- lent í lásnum. Glugginn er í reynd ókeypis.
+--
+-- Þyrfti þetta að vera CONCURRENTLY — t.d. á töflu með stöðugum skrifum
+-- — væri leiðin psql eða annar biðlari sem vefur ekki.
 --
 -- ── RÓTIN, EKKI GREININ ─────────────────────────────────────────────
 -- Þrisvar 2026-09-21 féll fyrirspurn á 8 sekúndna anon-þakinu, alltaf af
@@ -33,10 +47,10 @@
 -- heitaleit og hún er eðli málsins dýr. Sú leit tilheyrir
 -- /kpi/top-products; vöruportalinn snertir hana ekki lengur.
 
-create index concurrently if not exists bc_lines_raw_sku_idx
+create index if not exists bc_lines_raw_sku_idx
   on raw.bc_lines_raw (sku);
 
-create index concurrently if not exists bc_lines_raw_sku_pattern_idx
+create index if not exists bc_lines_raw_sku_pattern_idx
   on raw.bc_lines_raw (sku text_pattern_ops);
 
 -- Staðfesting — báðar eiga að birtast, og planið á að segja
