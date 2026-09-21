@@ -126,5 +126,22 @@ if ($PushOnly) {
     Write-Host "ATH: -PushOnly var valid. Vefoppin keyra enn gomlu utgafuna." -ForegroundColor Yellow
 }
 
+# Webflow-pinnarnir eru ekki hluti af clasp-deployinu, en thetta er
+# eina rutinan sem keyrir vid hverja breytingu — og pinnarek uppgotvast
+# annars ekki fyrr en einhver tekur eftir ad lagfaering vanti i loftinu.
+# ALDREI BLOKKANDI: GAS-deployid tokst og ma ekki lita ut eins og thad
+# hafi mistekist thott Webflow se a eftir.
+Write-Host ""
+if (Test-Path "$PSScriptRoot\tools\check-webflow-pins.js") {
+    try {
+        node "$PSScriptRoot\tools\check-webflow-pins.js"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  ATH: pinnaathugunin fann frabrigdi (sja ad ofan). GAS-deployid sjalft tokst." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "  Pinnaathugun slapp: $_" -ForegroundColor DarkGray
+    }
+}
+
 Write-Host ""
 Write-Host "Git er ser: 'git add/commit/push' eda /deploy skillid." -ForegroundColor DarkGray

@@ -280,19 +280,43 @@ loaded by a `<script src>` inside the `lookup-embed.html` Embed on
 `data-storkaup-rev` does nothing to it, and bumping it does nothing to the
 dashboards. Change one, move that one.
 
-**Live**, per the deployer. The pins were not all set on the same day, so each
-carries its own — a single heading date would misdate three of the four rows:
+**Live**, per the deployer. All three bootstrap pins live in **one place** —
+Webflow *site-wide* custom code, two `<script>` tags that carry both the
+`@commit` in `src` and the `data-storkaup-rev` attribute. Earlier revisions of
+this section said the attribute was "bumped on all seven KPI pages"; that was
+never how it worked, and it made the job sound bigger and more error-prone than
+it is. The `lookup.js` pin is the one that genuinely lives elsewhere (inside a
+page Embed), so each row carries its own date:
 
 | What | Value | Set |
 |---|---|---|
-| `data-storkaup-rev` — governs all bootstrap child files | `4131408` | 2026-08-11, all seven KPI pages |
-| `dashboard-bootstrap.js` script-tag src | `6c992c5` | 2026-07-14 |
-| `website-dashboard-bootstrap.js` script-tag src | `6c992c5` | 2026-07-14 |
+| `data-storkaup-rev` — governs all bootstrap child files | `4131408` | 2026-09-21 |
+| `dashboard-bootstrap.js` script-tag src | `4131408` | 2026-09-21 |
+| `website-dashboard-bootstrap.js` script-tag src | `4131408` | 2026-09-21 |
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
 
-⚠️ `data-storkaup-rev` is **one bump behind**: the `/kpi/top-products` drawer
-fix (`2d50477`) is committed but not deployed. Until the attribute is moved,
-that page still opens with an empty modal on every load.
+⚠️ **`data-storkaup-rev` is currently REGRESSED.** It must contain `2d50477`
+(the `/kpi/top-products` drawer fix) and `4131408` does not — that page opens
+with an empty modal on every load until the attribute is moved to `5368032`.
+
+This table caused that regression. On 2026-09-21 it still read `4131408` while
+the site was serving `5368032`, and the live pin was rolled *back* to match the
+table. **The table describes the site; it does not govern it.** When the two
+disagree, check which is right before changing either:
+
+```bash
+node tools/check-webflow-pins.js
+```
+
+That reads the pins straight off the password-gate response (no credentials
+needed — Webflow serves site-wide head code there) and does two separate
+things. It compares live against this table, **and** it independently checks
+that the live rev contains the newest commit touching the files the bootstrap
+loads. The second test is the one that matters: the table and the site can
+agree and both be wrong, which is exactly what happened here. It also fails if
+`gasKey` or `STORKAUP_BC_MANUAL` ever appear on the gate page.
+
+It runs at the end of `gas_deploy.ps1`, non-blocking.
 
 Only `data-storkaup-rev` was moved to `4131408`; the two script-tag `src`
 values were deliberately left at `6c992c5`, because **both bootstrap files are
