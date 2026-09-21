@@ -117,6 +117,8 @@ public.*    — additional RPC functions and views
 | `mart.mv_klaviyo_attribution_daily_nobot` | Same, bot clicks excluded |
 | `mart.top_products_all` | Top products aggregation (heavy — runs off-peak) |
 
+`raw.web_catalog` sits alongside these: the published storkaup.is product list (sku, supplier `brand_sku`, name, brand, slug), written by `syncWebCatalogToSupabase_v1` inside `scheduledCludoSync_v1` every 12h. It is the only place the supplier part number exists, and it is deliberately separate from `products_raw`, which is derived from sales records and therefore cannot answer "is this on the web".
+
 ### Key RPCs (called by Webflow)
 
 | RPC | Page |
@@ -149,6 +151,7 @@ Read-only dashboards. All data comes from Supabase RPCs via `fetch`. No writes f
 | `/kpi/klaviyo` | `dashboard.js` | Klaviyo attribution KPIs |
 | `/kpi/top-products` | `top-products.js` | Top products and categories |
 | `/kpi/vefur-kpi` | `website-dashboard.js` + `website-dashboard-bootstrap.js` | GA4 website metrics |
+| `/kpi/voruuppfletting` | `lookup.js` (via `lookup-embed.html` Embed — **not** a bootstrap child; own pin) | Look up a list of supplier part numbers or Stórkaup SKUs |
 
 ### Non-negotiables
 
@@ -158,7 +161,12 @@ Read-only dashboards. All data comes from Supabase RPCs via `fetch`. No writes f
 
 ### Production pins (jsDelivr / Webflow custom code)
 
-See `NEXT_TASKS.md` → Current Production Pins section. Update pins whenever a Webflow JS file is changed.
+See `CLAUDE.md` → *Current production pins*. That section is the single source of
+truth; update it whenever a Webflow file changes. (This used to point at
+`NEXT_TASKS.md`, which now only forwards here — one hop too many.)
+
+Note that `data-storkaup-rev` governs the bootstrap's child files only.
+`Webflow/lookup.js` is pinned separately inside its Embed.
 
 ---
 

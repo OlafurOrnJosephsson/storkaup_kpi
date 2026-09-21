@@ -2,6 +2,20 @@
 
 ## Recent Release Notes
 
+- Vöruuppfletting á birgjanúmerum (2026-09-18 → 2026-09-21):
+  - **Hvað**: birgjalistar koma án Stórkaups-SKU, svo uppflettingin var handavinna. Nú er hún á þremur stöðum með sömu gögnum: `/kpi/voruuppfletting` (listi í einu), leitarreiturinn á `/kpi/top-products` (eitt í senn), og `Uppfletting`-flipinn í PIM-skjalinu.
+  - `core/web_catalog.js` + `core/sql/web_catalog_v1.sql` — `raw.web_catalog` með `brand_sku` (birgjanúmerið), fyllt úr getProductsV2 í `scheduledCludoSync_v1` á 12 klst. fresti. `partial` á ingestion_run ef það skref fellur.
+  - `core/sql/search_products_v2.sql` — leitin tekur við birgjanúmerum; nýjar kólumnur `brand_sku` og `match_kind`.
+  - `Webflow/lookup-embed.html` + `Webflow/lookup.js` — sjálfstæður Embed með **eigin jsDelivr-pinna**, ekki barnaskrá bootstrappsins.
+  - **Fjórar mælingar sem réðu hönnuninni**, allar skjalfestar í hausunum:
+    - Vafrinn kemst ekki í storkaup.is/api/graphql — svarið ber engan `Access-Control-Allow-Origin` haus. Þess vegna er taflan í Supabase til.
+    - `getProductsV2(search:)` nær ekki yfir `brand_sku`; leit að „7276" skilar núlli þótt varan sé til.
+    - Hlutstrengsleit er bönnuð: `contains` á 6054 gaf Pepsi, servíettur og skammtara — þrjú svör, öll röng og ekkert auðþekkt sem rangt.
+    - Birgjanúmer eru ekki einkvæm: 41 þeirra á fleiri en eina vöru.
+  - **Þrjár villur sem kostuðu tíma og eru þess virði að muna**: Webflow-Embed tekur 10.000 stafi og sker afganginn þegjandi (skráin var 12.517, einkennið „ekkert gerist við smell"); script í Embed keyrir ekki á Designer-canvas; og RPC sem skiptir um skilagerð þarf `notify pgrst, 'reload schema';` — annars 500 í vafra en allt í lagi í SQL-ritlinum.
+  - **Sameining (2026-09-21, `83a9edb`)**: `pimRelRawSkus_` deilir nú pagineringu við `fetchWebCatalogRows_` (þriðja afritið af sömu lykkju farið), og uppflettingin les `raw.web_catalog` í stað GraphQL — ~30 sek verða að sekúndubroti. Tóm tafla fellur sjálfkrafa í GraphQL; hún má aldrei lesast sem „ekki til".
+  - **Eftir**: `data-storkaup-rev` → `2d50477` fyrir drawer-fixið á `/kpi/top-products`; vörukóða-normalíserun er í átta útfærslum og þær stangast á um forleiðandi núll (`normalizeSkuGlobal_('01015')` → `'01015'` en `normSku_` → `'1015'`).
+
 - Web-app security hardening + project split (2026-07-02):
   - **Phase A hardening** (main project, commit `b55e8c4`): Typeform `doPost` checks `?token=` against `API.Typeform.WEBHOOK_TOKEN` (enforced via `SETTINGS.TYPEFORM_TOKEN_ENFORCE=true`); `isApiKeyValid_` now **fail-closed** and reads `API.Dashboard.KEY` (old `cfg.API.DASHBOARD_KEY` lookup never matched the nested config shape — the check was effectively always open); `send_template_email` rate-limited (20/hour); jsDelivr rev fallback pinned instead of mutable `@main`; postMessage badge listener requires a google-hosted origin.
   - **Gate-page leak fixed**: Webflow serves site-wide `<head>` custom code on the unauthenticated password-gate page, exposing `STORKAUP_BC_MANUAL` + `gasKey`. Moved to page-scoped custom code — `STORKAUP_CONFIG` on all 7 KPI pages, `STORKAUP_BC_MANUAL` on `/kpi/dashboard` + `/kpi/solutolur` only. **Monthly BC figures now go in page-level head code on those two pages.**

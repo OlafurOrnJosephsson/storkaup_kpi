@@ -35,7 +35,7 @@ first, and make sure a new `.js` is real Apps Script — a top-level `require()`
 throws on load and kills every trigger in the project (see the `email-preview/**`
 note in `.claspignore`).
 
-Webflow JS files (`Webflow/*.js`) are **not** pushed via clasp — deploy by copy/paste into Webflow custom code and updating jsDelivr commit pins in `README.md` and `NEXT_TASKS.md`.
+Webflow JS files (`Webflow/*.js`) are **not** pushed via clasp — deploy by copy/paste into Webflow custom code and by updating the jsDelivr commit pin. The pins live in [Current production pins](#current-production-pins) below and nowhere else; `README.md` and `NEXT_TASKS.md` only forward there.
 
 **Secrets never live in Webflow site-wide custom code** — Webflow serves site-wide `<head>` code on the unauthenticated password-gate page too. Page-scoped custom code (`STORKAUP_CONFIG` with `gasKey`, `STORKAUP_BC_MANUAL`) stays per-page on the KPI pages. Monthly BC figures go into page-level head code on `/kpi/dashboard` + `/kpi/solutolur`.
 
@@ -77,6 +77,7 @@ are reading or editing. `clasp` flattens `core/x.js` to `core/x` in the project.
 | [core/customers.js](core/customers.js) · [core/customer_analysis.js](core/customer_analysis.js) | Magento customers; customer profiles and scoring. |
 | [core/cludo.js](core/cludo.js) | Cludo search API and the PRODUCTS master catalog (breadcrumb crawl). |
 | [core/storkaup_pricing.js](core/storkaup_pricing.js) | storkaup.is GraphQL. Price health **and** product health (out of stock, negative stock, uncategorised) — feeds the vöruvöktun app. |
+| [core/web_catalog.js](core/web_catalog.js) | The published product list as data: fetch, SKU normalisation, and the `raw.web_catalog` sync (runs inside `scheduledCludoSync_v1`, every 12h). Holds `brand_sku` — the **supplier** part number — which nothing else does. `web_sku` is the raw GraphQL id; `sku` is the normalised join key to BC. Lookups read the table, not the web: a product added today is invisible until the next sync. |
 | [core/email.js](core/email.js) | Weekly/monthly digests, `installMonthlyDigestTrigger_v1`, cache-help templates. |
 | [core/seo_manager.js](core/seo_manager.js) | SEO copy generation queue. |
 | [core/search_console.js](core/search_console.js) · [core/ga4.js](core/ga4.js) | Search Console and GA4 ingest. |
@@ -265,20 +266,33 @@ fails now records `partial`, not `success`, and sends an ops alert.
 
 **This section is the single source of truth for production pins.** `NEXT_TASKS.md` and `README.md` point here — do not duplicate pin values elsewhere. Update these whenever Webflow custom code changes.
 
-**There is ONE pin, not one per file.** The bootstrap scripts read
-`data-storkaup-rev` off their own `<script>` tag and load every child file from
-that revision (`getRevision()` in both bootstraps). Changing it moves
-`dashboard.js`, `customer-profiles.js`, `order-search.js`, `top-products.js`,
-`website-dashboard.js` and `dashboard-theme.css` together. This list used to
-give a separate commit per file, which implied a control that does not exist.
+**One pin governs the bootstrap's child files — and one file sits outside it.**
+The bootstrap scripts read `data-storkaup-rev` off their own `<script>` tag and
+load every child file from that revision (`getRevision()` in both bootstraps).
+Changing it moves `dashboard.js`, `customer-profiles.js`, `order-search.js`,
+`top-products.js`, `website-dashboard.js` and `dashboard-theme.css` together.
+This list used to give a separate commit per file, which implied a per-file
+control that does not exist for those.
 
-**Live (2026-08-11, per the deployer — attribute bumped on all seven KPI pages):**
+The exception is `Webflow/lookup.js`. It is **not** a bootstrap child: it is
+loaded by a `<script src>` inside the `lookup-embed.html` Embed on
+`/kpi/voruuppfletting`, pinned to its own commit there. Bumping
+`data-storkaup-rev` does nothing to it, and bumping it does nothing to the
+dashboards. Change one, move that one.
 
-| What | Value |
-|---|---|
-| `data-storkaup-rev` — governs all child files | `4131408` |
-| `dashboard-bootstrap.js` script-tag src | `6c992c5` |
-| `website-dashboard-bootstrap.js` script-tag src | `6c992c5` |
+**Live**, per the deployer. The pins were not all set on the same day, so each
+carries its own — a single heading date would misdate three of the four rows:
+
+| What | Value | Set |
+|---|---|---|
+| `data-storkaup-rev` — governs all bootstrap child files | `4131408` | 2026-08-11, all seven KPI pages |
+| `dashboard-bootstrap.js` script-tag src | `6c992c5` | 2026-07-14 |
+| `website-dashboard-bootstrap.js` script-tag src | `6c992c5` | 2026-07-14 |
+| `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
+
+⚠️ `data-storkaup-rev` is **one bump behind**: the `/kpi/top-products` drawer
+fix (`2d50477`) is committed but not deployed. Until the attribute is moved,
+that page still opens with an empty modal on every load.
 
 Only `data-storkaup-rev` was moved to `4131408`; the two script-tag `src`
 values were deliberately left at `6c992c5`, because **both bootstrap files are
