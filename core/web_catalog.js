@@ -20,7 +20,9 @@
  * GraphQL skilar `STO_117268_STK`. BC skrifar `117268_STK`. Cludo og
  * PRODUCTS skrifa `117268`. Taflan geymir hvort tveggja:
  *   web_sku  óbreytt úr GraphQL, frumlykill (einkvæmt, 4.473 gildi)
- *   sku      normalíserað í berja töluna — TENGILYKILLINN við BC
+ *   sku      BC-formið — TENGILYKILLINN, STAFRÉTT eins og BC skrifar
+ *            hann. Forleiðandi núll haldast: STO_01015_STK → `01015`,
+ *            EKKI `1015`. Sjá normStorkaupSku_ um hvað það kostaði.
  * 3.608 af 4.473 SKU bera sölueiningarviðskeyti, svo án þessa tengist
  * ekkert. `sku` er VÍSVITANDI ekki einkvæmt: STO_9004599_STK og
  * STO_9004599_KASSI eru sama Brúsapumpan í tveimur sölueiningum, báðar
@@ -108,8 +110,29 @@ function fetchWebCatalogRows_() {
     if (offset > 50000) throw new Error('getProductsV2 pagination guard (>50000).');
   }
 
-  Logger.log('[WEBCAT][INFO] Sotti ' + rows.length + ' vorur af ' + total + '.');
-  return { rows: rows, totalCount: total, complete: complete };
+  // ── SJÁLFSPRÓFUN Á TENGILYKLINUM ──────────────────────────────────
+  // Óháð normStorkaupSku_ VILJANDI: að keyra sama fallið aftur sannar
+  // ekkert. Hér er fullyrðingin sú að `web_sku` verði að vera
+  // 'STO_' + sku, með eða án sölueiningarviðskeytis. Sú fullyrðing er
+  // strengjasamanburður, ekki umritun, svo hún fellur um leið og
+  // normalíserunin fer að breyta gildinu — sem er nákvæmlega það sem
+  // gerðist með forleiðandi núllin (14 vörur, 2.036 BC-línur sem hittu
+  // ekki, þögult, mælt 2026-09-21).
+  const drift = rows.filter(function (r) {
+    const expect = 'STO_' + r.sku;
+    return r.webSku !== expect && r.webSku.indexOf(expect + '_') !== 0;
+  });
+  if (drift.length) {
+    Logger.log('[WEBCAT][VILLA] ' + drift.length + ' SKU thar sem tengilykillinn ' +
+               'er ekki BC-form af web_sku — join vid bc_lines_raw mun hitta a tomt. ' +
+               'Daemi: ' + drift.slice(0, 5).map(function (r) {
+                 return r.webSku + ' -> ' + r.sku;
+               }).join(', '));
+  }
+
+  Logger.log('[WEBCAT][INFO] Sotti ' + rows.length + ' vorur af ' + total +
+             (drift.length ? ' (' + drift.length + ' MED LYKILREKI)' : '') + '.');
+  return { rows: rows, totalCount: total, complete: complete, drift: drift.length };
 }
 
 
@@ -140,7 +163,10 @@ function indexWebCatalogRows_(rows) {
       sku: r.webSku, name: r.name, slug: r.slug,
       brand: r.brand, brandSku: r.brandSku
     };
-    add(bySku, r.sku, rec);
+    // bySku er FYRIRSPURNARhlid: lykillinn er normaliseradur svo bædi
+    // "1015" og "01015" hitti. Gildid `rec.sku` heldur afram ad bera
+    // hraa web_sku-id, og `r.sku` i toflunni ber BC-formid.
+    add(bySku, normLookupKey_(r.sku), rec);
     add(byLoose, looseKey_(r.webSku), rec);
     if (r.brandSku) {
       withBrand++;
@@ -376,8 +402,11 @@ function normBrandSku_(v) {
 }
 
 /**
- * Almennur samanburðarlykill: hástafir, bil felld saman, forleiðandi núll
- * af hreinum tölum. "007276" og "7276" eru sama númerið.
+ * FYRIRSPURNARLYKILL — það sem notandinn sló inn, borið við auðkenni.
+ * Hástafir, bil felld saman, forleiðandi núll af hreinum tölum.
+ * "007276" og "7276" eru sama númerið FYRIR ÞANN SEM LEITAR.
+ *
+ * Þessi regla á EKKI við um tengilykla — sjá normStorkaupSku_.
  */
 function normLookupKey_(v) {
   const s = String(v === null || v === undefined ? '' : v)
@@ -387,22 +416,39 @@ function normLookupKey_(v) {
 }
 
 /**
- * Stórkaups-SKU á fjóra rithætti í kerfunum:
- *   STO_114112      STO_117268_STK      STO_9002572_KASSI      114112
+ * TENGILYKILL — auðkennið eins og BC skrifar það.
+ *   STO_114112 → 114112      STO_117268_STK → 117268
+ *   STO_01015_STK → 01015    (FORLEIÐANDI NÚLLIN HALDAST)
  * Sölueiningarviðskeytið er ekki hluti af auðkenninu — sama vara, önnur
  * pökkun — svo það er skorið af.
  *
- * ATH: þetta er VÍSVITANDI ekki normSku_ úr pim/buildPimWorksheet.js. Það
- * fall sker ekki viðskeytið, af því að þar er matchað á Plytix/Cludo þar
- * sem það er ekki til. Hér er matchað á GraphQL og BC, þar sem 3.608 af
- * 4.473 SKU bera það. Að sameina föllin myndi brjóta annað hvort.
+ * ── FORLEIÐANDI NÚLL ERU EKKI SKREYTING ─────────────────────────────
+ * Fyrsta útgáfa endaði á normLookupKey_, sem gerir parseInt á hreinum
+ * tölum og skilaði því `1015` fyrir `STO_01015_STK`. BC heldur núllinu,
+ * svo `web_catalog.sku` og `bc_lines_raw.sku` hættu að hittast.
+ *
+ * Mælt 2026-09-21: 14 vörur bera forleiðandi núll, og join-ið hitti
+ * ENGA línu fyrir neina þeirra — á meðan hráa formið hitti 2.036 línur.
+ * Þar á meðal `STO_02672` (550 línur) og `STO_01015_STK` (555), sem eru
+ * hvorugar jaðartilvik. Einkennið var ekki villa heldur `0 pantanir /
+ * 0 kr`, sem les eins og „hefur ekki selst".
+ *
+ * Villan var að steypa saman tveimur ólíkum störfum. Fyrirspurnarlykill
+ * MÁ fyrirgefa forleiðandi núll — sá sem slær inn 1015 og sá sem slær
+ * inn 01015 á við sama hlutinn. Tengilykill má það ALDREI: hann verður
+ * að vera stafrétt eins og hinum megin við join-ið. normLookupKey_ er
+ * hitt starfið og er ekki kallað hér lengur.
+ *
+ * ATH: þetta er líka vísvitandi ekki normSku_ úr buildPimWorksheet.js.
+ * Það fall sker ekki viðskeytið, því þar er matchað á Plytix/Cludo þar
+ * sem það er ekki til. Þrjú lík föll, þrjú ólík störf.
  */
 function normStorkaupSku_(v) {
   let s = String(v === null || v === undefined ? '' : v).trim().toUpperCase();
   if (!s) return '';
   s = s.replace(/^STO[_\-\s]+/, '');
   s = s.replace(/[_\-](STK|KASSI|BRETTI|PK|PAKKI)$/, '');
-  return normLookupKey_(s);
+  return s.replace(/\s+/g, ' ');
 }
 
 /** Aðeins bókstafir og tölustafir. Notað eingöngu í lausa treffið. */

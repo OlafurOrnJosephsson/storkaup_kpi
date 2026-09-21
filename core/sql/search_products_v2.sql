@@ -30,10 +30,19 @@
 -- „Lykill"-kólumnan í pim/lookup_sku.js, og af sömu ástæðu: svar án
 -- þess hvers vegna það kom er ekki hægt að lesa yfir.
 --
--- Normalíseringin á fyrirspurninni speglar normStorkaupSku_ í
--- core/web_catalog.js — STO_-forskeyti og sölueiningarviðskeyti af, og
--- forleiðandi núll af hreinum tölum. Þau tvö verða að haldast í takt,
--- annars finnur SQL-ið ekki það sem GAS skrifaði.
+-- ── TVEIR LYKLAR, EKKI EINN ─────────────────────────────────────────
+-- `web_catalog.sku` er TENGILYKILL: stafrétt eins og BC skrifar hann,
+-- forleiðandi núll og allt. Hann er borinn saman við `bc_lines_raw.sku`.
+-- `norm_ident_(...)` er FYRIRSPURNARLYKILL: hann fyrirgefur forleiðandi
+-- núll, hástafi og bil, því sá sem slær inn 1015 og sá sem slær inn
+-- 01015 á við sama hlutinn.
+--
+-- Þessu tvennu var steypt saman til 2026-09-21. `normStorkaupSku_` gerði
+-- parseInt, svo STO_01015_STK varð `1015` á meðan BC skrifar `01015`.
+-- Fjórtán vörur fundust því í uppflettingunni en sýndu 0 pantanir og
+-- 0 kr — 2.036 BC-línur sem hittu ekki, þar á meðal tvær háveltuvörur.
+-- Einkennið var ekki villa heldur núll, sem les eins og „hefur ekki
+-- selst". Berðu ALDREI fyrirspurnarlykil við bc_lines_raw.
 --
 -- ── HVAÐ BREYTTIST EKKI, OG HVERS VEGNA ─────────────────────────────
 -- Vörur án sölu í glugganum koma AÐEINS með þegar fyrirspurnin hitti
@@ -51,11 +60,15 @@
 -- upphaflegu útgáfunni. Að hópa allan gluggann fyrst og sía svo fellur á
 -- 8 sek anon statement_timeout á þessari töflu.
 
--- Normalíserun auðkennis — eitt fall svo fyrirspurnin og taflan noti
--- sömu reglu. Speglar normStorkaupSku_ í core/web_catalog.js:
+-- FYRIRSPURNARLYKILL. Speglar `normLookupKey_(normStorkaupSku_(x))` í
+-- core/web_catalog.js — bæði föllin saman, ekki normStorkaupSku_ eitt:
 --   STO_117268_STK → 117268      0117268 → 117268      AC 070/23CS → AC 070/23CS
 -- Forleiðandi núll eru skorin af HREINUM tölum eingöngu; strengur eins og
 -- "007A" er auðkenni í sjálfu sér og má ekki breytast.
+--
+-- Þetta fall má aldrei fara á BÁÐAR hliðar join-s við bc_lines_raw — sjá
+-- „TVEIR LYKLAR" að ofan. Það er fyrir samanburð við það sem var slegið
+-- inn, ekki fyrir tengingu milli taflna.
 --
 -- VERÐUR að koma á undan search_products: Postgres parse-ar SQL-líkama
 -- við create (check_function_bodies), svo fall sem vísar í óskilgreint
@@ -102,7 +115,7 @@ as $$
         when p_query is null or length(btrim(p_query)) < 2 then null
         else '%' || btrim(p_query) || '%'
       end as pat,
-      -- Sama normalíserun og normStorkaupSku_ i core/web_catalog.js.
+      -- Fyrirspurnarlykill: normLookupKey_(normStorkaupSku_(x)) GAS-megin.
       case
         when p_query is null or length(btrim(p_query)) < 2 then null
         else public.norm_ident_(p_query)
@@ -110,8 +123,15 @@ as $$
   ),
   -- Allur vörulistinn, einn á hvert normalíserað sku. Sama vara í tveimur
   -- sölueiningum á tvær raðir í web_catalog en má bara eiga eina hér.
+  -- `c.sku` er TENGILYKILL og er borinn saman STAFRETT vid bc_lines_raw.
+  -- `sku_ident` er FYRIRSPURNARLYKILL og fyrirgefur forleidandi null.
+  -- Thetta tvennt var eitt og hid sama til 2026-09-21, og thad kostadi
+  -- 14 vorur sem fundust i uppflettingunni en syndu 0 pantanir af thvi
+  -- ad join-id hitti a tomt — 2.036 BC-linur. Mundu: ef thu berd
+  -- `sku_ident` vid bc_lines_raw ertu buinn ad endurskapa thá villu.
   cat_all as (
     select c.sku,
+           min(public.norm_ident_(c.sku))       as sku_ident,
            min(c.brand_sku)                     as brand_sku,
            min(public.norm_ident_(c.brand_sku)) as brand_ident,
            min(c.product_name)                  as product_name
@@ -128,7 +148,7 @@ as $$
     from cat_all a
     cross join q
     where q.ident is not null
-      and (a.brand_ident = q.ident or a.sku = q.ident)
+      and (a.brand_ident = q.ident or a.sku_ident = q.ident)
   ),
   -- BC-rithættirnir á þeim vörum sem auðkennið hitti, reiknaðir á LITLU
   -- hliðinni. Þetta er ekki snyrtimennska heldur 8 sekúndna þakið:

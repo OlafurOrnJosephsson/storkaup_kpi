@@ -142,7 +142,7 @@ function pimLookupList_v1(values, idx) {
     // Röðin skiptir máli. Okkar eigið SKU er ótvírætt; birgjanúmer getur
     // rekist á. Finnist hvort tveggja fær notandinn báðar raðirnar og sker
     // úr sjálfur — fallið felur ekki treff til að líta afgerandi út.
-    (idx.bySku[normStorkaupSku_(q)] || []).forEach(function (x) { push(x, 'Stórkaups-SKU'); });
+    (idx.bySku[normLookupKey_(normStorkaupSku_(q))] || []).forEach(function (x) { push(x, 'Stórkaups-SKU'); });
     (idx.byBrand[normLookupKey_(q)] || []).forEach(function (x) { push(x, 'Birgjanúmer'); });
 
     // Lausa treffið er ÞRAUTALENDING, ekki viðbót. Það keyrir aðeins þegar
