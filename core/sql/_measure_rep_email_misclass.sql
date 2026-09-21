@@ -63,6 +63,42 @@
 -- skýringu eftir á.
 -- ============================================================================
 
+-- ── LESTU ÞETTA FYRST: RITILLINN SÝNIR AÐEINS SÍÐUSTU SETNINGUNA ────
+-- Supabase-SQL-ritillinn keyrir allar setningar í skjalinu en birtir
+-- AÐEINS niðurstöðu þeirrar síðustu. Skjalið bar áður talninguna fyrst og
+-- netfangalistann síðast, svo talan datt þegjandi út og notandinn sá bara
+-- listann. Röðinni er snúið við: aðaltalan er SÍÐUST og kemur því upp
+-- sjálfkrafa.
+--
+-- Viltu hina fyrirspurnina merkirðu hana eina og ýtir á Run — ritillinn
+-- keyrir aðeins það sem er valið.
+-- ============================================================================
+
+
+-- ── 1. HVAÐA NETFÖNG ERU ÞETTA (merktu og keyrðu eitt og sér) ───────
+-- Sé listinn lengri en örfáar raðir er mynstrið útbreiddara en eitt
+-- tilvik og lagfæringin þeim mun brýnni.
+-- Keyrðu þetta líka. Sé listinn lengri en örfáar raðir er mynstrið
+-- útbreiddara en eitt tilvik og lagfæringin þeim mun brýnni.
+select
+  r.name_norm,
+  r.email_norm,
+  r.notes
+from raw.sales_reps_ref r
+where coalesce(r.active, true) = true
+  and trim(coalesce(r.email_norm, '')) <> ''
+  and r.email_norm not like '%@storkaup.is'
+order by r.name_norm;
+
+
+-- ── HVE MÖRG NETFÖNG VORU HUNSUÐ Í SÍÐUSTU SAMSTILLINGU ─────────────
+-- Ekki SQL: `syncSalesRepsRefToSupabase_v1()` skrifar í Apps Script logginn
+--   [SALES_REPS_REF][INFO] Candidates=<n> dropped_conflicts=<n>
+-- `dropped_conflicts` telur hvert sinn sem nafn bar þegar annað netfang.
+-- Há tala þar er beinn mælikvarði á hve margir umboðstengiliðir eru til.
+
+
+-- ── 2. AÐALTALAN — birtist sjálfkrafa því hún er síðust ─────────────
 with reps as (
   select
     lower(trim(coalesce(r.name_norm, '')))  as rep_name_norm,
@@ -122,24 +158,3 @@ select
   count(*) filter (where by_email_bad and not by_name and not by_email_ok)
                                                              as faerast_i_sjalfsafgreidslu
 from classified;
-
-
--- ── HVAÐA NETFÖNG ERU ÞETTA, OG HVE MÖRG ────────────────────────────
--- Keyrðu þetta líka. Sé listinn lengri en örfáar raðir er mynstrið
--- útbreiddara en eitt tilvik og lagfæringin þeim mun brýnni.
-select
-  r.name_norm,
-  r.email_norm,
-  r.notes
-from raw.sales_reps_ref r
-where coalesce(r.active, true) = true
-  and trim(coalesce(r.email_norm, '')) <> ''
-  and r.email_norm not like '%@storkaup.is'
-order by r.name_norm;
-
-
--- ── HVE MÖRG NETFÖNG VORU HUNSUÐ Í SÍÐUSTU SAMSTILLINGU ─────────────
--- Ekki SQL: `syncSalesRepsRefToSupabase_v1()` skrifar í Apps Script logginn
---   [SALES_REPS_REF][INFO] Candidates=<n> dropped_conflicts=<n>
--- `dropped_conflicts` telur hvert sinn sem nafn bar þegar annað netfang.
--- Há tala þar er beinn mælikvarði á hve margir umboðstengiliðir eru til.
