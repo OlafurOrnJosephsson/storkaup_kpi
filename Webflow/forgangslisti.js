@@ -53,12 +53,24 @@
   var STALE_DAYS = 30;        // án skráðrar snertingar telst röð ógerð
   var ID_CHUNK = 250;         // hámark auðkenna í einni in.() fyrirspurn
   var INITIALS_KEY = "storkaup:forgangslisti:initials";
+  var HELP_SEEN_KEY = "storkaup:forgangslisti:help-seen";
   var PROFILE_PAGE = "/kpi/vidskiptavinur";
 
   var CSS = [
     '#sk-forgangslisti{font-family:Arial,Helvetica,sans-serif;color:#1a1a1f;font-size:13px}',
     '#sk-forgangslisti *{box-sizing:border-box}',
 
+    '.skf-help{border:1px solid #e3e3e8;border-radius:10px;background:#fff;margin-bottom:14px}',
+    '.skf-help>summary{cursor:pointer;padding:10px 14px;font-size:12px;font-weight:700;',
+    'color:#10069f;list-style:none;user-select:none}',
+    '.skf-help>summary::-webkit-details-marker{display:none}',
+    '.skf-help>summary::before{content:"▸ ";display:inline-block;transition:transform .15s}',
+    '.skf-help[open]>summary::before{transform:rotate(90deg)}',
+    '.skf-help-body{padding:0 14px 12px;font-size:12.5px;line-height:1.65;color:#3a3a42}',
+    '.skf-help-body ol{margin:0 0 10px;padding-left:20px}',
+    '.skf-help-body li{margin-bottom:3px}',
+    '.skf-help-body p{margin:0 0 8px}',
+    '.skf-help-body b{color:#1a1a1f}',
     '.skf-kpis{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}',
     '.skf-kpi{border:1px solid #e3e3e8;border-radius:8px;padding:9px 14px;background:#fff;min-width:96px}',
     '.skf-kpi b{display:block;font-size:22px;line-height:1.15;margin-top:2px}',
@@ -159,15 +171,15 @@
   var GRID_COLS = '26px 24px ' + COLS.map(function (c) { return c.w; }).join(' ');
 
   var CHIPS = [
-    { key: 'all',          label: 'Allir' },
-    { key: 'due',          label: 'Þarf eftirfylgni' },
-    { key: 'pending',      label: 'Ekki í ferli' },
-    { key: 'rep_only',     label: 'Í ferli' },
-    { key: 'selfserve',    label: 'Sjálfsafgreiðsla' },
-    { key: 'norep',        label: 'Án sölumanns' },
-    { key: 'web_inactive', label: 'Óvirkir á vef' },
-    { key: 'web_active',   label: 'Virkir á vef' },
-    { key: 'nonpriority',  label: 'Ekki forgangur' }
+    { key: 'all',          label: 'Allir',            tip: 'Allar raðir á listanum.' },
+    { key: 'due',          label: 'Þarf eftirfylgni', tip: 'Eftirfylgnidagur runninn upp, eða engin snerting skráð í 30 daga. Þitt verk í dag.' },
+    { key: 'pending',      label: 'Ekki í ferli',     tip: 'Engin vefpöntun síðustu 365 daga.' },
+    { key: 'rep_only',     label: 'Í ferli',          tip: 'Pantað á vefnum, en sölumaður sló það inn.' },
+    { key: 'selfserve',    label: 'Sjálfsafgreiðsla', tip: 'Viðskiptavinurinn pantar sjálfur. Markmiðinu er náð.' },
+    { key: 'norep',        label: 'Án sölumanns',   tip: 'Í forgangi, ekki kominn í ferli og enginn ábyrgur. Ómannað verk.' },
+    { key: 'web_inactive', label: 'Óvirkir á vef',  tip: 'Enginn vefaðgangur virkur.' },
+    { key: 'web_active',   label: 'Virkir á vef',    tip: 'Vefaðgangur virkur — geta pantað strax.' },
+    { key: 'nonpriority',  label: 'Ekki forgangur',   tip: 'Teknir af listanum.' }
   ];
 
   var SVG_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
@@ -255,6 +267,61 @@
     return digits !== '' ? digits : raw.toLowerCase();
   }
 
+  // ── SÖLUMANNANÖFN ───────────────────────────────────────────────────
+  // `sales_reps_ref` ber 20 virkar raðir en 16 manneskjur: fjórir eiga tvö
+  // nöfn, t.d. `solumadurhaddy` og `storkauphaddy`. Forskeytin tvö eru
+  // hávaði úr innflutningi, svo þau eru strípuð til að þekkja sömu
+  // manneskju. Sama bragð og customer-profiles.js notaði; þetta hverfur
+  // ekki fyrr en taflan sjálf er lagfærð.
+  //
+  // ATH: hér er AÐEINS verið að velja hvað birtist og hvað má velja úr.
+  // Raðirnar geyma áfram nákvæmlega það sem stendur í þeim, því nafnið er
+  // líka notað til að þekkja pantanir sölumanna í `is_rep_order`.
+  function repCanonicalKey(nameNorm) {
+    var raw = String(nameNorm || '').trim().toLowerCase();
+    if (!raw) return '';
+    var compact = raw.replace(/[^a-z0-9]/g, '');
+    var stripped = compact.replace(/solumadur/g, '').replace(/storkaup/g, '');
+    return stripped || compact;
+  }
+
+  // Þegar tvö nöfn eiga sömu manneskju vinnur `solumadur*`-formið: það er
+  // formið sem allar 44 úthlutuðu raðirnar bera í dag.
+  function repChoiceScore(nameNorm) {
+    var n = String(nameNorm || '').trim().toLowerCase();
+    if (!n) return 99;
+    if (n.indexOf('solumadur') === 0) return 0;
+    if (n.indexOf('storkaup') === 0) return 1;
+    return 2;
+  }
+
+  // „solumadurbjossi" er ekki nafn á manneskju. Strípað og hástafað er það
+  // lesanlegt í dálki sem sölumaður skimar hundrað sinnum á dag.
+  function repLabel(nameNorm) {
+    var key = repCanonicalKey(nameNorm);
+    if (!key) return '';
+    return key.charAt(0).toUpperCase() + key.slice(1);
+  }
+
+  function dedupeReps(rows) {
+    var byKey = {};
+    (rows || []).forEach(function (r) {
+      var name = String(r && r.name_norm || '').trim().toLowerCase();
+      if (!name) return;
+      var key = repCanonicalKey(name);
+      if (!key) return;
+      var cur = byKey[key];
+      if (!cur) { byKey[key] = { name_norm: name, email_norm: r.email_norm || '' }; return; }
+      var a = repChoiceScore(cur.name_norm);
+      var b = repChoiceScore(name);
+      if (b < a || (b === a && name < cur.name_norm)) {
+        byKey[key] = { name_norm: name, email_norm: r.email_norm || '' };
+      }
+    });
+    return Object.keys(byKey).map(function (k) { return byKey[k]; })
+      .sort(function (a, b) { return repLabel(a.name_norm).localeCompare(repLabel(b.name_norm), 'is'); });
+  }
+
   // Speglar CASE-setninguna í api.get_customer_priority_flags. Hér til þess
   // að röð sem var að breytast geti sýnt rétta stöðu strax, án þess að
   // sækja allt aftur. Breytist CASE-ið í SQL-inu verður þetta að fylgja.
@@ -289,6 +356,17 @@
     if (s === 'priority_pending') return 'Ekki í ferli';
     if (s === 'nonpriority') return 'Ekki forgangur';
     return '–';
+  }
+
+  // Merkin eru fjögur orð sem þýða ekki það sem þau virðast þýða — helst
+  // „Í ferli", sem er viðvörun en ekki áfangi. Skýringin á að vera á
+  // merkinu sjálfu, ekki bara í spjaldinu efst.
+  function titleOnboarded(s) {
+    if (s === 'onboarded_selfserve') return 'Viðskiptavinurinn pantar sjálfur á vefnum. Markmiðinu er náð.';
+    if (s === 'onboarded_rep_only') return 'Pantað hefur verið á vefnum, en sölumaður sló það inn. Vinnan færðist ekki af þér.';
+    if (s === 'priority_pending') return 'Engin vefpöntun síðustu 365 daga. Hringja og kenna á vefinn.';
+    if (s === 'nonpriority') return 'Tekinn af forgangslistanum.';
+    return 'Óþekkt staða.';
   }
 
   function classOnboarded(s) {
@@ -473,6 +551,15 @@
       return String(a.customer_name).localeCompare(String(b.customer_name), 'is');
     }
 
+    if (k === 'assigned_rep_name_norm') {
+      // Raðað eftir því sem stendur á skjánum. Hráu gildin myndu raða
+      // „storkauphaddy" langt frá „solumadurhaddy" þótt sami maður eigi þau.
+      var al = repLabel(a.assigned_rep_name_norm);
+      var bl = repLabel(b.assigned_rep_name_norm);
+      if (al !== bl) return al.localeCompare(bl, 'is') * dir;
+      return String(a.customer_name).localeCompare(String(b.customer_name), 'is');
+    }
+
     var as = String(a[k] == null ? '' : a[k]);
     var bs = String(b[k] == null ? '' : b[k]);
     return as.localeCompare(bs, 'is') * dir;
@@ -532,7 +619,7 @@
     var counts = chipCounts();
     var chips = CHIPS.map(function (c) {
       return '<button type="button" class="skf-chip' + (state.chip === c.key ? ' is-on' : '') +
-        '" data-chip="' + c.key + '">' + esc(c.label) +
+        '" data-chip="' + c.key + '" title="' + attr(c.tip || '') + '">' + esc(c.label) +
         '<span class="skf-n">' + counts[c.key] + '</span></button>';
     }).join('');
     return '<div class="skf-bar">' + chips + '</div>' +
@@ -560,19 +647,24 @@
 
   function repOptions(current) {
     var cur = String(current || '').toLowerCase();
-    var seen = {};
+    var curKey = repCanonicalKey(cur);
+    var seenKey = {};
     var opts = ['<option value="">— enginn —</option>'];
     state.reps.forEach(function (r) {
       var v = String(r.name_norm || '').trim();
-      if (!v || seen[v.toLowerCase()]) return;
-      seen[v.toLowerCase()] = true;
-      opts.push('<option value="' + attr(v) + '"' + (v.toLowerCase() === cur ? ' selected' : '') +
-        '>' + esc(v) + '</option>');
+      if (!v) return;
+      var k = repCanonicalKey(v);
+      seenKey[k] = true;
+      // Ber röðin hitt nafnið á sömu manneskju helst valið á ÞVÍ nafni.
+      // Annars myndi vistun skrifa yfir með öðrum rithætti án tilefnis.
+      var value = (k === curKey && cur) ? cur : v;
+      opts.push('<option value="' + attr(value) + '"' + (k === curKey ? ' selected' : '') +
+        '>' + esc(repLabel(v)) + '</option>');
     });
-    // Sölumaður sem er skráður á röðina en ekki lengur virkur má ekki
+    // Sölumaður sem er skráður á röðina en hvergi í virka listanum má ekki
     // hverfa úr valinu — þá liti röðin út fyrir að vera án sölumanns.
-    if (cur && !seen[cur]) {
-      opts.push('<option value="' + attr(cur) + '" selected>' + esc(cur) + ' (óvirkur)</option>');
+    if (cur && !seenKey[curKey]) {
+      opts.push('<option value="' + attr(cur) + '" selected>' + esc(repLabel(cur)) + ' (óvirkur)</option>');
     }
     return opts.join('');
   }
@@ -611,10 +703,12 @@
       '<div class="skf-num">' + fmtInt(r.avg_days_between_bc_orders) + '</div>' +
       '<div class="skf-num">' + fmtInt(r.orders_web_365d) + '</div>' +
       '<div class="skf-num">' + fmtInt(r.avg_days_between_web_orders) + '</div>' +
-      '<div>' + (r.assigned_rep_name_norm
-        ? esc(r.assigned_rep_name_norm)
-        : '<span class="skf-dim">–</span>') + '</div>' +
-      '<div><span class="skf-tag ' + classOnboarded(r.onboarded_status) + '">' +
+      '<div' + (r.assigned_rep_name_norm ? ' title="' + attr(r.assigned_rep_name_norm) + '"' : '') + '>' +
+        (r.assigned_rep_name_norm
+          ? esc(repLabel(r.assigned_rep_name_norm))
+          : '<span class="skf-dim">–</span>') + '</div>' +
+      '<div><span class="skf-tag ' + classOnboarded(r.onboarded_status) + '" title="' +
+        attr(titleOnboarded(r.onboarded_status)) + '">' +
         esc(labelOnboarded(r.onboarded_status)) + '</span></div>' +
       '<div title="' + attr(r.last_contacted_at || '') + '">' + fmtAge(r.last_contacted_at) + '</div>' +
       '<div>' + fu + '</div>' +
@@ -671,6 +765,37 @@
       '</div>';
   }
 
+  // Leiðbeiningarnar sitja Í tólinu, ekki í skjali sem enginn opnar aftur.
+  // Samanbrotnar sjálfkrafa eftir fyrstu heimsókn — sá sem kann þetta á
+  // ekki að þurfa að horfa á það daglega, og sá sem gleymir finnur það.
+  //
+  // Orðalagið er sölumannanna eigin, úr verklagsskjalinu: „vefinnleiðing",
+  // „onboarding", vörulistinn í prófílnum.
+  function helpHtml(openByDefault) {
+    return '<details class="skf-help"' + (openByDefault ? ' open' : '') + ' data-help>' +
+      '<summary>Hvernig á að vinna listann</summary>' +
+      '<div class="skf-help-body">' +
+        '<p>Forgangslistinn er vinnulisti fyrir onboarding á viðskiptavinum — ' +
+        'ekki skýrsla. Stilltu á <b>Þarf eftirfylgni</b> og vinnaðu ofan frá.</p>' +
+        '<ol>' +
+          '<li>Smelltu á örina vinstra megin í röðinni. Spjald opnast undir henni.</li>' +
+          '<li>Hafðu samband. Vantar þig að vita hvað viðkomandi hefur verið að versla, ' +
+            'smelltu á augntáknið við nafnið — þar má líka búa til vörulista.</li>' +
+          '<li>Skrifaðu athugasemd ef það á við, settu næstu eftirfylgni og smelltu ' +
+            '<b>Skrá snertingu</b>.</li>' +
+        '</ol>' +
+        '<p><b>Náðist ekki í viðkomandi? Það er líka snerting.</b> Skráðu „svaraði ekki" ' +
+        'og <b>+7 d</b> — þá hverfur röðin af listanum í viku í stað þess að sitja þar.</p>' +
+        '<p><b>Viðskiptavinur sem enginn skráir snertingu á birtist aftur eftir 30 daga.</b> ' +
+        'Eftirfylgnidagsetning ræður í staðinn ef þú setur hana.</p>' +
+        '<p><b>Staða</b> er reiknuð, ekki sett: hún ræðst af því hver hefur pantað á vefnum ' +
+        'síðustu 365 daga. „Í ferli" þýðir að pöntunin fór gegnum vefinn en sölumaður sló ' +
+        'hana inn — vinnan færðist ekki af þér.</p>' +
+        '<p>Settu <b>upphafsstafina</b> þína í reitinn efst, einu sinni. Þeir fylgja hverri ' +
+        'snertingu. Listinn veit ekki hver þú ert.</p>' +
+      '</div></details>';
+  }
+
   // ── uppsetning og uppfærsla ──────────────────────────────────────────
   var root = null;
 
@@ -678,6 +803,7 @@
 
   function renderShell() {
     root.innerHTML =
+      '<div data-help-slot></div>' +
       '<div data-kpis></div>' +
       '<div data-warn></div>' +
       '<div data-bar></div>' +
@@ -892,7 +1018,19 @@
     });
   }
 
+  // Vafri í einkaham eða með lokað á vefkökur kastar hér. Þá opnast
+  // spjaldið í hvert sinn, sem er rétta hliðin að falla á.
+  function seenHelpBefore() {
+    try { return localStorage.getItem(HELP_SEEN_KEY) === '1'; } catch (e) { return false; }
+  }
+
   function wire() {
+    root.addEventListener('toggle', function (e) {
+      if (e.target && e.target.matches('[data-help]')) {
+        try { localStorage.setItem(HELP_SEEN_KEY, '1'); } catch (err) { /* lokaður vafri */ }
+      }
+    }, true);
+
     root.addEventListener('click', function (e) {
       var chip = e.target.closest('[data-chip]');
       if (chip) {
@@ -1022,11 +1160,13 @@
         return [];
       }).then(function (profiles) {
         return repsPromise.then(function (reps) {
-          state.reps = reps || [];
+          state.reps = dedupeReps(reps);
           state.profiles = profiles || [];
           state.rows = mergeRows(flags, state.profiles);
 
           renderShell();
+          var slot = q('[data-help-slot]');
+          if (slot) slot.innerHTML = helpHtml(!seenHelpBefore());
           var bar = q('[data-bar]');
           if (bar) bar.innerHTML = barHtml();
           renderWarnings();
