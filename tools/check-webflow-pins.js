@@ -70,6 +70,8 @@ function parseExpected(md) {
     else if (/website-dashboard-bootstrap\.js/.test(line)) set('websiteBootstrap', sha);
     else if (/dashboard-bootstrap\.js/.test(line)) set('dashboardBootstrap', sha);
     else if (/lookup\.js/.test(line)) set('lookup', sha);
+    else if (/activation\.js/.test(line)) set('activation', sha);
+    else if (/forgangslisti\.js/.test(line)) set('forgangslisti', sha);
   });
   return out;
 }
@@ -132,30 +134,64 @@ function freshness(liveRev) {
 }
 
 /**
- * LOOKUP-PINNINN — thrihlida, en adeins tvaer hlidar naest i.
+ * EMBED-PINNARNIR — thrihlida, en adeins tvaer hlidar naest i.
  *
- * `Webflow/lookup.js` er pinnadur inni i Embed a /kpi/voruuppfletting,
- * i sidubolnum og thvi a bak vid lykilordahlidina. Hann sest ekki i
- * 401-svarinu (maelt 2026-09-21), svo lifandi gildid er ekki lesanlegt
- * hedan og er merkt OATHUGADUR — aldrei "i lagi".
+ * Sumar skrar eru pinnadar inni i Embed i sidubolnum, ekki gegnum
+ * data-storkaup-rev. Their sitja a bak vid lykilordahlidina og sjast
+ * ekki i 401-svarinu (maelt 2026-09-21), svo lifandi gildid er ekki
+ * lesanlegt hedan og er merkt OATHUGADUR — aldrei "i lagi".
  *
  * Hitt tvennt er hins vegar athuganlegt, og thad er einmitt thad sem
  * bilar i raun:
- *   1. Ber pinninn i Webflow/lookup-embed.html sama gildi og CLAUDE.md?
- *      Skrain er thad sem a ad limast inn; reki hun fra toflunni er
- *      annad hvort rangt adur en nokkur snertir Webflow.
- *   2. Ber sa pinni nyjustu breytinguna a Webflow/lookup.js? Ad breyta
- *      skranni og gleyma ad faera pinnann i embedinu skilar sér sem
- *      "ekkert breyttist" — sama thogla einkenni og annars stadar her.
+ *   1. Ber pinninn i embed-skranni sama gildi og CLAUDE.md? Skrain er
+ *      thad sem a ad limast inn; reki hun fra toflunni er annad hvort
+ *      rangt adur en nokkur snertir Webflow.
+ *   2. Ber sa pinni nyjustu breytinguna a JS-skranni? Ad breyta skranni
+ *      og gleyma ad faera pinnann i embedinu skilar sér sem "ekkert
+ *      breyttist" — sama thogla einkenni og annars stadar her.
+ *
+ * LISTINN SJALFUR ER ATHUGUNIN. Adur var thetta harkodad a lookup.js
+ * eitt, og CLAUDE.md sagdi thvi i marga manudi ad lookup.js vaeri
+ * "the one that genuinely lives elsewhere". Thad var rangt: activation.js
+ * hafdi verid pinnad i embed a /kpi/activation fra 2026-06-15 an thess ad
+ * nokkud vissi af thvi. Baetist vid embed-pinnud skra verdur hun ad fara
+ * i thennan lista OG i toflunu i CLAUDE.md.
  */
-function lookupPin(expectedFromMd) {
-  const embedPath = path.join(__dirname, '..', 'Webflow', 'lookup-embed.html');
-  if (!fs.existsSync(embedPath)) return { ok: null, why: 'fann ekki lookup-embed.html' };
-  const embed = fs.readFileSync(embedPath, 'utf8');
-  const pin = (embed.match(/storkaup_kpi@([0-9a-f]{7,40})\/Webflow\/lookup\.js/) || [])[1];
-  if (!pin) return { ok: null, why: 'fann engan pinna i lookup-embed.html' };
+const EMBED_PINNED = [
+  { key: 'lookup',        js: 'lookup.js',        embed: 'lookup-embed.html' },
+  // activation.js a sér ENGA embed-skra i repo-inu: pinninn situr i
+  // page custom code a /kpi/activation og hvergi annars stadar. Tha er
+  // CLAUDE.md eina heimildin sem til er, og ferskleikaprofid keyrir a
+  // henni. Veikara, en ekki thogn.
+  { key: 'activation',    js: 'activation.js',    embed: null },
+  { key: 'forgangslisti', js: 'forgangslisti.js', embed: 'forgangslisti-embed.html' }
+];
 
-  const newest = execSync('git log -1 --format=%H -- Webflow/lookup.js',
+function embedPin(spec, expectedFromMd) {
+  let pin = null;
+  let source = null;
+
+  if (spec.embed) {
+    const embedPath = path.join(__dirname, '..', 'Webflow', spec.embed);
+    if (fs.existsSync(embedPath)) {
+      const embed = fs.readFileSync(embedPath, 'utf8');
+      // Skannad eins og parseLive gerir vid lifandi HTML og sidan borid
+      // saman vid skraarnafnid — thannig tharf enga undankomu i mynstrinu.
+      (embed.match(/storkaup_kpi@([0-9a-f]{7,40})\/Webflow\/([A-Za-z0-9._-]+)/g) || [])
+        .forEach(function (m) {
+          const hit = m.match(/storkaup_kpi@([0-9a-f]+)\/Webflow\/(.+)/);
+          if (hit && hit[2] === spec.js) pin = hit[1];
+        });
+      if (pin) source = spec.embed;
+    }
+  }
+
+  if (!pin && expectedFromMd) { pin = expectedFromMd; source = 'CLAUDE.md'; }
+  if (!pin) {
+    return { ok: null, why: 'hvorki pinni i embed-skra ne faersla i CLAUDE.md' };
+  }
+
+  const newest = execSync('git log -1 --format=%H -- Webflow/' + spec.js,
                           { encoding: 'utf8' }).trim();
   let fresh = null, subject = '';
   if (newest) {
@@ -166,7 +202,10 @@ function lookupPin(expectedFromMd) {
       fresh = true;
     } catch (e) { fresh = false; }
   }
-  return { ok: true, pin: pin, matchesMd: pin === expectedFromMd, fresh: fresh, newest: subject };
+  return {
+    ok: true, pin: pin, source: source,
+    matchesMd: pin === expectedFromMd, fresh: fresh, newest: subject
+  };
 }
 
 function row(name, expected, live, note) {
@@ -201,9 +240,10 @@ async function main() {
         live.srcs['dashboard-bootstrap.js']),
     row('website-dashboard-bootstrap.js', expected.websiteBootstrap,
         live.srcs['website-dashboard-bootstrap.js']),
-    row('lookup.js', expected.lookup, live.srcs['lookup.js'] || null,
-        'í Embed á bak við lykilorð — ekki lesanlegt héðan')
-  ];
+  ].concat(EMBED_PINNED.map(function (spec) {
+    return row(spec.js, expected[spec.key], live.srcs[spec.js] || null,
+               'í Embed á bak við lykilorð — ekki lesanlegt héðan');
+  }));
 
   const w = Math.max.apply(null, rows.map(function (r) { return r.name.length; }));
   console.log('\nPinnar — CLAUDE.md gegn ' + PAGE + ' (HTTP ' + res.status + ')\n');
@@ -238,23 +278,35 @@ async function main() {
     console.log('  ? Ferskleikapróf slapp: ' + fresh.why);
   }
 
-  const lk = lookupPin(expected.lookup);
   console.log('');
-  if (lk.ok === null) {
-    console.log('  ? lookup.js: ' + lk.why);
-  } else {
-    if (!lk.matchesMd) {
-      console.log('  ✗ lookup.js: embedid pinnar ' + lk.pin + ' en CLAUDE.md segir ' +
-                  (expected.lookup || '—') + '. Annad hvort er rangt adur en Webflow kemur vid sogu.');
+  const embedBad = [];
+  EMBED_PINNED.forEach(function (spec) {
+    const lk = embedPin(spec, expected[spec.key]);
+    // Pinni sem er hvorki i embed-skra ne i toflunni er ekki "i lagi" —
+    // hann er oskradur, og oskrad var einmitt astandid sem activation.js
+    // sat i fra juni til september.
+    if (lk.ok === null || (lk.source !== 'CLAUDE.md' && !lk.matchesMd) || lk.fresh === false) {
+      embedBad.push(spec.js);
+    }
+    if (lk.ok === null) {
+      console.log('  ? ' + spec.js + ': ' + lk.why);
+      return;
+    }
+    if (lk.source === 'CLAUDE.md') {
+      console.log('  ? ' + spec.js + ': engin embed-skra i repo — profa pinnann ur toflunni (' +
+                  lk.pin + '). Lifandi gildid er adeins stadfestanlegt med hondum.');
+    } else if (!lk.matchesMd) {
+      console.log('  ✗ ' + spec.js + ': ' + lk.source + ' pinnar ' + lk.pin + ' en CLAUDE.md segir ' +
+                  (expected[spec.key] || '—') + '. Annad hvort er rangt adur en Webflow kemur vid sogu.');
     } else {
-      console.log('  ✓ lookup.js: embedid og CLAUDE.md sammala (' + lk.pin + ').');
+      console.log('  ✓ ' + spec.js + ': embedid og CLAUDE.md sammala (' + lk.pin + ').');
     }
     if (lk.fresh === false) {
-      console.log('  ✗ lookup.js: pinninn ber EKKI nyjustu breytinguna — ' + lk.newest);
+      console.log('  ✗ ' + spec.js + ': pinninn ber EKKI nyjustu breytinguna — ' + lk.newest);
     } else if (lk.fresh === true) {
-      console.log('  ✓ lookup.js: pinninn ber nyjustu breytinguna a skranni.');
+      console.log('  ✓ ' + spec.js + ': pinninn ber nyjustu breytinguna a skranni.');
     }
-  }
+  });
 
   const drift = rows.filter(function (r) { return r.state === 'REK'; });
   const unknown = rows.filter(function (r) { return r.state === 'FANNST EKKI'; });
@@ -270,8 +322,11 @@ async function main() {
                 ' fannst ekki á síðunni.');
   }
   console.log('');
-  const lkBad = (lk.ok && (!lk.matchesMd || lk.fresh === false));
-  process.exit((drift.length || leaks.length || fresh.ok === false || lkBad) ? 1 : 0);
+  if (embedBad.length) {
+    console.log('  ✗ Embed-pinnar sem thurfa athygli: ' + embedBad.join(', '));
+    console.log('');
+  }
+  process.exit((drift.length || leaks.length || fresh.ok === false || embedBad.length) ? 1 : 0);
 }
 
 main().catch(function (err) {

@@ -1,0 +1,46 @@
+<!--
+  FORGANGSLISTI — skelin. Límdu ALLT þetta í Embed á /kpi/forgangslisti.
+
+  Hér er EKKERT nema festing og script-tag. Markup og stílar eru smíðaðir
+  í Webflow/forgangslisti.js, sem er pinnað hér að neðan. Sama skipting og
+  í portal-embed.html og lookup-embed.html, af sömu ástæðu: Webflow-Embed
+  tekur 10.000 stafi og sker afganginn þegjandi. Þessi skel er ~1.400
+  stafir og getur ekki vaxið út fyrir markið.
+
+  ── ÁÐUR EN ÞETTA FER INN ───────────────────────────────────────────
+  Gamla síðan er Webflow-teiknaður listi sem customer-profiles.js fyllir,
+  með rótinni data-module="customer-profiles" data-default-chip="flagged".
+  TAKTU HANA ÚT um leið og þessi Embed fer inn. Séu báðar á síðunni keyra
+  tvær útgáfur af sama lista hlið við hlið, sækja sömu gögnin tvisvar og
+  sýna misvísandi stöðu eftir hverja skrift í aðra þeirra.
+
+  customer-profiles.js heldur áfram að þjóna /kpi/vidskiptavinur óbreytt —
+  ekki taka hana úr dashboard-bootstrap.js.
+
+  ── KREFST ──────────────────────────────────────────────────────────
+  Page-scoped head code á síðunni, ALDREI site-wide:
+    window.STORKAUP_CONFIG.supabaseUrl + .publishableKey
+  (Webflow birtir site-wide head-kóða á ólæsta lykilorðaskjánum líka.)
+
+  ── PINNINN ─────────────────────────────────────────────────────────
+  <script src> hér að neðan er pinnaður á EIGIN commit, ekki gegnum
+  data-storkaup-rev. Breytist Webflow/forgangslisti.js þarf að færa ÞANN
+  pinna — og ekki data-storkaup-rev, sem stýrir mælaborðsskránum. Skráðu
+  hann í pinnatöfluna í CLAUDE.md um leið.
+
+  Scriptið keyrir ekki á Designer-canvas (Webflow sprautar embed-innihaldi
+  inn með innerHTML: <style> virkar, <script> ekki). Prófaðu á BIRTU
+  síðunni. Rauði reiturinn hér að neðan segir frá því sjálfur og hverfur
+  við ræsingu.
+-->
+
+<div id="sk-forgangslisti">
+  <p id="sk-forgangslisti-boot" style="margin:0;padding:10px 12px;border-radius:6px;
+     background:#fce8e6;border:1px solid #f0b4ad;font:13px/1.45 Arial,sans-serif">
+    ⚠️ Forgangslistinn hefur ekki ræst. Script í Embed keyrir ekki á
+    Designer-canvas — opnaðu birtu síðuna. Haldist þetta þar vantar
+    líklega STORKAUP_CONFIG í head-kóða síðunnar.
+  </p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/gh/OlafurOrnJosephsson/storkaup_kpi@PIN/Webflow/forgangslisti.js"></script>

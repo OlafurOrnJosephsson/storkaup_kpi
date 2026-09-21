@@ -14,11 +14,34 @@ create table if not exists raw.customer_priority_flags_raw (
   assigned_rep_name_norm text null,
   assigned_rep_updated_at timestamptz null,
   note text null,
+  last_contacted_at timestamptz null,
+  next_followup_at date null,
+  updated_by text null,
   updated_at timestamptz not null default now()
 );
 
 alter table raw.customer_priority_flags_raw
   add column if not exists created_at timestamptz not null default now();
+
+-- É EFTIRFYLGNI — bætt við 2026-09-21 ────────────────────────
+-- `last_contacted_at` er aðskilið frá `updated_at` VILJANDI. `updated_at`
+-- hreyfist við hverja skrift — líka þegar kveikt er á forgangi eða
+-- sölumaður tengdur — svo það svarar aldrei þeirri spurningu sem
+-- forgangslistinn snýst um: hvenær talaði einhver síðast við þennan
+-- viðskiptavin.
+--
+-- Chippið „Gömul staða (30d+)“ taldi frá `created_at`, þ.e. flaggdeginum,
+-- og sagði því að sölumaður sem hringdi í gær væri ósnertur.
+-- `last_contacted_at` hreyfist aðeins þegar einhver skráir snertingu
+-- gegnum `api.log_customer_priority_touch`.
+alter table raw.customer_priority_flags_raw
+  add column if not exists last_contacted_at timestamptz null,
+  add column if not exists next_followup_at date null,
+  add column if not exists updated_by text null;
+
+create index if not exists idx_customer_priority_flags_followup
+  on raw.customer_priority_flags_raw (next_followup_at)
+  where next_followup_at is not null;
 
 create index if not exists idx_customer_priority_flags_status
   on raw.customer_priority_flags_raw (status);
@@ -38,6 +61,9 @@ returns table (
   created_at timestamptz,
   assigned_rep_name_norm text,
   note text,
+  last_contacted_at timestamptz,
+  next_followup_at date,
+  updated_by text,
   updated_at timestamptz
 )
 language sql
@@ -61,6 +87,9 @@ as $function$
       f.created_at,
       f.assigned_rep_name_norm,
       f.note,
+      f.last_contacted_at,
+      f.next_followup_at,
+      f.updated_by,
       f.updated_at
     from raw.customer_priority_flags_raw f
   ),
@@ -156,6 +185,9 @@ as $function$
     f.created_at,
     f.assigned_rep_name_norm,
     f.note,
+    f.last_contacted_at,
+    f.next_followup_at,
+    f.updated_by,
     f.updated_at
   from flags f
   left join agg a on a.customer_family_id = f.customer_family_id
@@ -224,7 +256,11 @@ begin
     status = excluded.status,
     assigned_rep_name_norm = coalesce(raw.customer_priority_flags_raw.assigned_rep_name_norm, excluded.assigned_rep_name_norm),
     assigned_rep_updated_at = raw.customer_priority_flags_raw.assigned_rep_updated_at,
-    note = excluded.note,
+    -- ÁÐUR: `note = excluded.note`. Viðmótið sendir alltaf p_note=null
+    -- þegar kveikt/slokkt er á forgangi, svo hver forgangssmellur þurrkaði
+    -- út athugasemdina. Þögul gagnatönn sem beið þess eins að einhver
+    -- færi að skrifa athugasemdir. Null þýðir nú „láttu óbreytt“.
+    note = coalesce(excluded.note, raw.customer_priority_flags_raw.note),
     updated_at = now();
 
   return jsonb_build_object(
@@ -390,6 +426,150 @@ begin
 end;
 $function$;
 
+-- ── SKRÁ SNERTINGU ───────────────────────────────────────
+-- Eitt kall því það er ein aðgerð í viðmótinu: „ég talaði við þennan“.
+-- Sölumaðurinn skrifar athugasemd, velur næsta eftirfylgnidag, og
+-- tímastimpillinn kemur frá gagnagrunninum — ekki frá vafranum, sem er
+-- í höndum notandans.
+--
+-- ÞÓÐARBRAGÐ Á NULL: `p_note => null` lætur athugasemdina óbreytta, en
+-- tómur strengur hreinsar hana. Án þess aðgreiningar væri ekki hægt að
+-- skrá snertingu án þess að endurtaka gamla textann, né hægt að eyða honum.
+-- `p_clear_followup` gerir það sama fyrir dagsetninguna, sem getur ekki
+-- borið tóman streng.
+create or replace function api.log_customer_priority_touch(
+  p_customer_id      text,
+  p_note             text    default null,
+  p_next_followup_at date    default null,
+  p_by               text    default null,
+  p_clear_followup   boolean default false
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'api', 'raw', 'public'
+as $function$
+declare
+  v_raw  text := trim(coalesce(p_customer_id, ''));
+  v_norm text := regexp_replace(v_raw, '\D', '', 'g');
+  v_key  text;
+  v_row  raw.customer_priority_flags_raw%rowtype;
+begin
+  if v_raw = '' then
+    raise exception 'p_customer_id is required';
+  end if;
+
+  if v_norm <> '' then
+    v_key := v_norm;
+  else
+    v_key := lower(v_raw);
+  end if;
+
+  if not exists (select 1 from raw.customer_priority_flags_raw f where f.customer_family_id = v_key) then
+    raise exception 'customer flag row not found for customer_family_id=%', v_key;
+  end if;
+
+  update raw.customer_priority_flags_raw f
+  set
+    last_contacted_at = now(),
+    note = case
+             when p_note is null then f.note
+             when btrim(p_note) = '' then null
+             else btrim(p_note)
+           end,
+    next_followup_at = case
+                         when p_clear_followup then null
+                         when p_next_followup_at is null then f.next_followup_at
+                         else p_next_followup_at
+                       end,
+    updated_by = coalesce(nullif(btrim(coalesce(p_by, '')), ''), f.updated_by),
+    updated_at = now()
+  where f.customer_family_id = v_key
+  returning * into v_row;
+
+  return jsonb_build_object(
+    'ok', true,
+    'customer_family_id', v_key,
+    'last_contacted_at', v_row.last_contacted_at,
+    'next_followup_at', v_row.next_followup_at,
+    'note', v_row.note,
+    'updated_by', v_row.updated_by
+  );
+end;
+$function$;
+
+
+-- ── FJÖLDAÚTHLUTUN SÖLUMANNS ───────────────────────────────
+-- Hliðstætt `bulk_set_customer_priority_flags`. Án þess yrði viðmótið að
+-- senda eitt kall á hverja röð; færslur sem falla í miðri lykkju skilja
+-- eftir hálfkláraða úthlutun sem enginn sér. Hér er það ein færsla.
+--
+-- Ólíkt stakri úthlutun er hver auðkenni sem á sér ENGA flággröð SLEPPT
+-- þegjandi — það er talið í `skipped`, ekki kastað. Fjöldaaðgerð sem
+-- fellur öll vegna eins auðkennis er verri en ein sem segir frá.
+create or replace function api.bulk_assign_customer_priority_rep(
+  p_customer_ids           text[],
+  p_assigned_rep_name_norm text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'api', 'raw', 'public'
+as $function$
+declare
+  v_rep     text := lower(trim(coalesce(p_assigned_rep_name_norm, '')));
+  v_raw     text;
+  v_norm    text;
+  v_key     text;
+  v_keys    text[] := array[]::text[];
+  v_updated integer := 0;
+begin
+  if p_customer_ids is null or array_length(p_customer_ids, 1) is null then
+    return jsonb_build_object('ok', true, 'updated', 0, 'skipped', 0);
+  end if;
+
+  if v_rep <> '' and not exists (
+    select 1
+    from raw.sales_reps_ref r
+    where coalesce(r.active, true) = true
+      and lower(trim(coalesce(r.name_norm, ''))) = v_rep
+  ) then
+    raise exception 'assigned rep not found in raw.sales_reps_ref: %', v_rep;
+  end if;
+
+  foreach v_raw in array p_customer_ids loop
+    v_raw := trim(coalesce(v_raw, ''));
+    if v_raw = '' then
+      continue;
+    end if;
+    v_norm := regexp_replace(v_raw, '\D', '', 'g');
+    if v_norm <> '' then
+      v_key := v_norm;
+    else
+      v_key := lower(v_raw);
+    end if;
+    v_keys := v_keys || v_key;
+  end loop;
+
+  update raw.customer_priority_flags_raw f
+  set
+    assigned_rep_name_norm = nullif(v_rep, ''),
+    assigned_rep_updated_at = now(),
+    updated_at = now()
+  where f.customer_family_id = any (v_keys);
+
+  get diagnostics v_updated = row_count;
+
+  return jsonb_build_object(
+    'ok', true,
+    'updated', v_updated,
+    'skipped', coalesce(array_length(v_keys, 1), 0) - v_updated,
+    'assigned_rep_name_norm', nullif(v_rep, '')
+  );
+end;
+$function$;
+
+
 -- NOTE: anon intentionally NOT granted — anon reads via the SECURITY DEFINER
 -- function api.get_customer_priority_flags() (owner-exempt from RLS), never the
 -- raw table directly. Re-applying this file must not re-open anon access.
@@ -406,3 +586,10 @@ grant execute on function api.get_active_sales_reps() to authenticated, anon, se
 grant execute on function api.set_customer_priority_flag(text, text, text, text)   to authenticated, anon, service_role;
 grant execute on function api.assign_customer_priority_rep(text, text)             to authenticated, anon, service_role;
 grant execute on function api.bulk_set_customer_priority_flags(text[], text, text) to authenticated, anon, service_role;
+grant execute on function api.log_customer_priority_touch(text, text, date, text, boolean) to authenticated, anon, service_role;
+grant execute on function api.bulk_assign_customer_priority_rep(text[], text)              to authenticated, anon, service_role;
+
+-- Skilagerð `get_customer_priority_flags` breyttist (þrír nýir dálkar), svo
+-- PostgREST heldur gömlu gerðinni í skímu-skyndiminni þar til þetta keyrir.
+-- Án þess: 500 í vafranum en fullkomlega í lagi í SQL-ritlinum.
+notify pgrst, 'reload schema';

@@ -1895,6 +1895,81 @@
         updateCustomerSortIndicators(root);
     }
 
+    // Opnar prófíl eftir customer_id. Dregið út úr smellihöndlaranum svo
+    // djúptengill (?customer=...) geti farið nákvæmlega sömu leið — nýi
+    // forgangslistinn (Webflow/forgangslisti.js) er sérstök eining á
+    // sinni síðu og kemst ekki í þetta ástand nema gegnum slóðina.
+    async function openProfileById(root, id) {
+        var wanted = String(id == null ? "" : id).trim();
+        if (!wanted) return false;
+
+        resetCacheHelpPanel_(root);
+        var selectedRaw = state.customers.find(function(c) { return String(c.customer_id) === wanted; }) || null;
+
+        // Djúptengill getur bent á viðskiptavin sem bakgrunnshleðslan er
+        // ekki komin að. Þá er hann sóttur stakur frekar en að síðan opnist
+        // tóm — það liti út eins og viðskiptavinurinn væri ekki til.
+        if (!selectedRaw) {
+            try {
+                var fetched = await fetchProfilesByCustomerIds([wanted], 1);
+                if (fetched && fetched.length) {
+                    selectedRaw = fetched[0];
+                    state.customers = state.customers.concat([selectedRaw]);
+                    applyPriorityFlagsToCustomers_();
+                }
+            } catch (lookupErr) {
+                console.error("Deep-link profile lookup failed:", lookupErr);
+            }
+        }
+        if (!selectedRaw) return false;
+
+        state.selected = buildSelectedProfile(selectedRaw, state.customers, state.profileScope);
+
+        if (state.profileScope !== "child") {
+            try {
+                var familySummary = await fetchFamilyProfileSummary(selectedRaw && selectedRaw.customer_id);
+                if (familySummary) {
+                    state.selected = Object.assign({}, state.selected || {}, familySummary, {
+                        _queryCustomerId: String(
+                            (state.selected && state.selected._queryCustomerId) ||
+                            (selectedRaw && selectedRaw.customer_id) ||
+                            (familySummary && familySummary.customer_id) ||
+                            ""
+                        ).trim()
+                    });
+                }
+            } catch (familyErr) {
+                console.error(familyErr);
+            }
+        }
+
+        bindSelected(root);
+        setProfileVisible(root, !!state.selected);
+        setCustomerListVisible(root, false);
+
+        try {
+            var tasks = await fetchOpenTasks(state.selected.customer_id);
+            renderOpenTasks(root, tasks);
+        } catch (err) {
+            console.error(err);
+            renderOpenTasks(root, []); // keep UI usable
+        }
+
+        try {
+            var orders = await fetchLastOrders(state.selected.customer_id, 5);
+            renderLastOrders(root, orders);
+        } catch (err2) {
+            console.error(err2);
+            renderLastOrders(root, []);
+        }
+
+        state.shoppingRows = [];
+        state.shoppingFiltered = [];
+        var sl = root.querySelector('[data-list="shopping-list"]');
+        if (sl) sl.innerHTML = "";
+        return true;
+    }
+
     async function init() {
         var root = document.querySelector('[data-module="customer-profiles"]');
         if (!root) return;
@@ -2207,53 +2282,7 @@
             var open = e.target.closest('[data-action="open-profile"]');
             if (open) {
                 e.preventDefault();
-                resetCacheHelpPanel_(root);
-                var id = open.getAttribute("data-customer-id");
-                var selectedRaw = state.customers.find(function(c) { return String(c.customer_id) === String(id); }) || null;
-                state.selected = buildSelectedProfile(selectedRaw, state.customers, state.profileScope);
-
-                if (state.profileScope !== "child") {
-                    try {
-                        var familySummary = await fetchFamilyProfileSummary(selectedRaw && selectedRaw.customer_id);
-                        if (familySummary) {
-                            state.selected = Object.assign({}, state.selected || {}, familySummary, {
-                                _queryCustomerId: String(
-                                    (state.selected && state.selected._queryCustomerId) ||
-                                    (selectedRaw && selectedRaw.customer_id) ||
-                                    (familySummary && familySummary.customer_id) ||
-                                    ""
-                                ).trim()
-                            });
-                        }
-                    } catch (familyErr) {
-                        console.error(familyErr);
-                    }
-                }
-
-                bindSelected(root);
-                setProfileVisible(root, !!state.selected);
-                setCustomerListVisible(root, false);
-
-                try {
-                    var tasks = await fetchOpenTasks(state.selected.customer_id);
-                    renderOpenTasks(root, tasks);
-                } catch (err) {
-                    console.error(err);
-                    renderOpenTasks(root, []); // keep UI usable
-                }
-
-                try {
-                    var orders = await fetchLastOrders(state.selected.customer_id, 5);
-                    renderLastOrders(root, orders);
-                } catch (err2) {
-                    console.error(err2);
-                    renderLastOrders(root, []);
-                }
-
-                state.shoppingRows = [];
-                state.shoppingFiltered = [];
-                var sl = root.querySelector('[data-list="shopping-list"]');
-                if (sl) sl.innerHTML = "";
+                await openProfileById(root, open.getAttribute("data-customer-id"));
                 return;
             }
 
@@ -2305,6 +2334,20 @@
                     syncAssignRepCtaState_(root);
                 }
             });
+
+            // Djúptengill: /kpi/vidskiptavinur?customer=5403221710 opnar
+            // prófílinn beint. Það er það sem leyfir nýja forgangslistanum
+            // (Webflow/forgangslisti.js, sér eining á sinni síðu) að vísa
+            // hingað í stað þess að endurtaka prófílinn allan.
+            //
+            // Keyrt eftir að listinn er kominn upp, svo síðan standi eftir
+            // ef auðkennið finnst ekki — ekki sem hluti af hleðslunni.
+            try {
+                var deepId = new URLSearchParams(window.location.search).get("customer");
+                if (deepId) await openProfileById(root, deepId);
+            } catch (deepErr) {
+                console.error("Deep-link open failed:", deepErr);
+            }
         } finally {
             if (!loaderReleasedEarly) setModuleLoading_(root, false);
             document.dispatchEvent(new CustomEvent("storkaup:page-ready"));
