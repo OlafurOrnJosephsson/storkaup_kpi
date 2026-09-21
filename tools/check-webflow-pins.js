@@ -131,6 +131,44 @@ function freshness(liveRev) {
   return { ok: contains, newest: subject, children: list.length };
 }
 
+/**
+ * LOOKUP-PINNINN — thrihlida, en adeins tvaer hlidar naest i.
+ *
+ * `Webflow/lookup.js` er pinnadur inni i Embed a /kpi/voruuppfletting,
+ * i sidubolnum og thvi a bak vid lykilordahlidina. Hann sest ekki i
+ * 401-svarinu (maelt 2026-09-21), svo lifandi gildid er ekki lesanlegt
+ * hedan og er merkt OATHUGADUR — aldrei "i lagi".
+ *
+ * Hitt tvennt er hins vegar athuganlegt, og thad er einmitt thad sem
+ * bilar i raun:
+ *   1. Ber pinninn i Webflow/lookup-embed.html sama gildi og CLAUDE.md?
+ *      Skrain er thad sem a ad limast inn; reki hun fra toflunni er
+ *      annad hvort rangt adur en nokkur snertir Webflow.
+ *   2. Ber sa pinni nyjustu breytinguna a Webflow/lookup.js? Ad breyta
+ *      skranni og gleyma ad faera pinnann i embedinu skilar sér sem
+ *      "ekkert breyttist" — sama thogla einkenni og annars stadar her.
+ */
+function lookupPin(expectedFromMd) {
+  const embedPath = path.join(__dirname, '..', 'Webflow', 'lookup-embed.html');
+  if (!fs.existsSync(embedPath)) return { ok: null, why: 'fann ekki lookup-embed.html' };
+  const embed = fs.readFileSync(embedPath, 'utf8');
+  const pin = (embed.match(/storkaup_kpi@([0-9a-f]{7,40})\/Webflow\/lookup\.js/) || [])[1];
+  if (!pin) return { ok: null, why: 'fann engan pinna i lookup-embed.html' };
+
+  const newest = execSync('git log -1 --format=%H -- Webflow/lookup.js',
+                          { encoding: 'utf8' }).trim();
+  let fresh = null, subject = '';
+  if (newest) {
+    subject = execSync('git log -1 --format=%h%x20%s ' + newest,
+                       { encoding: 'utf8' }).trim();
+    try {
+      execSync('git merge-base --is-ancestor ' + newest + ' ' + pin, { stdio: 'ignore' });
+      fresh = true;
+    } catch (e) { fresh = false; }
+  }
+  return { ok: true, pin: pin, matchesMd: pin === expectedFromMd, fresh: fresh, newest: subject };
+}
+
 function row(name, expected, live, note) {
   let state;
   if (live === null || live === undefined) state = note ? 'ÓATHUGAÐUR' : 'FANNST EKKI';
@@ -200,6 +238,24 @@ async function main() {
     console.log('  ? Ferskleikapróf slapp: ' + fresh.why);
   }
 
+  const lk = lookupPin(expected.lookup);
+  console.log('');
+  if (lk.ok === null) {
+    console.log('  ? lookup.js: ' + lk.why);
+  } else {
+    if (!lk.matchesMd) {
+      console.log('  ✗ lookup.js: embedid pinnar ' + lk.pin + ' en CLAUDE.md segir ' +
+                  (expected.lookup || '—') + '. Annad hvort er rangt adur en Webflow kemur vid sogu.');
+    } else {
+      console.log('  ✓ lookup.js: embedid og CLAUDE.md sammala (' + lk.pin + ').');
+    }
+    if (lk.fresh === false) {
+      console.log('  ✗ lookup.js: pinninn ber EKKI nyjustu breytinguna — ' + lk.newest);
+    } else if (lk.fresh === true) {
+      console.log('  ✓ lookup.js: pinninn ber nyjustu breytinguna a skranni.');
+    }
+  }
+
   const drift = rows.filter(function (r) { return r.state === 'REK'; });
   const unknown = rows.filter(function (r) { return r.state === 'FANNST EKKI'; });
   console.log('');
@@ -214,7 +270,8 @@ async function main() {
                 ' fannst ekki á síðunni.');
   }
   console.log('');
-  process.exit((drift.length || leaks.length || fresh.ok === false) ? 1 : 0);
+  const lkBad = (lk.ok && (!lk.matchesMd || lk.fresh === false));
+  process.exit((drift.length || leaks.length || fresh.ok === false || lkBad) ? 1 : 0);
 }
 
 main().catch(function (err) {

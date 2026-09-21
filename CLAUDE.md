@@ -318,6 +318,14 @@ agree and both be wrong, which is exactly what happened here. It also fails if
 
 It runs at the end of `gas_deploy.ps1`, non-blocking.
 
+The `lookup.js` pin sits in a page Embed on `/kpi/voruuppfletting`, in the body
+and therefore behind the gate — it is **not** readable from outside, and the
+tool prints `ÓATHUGAÐUR` for it rather than a clean bill. What it does check
+locally is that `Webflow/lookup-embed.html` and this table agree, and that the
+pin contains the newest commit touching `Webflow/lookup.js`. Those two catch
+the realistic mistake (change the file, forget the pin); the live value is
+confirmed by hand, last on 2026-09-21.
+
 Only `data-storkaup-rev` was moved to `4131408`; the two script-tag `src`
 values were deliberately left at `6c992c5`, because **both bootstrap files are
 byte-identical between the two revisions** — the `4131408` deploy touched only
