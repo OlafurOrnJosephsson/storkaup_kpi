@@ -1,0 +1,28 @@
+<!--
+  VÖRUPORTAL — skelin. Límdu ALLT þetta í Embed á /kpi/voruportal.
+
+  Hér er EKKERT nema festingar og script-taggið. Markup og stílar eru
+  smíðaðir í Webflow/portal.js, sem er pinnað hér að neðan.
+
+  Það er vísvitandi. Uppflettingin bar markup + CSS + JS í einu embedi og
+  varð 12.517 stafir; Webflow-Embed tekur 10.000 og skar afganginn án þess
+  að segja frá. Einkennið var „ekkert gerist við smell" og það tók tíma að
+  finna. Þessi skel er ~700 stafir og getur ekki vaxið út fyrir markið.
+
+  KREFST (page-scoped head code á síðunni, ALDREI site-wide):
+    window.STORKAUP_CONFIG.supabaseUrl + .publishableKey
+
+  Scriptið keyrir ekki á Designer-canvas — prófaðu á birtu síðunni.
+  Rauði reiturinn hér að neðan segir frá því sjálfur og hverfur við ræsingu.
+-->
+
+<div id="sk-portal">
+  <p id="sk-portal-boot" style="margin:0;padding:10px 12px;border-radius:6px;
+     background:#fce8e6;border:1px solid #f0b4ad;font:13px/1.45 Arial,sans-serif">
+    ⚠️ Vöruportalinn hefur ekki ræst. Script í Embed keyrir ekki á
+    Designer-canvas — opnaðu birtu síðuna. Haldist þetta þar vantar
+    líklega STORKAUP_CONFIG í head-kóða síðunnar.
+  </p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/gh/OlafurOrnJosephsson/storkaup_kpi@d7b665c/Webflow/portal.js"></script>
