@@ -25,3 +25,14 @@ email-preview/**
 # .js i docs/ vaeri hun pushud sem SCRIPT, og top-level require() drepur
 # alla trigger-a i verkefninu. Betra ad moppan se utilokud fra byrjun.
 docs/**
+
+# Verkfaeri sem keyra i Node, ekki i Apps Script. Skrifad her 2026-09-21
+# eftir ad tools/check-webflow-pins.js for i clasp push og felldi hann:
+#   Syntax error: ParseError: Unexpected token ILLEGAL line: 1
+#
+# Sa parse-villa var HEPPNI. Hun kom af shebang-linunni (#!/usr/bin/env
+# node), sem Apps Script skilur ekki, svo pushid stoppadi adur en nokkud
+# for inn. Node-skra AN shebang — bara require() a toppstigi — hefdi farid
+# hljodlega inn og kastad vid hverja keyrslu, sem drepur alla trigger-a i
+# verkefninu. Sama gildra og email-preview/** og docs/** eru her fyrir.
+tools/**
