@@ -46,7 +46,8 @@ const WEB_CATALOG_PAGE_  = 200;
 /************************************************************
  * 🌐 fetchWebCatalogRows_ — allur birti vörulistinn
  * Skilar { rows, totalCount, complete }.
- *   rows       [{ webSku, sku, brandSku, name, brand, slug, related[] }]
+ *   rows       [{ webSku, sku, brandSku, name, brand, slug, related[],
+ *                descLen, descIsName }]
  *   totalCount talan sem vefurinn gaf upp, til að meta heilleika
  *   complete   satt ef pagineringin kláraðist eðlilega
  * getProductsV2 er OPINBERT — enginn Bearer (sbr. storkaup_pricing.js).
@@ -56,7 +57,8 @@ function fetchWebCatalogRows_() {
     'query getProductsV2($pagination: PaginationInput) {' +
     '  getProductsV2(pagination: $pagination) {' +
     '    totalCount pageInfo { hasNextPage }' +
-    '    edges { node { sku name slug relatedProductSkus' +
+    '    edges { node { sku name slug relatedProductSkus longDescription' +
+    '      featuredImage { url }' +
     '      attributes { brand_sku BrandName } } }' +
     '  }' +
     '}';
@@ -106,8 +108,28 @@ function fetchWebCatalogRows_() {
         if (n) related.push(n);
       });
 
+      // ── INNIHALDSMERKI, EKKI INNIHALDIÐ SJÁLFT ──────────────────
+      // Lýsingarnar eru 828 KB samtals og eru þegar til á tveimur
+      // stöðum: í Plytix og á vefnum. Þriðja afritið í Supabase væri
+      // texti sem fúnar og enginn les — portalinn tengir á vöruna til
+      // að lesa hana. Geymd eru MERKIN: lengd og hvort „lýsingin" sé
+      // orðrétt vöruheitið.
+      //
+      // Mælt 2026-09-21 á öllum 4.474: 4 án lýsingar, 470 þar sem
+      // lýsingin ER vöruheitið, miðgildi 114 stafir. Þau 470 eru tómur
+      // reitur í dulargervi og eru raunverulega merkið sem vantaði.
+      //
+      // Mynd er EKKI geymd sem merki: 1 vara af 4.474 er án myndar.
+      // Panel sem flaggar einu tilviki af 4.474 kennir fólki að hunsa
+      // hann.
+      const descRaw = String(node.longDescription === null ||
+                             node.longDescription === undefined ? '' : node.longDescription).trim();
+      const nameRaw = String(node.name || '').trim();
+
       rows.push({
         webSku:   String(node.sku),
+        descLen:  descRaw.length,
+        descIsName: descRaw !== '' && descRaw === nameRaw,
         sku:      normStorkaupSku_(node.sku),
         brandSku: normBrandSku_(attrs.brand_sku),
         name:     node.name || '',
@@ -308,6 +330,8 @@ function syncWebCatalogToSupabase_v1() {
       product_name: r.name || null,
       brand_name:   r.brand || null,
       slug:         r.slug || null,
+      description_length:  r.descLen,
+      description_is_name: !!r.descIsName,
       synced_at:    startedIso
     };
   });
