@@ -127,7 +127,12 @@
       var q = search.input.value.trim();
       if (q.length < 2) { search.results.innerHTML = ""; return; }
       timer = setTimeout(function () {
-        api("search_products", { p_query: q, p_days_back: 365, p_limit: 15 })
+        // search_web_catalog_v1, EKKI search_products. Su sidari leitar i
+        // bc_lines_raw yfir 365 daga og fellur a statement_timeout vid
+        // lyklabordsleit — maelt i framleidslu 2026-09-21. Leitarreitur i
+        // voruportali a ad finna VORU; vorulistinn er 4.474 radir og
+        // snertir soluognin aldrei.
+        api("search_web_catalog_v1", { p_query: q, p_limit: 20 })
           .then(renderResults)
           .catch(function (err) {
             search.results.innerHTML = "";
@@ -154,10 +159,14 @@
         s.textContent = r.sku || "";
         b.appendChild(s);
         b.appendChild(document.createTextNode(r.product_name || ""));
-        if (r.brand_sku) {
+        var extra = [];
+        if (r.brand_name) extra.push(r.brand_name);
+        if (r.brand_sku)  extra.push("birgjanr. " + r.brand_sku);
+        if (r.match_kind && r.match_kind !== "heiti") extra.push("↳ " + r.match_kind);
+        if (extra.length) {
           var t = document.createElement("span");
           t.className = "skp-dim";
-          t.textContent = "  · birgjanr. " + r.brand_sku;
+          t.textContent = "  · " + extra.join(" · ");
           b.appendChild(t);
         }
         b.addEventListener("click", function () {
