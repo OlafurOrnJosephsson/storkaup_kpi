@@ -2193,10 +2193,25 @@ function collectSalesRepsRefRows_() {
     // of lágt. Staðfest 2026-09-21: glenn@ambrosialkitchen.is var skráð á
     // `solumadurbjossi`.
     //
-    // Netfangið vann enga vinnu: nafnið „Sölumaður - Bjössi" normaliserast
-    // í `solumadurbjossi` bæði hér og í SQL-inu, svo pantanir gegnum
-    // umboðsaðganginn flokkast rétt á nafninu einu. Að fella netfangið
-    // niður tapar engu — báðir samsvörunarstaðirnir sía `<> ''` fyrst.
+    // ⚠️ ÞETTA ER EKKI TAPLAUST. Fyrri útgáfa þessarar athugasemdar sagði
+    // að nafnið eitt héldi flokkuninni réttri. Mælt 2026-09-21: af 10.718
+    // vefpöntunum síðustu 365 daga samsvarar NÚLL á sölumannsnafni —
+    // vefpöntun ber FYRIRTÆKJANAFNIÐ, ekki tengiliðsnafnið. Allar 412
+    // sölumannspantanirnar koma frá netfangi.
+    //
+    // Af því leiðir að umboðstengiliður sem deilir netfangi með
+    // viðskiptavininum gerir pantanir hans og sölumannsins ÓAÐGREINANLEGAR.
+    // Að halda netfanginu kallar þær allar sölumannspantanir; að fella það
+    // kallar þær allar sjálfsafgreiðslu. Hvort tveggja er ágiskun.
+    //
+    // Raunverulega lausnin er í BC: gefðu hverjum „Sölumaður - X" tengilið
+    // netfang sölumannsins á @storkaup.is. Þá aðgreinast pantanirnar, og
+    // lagfæringin lendir því CUSTOMERS er lesið á undan NEWWEB hér að neðan
+    // og taflan er endurbyggð frá grunni í hverri samstillingu.
+    //
+    // Þessi vörn er því ÖRYGGISNET, ekki aðallausnin: hún kemur í veg fyrir
+    // að netfang viðskiptavinar verði sölumannsnetfang aftur. Sé BC lagað
+    // fyrst hefur hún ekkert að gera, sem er nákvæmlega markmiðið.
     //
     // ATH: aðeins skoðað þegar NAFNIÐ sjálft ber merkið. Röð sem á sér
     // sölumann í ROLE en venjulegt mannsnafn heldur sínu netfangi.

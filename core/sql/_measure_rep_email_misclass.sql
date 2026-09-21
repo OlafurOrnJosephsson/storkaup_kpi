@@ -54,7 +54,40 @@
 -- Viðskiptavinirnir þrír eru ekki smáir: Hertz-Bílaþjónustan á 42
 -- vefpantanir síðustu 365 daga og Hagkaup-verslanirnar 80 samtals.
 --
---   faerast_i_sjalfsafgreidslu (fyrri fyrirspurn): ____  ← fylltu út
+-- MÆLT 2026-09-21:
+--   vefpantanir_365d ................. 10.718
+--   taldar_solumannspantanir_nuna ....    412   (3,8%)
+--   samsvorun_a_nafni ................      0   ← sjá hér að neðan
+--   faerast_i_sjalfsafgreidslu .......     24   (0,2% allra, 5,8% sölumannspantana)
+--
+-- ⚠️ `samsvorun_a_nafni = 0` FELLDI FORSENDUNA. Ætlunin var að netfangið
+-- mætti falla af því að nafnasamsvörunin héldi flokkuninni réttri. Hún
+-- grípur enga pöntun: vefpöntun ber FYRIRTÆKJANAFNIÐ, ekki tengiliðsnafnið,
+-- svo `rep_name_norm = customer_name_norm` rætist aldrei. Öll flokkun
+-- sölumannspantana hvílir á netfangi.
+--
+-- Þar með er umboðstengiliður sem deilir netfangi með viðskiptavininum
+-- ÓAÐGREINANLEGUR frá honum. Pöntun Hertz gegnum umboðsaðganginn og pöntun
+-- sem Svenni leggur sjálfur inn bera BÁÐAR svenni@hertz.is. Að halda
+-- netfanginu kallar þær allar sölumannspantanir; að fella það kallar þær
+-- allar sjálfsafgreiðslu. Við vitum ekki hlutföllin og gögnin geyma þau ekki.
+--
+-- RÉTTA RÖÐIN ER ÞVÍ ÖFUG VIÐ ÞAÐ SEM STÓÐ HÉR ÁÐUR:
+--   1. Laga BC — hver „Sölumaður - X" tengiliður fái netfang sölumannsins
+--      á @storkaup.is. Þá verða pantanirnar aðgreinanlegar í fyrsta sinn.
+--   2. Bíða eftir samstillingu. Hún LENDIR: collectSalesRepsRefRows_ les
+--      CUSTOMERS á undan NEWWEB og taflan er endurbyggð frá grunni, svo
+--      CUSTOMERS-netfangið vinnur. Allar þrjár raunverulegu raðirnar bera
+--      `CUSTOMERS | Admin`.
+--   3. Endurkeyra þessa mælingu — talan á að lækka af sjálfu sér.
+--   4. Deploya vörninni í addRef_ sem ÖRYGGISNETI gegn endurkomu.
+--
+-- Sex `<uuid>@example.com` raðirnar eiga sér enga CUSTOMERS-röð til að
+-- leiðrétta (allar úr NEWWEB). Þær hverfa aðeins með vörninni í skrefi 4.
+--
+-- Í samhengi: 24 pantanir af 10.718 færa sjálfsafgreiðsluhlutfallið úr
+-- 96,16% í 96,38%. Ómerkjanlegt í heild — en per viðskiptavin ræður það
+-- stöðu, og 2 pantanir Ambrosial Kitchen eru allur þeirra vefferill.
 --
 -- ── KEYRÐU ÞETTA ÁÐUR EN `addRef_` ER LAGAÐ ─────────────────────────
 -- Lagfæringin hækkar sjálfsafgreiðsluhlutfallið á aðalmælaborðinu. Sú
