@@ -146,13 +146,32 @@
     '.skf-fb.is-ok{color:#1c6b32}',
     '.skf-meta{font-size:11px;color:#8a8a92;margin-top:8px;line-height:1.6}',
 
-    '.skf-bulk{position:sticky;bottom:0;z-index:4;display:flex;flex-wrap:wrap;gap:8px;',
-    'align-items:center;padding:10px 14px;background:#1a1a1f;color:#fff;border-radius:8px;',
-    'margin-top:10px;font-size:12px}',
-    '.skf-bulk select{padding:6px 9px;font-size:12px;border-radius:6px;border:0;font-family:inherit}',
-    '.skf-bulk .skf-btn{border-color:#fff;background:#fff;color:#1a1a1f}',
-    '.skf-bulk .skf-btn:hover{background:#e3e3e8}',
-    '.skf-bulk-fb{margin-left:auto;opacity:.8}',
+    /* Fljotandi merki i stad fullbreidrar svartrar stiku. Tvennt raedur:
+       hun ma ekki lita ut eins og kerfisvidvorun, og hun ma ekki bera
+       fimm styringar sem enginn badd um. Hun segir hvad er valid og opnar
+       modal thar sem pláss er fyrir bædi adgerdirnar OG nofnin. */
+    '.skf-fab{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;',
+    'display:flex;align-items:center;gap:10px;padding:8px 10px 8px 16px;background:#fff;',
+    'border:1px solid #d7d7de;border-radius:999px;box-shadow:0 6px 24px rgba(0,0,0,.14);',
+    'font-size:13px;color:#1a1a1f}',
+    '.skf-fab b{font-weight:700}',
+    '.skf-fab__x{border:0;background:none;color:#8a8a92;font-size:17px;line-height:1;',
+    'cursor:pointer;padding:2px 6px;border-radius:50%}',
+    '.skf-fab__x:hover{background:#f0f0f3;color:#1a1a1f}',
+
+    '.skf-modal{position:fixed;inset:0;z-index:70;display:flex;align-items:center;',
+    'justify-content:center;background:rgba(20,20,26,.42);padding:20px}',
+    '.skf-modal__card{background:#fff;border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.28);',
+    'width:100%;max-width:520px;max-height:86vh;overflow:auto;padding:20px 22px 18px}',
+    '.skf-modal__card h3{margin:0 0 4px;font-size:16px}',
+    '.skf-modal__sub{margin:0 0 14px;font-size:12px;color:#5c5c63}',
+    '.skf-modal__names{margin:0 0 16px;padding:10px 12px;background:#f7f7f9;border-radius:8px;',
+    'font-size:12px;line-height:1.7;max-height:150px;overflow:auto}',
+    '.skf-modal__names div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.skf-modal__row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:16px}',
+    '.skf-modal__acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}',
+    '.skf-modal__acts .skf-btn--plain{margin-left:auto;border-color:#d7d7de;background:#fff;color:#5c5c63}',
+    '.skf-modal__acts .skf-btn--plain:hover{background:#f0f0f3}',
 
     '.skf-err{font-size:13px;color:#8a1c12;background:#fce8e6;padding:10px 12px;border-radius:8px}',
     '.skf-warnbar{font-size:12px;color:#6b5600;background:#fff3c4;padding:8px 12px;',
@@ -829,17 +848,56 @@
   function bulkHtml() {
     var n = selectedKeys().length;
     if (n < BULK_MIN) return '';
-    return '<div class="skf-bulk">' +
-      '<b>' + n + ' ' + (n === 1 ? 'valinn' : 'valdir') + '</b>' +
-      '<button type="button" class="skf-btn" data-bulk="priority">Í forgang</button>' +
-      '<button type="button" class="skf-btn" data-bulk="nonpriority">Úr forgangi</button>' +
-      '<select data-bulk-rep><option value="">Úthluta sölumanni…</option>' +
-        repOptions('').replace('<option value="">— enginn —</option>',
-                               '<option value="__none__">— taka af —</option>') + '</select>' +
-      '<button type="button" class="skf-btn" data-bulk="rep">Úthluta</button>' +
-      '<button type="button" class="skf-btn" data-bulk="clear">Hreinsa val</button>' +
-      '<span class="skf-bulk-fb" data-bulk-fb></span>' +
+    return '<div class="skf-fab">' +
+      '<span><b>' + n + '</b> valdir</span>' +
+      '<button type="button" class="skf-btn" data-bulk="open">Aðgerðir…</button>' +
+      '<button type="button" class="skf-fab__x" data-bulk="clear" title="Hreinsa val">×</button>' +
       '</div>';
+  }
+
+  // Modalinn synir NOFNIN, ekki bara toluna. "2 valdir" segir ekkert um
+  // hverja tvo, og fjoldaadgerd sem thu getur ekki lesid yfir adur en thu
+  // vistar er nakvaemlega su tegund sem fer ur bondunum.
+  function modalHtml() {
+    var keys = selectedKeys();
+    var rows = keys.map(rowByKey).filter(Boolean);
+    var SHOW = 8;
+    var names = rows.slice(0, SHOW).map(function (r) {
+      return '<div>' + esc(r.customer_name) + '</div>';
+    }).join('');
+    if (rows.length > SHOW) {
+      names += '<div class="skf-dim">og ' + (rows.length - SHOW) + ' í viðbót…</div>';
+    }
+
+    return '<div class="skf-modal" data-modal>' +
+      '<div class="skf-modal__card" role="dialog" aria-modal="true">' +
+        '<h3>Fjöldaaðgerð á ' + rows.length + ' viðskiptavini</h3>' +
+        '<p class="skf-modal__sub">Aðgerðin gildir um alla hér að neðan.</p>' +
+        '<div class="skf-modal__names">' + names + '</div>' +
+        '<div class="skf-modal__row">' +
+          '<label class="skf-fld"><span>Sölumaður (valfrjálst)</span>' +
+            '<select data-bulk-rep>' + repOptions('') + '</select></label>' +
+        '</div>' +
+        '<div class="skf-modal__acts">' +
+          '<button type="button" class="skf-btn" data-bulk="priority">Setja í forgang</button>' +
+          '<button type="button" class="skf-btn skf-btn--warn" data-bulk="nonpriority">Taka úr forgangi</button>' +
+          '<button type="button" class="skf-btn skf-btn--plain" data-bulk="close">Hætta við</button>' +
+        '</div>' +
+        '<div class="skf-fb" data-bulk-fb></div>' +
+      '</div></div>';
+  }
+
+  function openBulkModal() {
+    closeBulkModal();
+    var host = document.createElement('div');
+    host.setAttribute('data-modal-host', '1');
+    host.innerHTML = modalHtml();
+    root.appendChild(host);
+  }
+
+  function closeBulkModal() {
+    var host = root && root.querySelector('[data-modal-host]');
+    if (host) host.parentNode.removeChild(host);
   }
 
   // Leiðbeiningarnar sitja Í tólinu, ekki í skjali sem enginn opnar aftur.
@@ -914,7 +972,7 @@
       '<div data-warn></div>' +
       '<div data-bar></div>' +
       '<div class="skf-scroll"><div data-head></div><div data-list></div></div>' +
-      '<div data-bulk></div>';
+      '<div data-bulk-slot></div>';
   }
 
   function renderWarnings() {
@@ -940,20 +998,7 @@
         : '<div class="skf-empty">Engin röð passar við síuna.</div>';
     }
 
-    var bulk = q('[data-bulk]'); if (bulk) bulk.innerHTML = bulkHtml();
-
-    // Einn valinn syndi ekkert: hvorki stiku ne skilabod, svo hakid leit ut
-    // eins og thad hefdi ekki virkad. Teljarinn segir fra i stadinn.
-    var picked = selectedKeys().length;
-    var cnt = q('[data-count]');
-    if (cnt && picked === 1) {
-        cnt.textContent = '1 valinn — hakaðu við fleiri fyrir fjöldaaðgerðir, ' +
-                          'eða opnaðu röðina með örinni.';
-    } else if (cnt) {
-      cnt.textContent = state.filtered.length === state.rows.length
-        ? state.rows.length + ' raðir'
-        : state.filtered.length + ' af ' + state.rows.length;
-    }
+    renderSelectionUi();
 
     // Chip-teljararnir sitja í stikunni sem er ekki endurteiknuð.
     var counts = chipCounts();
@@ -965,6 +1010,30 @@
     });
   }
 
+  // Hak má EKKI endurteikna listann. refresh() byggir allar raðirnar upp á
+  // nýtt, svo hakreiturinn sem var verið að smella á er eyðilagður og
+  // endurskapaður: fókus tapast og hröð hökun missir atburði. Hér er aðeins
+  // merkið og teljarinn snert. (Fyrirtækjaleitin gerði þetta rétt frá
+  // byrjun; þessi eining ekki.)
+  function renderSelectionUi() {
+    var slot = q('[data-bulk-slot]');
+    if (slot) slot.innerHTML = bulkHtml();
+
+    var picked = selectedKeys().length;
+    var cnt = q('[data-count]');
+    if (!cnt) return;
+    if (picked === 1) {
+      cnt.textContent = '1 valinn — hakaðu við fleiri fyrir fjöldaaðgerðir, ' +
+                        'eða opnaðu röðina með örinni.';
+    } else if (picked > 1) {
+      cnt.textContent = picked + ' valdir.';
+    } else {
+      cnt.textContent = state.filtered.length === state.rows.length
+        ? state.rows.length + ' raðir'
+        : state.filtered.length + ' af ' + state.rows.length;
+    }
+  }
+
   function setFb(key, msg, kind) {
     var el = root.querySelector('[data-panel="' + cssEsc(key) + '"] [data-fb]');
     if (!el) return;
@@ -972,9 +1041,11 @@
     el.textContent = msg || '';
   }
 
-  function setBulkFb(msg) {
+  function setBulkFb(msg, kind) {
     var el = q('[data-bulk-fb]');
-    if (el) el.textContent = msg || '';
+    if (!el) return;
+    el.className = 'skf-fb' + (kind ? ' is-' + kind : '');
+    el.textContent = msg || '';
   }
 
   // ── aðgerðir ─────────────────────────────────────────────────────────
@@ -1138,12 +1209,31 @@
       var o = Array.isArray(out) ? out[0] : out;
       return reloadFlags().then(function () {
         var n = o && (o.updated != null ? o.updated : o.upserted);
-        setBulkFb('Vistað' + (n != null ? ' — ' + n + ' raðir' : '') + '.');
+        // Tokst: modalinn lokast og valid hreinsast. Ad skilja hvort tveggja
+        // eftir bydur upp a ad sama adgerd se keyrd tvisvar an thess ad sjast.
+        closeBulkModal();
+        state.selected = {};
+        refresh();
+        showToast_((n != null ? n + ' raðir' : 'Vistað') + ' uppfærðar.');
       });
     }).catch(function (e) {
       console.error('[forgangslisti] bulkAction', e);
-      setBulkFb('Villa: ' + e.message);
+      // Fell: modalinn STENDUR OPINN med villuna i. Ad loka honum vaeri ad
+      // fela thad eina sem notandinn tharf ad sja.
+      setBulkFb('Villa: ' + e.message, 'err');
     });
+  }
+
+  // Stutt stadfesting eftir ad modalinn lokast — annars hverfur spjaldid og
+  // ekkert segir hvort eitthvad gerdist.
+  function showToast_(msg) {
+    var el = document.createElement('div');
+    el.textContent = msg;
+    el.setAttribute('style', 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);' +
+      'z-index:80;background:#1c6b32;color:#fff;padding:9px 16px;border-radius:999px;' +
+      'font:13px Arial,Helvetica,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.18)');
+    document.body.appendChild(el);
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 2600);
   }
 
   // ── atburðir ─────────────────────────────────────────────────────────
@@ -1217,10 +1307,16 @@
         return;
       }
 
+      // Smellur utan á modalinn lokar honum. Athugað ÁÐUR en hnappaleitin
+      // fer af stað, svo smellur inni í spjaldinu loki ekki sjálfum sér.
+      if (e.target.matches('[data-modal]')) { closeBulkModal(); return; }
+
       var bulk = e.target.closest('[data-bulk]');
       if (bulk && bulk.tagName === 'BUTTON') {
         var bk = bulk.getAttribute('data-bulk');
-        if (bk === 'clear') { state.selected = {}; refresh(); return; }
+        if (bk === 'open') { openBulkModal(); return; }
+        if (bk === 'close') { closeBulkModal(); return; }
+        if (bk === 'clear') { state.selected = {}; closeBulkModal(); refresh(); return; }
         withBusy(bulk, bulkAction(bk));
       }
     });
@@ -1228,14 +1324,20 @@
     root.addEventListener('change', function (e) {
       var pick = e.target.closest('[data-pick]');
       if (pick) {
-        state.selected[pick.getAttribute('data-pick')] = pick.checked;
-        refresh();
+        var pk = pick.getAttribute('data-pick');
+        if (pick.checked) state.selected[pk] = true;
+        else delete state.selected[pk];
+        renderSelectionUi();
         return;
       }
 
       if (e.target.matches('[data-all]')) {
         var on = e.target.checked;
-        state.filtered.forEach(function (r) { state.selected[r.key] = on; });
+        state.filtered.forEach(function (r) {
+          if (on) state.selected[r.key] = true;
+          else delete state.selected[r.key];
+        });
+        // Hér ER listinn endurteiknaður, því ÖLL hökin breyttust.
         refresh();
         return;
       }
@@ -1253,6 +1355,14 @@
         var panel = rep.closest('[data-panel]');
         var r = panel && rowByKey(panel.getAttribute('data-panel'));
         if (r) assignRep(r, rep.value);
+      }
+    });
+
+    // Esc lokar. Modal sem adeins ma loka med mus er gildra fyrir thann sem
+    // opnadi hann i misgripum midri vinnu.
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && root && root.querySelector('[data-modal-host]')) {
+        closeBulkModal();
       }
     });
 
