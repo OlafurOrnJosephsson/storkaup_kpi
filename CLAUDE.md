@@ -315,21 +315,29 @@ page Embed), so each row carries its own date:
 
 | What | Value | Set |
 |---|---|---|
-| `data-storkaup-rev` — governs all bootstrap child files | `2ecd444` | 2026-09-21 |
-| `dashboard-bootstrap.js` script-tag src | `2ecd444` | 2026-09-21 (pin only — see below) |
-| `website-dashboard-bootstrap.js` script-tag src | `2ecd444` | 2026-09-21 (pin only — see below) |
+| `data-storkaup-rev` — governs all bootstrap child files | `30f0908` | 2026-09-22 |
+| `dashboard-bootstrap.js` script-tag src | `30f0908` | 2026-09-22 (pin only — see below) |
+| `website-dashboard-bootstrap.js` script-tag src | `30f0908` | 2026-09-22 (pin only — see below) |
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
 | `activation.js`, **in page custom code** (independent) | `84372c6` | 2026-06-15, `/kpi/activation` only — read off the live page 2026-09-21 |
-| `portal.js` script-tag src, **inside the Embed** (independent) | `f7325c0` | 2026-09-21, `/kpi/voruportal` only |
+| `portal.js` script-tag src, **inside the Embed** (independent) | `c037bbd` | 2026-09-22, `/kpi/voruportal` only |
 | `forgangslisti.js` script-tag src, **inside the Embed** (independent) | `72c872c` | 2026-09-21, **á `/kpi/forgangslisti-nyr` á meðan** — sjá neðan |
 
 `2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —
 gained `?customer=` deep-link support, so the new forgangslisti's row link has
-somewhere to land. **The two bootstrap files themselves did not change**
-(`git diff --stat 5368032 2ecd444 -- Webflow/*-bootstrap.js` is empty); their
-`src` pins were moved anyway on this deploy, which cost one cache-bust fetch
-and nothing else. Recorded as "pin only" so the question this table is supposed
-to answer — when did the frontend last actually change — stays answerable.
+somewhere to land. `30f0908` moved it again for the fyrirtækjaleit checkbox fix;
+between the two, `customer-profiles.js`, `forgangslisti.js` and its embed
+changed. **The two bootstrap files themselves did not change in either step**
+(`git diff --stat 2ecd444 30f0908 -- Webflow/*-bootstrap.js` is empty); their
+`src` pins were moved anyway, which cost one cache-bust fetch and nothing else.
+Recorded as "pin only" so the question this table is supposed to answer — when
+did the frontend last actually change — stays answerable.
+
+`c037bbd` moved the `portal.js` pin for certifications and document links on
+`/kpi/voruportal`: `ProductLabels` (732 products carry one of 12 values),
+datasheet / safety-sheet / brochure links, and a copy-and-open button for
+supplier portals. The check caught this row stale on the same deploy that
+shipped it — the table was updated from the tool's output, not from memory.
 
 **`/kpi/forgangslisti-nyr` is a staging slug, not the destination.** The new
 module is published there while it is being tried out; `/kpi/forgangslisti`
