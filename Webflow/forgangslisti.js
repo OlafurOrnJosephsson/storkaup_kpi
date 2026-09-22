@@ -73,6 +73,11 @@
     '.skf-help-body li{margin-bottom:3px}',
     '.skf-help-body p{margin:0 0 8px}',
     '.skf-help-body b{color:#1a1a1f}',
+    '.skf-help-tbl{border-collapse:collapse;margin:2px 0 10px;font-size:12px}',
+    '.skf-help-tbl th{text-align:left;padding:4px 14px 4px 0;font-size:10px;',
+    'letter-spacing:.05em;text-transform:uppercase;color:#5c5c63;border-bottom:1px solid #e3e3e8}',
+    '.skf-help-tbl td{padding:5px 14px 5px 0;vertical-align:top;border-bottom:1px solid #f0f0f3}',
+    '.skf-help-tbl td:first-child{white-space:nowrap}',
     '.skf-kpis{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}',
     '.skf-kpi{border:1px solid #e3e3e8;border-radius:8px;padding:9px 14px;background:#fff;min-width:96px}',
     '.skf-kpi b{display:block;font-size:22px;line-height:1.15;margin-top:2px}',
@@ -809,9 +814,21 @@
       '</div>';
   }
 
+  // Stikan birtist EKKI vid einn valinn. Rodin hefur thegar allar sinar
+  // adgerdir i eigin spjaldi — solumann, athugasemd, eftirfylgni, forgang —
+  // og thaer eru THAR sem verid er ad vinna. Stika nedst a sidunni sem
+  // byd ur upp a hluta af thvi sama, langt fra rodinni, er truflun.
+  //
+  // Vid tvo eda fleiri gerir hun hins vegar thad sem spjaldid getur ekki:
+  // eina adgerd a margar radir. Tha — og adeins tha — a hun erindi.
+  //
+  // Fyrirtaekjaleitin er OFUG: thar hefur rodin ekkert spjald, svo stikan
+  // er eina leidin og birtist strax vid einn valinn.
+  var BULK_MIN = 2;
+
   function bulkHtml() {
     var n = selectedKeys().length;
-    if (!n) return '';
+    if (n < BULK_MIN) return '';
     return '<div class="skf-bulk">' +
       '<b>' + n + ' ' + (n === 1 ? 'valinn' : 'valdir') + '</b>' +
       '<button type="button" class="skf-btn" data-bulk="priority">Í forgang</button>' +
@@ -855,9 +872,30 @@
         'af sjálfu sér — en telst áfram í árangrinum. Hætti hann aftur kemur hann sjálfur til baka. ' +
         '<b>Ekki markmið</b> er annað: það er fyrir þá sem ætla sér aldrei á vefinn, og ' +
         'það krefst ástæðu.</p>' +
-        '<p><b>Staða</b> er reiknuð, ekki sett: hún ræðst af því hver hefur pantað á vefnum ' +
-        'síðustu 365 daga. „Í ferli" þýðir að pöntunin fór gegnum vefinn en sölumaður sló ' +
-        'hana inn — vinnan færðist ekki af þér.</p>' +
+        '<p><b>Stöðurnar fjórar.</b> Enginn setur þær handvirkt — þær reiknast af ' +
+        'pöntunum síðustu 365 daga.</p>' +
+        '<table class="skf-help-tbl">' +
+          '<tr><th>Staða</th><th>Hvað hún þýðir</th><th>Hvað þarf að gerast</th></tr>' +
+          '<tr><td><span class="skf-tag skf-warn">Ekki í ferli</span></td>' +
+            '<td>Engin vefpöntun síðustu 365 daga.</td>' +
+            '<td>Hringja og kenna á vefinn.</td></tr>' +
+          '<tr><td><span class="skf-tag skf-info">Í ferli</span></td>' +
+            '<td>Pantað hefur verið á vefnum — en <b>sölumaður sló það inn</b>, ekki ' +
+              'viðskiptavinurinn. Salan telst vefsala, en vinnan færðist ekki af þér.</td>' +
+            '<td>Fá hann til að slá pöntunina inn sjálfan.</td></tr>' +
+          '<tr><td><span class="skf-tag skf-ok">Sjálfsafgreiðsla</span></td>' +
+            '<td>Hann hefur pantað sjálfur á vefnum.</td>' +
+            '<td>Ekkert — markmiðinu er náð.</td></tr>' +
+          '<tr><td><span class="skf-tag skf-mute">Ekki markmið</span></td>' +
+            '<td>Tekinn af listanum með ástæðu.</td>' +
+            '<td>Ekkert.</td></tr>' +
+        '</table>' +
+        '<p><b>Tvennt sem er vert að vita um „Sjálfsafgreiðslu".</b> Hún horfir 365 daga ' +
+        'aftur, og <b>ein</b> sjálfspöntuð pöntun dugar. Viðskiptavinur sem pantaði sjálfur ' +
+        'einu sinni í haust og hefur síðan fengið allt í gegnum sölumann les samt ' +
+        '„Sjálfsafgreiðsla". Ertu í vafa um hvernig hann pantar <i>núna</i>, líttu á ' +
+        'dálkana <b>Vefur 365d</b> og <b>Vef tíðni</b> — þeir segja magnið, staðan segir ' +
+        'bara hvort það hafi gerst.</p>' +
         '<p>Veldu <b>hver þú ert</b> í fellilistanum efst, einu sinni — hann man það. ' +
         'Valið fylgir hverri snertingu sem þú skráir. Veljir þú ekkert er snertingin ' +
         'óundirrituð og enginn sést við hana.</p>' +
@@ -904,8 +942,14 @@
 
     var bulk = q('[data-bulk]'); if (bulk) bulk.innerHTML = bulkHtml();
 
+    // Einn valinn syndi ekkert: hvorki stiku ne skilabod, svo hakid leit ut
+    // eins og thad hefdi ekki virkad. Teljarinn segir fra i stadinn.
+    var picked = selectedKeys().length;
     var cnt = q('[data-count]');
-    if (cnt) {
+    if (cnt && picked === 1) {
+        cnt.textContent = '1 valinn — hakaðu við fleiri fyrir fjöldaaðgerðir, ' +
+                          'eða opnaðu röðina með örinni.';
+    } else if (cnt) {
       cnt.textContent = state.filtered.length === state.rows.length
         ? state.rows.length + ' raðir'
         : state.filtered.length + ' af ' + state.rows.length;
