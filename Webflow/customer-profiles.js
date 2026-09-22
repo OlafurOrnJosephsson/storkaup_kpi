@@ -22,16 +22,45 @@
         searchTerm: "",
         searchDebounceId: null,
         searchSeq: 0,
-        profileScope: "family"
+        profileScope: "family",
+        // Fjöldaval í leitarniðurstöðunum. Lyklað á customer_id svo það
+        // lifi af endurteikningu við síun og röðun.
+        bulkSelected: {}
     };
     var MAX_RENDERED_CUSTOMERS = 150;
     var STALE_PENDING_DAYS = 30;
+    var BULK_CONFIRM_AT = 10;   // fjoldi radar yfir sem stadfestingar er krafist
     var CUSTOMER_CACHE_KEY = "storkaup:customer_profiles_labeled_trends:v1";
     var CUSTOMER_CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutes
     var PRIORITY_FLAGS_CACHE_KEY = "storkaup:customer_priority_flags:v1";
     var PRIORITY_FLAGS_CACHE_TTL_MS = 1000 * 60 * 10; // 10 minutes
     var STAR_OUTLINE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star-icon lucide-star"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>';
     var STAR_FILLED_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star-icon lucide-star"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>';
+
+    // Stílar sprautaðir héðan frekar en settir í dashboard-theme.css. Sú
+    // skrá er barnaskrá bootstrap-sins og notuð af fimm síðum; stíll sem
+    // aðeins þessi eining notar á ekki að lenda þar.
+    var BULK_CSS = [
+      '.cp-pick{margin:0 6px 0 0;cursor:pointer;vertical-align:middle}',
+      '.cp-bulk{position:sticky;bottom:0;z-index:40;display:flex;flex-wrap:wrap;gap:8px;',
+      'align-items:center;padding:10px 14px;background:#1a1a1f;color:#fff;border-radius:8px;',
+      'margin-top:10px;font:13px/1.4 Arial,Helvetica,sans-serif}',
+      '.cp-bulk[hidden]{display:none}',
+      '.cp-bulk select{padding:6px 9px;font-size:12px;border-radius:6px;border:0;font-family:inherit}',
+      '.cp-bulk button{border:1px solid #fff;background:#fff;color:#1a1a1f;border-radius:6px;',
+      'padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}',
+      '.cp-bulk button:hover{background:#e3e3e8}',
+      '.cp-bulk button[disabled]{opacity:.45;cursor:default}',
+      '.cp-bulk__msg{margin-left:auto;opacity:.85;font-size:12px}'
+    ].join("");
+
+    function ensureBulkStyles_() {
+        if (document.getElementById("cp-bulk-css")) return;
+        var st = document.createElement("style");
+        st.id = "cp-bulk-css";
+        st.textContent = BULK_CSS;
+        document.head.appendChild(st);
+    }
 
     function headers(profile) {
         var h = { apikey: KEY, Authorization: "Bearer " + KEY };
@@ -403,6 +432,9 @@
         var listWrap = root.querySelector('[data-panel="customer-list"]');
         if (!listWrap) return;
         listWrap.hidden = !visible;
+        // Stikan fylgir listanum. Hún á ekki að svífa yfir síðu sem sýnir
+        // einn viðskiptavin — valið er þá enn til, bara ósýnilegt.
+        if (typeof renderBulkBar_ === "function") renderBulkBar_(root);
     }
 
     function ensureDataStatusEl_(root) {
@@ -1309,6 +1341,21 @@
             var fps = n.querySelector('[data-field="manual_priority_status"]');
             var open = n.querySelector('[data-action="open-profile"]') || n;
 
+            // Hakreiturinn fer VIÐ HLIÐINA Á AUGANU, ekki í nýjan dálk.
+            // Röðin er Webflow-teiknað grid með fastri dálkaskiptingu; nýtt
+            // hólf myndi ýta öllu úr skorðum. Augað er `<a>` með eigin
+            // data-action, svo smellur á reitinn opnar ekki prófílinn.
+            var cid = String(c.customer_id || "").trim();
+            if (cid && open !== n && open.parentNode) {
+                var pick = document.createElement("input");
+                pick.type = "checkbox";
+                pick.className = "cp-pick";
+                pick.setAttribute("data-pick", cid);
+                pick.setAttribute("aria-label", "Velja " + (c.customer_name || cid));
+                pick.checked = !!state.bulkSelected[cid];
+                open.parentNode.insertBefore(pick, open);
+            }
+
             if (fn) fn.textContent = c.customer_name || "";
             if (fi) fi.textContent = c.customer_id || "";
             if (fw) {
@@ -1347,6 +1394,129 @@
         if (shownEl) shownEl.textContent = String(rows.length);
         var totalEl = root.querySelector('[data-bind="customers-total"]');
         if (totalEl) totalEl.textContent = String(state.filtered.length);
+
+        renderBulkBar_(root);
+    }
+
+    function bulkSelectedIds_() {
+        return Object.keys(state.bulkSelected).filter(function(k) { return state.bulkSelected[k]; });
+    }
+
+    // Stikan er búin til einu sinni og lifir neðst í einingunni. Hún felur
+    // sig sjálf þegar ekkert er valið OG þegar prófíllinn er opinn — hún á
+    // ekki að svífa yfir síðu sem sýnir einn viðskiptavin.
+    function ensureBulkBar_(root) {
+        var bar = root.querySelector('[data-panel="bulk-actions"]');
+        if (bar) return bar;
+        ensureBulkStyles_();
+        bar = document.createElement("div");
+        bar.className = "cp-bulk";
+        bar.setAttribute("data-panel", "bulk-actions");
+        bar.hidden = true;
+        root.appendChild(bar);
+        return bar;
+    }
+
+    function renderBulkBar_(root) {
+        var bar = ensureBulkBar_(root);
+        var ids = bulkSelectedIds_();
+        var listWrap = root.querySelector('[data-panel="customer-list"]');
+        var listVisible = !listWrap || !listWrap.hidden;
+
+        if (!ids.length || !listVisible) {
+            bar.hidden = true;
+            bar.innerHTML = "";
+            return;
+        }
+
+        var repOpts = ['<option value="">Sölumaður (valfrjálst)…</option>'];
+        (state.reps || []).forEach(function(rep) {
+            var v = String(rep && rep.name_norm || "").trim().toLowerCase();
+            if (!v) return;
+            repOpts.push('<option value="' + v.replace(/"/g, "&quot;") + '">' + v + "</option>");
+        });
+
+        var shown = state.filtered.length;
+        bar.hidden = false;
+        bar.innerHTML =
+            "<b>" + ids.length + (ids.length === 1 ? " valinn" : " valdir") + "</b>" +
+            '<button type="button" data-bulk="select-all">Velja alla ' + shown + " síaða</button>" +
+            '<select data-bulk-rep>' + repOpts.join("") + "</select>" +
+            '<button type="button" data-bulk="priority">Í forgang</button>' +
+            '<button type="button" data-bulk="nonpriority">Ekki forgangur</button>' +
+            '<button type="button" data-bulk="clear">Hreinsa val</button>' +
+            '<span class="cp-bulk__msg" data-bulk-msg></span>';
+    }
+
+    function setBulkMsg_(root, msg) {
+        var el = root.querySelector("[data-bulk-msg]");
+        if (el) el.textContent = msg || "";
+    }
+
+    // Tvö köll þegar sölumaður fylgir, og í ÞESSARI röð: flaggaröðin verður
+    // að vera til áður en henni er úthlutað. `bulk_assign_customer_priority_rep`
+    // sleppir þegjandi auðkennum sem eiga sér enga röð og telur þau í
+    // `skipped` — sem hefði litið út eins og þögul velgengni.
+    async function runBulkFlag_(root, status) {
+        var ids = bulkSelectedIds_();
+        if (!ids.length) return;
+        var repSel = root.querySelector("[data-bulk-rep]");
+        var rep = repSel ? String(repSel.value || "").trim().toLowerCase() : "";
+
+        // „Velja alla" nær yfir SÍAÐA settið, sem getur verið margfalt
+        // stærra en það sem sést: listinn teiknar 150 raðir en sían getur
+        // haldið 300 eða 4.000. Sá munur er nauðsynlegur — val sem næði
+        // aðeins yfir teiknaðar raðir væri þögul undirtalning — en hann
+        // þýðir líka að einn misslegur smellur getur skrifað á hundruð
+        // viðskiptavina. Staðfesting yfir BULK_CONFIRM_AT, ekki undir:
+        // dagleg vinna með fáar raðir á að vera án hindrunar.
+        if (ids.length > BULK_CONFIRM_AT) {
+            var verb = status === "priority" ? "setja Í FORGANG" : "taka ÚR FORGANGI";
+            var ok = window.confirm(
+                "Þú ert að fara að " + verb + " " + ids.length + " viðskiptavini" +
+                (rep && status === "priority" ? " og úthluta þeim á " + rep : "") +
+                ".\n\n" +
+                "Aðeins " + Math.min(state.filtered.length, MAX_RENDERED_CUSTOMERS) +
+                " raðir sjást á skjánum — valið nær yfir alla síuna.\n\n" +
+                "Halda áfram?"
+            );
+            if (!ok) { setBulkMsg_(root, "Hætt við."); return; }
+        }
+
+        setBulkMsg_(root, "Vista " + ids.length + "…");
+        try {
+            var res = await fetch(URL + "/rest/v1/rpc/bulk_set_customer_priority_flags", {
+                method: "POST",
+                headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+                body: JSON.stringify({ p_customer_ids: ids, p_status: status, p_note: null })
+            });
+            if (!res.ok) throw new Error(await res.text());
+            await res.json();
+
+            if (rep && status === "priority") {
+                var res2 = await fetch(URL + "/rest/v1/rpc/bulk_assign_customer_priority_rep", {
+                    method: "POST",
+                    headers: Object.assign({ "Content-Type": "application/json" }, headers("api"), { "Content-Profile": "api" }),
+                    body: JSON.stringify({ p_customer_ids: ids, p_assigned_rep_name_norm: rep })
+                });
+                if (!res2.ok) throw new Error(await res2.text());
+                await res2.json();
+            }
+
+            await fetchPriorityFlags_();
+            applyPriorityFlagsToCustomers_();
+            var q = (root.querySelector('[data-input="customer-search"]') || {}).value || "";
+            await applyFilters(root, q);
+            var label = status === "priority"
+                ? (rep ? "Sett í forgang og úthlutað: " + rep : "Sett í forgang")
+                : "Tekið úr forgangi";
+            setBulkMsg_(root, label + " — " + ids.length + " raðir.");
+            showActionToast_(label + " (" + ids.length + ")", "success");
+        } catch (err) {
+            console.error("Bulk flag failed:", err);
+            setBulkMsg_(root, "Villa: " + (err && err.message ? err.message : "óþekkt"));
+            showActionToast_("Fjöldaaðgerð féll", "error");
+        }
     }
 
     function buildScoreDrivers(p) {
@@ -2119,6 +2289,35 @@
             }
 
             root.addEventListener("click", async function(e) {
+            // Fjöldaaðgerðir. Ný grein fremst; engri sem fyrir var breytt.
+            var bulkBtn = e.target.closest("[data-bulk]");
+            if (bulkBtn && bulkBtn.tagName === "BUTTON") {
+                e.preventDefault();
+                var kind = bulkBtn.getAttribute("data-bulk");
+                if (kind === "clear") {
+                    state.bulkSelected = {};
+                    renderCustomers(root);
+                    return;
+                }
+                if (kind === "select-all") {
+                    // Allt SÍAÐA settið, ekki bara þær raðir sem eru teiknaðar.
+                    // renderCustomers sker við MAX_RENDERED_CUSTOMERS (150) og
+                    // val sem næði aðeins yfir þær væri þögul undirtalning.
+                    state.filtered.forEach(function(c) {
+                        var id = String(c.customer_id || "").trim();
+                        if (id) state.bulkSelected[id] = true;
+                    });
+                    renderCustomers(root);
+                    return;
+                }
+                if (kind === "priority" || kind === "nonpriority") {
+                    bulkBtn.disabled = true;
+                    try { await runBulkFlag_(root, kind); }
+                    finally { if (bulkBtn.isConnected) bulkBtn.disabled = false; }
+                }
+                return;
+            }
+
             var chipBtn = e.target.closest("[data-chip]");
             if (chipBtn) {
                 e.preventDefault();
@@ -2332,6 +2531,15 @@
             root.addEventListener("change", function(e) {
                 if (e.target && e.target.matches && e.target.matches('[data-input="assign-rep"]')) {
                     syncAssignRepCtaState_(root);
+                    return;
+                }
+                if (e.target && e.target.matches && e.target.matches("[data-pick]")) {
+                    var id = e.target.getAttribute("data-pick");
+                    if (e.target.checked) state.bulkSelected[id] = true;
+                    else delete state.bulkSelected[id];
+                    // Aðeins stikan er endurteiknuð, ekki listinn: annars
+                    // hyrfi hakið sem var verið að smella á og fókusinn með.
+                    renderBulkBar_(root);
                 }
             });
 
