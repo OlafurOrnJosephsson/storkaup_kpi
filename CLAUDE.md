@@ -321,7 +321,7 @@ page Embed), so each row carries its own date:
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
 | `activation.js`, **in page custom code** (independent) | `84372c6` | 2026-06-15, `/kpi/activation` only — read off the live page 2026-09-21 |
 | `portal.js` script-tag src, **inside the Embed** (independent) | `f7325c0` | 2026-09-21, `/kpi/voruportal` only |
-| `forgangslisti.js` script-tag src, **inside the Embed** (independent) | `b5ab45e` | 2026-09-21, **á `/kpi/forgangslisti-nyr` á meðan** — sjá neðan |
+| `forgangslisti.js` script-tag src, **inside the Embed** (independent) | `72c872c` | 2026-09-21, **á `/kpi/forgangslisti-nyr` á meðan** — sjá neðan |
 
 `2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —
 gained `?customer=` deep-link support, so the new forgangslisti's row link has
