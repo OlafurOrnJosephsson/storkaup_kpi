@@ -63,8 +63,30 @@
     '.skp-note{font-size:12px;color:#5c5c63;margin:10px 0 0}',
     '.skp-err{font-size:13px;color:#8a1c12;background:#fce8e6;padding:9px 11px;border-radius:6px}',
     '.skp-empty{font-size:13px;color:#5c5c63;font-style:italic}',
-    'a.skp-link{color:#10069f;text-decoration:none}a.skp-link:hover{text-decoration:underline}'
+    'a.skp-link{color:#10069f;text-decoration:none}a.skp-link:hover{text-decoration:underline}',
+    '.skp-docs{margin:12px 0 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}',
+    '.skp-doc{display:inline-block;padding:5px 11px;border-radius:6px;font-size:12px;',
+    'border:1px solid #e3e3e8;text-decoration:none;color:#10069f}',
+    '.skp-doc:hover{background:#f7f7f9}',
+    '.skp-doc--off{color:#8a1c12;background:#fce8e6;border-color:#f0b4ad}',
+    '.skp-btn{display:inline-block;padding:5px 11px;border-radius:6px;font-size:12px;font-weight:700;',
+    'border:1px solid #10069f;background:#10069f;color:#fff;cursor:pointer}'
   ].join('');
+
+  // ── BIRGJAGÁTTIR ────────────────────────────────────────────────
+  // Hnappurinn AFRITAR birgjanúmerið og opnar gáttina; hann leitar ekki.
+  // Prófað 2026-09-22: online.abena.dk/Catalog skilar sama svari óháð
+  // leitarbreytu (JS-app á bak við innskráningu), og þrjár opinberar
+  // leitarslóðir hjá Abena skila 404 eða finna ekki vörunúmerið.
+  // Djúptengill sem er ágiskun brotnar við næstu útlitsbreytingu; afrit
+  // og opna kostar tvær sekúndur og brotnar aldrei.
+  //
+  // Bæta við birgi = ein lína. Þekja gagnablaða mæld 2026-09-22 sýnir
+  // hvar þörfin er mest: Nilfisk 39 af 530 (7%), Abena 425 af 725 (59%),
+  // Ecolab 133 af 240, Vikan 167 af 256.
+  var GATTIR = {
+    "Abena": { url: "https://online.abena.dk/Catalog", heiti: "Abena-gáttin" }
+  };
 
   var DAGAR_HREYFINGAR = 365;
   var FAERSLUR = 25;
@@ -225,6 +247,7 @@
       h.appendChild(meta);
 
       h.appendChild(contentTag(p));
+      h.appendChild(docsRow(p));
       if (p.product_url) {
         var a = document.createElement("a");
         a.className = "skp-link";
@@ -238,6 +261,61 @@
       h.appendChild(el("p", "skp-note",
         "Vefgögn samstillt " + String(p.synced_at || "").replace("T", " ").slice(0, 16) +
         " (á 12 klst. fresti). Vara sem fór á vefinn eftir þann tíma finnst ekki hér."));
+    }
+
+    /**
+     * Vottanir sem flísar og skjöl sem tenglar. Skjal sem VANTAR er sýnt
+     * rautt frekar en sleppt — reitur sem er ekki þarna segir ekkert, en
+     * „Ekkert öryggisblað" er staðhæfing sem hægt er að bregðast við.
+     *
+     * Öryggisblaðið er alltaf sýnt, líka þegar það vantar. Gagnablað og
+     * bæklingur eru sýnd sem vöntun aðeins þegar hitt er til — vara sem
+     * ber ekkert skjal á ekki að fá þrjár rauðar flísar.
+     */
+    function docsRow(p) {
+      var row = el("div", "skp-docs", "");
+
+      (p.labels || []).forEach(function (l) {
+        row.appendChild(el("span", "skp-tag skp-ok", l));
+      });
+
+      var hasAny = p.datasheet_url || p.safety_url || p.brochure_url;
+      row.appendChild(docLink("Gagnablað", p.datasheet_url, hasAny));
+      row.appendChild(docLink("Öryggisblað", p.safety_url, true));
+      if (p.brochure_url) row.appendChild(docLink("Bæklingur", p.brochure_url, false));
+
+      var g = GATTIR[p.brand_name];
+      if (g && p.brand_sku) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "skp-btn";
+        b.textContent = "Afrita " + p.brand_sku + " og opna " + g.heiti + " ↗";
+        b.addEventListener("click", function () {
+          var open = function () { window.open(g.url, "_blank", "noopener"); };
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(p.brand_sku).then(function () {
+              b.textContent = "Afritað — límdu í leitina";
+              open();
+            }, open);
+          } else { open(); }
+        });
+        row.appendChild(b);
+      }
+      return row;
+    }
+
+    function docLink(heiti, url, synaVontun) {
+      if (url) {
+        var a = document.createElement("a");
+        a.className = "skp-doc";
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = heiti + " ↗";
+        return a;
+      }
+      if (!synaVontun) return document.createTextNode("");
+      return el("span", "skp-doc skp-doc--off", "Ekkert " + heiti.toLowerCase());
     }
 
     function contentTag(p) {

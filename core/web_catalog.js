@@ -47,7 +47,8 @@ const WEB_CATALOG_PAGE_  = 200;
  * 🌐 fetchWebCatalogRows_ — allur birti vörulistinn
  * Skilar { rows, totalCount, complete }.
  *   rows       [{ webSku, sku, brandSku, name, brand, slug, related[],
- *                descLen, descIsName }]
+ *                descLen, descIsName, labels[], datasheetUrl,
+ *                safetyUrl, brochureUrl }]
  *   totalCount talan sem vefurinn gaf upp, til að meta heilleika
  *   complete   satt ef pagineringin kláraðist eðlilega
  * getProductsV2 er OPINBERT — enginn Bearer (sbr. storkaup_pricing.js).
@@ -59,7 +60,8 @@ function fetchWebCatalogRows_() {
     '    totalCount pageInfo { hasNextPage }' +
     '    edges { node { sku name slug relatedProductSkus longDescription' +
     '      featuredImage { url }' +
-    '      attributes { brand_sku BrandName } } }' +
+    '      attributes { brand_sku BrandName ProductLabels' +
+    '                   DatasheetFiles SafetyDatasheetFiles BrochureFiles } } }' +
     '  }' +
     '}';
 
@@ -126,8 +128,33 @@ function fetchWebCatalogRows_() {
                              node.longDescription === undefined ? '' : node.longDescription).trim();
       const nameRaw = String(node.name || '').trim();
 
+      // ── VOTTANIR OG SKJÖL ───────────────────────────────────────
+      // ProductLabels er ekki frjáls texti heldur 12 föst gildi:
+      // Svansmerking, FSC, Evrópublómið, Asthma Allergy Nordic, Vegan,
+      // Cradle to Cradle, Oeko Tex, Food safe o.fl. 732 vörur af 4.480
+      // bera eitthvað þeirra (mælt 2026-09-22).
+      //
+      // Skráareitirnir eru Plytix-slóðir. Geymd er SÚ FYRSTA af hverri
+      // gerð, ekki allt fylkið: í nær öllum tilvikum er aðeins ein skrá,
+      // og portalinn þarf tengil en ekki skráasafn.
+      //
+      // ATH: `isToxicProduct` er EKKI sótt. Hann er false á öllum 4.480
+      // — reiturinn er ósnertur í Plytix og segir því ekkert. Merki sem
+      // er alltaf false lítur út eins og merki og er það ekki.
+      const firstUrl = function (arr) {
+        if (!arr || !arr.length) return '';
+        return String(arr[0] === null || arr[0] === undefined ? '' : arr[0]).trim();
+      };
+      const labels = (attrs.ProductLabels || [])
+        .map(function (x) { return String(x === null || x === undefined ? '' : x).trim(); })
+        .filter(Boolean);
+
       rows.push({
         webSku:   String(node.sku),
+        labels:   labels,
+        datasheetUrl: firstUrl(attrs.DatasheetFiles),
+        safetyUrl:    firstUrl(attrs.SafetyDatasheetFiles),
+        brochureUrl:  firstUrl(attrs.BrochureFiles),
         descLen:  descRaw.length,
         descIsName: descRaw !== '' && descRaw === nameRaw,
         sku:      normStorkaupSku_(node.sku),
@@ -332,6 +359,10 @@ function syncWebCatalogToSupabase_v1() {
       slug:         r.slug || null,
       description_length:  r.descLen,
       description_is_name: !!r.descIsName,
+      labels:        (r.labels && r.labels.length) ? r.labels : null,
+      datasheet_url: r.datasheetUrl || null,
+      safety_url:    r.safetyUrl || null,
+      brochure_url:  r.brochureUrl || null,
       synced_at:    startedIso
     };
   });
