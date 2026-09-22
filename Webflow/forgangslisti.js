@@ -175,7 +175,13 @@
   var GRID_COLS = '26px 24px ' + COLS.map(function (c) { return c.w; }).join(' ');
 
   var CHIPS = [
-    { key: 'all',          label: 'Allir',            tip: 'Allar raðir á listanum.' },
+    // Í VINNSLU ER SJÁLFGEFIÐ. Þeir sem eru komnir í sjálfsafgreiðslu eru
+    // ekki verk — þeir eru sigrar — en þeir eru ÁFRAM Í TÖLUNNI. Það er
+    // munurinn á að sía þá frá og að taka þá úr forgangi: hið síðara
+    // fjarlægir þá úr bæði teljara og nefnara og myndi setja árangurinn
+    // í núll á þeirri stundu sem hann er fullkominn.
+    { key: 'inprogress',   label: 'Í vinnslu',        tip: 'Í forgangi en panta ekki sjálfir enn. Þetta er verkið.' },
+    { key: 'all',          label: 'Allir',            tip: 'Allar raðir á listanum, sigrarnir með.' },
     { key: 'due',          label: 'Þarf eftirfylgni', tip: 'Eftirfylgnidagur runninn upp, eða engin snerting skráð í 30 daga. Þitt verk í dag.' },
     { key: 'pending',      label: 'Ekki í ferli',     tip: 'Engin vefpöntun síðustu 365 daga.' },
     { key: 'rep_only',     label: 'Í ferli',          tip: 'Pantað á vefnum, en sölumaður sló það inn.' },
@@ -194,7 +200,7 @@
     rows: [],          // flöggin sem hryggur, prófílgögn ofan á
     filtered: [],
     reps: [],
-    chip: 'all',
+    chip: 'inprogress',   // sjálfgefið: bara ólokið — sjá CHIPS
     search: '',
     sortKey: 'next_followup_at',
     sortDir: 'asc',
@@ -508,6 +514,9 @@
 
   function matchesChip(r, chip) {
     if (chip === 'all') return true;
+    if (chip === 'inprogress') {
+      return r.status === 'priority' && r.onboarded_status !== 'onboarded_selfserve';
+    }
     if (chip === 'due') return r.due;
     if (chip === 'pending') return r.onboarded_status === 'priority_pending';
     if (chip === 'rep_only') return r.onboarded_status === 'onboarded_rep_only';
@@ -789,7 +798,11 @@
         '<button type="button" class="skf-btn skf-btn--ghost" data-act="snooze7">Eftirfylgni +7 d</button>' +
         '<button type="button" class="skf-btn skf-btn--ghost" data-act="snooze30">+30 d</button>' +
         '<button type="button" class="skf-btn ' + (inPrio ? 'skf-btn--warn' : 'skf-btn--ghost') +
-          '" data-act="flag">' + (inPrio ? 'Taka úr forgangi' : 'Setja í forgang') + '</button>' +
+          '" data-act="flag" title="' +
+          (inPrio ? attr('Fyrir þá sem ætla sér ekki á vefinn — samningur, sérverð, annar farvegur. '
+                       + 'EKKI fyrir þá sem eru búnir; þeir fara af listanum sjálfir.')
+                 : attr('Setja aftur í forgang.')) + '">' +
+          (inPrio ? 'Ekki markmið' : 'Setja í forgang') + '</button>' +
       '</div>' +
       '<div class="skf-fb" data-fb></div>' +
       (meta.length ? '<div class="skf-meta">' + meta.join(' · ') + '</div>' : '') +
@@ -823,7 +836,9 @@
       '<summary>Hvernig á að vinna listann</summary>' +
       '<div class="skf-help-body">' +
         '<p>Forgangslistinn er vinnulisti fyrir onboarding á viðskiptavinum — ' +
-        'ekki skýrsla. Stilltu á <b>Þarf eftirfylgni</b> og vinnaðu ofan frá.</p>' +
+        'ekki skýrsla. Hann opnast á <b>Í vinnslu</b>: þeim sem eru í forgangi en ' +
+        'panta ekki sjálfir enn. Vinnaðu ofan frá, eða smelltu á ' +
+        '<b>Þarf eftirfylgni</b> til að sjá bara það sem er á dagskrá í dag.</p>' +
         '<ol>' +
           '<li>Smelltu á örina vinstra megin í röðinni. Spjald opnast undir henni.</li>' +
           '<li>Hafðu samband. Vantar þig að vita hvað viðkomandi hefur verið að versla, ' +
@@ -835,6 +850,11 @@
         'og <b>+7 d</b> — þá hverfur röðin af listanum í viku í stað þess að sitja þar.</p>' +
         '<p><b>Viðskiptavinur sem enginn skráir snertingu á birtist aftur eftir 30 daga.</b> ' +
         'Eftirfylgnidagsetning ræður í staðinn ef þú setur hana.</p>' +
+        '<p><b>Þú þarft ekki að fjarlægja þá sem eru búnir.</b> Um leið og viðskiptavinur ' +
+        'pantar sjálfur á vefnum verður hann „Sjálfsafgreiðsla" og hverfur úr <b>Í vinnslu</b> ' +
+        'af sjálfu sér — en telst áfram í árangrinum. Hætti hann aftur kemur hann sjálfur til baka. ' +
+        '<b>Ekki markmið</b> er annað: það er fyrir þá sem ætla sér aldrei á vefinn, og ' +
+        'það krefst ástæðu.</p>' +
         '<p><b>Staða</b> er reiknuð, ekki sett: hún ræðst af því hver hefur pantað á vefnum ' +
         'síðustu 365 daga. „Í ferli" þýðir að pöntunin fór gegnum vefinn en sölumaður sló ' +
         'hana inn — vinnan færðist ekki af þér.</p>' +
@@ -922,18 +942,42 @@
     refresh();
   }
 
+  // Að taka röð úr forgangi þýðir „þessi verður aldrei vefviðskiptavinur",
+  // ekki „þessi er búinn". Munurinn er ekki orðhengilsskápur: árangurstalan
+  // er sjálfsafgreiðsla ÷ í forgangi, svo sigur sem er merktur ekki-forgangur
+  // fer úr bæði teljara og nefnara og talan hrynur. Þess vegna kallast
+  // hnappurinn „Ekki markmið" og þes vegna er ástæða skylduð.
+  //
+  // Ástæðan er vistuð sem athugasemdin, svo næsti maður spyrji ekki að því
+  // sama eftir hálft ár. Þad er eina frásögnin sem röðin getur borið.
   function toggleFlag(r) {
     var next = r.status === 'priority' ? 'nonpriority' : 'priority';
+    var reason = null;
+
+    if (next === 'nonpriority') {
+      var panel = root.querySelector('[data-panel="' + cssEsc(r.key) + '"]');
+      var ta = panel && panel.querySelector('[data-note]');
+      reason = String((ta && ta.value) || '').trim();
+      if (!reason) {
+        setFb(r.key, 'Skrifaðu ástæðu í athugasemdina fyrst — hvers vegna er þessi ' +
+                     'ekki markmið? (Er hann búinn að færa sig á vefinn fer hann af ' +
+                     'listanum sjálfur; þú þarft ekki að gera neitt.)', 'err');
+        if (ta) ta.focus();
+        return Promise.resolve();
+      }
+    }
+
     setFb(r.key, 'Vista…');
     return rpc('set_customer_priority_flag', {
       p_customer_id: r.customer_id,
       p_status: next,
       p_customer_name: r.customer_name,
-      p_note: null
+      p_note: reason
     }).then(function () {
       r.status = next;
+      if (reason) r.note = reason;
       afterWrite(r);
-      setFb(r.key, next === 'priority' ? 'Sett í forgang.' : 'Tekið úr forgangi.', 'ok');
+      setFb(r.key, next === 'priority' ? 'Sett í forgang.' : 'Merkt: ekki markmið.', 'ok');
     }).catch(function (e) {
       console.error('[forgangslisti] toggleFlag', e);
       setFb(r.key, 'Villa við vistun: ' + e.message, 'err');
@@ -1085,7 +1129,9 @@
       var chip = e.target.closest('[data-chip]');
       if (chip) {
         var k = chip.getAttribute('data-chip');
-        state.chip = state.chip === k ? 'all' : k;
+        // Afsmellur fær þig í sjálfgefna sýn, ekki í „Allir“ — annars
+        // færðist maður óvart út úr vinnulistanum og inn í sigrana.
+        state.chip = state.chip === k ? 'inprogress' : k;
         refresh();
         return;
       }
