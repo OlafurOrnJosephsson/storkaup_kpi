@@ -482,7 +482,16 @@ begin
                          when p_next_followup_at is null then f.next_followup_at
                          else p_next_followup_at
                        end,
-    updated_by = coalesce(nullif(btrim(coalesce(p_by, '')), ''), f.updated_by),
+    -- Sama null-bragð og á athugasemdinni: null lætur óbreytt, tómur
+    -- strengur hreinsar. ÁÐUR var þetta coalesce, sem þýddi að snerting án
+    -- undirskriftar hélt fyrri upphafsstöfum — röðin sýndi þinn snertidag
+    -- við hinn manninn. Auður reitur er verri en enginn ef hann bendir á
+    -- rangan mann, svo hann hreinsar nú.
+    updated_by = case
+                   when p_by is null then f.updated_by
+                   when btrim(p_by) = '' then null
+                   else btrim(p_by)
+                 end,
     updated_at = now()
   where f.customer_family_id = v_key
   returning * into v_row;

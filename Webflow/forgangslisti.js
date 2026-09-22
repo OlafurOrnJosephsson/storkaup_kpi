@@ -52,8 +52,10 @@
 
   var STALE_DAYS = 30;        // án skráðrar snertingar telst röð ógerð
   var ID_CHUNK = 250;         // hámark auðkenna í einni in.() fyrirspurn
-  var INITIALS_KEY = "storkaup:forgangslisti:initials";
   var HELP_SEEN_KEY = "storkaup:forgangslisti:help-seen";
+  // Ný lykill, ekki sá gamli: gildið fór úr frjálsum upphafsstöfum í
+  // `name_norm` sölumanns. Gamalt „ÓJ" væri merkingarlaust sem sölumaður.
+  var ACTOR_KEY = "storkaup:forgangslisti:actor";
   var PROFILE_PAGE = "/kpi/vidskiptavinur";
 
   var CSS = [
@@ -85,7 +87,9 @@
     '.skf-chip .skf-n{opacity:.65;margin-left:5px}',
     '.skf-search{flex:1 1 200px;min-width:160px;padding:7px 11px;font-size:13px;',
     'border:1px solid #e3e3e8;border-radius:8px}',
-    '.skf-initials{width:92px;padding:7px 9px;font-size:13px;border:1px solid #e3e3e8;border-radius:8px}',
+    '.skf-who{min-width:150px;padding:7px 9px;font-size:13px;border:1px solid #e3e3e8;',
+    'border-radius:8px;background:#fff;font-family:inherit;color:#1a1a1f}',
+    '.skf-who:invalid,.skf-who[data-empty="1"]{color:#8a8a92}',
     '.skf-count{font-size:12px;color:#5c5c63;white-space:nowrap}',
 
     '.skf-scroll{overflow-x:auto;border:1px solid #e3e3e8;border-radius:10px;background:#fff}',
@@ -196,7 +200,7 @@
     sortDir: 'asc',
     openKey: null,     // customer_family_id raðarinnar sem er opin
     selected: {},      // customer_family_id -> true
-    initials: '',
+    actor: '',   // name_norm þess sem er að vinna listann
     profilesOk: true,
     repsOk: true
   };
@@ -301,6 +305,23 @@
     var key = repCanonicalKey(nameNorm);
     if (!key) return '';
     return key.charAt(0).toUpperCase() + key.slice(1);
+  }
+
+  // Er þetta manneskja? Sölumannalistinn ber tvennt sem er það ekki:
+  //
+  //   `solumadurstorkaup` — nafn sem er ekkert nema forskeytin tvö. Strípað
+  //   stendur ekkert eftir, og það er prófið.
+  //
+  //   `vefur` — vefrásin sjálf (`salesperson_code = 'VEFUR'`), ekki maður.
+  //
+  // Bæði eru sía AÐEINS á undirskriftarvalinu. Úthlutunarvalið er látið
+  // óhreyft: það er hegðun sem var fyrir og á ekki að breytast í þögn.
+  function isPersonRep(nameNorm) {
+    var compact = String(nameNorm || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    var stripped = compact.replace(/solumadur/g, '').replace(/storkaup/g, '');
+    if (!stripped) return false;
+    if (stripped === 'vefur') return false;
+    return true;
   }
 
   function dedupeReps(rows) {
@@ -625,10 +646,36 @@
     return '<div class="skf-bar">' + chips + '</div>' +
       '<div class="skf-bar">' +
         '<input class="skf-search" data-search type="search" placeholder="Leita — nafn, kennitala eða athugasemd" value="' + attr(state.search) + '">' +
-        '<input class="skf-initials" data-initials type="text" maxlength="8" placeholder="Upphafsst." ' +
-          'title="Skráist með hverri snertingu. Sjálfsagt — síðan veit ekki hver þú ert." value="' + attr(state.initials) + '">' +
+        whoHtml() +
         '<span class="skf-count" data-count></span>' +
       '</div>';
+  }
+
+  // Hver er að vinna listann. Var frjáls innsláttur („ÓJ", „oj", „Ólafur"
+  // — sami maður, þrjú gildi); er nú val úr sömu sölumannaröð og
+  // úthlutunin notar. Gildið er `name_norm`, svo `updated_by` verður
+  // samanburðarhæft við `assigned_rep_name_norm`: hægt að spyrja síðar
+  // hvort sá sem á viðskiptavininn hafi í raun hringt.
+  //
+  // Falli sölumannakallið er engan lista að velja úr. Þá kemur gamli
+  // innslátturinn aftur frekar en tómur fellilisti — betra að geta skrifað
+  // eitthvað en ekkert.
+  function whoHtml() {
+    var title = 'Fylgir hverri snertingu sem þú skráir. Síðan veit ekki hver ' +
+                'þú ert — þetta er undirskrift, ekki innskráning.';
+    if (!state.repsOk || !state.reps.length) {
+      return '<input class="skf-who" data-actor-text type="text" maxlength="24" ' +
+        'placeholder="Hver ert þú?" title="' + attr(title) + '" value="' + attr(state.actor) + '">';
+    }
+    var opts = ['<option value="">Hver ert þú?</option>'];
+    state.reps.forEach(function (r) {
+      var v = String(r.name_norm || '').trim();
+      if (!v || !isPersonRep(v)) return;
+      opts.push('<option value="' + attr(v) + '"' + (v === state.actor ? ' selected' : '') +
+        '>' + esc(repLabel(v)) + '</option>');
+    });
+    return '<select class="skf-who" data-actor title="' + attr(title) + '"' +
+      (state.actor ? '' : ' data-empty="1"') + '>' + opts.join('') + '</select>';
   }
 
   function headHtml() {
@@ -724,7 +771,7 @@
     if (r.created_at) meta.push('Flaggað ' + fmtDateShort(r.created_at));
     if (r.last_contacted_at) {
       meta.push('síðast snert ' + fmtDateShort(r.last_contacted_at) +
-        (r.updated_by ? ' af ' + esc(r.updated_by) : ''));
+        (r.updated_by ? ' af ' + esc(repLabel(r.updated_by) || r.updated_by) : ''));
     }
     if (!r.hasProfile) meta.push('engin prófílröð í MV — tölur vantar');
 
@@ -791,8 +838,9 @@
         '<p><b>Staða</b> er reiknuð, ekki sett: hún ræðst af því hver hefur pantað á vefnum ' +
         'síðustu 365 daga. „Í ferli" þýðir að pöntunin fór gegnum vefinn en sölumaður sló ' +
         'hana inn — vinnan færðist ekki af þér.</p>' +
-        '<p>Settu <b>upphafsstafina</b> þína í reitinn efst, einu sinni. Þeir fylgja hverri ' +
-        'snertingu. Listinn veit ekki hver þú ert.</p>' +
+        '<p>Veldu <b>hver þú ert</b> í fellilistanum efst, einu sinni — hann man það. ' +
+        'Valið fylgir hverri snertingu sem þú skráir. Veljir þú ekkert er snertingin ' +
+        'óundirrituð og enginn sést við hana.</p>' +
       '</div></details>';
   }
 
@@ -938,14 +986,16 @@
       p_customer_id: r.customer_id,
       p_note: note == null ? null : String(note),
       p_next_followup_at: fu || null,
-      p_by: state.initials || null,
+      // Tómt val er ekki „óbreytt" heldur „óundirritað": SQL-ið hreinsar
+      // updated_by við tóman streng, svo röðin bendi ekki á rangan mann.
+      p_by: String(state.actor || ''),
       p_clear_followup: clear
     }).then(function (out) {
       var o = Array.isArray(out) ? out[0] : out;
       r.last_contacted_at = (o && o.last_contacted_at) || new Date().toISOString();
       r.next_followup_at = o ? (o.next_followup_at || null) : (fu || null);
       r.note = o ? (o.note || '') : String(note || '');
-      r.updated_by = (o && o.updated_by) || state.initials || r.updated_by;
+      r.updated_by = o ? (o.updated_by || '') : (state.actor || '');
       afterWrite(r);
       setFb(r.key, 'Snerting skráð.', 'ok');
     }).catch(function (e) {
@@ -1100,6 +1150,14 @@
         return;
       }
 
+      if (e.target.matches('[data-actor]')) {
+        state.actor = e.target.value;
+        e.target.removeAttribute('data-empty');
+        if (!state.actor) e.target.setAttribute('data-empty', '1');
+        try { localStorage.setItem(ACTOR_KEY, state.actor); } catch (err) { /* lokaður vafri */ }
+        return;
+      }
+
       var rep = e.target.closest('[data-rep]');
       if (rep) {
         var panel = rep.closest('[data-panel]');
@@ -1114,9 +1172,9 @@
         refresh();
         return;
       }
-      if (e.target.matches('[data-initials]')) {
-        state.initials = e.target.value.trim();
-        try { localStorage.setItem(INITIALS_KEY, state.initials); } catch (err) { /* lokaður vafri */ }
+      if (e.target.matches('[data-actor-text]')) {
+        state.actor = e.target.value.trim();
+        try { localStorage.setItem(ACTOR_KEY, state.actor); } catch (err) { /* lokaður vafri */ }
       }
     });
   }
@@ -1137,7 +1195,7 @@
       return;
     }
 
-    try { state.initials = localStorage.getItem(INITIALS_KEY) || ''; } catch (e) { /* lokaður vafri */ }
+    try { state.actor = localStorage.getItem(ACTOR_KEY) || ''; } catch (e) { /* lokaður vafri */ }
 
     root.innerHTML = '<div class="skf-loading">Augnablik! Sæki forgangslistann…</div>';
 
