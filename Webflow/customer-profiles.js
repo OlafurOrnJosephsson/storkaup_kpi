@@ -41,7 +41,17 @@
     // skrá er barnaskrá bootstrap-sins og notuð af fimm síðum; stíll sem
     // aðeins þessi eining notar á ekki að lenda þar.
     var BULK_CSS = [
-      '.cp-pick{margin:0 6px 0 0;cursor:pointer;vertical-align:middle}',
+      // Fyrsta holfid i rodinni er Webflow flex-container. Input an fastrar
+      // staerdar TEYGIST thar i fulla haed radarinnar — thad var risastori
+      // tomi kassinn. `vertical-align` gerir ekkert i flex; `flex:0 0 auto`
+      // + fost staerd gerir thad.
+      //
+      // Veljarinn er input.cp-pick[type="checkbox"] (0,2,1) en ekki .cp-pick
+      // (0,1,0): Webflow stilar input[type="checkbox"] (0,1,1) og hefdi
+      // unnid annars, sama hversu sein min skra er hladin.
+      'input.cp-pick[type="checkbox"]{flex:0 0 auto;width:15px;height:15px;',
+      'min-width:15px;min-height:15px;margin:0 5px 0 0;padding:0;align-self:center;',
+      'accent-color:#10069f;cursor:pointer}',
       '.cp-bulk{position:sticky;bottom:0;z-index:40;display:flex;flex-wrap:wrap;gap:8px;',
       'align-items:center;padding:10px 14px;background:#1a1a1f;color:#fff;border-radius:8px;',
       'margin-top:10px;font:13px/1.4 Arial,Helvetica,sans-serif}',
