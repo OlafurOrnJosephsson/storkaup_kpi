@@ -1383,6 +1383,15 @@ function cludoPurgeStaleVaraDocsEYDA_v1() {
   return cludoPurgeStaleVaraDocs_v1({ confirm: true });
 }
 
+/** Eyðir LÍKA HORFIN. Sannreynt 2026-09-28 á átta sýnum: öll átta utan
+ *  vörulistans (getProductsV2), fjögur Archived í Plytix og fjögur
+ *  Completed — síðurnar svara samt 200 af því routerinn les bara
+ *  vörunúmerið. HORFIN er auk þess borið við vörulistann áður en eytt er;
+ *  sjá VEF_EKKI_SITEMAP í cludoPurgeStaleVaraDocs_v1. */
+function cludoPurgeGoneVaraDocsEYDA_v1() {
+  return cludoPurgeStaleVaraDocs_v1({ confirm: true, includeGone: true });
+}
+
 function cludoPurgeStaleVaraDocs_v1(opts) {
   var o = opts || {};
   var confirm = o.confirm === true;
@@ -1412,6 +1421,24 @@ function cludoPurgeStaleVaraDocs_v1(opts) {
       gone.push(u); rows.push(['HORFIN', u, sku, '']);
     }
   });
+
+  // ANNAÐ ÖRYGGISNET FYRIR HORFIN: vörunúmer sem vörulistinn á vefnum
+  // þekkir er LIFANDI vara sem vantar í sitemap — vefvilla, ekki rusl.
+  // Henni er aldrei eytt, og hún fær sinn eigin flokk í flipanum.
+  if (includeGone && gone.length) {
+    var live = {};
+    fetchActiveProducts_().forEach(function (p) { live[String(p.parent)] = true; });
+    var keep = [];
+    gone = gone.filter(function (u) {
+      var s = cludoUrlSku_(u);
+      if (live[s]) { keep.push(u); return false; }
+      return true;
+    });
+    keep.forEach(function (u) {
+      rows.forEach(function (r) { if (r[1] === u) r[0] = 'VEF_EKKI_SITEMAP'; });
+    });
+    Logger.log('VEF_EKKI_SITEMAP (á vef, vantar í sitemap — EKKI eytt): ' + keep.length);
+  }
 
   var targets = includeGone ? old.concat(gone) : old;
 
