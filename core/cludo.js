@@ -1305,16 +1305,19 @@ function cludoUrlSku_(u) {
  *  gefur upp — ef djúpt skip er lokað stoppar hún fyrr og segir frá því. */
 function cludoEnumerateVaraUrls_() {
   var env = getCludoEnv_();
-  var TAKE = 100, MAX_SKIP = 20000;
-  var seen = {}, vara = [], total = null, skip = 0, emptyNew = 0;
+  var PER_PAGE = 100, MAX_PAGE = 200;
+  var seen = {}, vara = [], total = null, page = 1, emptyNew = 0;
 
-  function search_(query, skip) {
+  // SÍÐUN ER `page` + `perPage`, EKKI `take` + `skip` (mælt 2026-09-28).
+  // Með take/skip skilaði API-ið 11 skjölum af 5.507 og sömu síðunni aftur
+  // við hvert skip — það hunsar báða reitina og notar sjálfgefna síðu.
+  function search_(query, page) {
     return UrlFetchApp.fetch(env.SEARCH_URL, {
       method: 'post',
       contentType: 'application/json',
       headers: { Authorization: 'SiteKey ' + env.SITE_KEY, Accept: 'application/json' },
       muteHttpExceptions: true,
-      payload: JSON.stringify({ query: query, take: TAKE, skip: skip })
+      payload: JSON.stringify({ query: query, page: page, perPage: PER_PAGE })
     });
   }
 
@@ -1323,7 +1326,7 @@ function cludoEnumerateVaraUrls_() {
   // fyrirspurn sem skilar 200 með skjölum á skip=0 er notuð áfram.
   var query = null;
   ['*', ''].some(function (q) {
-    var r = search_(q, 0);
+    var r = search_(q, 1);
     var body = r.getContentText();
     var ok = r.getResponseCode() === 200 &&
              ((safeJsonParse_(body) || {}).TypedDocuments || []).length > 0;
@@ -1337,10 +1340,11 @@ function cludoEnumerateVaraUrls_() {
     return { urls: [], seen: 0, total: null, complete: false };
   }
 
-  while (skip <= MAX_SKIP) {
-    var res = search_(query, skip);
+  var firstPageSize = 0;
+  while (page <= MAX_PAGE) {
+    var res = search_(query, page);
     if (res.getResponseCode() !== 200) {
-      Logger.log('⚠️ upptalning skip=' + skip + ' -> HTTP ' + res.getResponseCode() +
+      Logger.log('⚠️ upptalning page=' + page + ' -> HTTP ' + res.getResponseCode() +
                  ' — ' + truncateForLog_(res.getContentText(), 400));
       break;
     }
@@ -1357,16 +1361,19 @@ function cludoEnumerateVaraUrls_() {
       seen[u] = true; fresh++;
       if (u.indexOf('https://www.storkaup.is/vara/') === 0) vara.push(u);
     });
-    // API sem hunsar skip skilar sömu síðunni aftur og aftur. Tvær síður
-    // í röð án nýrra slóða = við erum komin eins langt og hægt er.
+    if (page === 1) firstPageSize = docs.length;
+    // API sem hunsar síðunarreitina skilar sömu síðunni aftur og aftur.
+    // Tvær síður í röð án nýrra slóða = komin eins langt og hægt er.
     if (!fresh) { if (++emptyNew >= 2) break; } else emptyNew = 0;
 
-    skip += docs.length;
+    page++;
     Utilities.sleep(150);
   }
 
   var n = Object.keys(seen).length;
   var complete = total !== null && n >= Number(total);
+  Logger.log('🔎 síður: ' + (page - 1) + ' · skjöl á fyrstu síðu: ' + firstPageSize +
+             ' (beðið um ' + PER_PAGE + ')');
   Logger.log('🔎 vísir: ' + n + ' skjöl talin upp' + (total !== null ? ' af ' + total : '') +
              ' · þar af /vara/: ' + vara.length + (complete ? '' : ' · ⚠️ ÓFULLGERT'));
   return { urls: vara, seen: n, total: total, complete: complete };
