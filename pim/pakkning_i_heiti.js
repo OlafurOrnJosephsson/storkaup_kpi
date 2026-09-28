@@ -26,8 +26,8 @@
  * Aukaathugun: stemmir N í heitinu við stk í sölueiningu? „12x" í heiti
  * á vöru sem er „Kassi (6 stk)" er gagnavilla hvað sem reglunni líður.
  *
- * Skrifar flipann PAKKNING_I_HEITI í virka skjalið (SALES_SUMMARIES þegar
- * keyrt úr ritlinum) og samantekt í keyrsluskrána. Snertir EKKI
+ * Skrifar flipann PAKKNING_I_HEITI í SALES_SUMMARIES (opnað eftir
+ * auðkenni) og samantekt í keyrsluskrána. Snertir EKKI
  * vinnusheetið og breytir engu heiti.
  ************************************************************/
 
@@ -172,8 +172,12 @@ function pih_fetchAll_() {
 }
 
 function pih_write_(rows, s) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (!ss) { Logger.log('[PIH] ekkert virkt skjal — aðeins keyrsluskrá.'); return; }
+  // Opnad eftir AUDKENNI, ekki getActiveSpreadsheet(): keyrt ur ritlinum
+  // skiladi thad null (maelt 2026-09-28) og flipinn var aldrei skrifadur.
+  var cfg = loadConfig_();
+  var id = cfg.SHEETS && cfg.SHEETS.SALES_SUMMARIES && cfg.SHEETS.SALES_SUMMARIES.ID;
+  if (!id) { Logger.log('[PIH] vantar SHEETS.SALES_SUMMARIES.ID — aðeins keyrsluskrá.'); return; }
+  var ss = SpreadsheetApp.openById(id);
 
   var sh = ss.getSheetByName(PIH_SHEET_) || ss.insertSheet(PIH_SHEET_);
   sh.clear();
