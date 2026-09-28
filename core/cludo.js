@@ -1245,3 +1245,191 @@ function cludoPurgeOrphanVaraDocs_v1(opts) {
     failed: r.failed
   };
 }
+
+
+/************************************************************
+ * 🧹 SEINNI UMFERÐ — gömul slug eftir endurnefningu
+ *
+ * Fyrsta hreinsunin (cludoPurgeOrphanVaraDocs_v1) náði einingarafritunum,
+ * sem eru reiknanleg úr sitemap-inu. Page Inventory fór úr 5.858 í 5.149
+ * og ~650 stóðu eftir. Það eru slóðir sem vefurinn gaf vörunni ÁÐUR en
+ * hún var endurnefnd — routerinn les aðeins vörunúmerið aftast, svo
+ * gamla slóðin svarar enn 200 og Cludo heldur henni.
+ *
+ * Þær eru aðeins til í vísinum sjálfum. Þetta fall telur því vísinn upp
+ * (leitar-API, SiteKey, tóm fyrirspurn, síðað) og ber hverja /vara/-slóð
+ * saman við sitemap-ið. Allt sem er ekki kanónískt fellur í einn af
+ * tveimur flokkum eftir vörunúmerinu aftast:
+ *
+ *   GAMALT_SLUG — vörunúmerið ER í sitemap undir annarri slóð. Varan lifir,
+ *                 þetta er gamalt heiti hennar. Eytt.
+ *   HORFIN      — vörunúmerið er HVERGI í sitemap. Varan er ekki birt
+ *                 lengur. Aðeins eytt með {includeGone:true}, því tómur
+ *                 eða hálfur sitemap myndi láta ALLAR vörur lenda hér.
+ *
+ * ÖRYGGISSTOPP, öll áður en nokkru er eytt:
+ *   - sitemap undir 4.000 slóðum -> hætt (undirskrá féll, listinn er hálfur)
+ *   - fleiri en 1.500 til eyðingar -> hætt (væntum ~650; meira er villa
+ *     í samanburðinum, ekki óhreinn vísir)
+ *   - cludoBulkDeleteUrls_ hafnar öllu utan https://www.storkaup.is/vara/
+ *     (reikningurinn er sameiginlegur með Hagkaup)
+ *
+ * Samanburður er á NORMALISERAÐRI slóð (lágstafir, án / í lokin, án ? og #)
+ * en eytt er með strengnum EINS OG HANN ER GEYMDUR í vísinum. Fyrsta
+ * raunkeyrsla fyrri umferðar skilaði „Eytt: 0" einmitt af því að strengurinn
+ * sem var sendur var ekki sá sem var geymdur.
+ *
+ *   cludoPurgeStaleVaraDocs_v1()      -> þurrkeyrsla + flipinn CLUDO_AFRIT
+ *   cludoPurgeStaleVaraDocsEYDA_v1()  -> eyðir GAMALT_SLUG
+ ************************************************************/
+
+var CLUDO_STALE_SHEET_ = 'CLUDO_AFRIT';
+var CLUDO_STALE_MAX_ = 1500;
+var CLUDO_SITEMAP_MIN_ = 4000;
+
+function cludoNormUrl_(u) {
+  return String(u || '').trim().toLowerCase().replace(/[?#].*$/, '').replace(/\/+$/, '');
+}
+
+/** Vörunúmerið aftast í /vara/-slóð, án einingarendingar.
+ *  .../glerhreinsir-clear-2x-5l-104886kassi -> 104886 */
+function cludoUrlSku_(u) {
+  var tail = cludoNormUrl_(u).split('/').pop() || '';
+  tail = tail.replace(new RegExp('(' + STORKAUP_UNIT_SUFFIXES_.join('|') + ')$'), '');
+  var m = tail.match(/-(\d+)$/) || tail.match(/^(\d+)$/);
+  return m ? m[1] : '';
+}
+
+/** Allar /vara/-slóðir í vísinum, síðað í gegnum leitar-API-ið.
+ *  `complete` segir hvort upptalningin náði heildartölunni sem API-ið
+ *  gefur upp — ef djúpt skip er lokað stoppar hún fyrr og segir frá því. */
+function cludoEnumerateVaraUrls_() {
+  var env = getCludoEnv_();
+  var TAKE = 100, MAX_SKIP = 20000;
+  var seen = {}, vara = [], total = null, skip = 0, emptyNew = 0;
+
+  while (skip <= MAX_SKIP) {
+    var res = UrlFetchApp.fetch(env.SEARCH_URL, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'SiteKey ' + env.SITE_KEY, Accept: 'application/json' },
+      muteHttpExceptions: true,
+      payload: JSON.stringify({ query: '', take: TAKE, skip: skip })
+    });
+    if (res.getResponseCode() !== 200) {
+      Logger.log('⚠️ upptalning skip=' + skip + ' -> HTTP ' + res.getResponseCode() +
+                 ' — ' + truncateForLog_(res.getContentText()));
+      break;
+    }
+    var data = safeJsonParse_(res.getContentText()) || {};
+    if (total === null) total = data.TotalDocument || data.TotalDocuments || data.Total || null;
+    var docs = data.TypedDocuments || [];
+    if (!docs.length) break;
+
+    var fresh = 0;
+    docs.forEach(function (d) {
+      var f = d.Fields || {};
+      var u = (f.Url && f.Url.Value) || '';
+      if (!u || seen[u]) return;
+      seen[u] = true; fresh++;
+      if (u.indexOf('https://www.storkaup.is/vara/') === 0) vara.push(u);
+    });
+    // API sem hunsar skip skilar sömu síðunni aftur og aftur. Tvær síður
+    // í röð án nýrra slóða = við erum komin eins langt og hægt er.
+    if (!fresh) { if (++emptyNew >= 2) break; } else emptyNew = 0;
+
+    skip += docs.length;
+    Utilities.sleep(150);
+  }
+
+  var n = Object.keys(seen).length;
+  var complete = total !== null && n >= Number(total);
+  Logger.log('🔎 vísir: ' + n + ' skjöl talin upp' + (total !== null ? ' af ' + total : '') +
+             ' · þar af /vara/: ' + vara.length + (complete ? '' : ' · ⚠️ ÓFULLGERT'));
+  return { urls: vara, seen: n, total: total, complete: complete };
+}
+
+function cludoPurgeStaleVaraDocsEYDA_v1() {
+  return cludoPurgeStaleVaraDocs_v1({ confirm: true });
+}
+
+function cludoPurgeStaleVaraDocs_v1(opts) {
+  var o = opts || {};
+  var confirm = o.confirm === true;
+  var includeGone = o.includeGone === true;
+
+  var sitemap = fetchStorkaupSitemapUrls_();
+  if (sitemap.length < CLUDO_SITEMAP_MIN_) {
+    throw new Error('❌ ÖRYGGISSTOPP — sitemap skilaði aðeins ' + sitemap.length +
+      ' slóðum (lágmark ' + CLUDO_SITEMAP_MIN_ + '). Undirskrá féll líklega; ' +
+      'þá lentu lifandi vörur í HORFIN. Ekkert var eytt.');
+  }
+  var canon = {}, canonSku = {};
+  sitemap.forEach(function (u) {
+    canon[cludoNormUrl_(u)] = true;
+    var s = cludoUrlSku_(u);
+    if (s) canonSku[s] = u;
+  });
+
+  var idx = cludoEnumerateVaraUrls_();
+  var old = [], gone = [], rows = [];
+  idx.urls.forEach(function (u) {
+    if (canon[cludoNormUrl_(u)]) return;
+    var sku = cludoUrlSku_(u);
+    if (sku && canonSku[sku]) {
+      old.push(u); rows.push(['GAMALT_SLUG', u, sku, canonSku[sku]]);
+    } else {
+      gone.push(u); rows.push(['HORFIN', u, sku, '']);
+    }
+  });
+
+  var targets = includeGone ? old.concat(gone) : old;
+
+  Logger.log('──────────────────────────────────────────────');
+  Logger.log('Kanónískar vöruslóðir (sitemap)   : ' + sitemap.length);
+  Logger.log('/vara/-skjöl í vísinum            : ' + idx.urls.length +
+             (idx.complete ? '' : '  (upptalning ÓFULLGERÐ — fleiri kunna að vera eftir)'));
+  Logger.log('GAMALT_SLUG (varan lifir)         : ' + old.length);
+  Logger.log('HORFIN (vörunúmer ekki í sitemap) : ' + gone.length +
+             (includeGone ? '' : '  — ekki eytt nema {includeGone:true}'));
+  Logger.log('Dæmi                              : ' + old.slice(0, 3).join(', '));
+  Logger.log('──────────────────────────────────────────────');
+
+  cludoWriteStaleSheet_(rows, idx);
+
+  if (targets.length > CLUDO_STALE_MAX_) {
+    throw new Error('❌ ÖRYGGISSTOPP — ' + targets.length + ' til eyðingar (hámark ' +
+      CLUDO_STALE_MAX_ + '). Væntum ~650; svona tala bendir á villu í samanburðinum. ' +
+      'Skoðaðu flipann ' + CLUDO_STALE_SHEET_ + '. Ekkert var eytt.');
+  }
+
+  if (!confirm) {
+    Logger.log('🧪 ÞURRKEYRSLA — engu eytt. Skoðaðu flipann ' + CLUDO_STALE_SHEET_ +
+               ' og keyrðu svo cludoPurgeStaleVaraDocsEYDA_v1().');
+    return { dryRun: true, indexed: idx.urls.length, complete: idx.complete,
+             oldSlug: old.length, gone: gone.length };
+  }
+
+  var r = cludoBulkDeleteUrls_(targets, getCludoAdminEnv_());
+  Logger.log('🗑️ Eytt: ' + r.deleted + ' | mistókst/fannst ekki: ' + r.failed);
+  Logger.log('   Staðfestu í Page Inventory: /vara skal nálgast ' + sitemap.length + '.');
+  return { dryRun: false, indexed: idx.urls.length, complete: idx.complete,
+           oldSlug: old.length, gone: gone.length, deleted: r.deleted, failed: r.failed };
+}
+
+function cludoWriteStaleSheet_(rows, idx) {
+  var cfg = loadConfig_();
+  var id = cfg.SHEETS && cfg.SHEETS.SALES_SUMMARIES && cfg.SHEETS.SALES_SUMMARIES.ID;
+  if (!id) { Logger.log('[CLUDO] vantar SHEETS.SALES_SUMMARIES.ID — aðeins keyrsluskrá.'); return; }
+  var ss = SpreadsheetApp.openById(id);
+  var sh = ss.getSheetByName(CLUDO_STALE_SHEET_) || ss.insertSheet(CLUDO_STALE_SHEET_);
+  sh.clear();
+  sh.getRange(1, 1).setValue(
+    'Keyrt ' + Utilities.formatDate(new Date(), 'Atlantic/Reykjavik', 'yyyy-MM-dd HH:mm') +
+    ' · ' + idx.urls.length + ' /vara/-skjöl í vísinum' +
+    (idx.complete ? '' : ' · upptalning ÓFULLGERÐ')).setFontStyle('italic');
+  var head = [['Flokkur', 'Slóð í vísinum', 'Vörunúmer', 'Rétt slóð (sitemap)']];
+  sh.getRange(2, 1, 1, 4).setValues(head).setFontWeight('bold');
+  if (rows.length) sh.getRange(3, 1, rows.length, 4).setValues(rows);
+  sh.setFrozenRows(2);
+}
