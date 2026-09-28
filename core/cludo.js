@@ -1308,17 +1308,40 @@ function cludoEnumerateVaraUrls_() {
   var TAKE = 100, MAX_SKIP = 20000;
   var seen = {}, vara = [], total = null, skip = 0, emptyNew = 0;
 
-  while (skip <= MAX_SKIP) {
-    var res = UrlFetchApp.fetch(env.SEARCH_URL, {
+  function search_(query, skip) {
+    return UrlFetchApp.fetch(env.SEARCH_URL, {
       method: 'post',
       contentType: 'application/json',
       headers: { Authorization: 'SiteKey ' + env.SITE_KEY, Accept: 'application/json' },
       muteHttpExceptions: true,
-      payload: JSON.stringify({ query: '', take: TAKE, skip: skip })
+      payload: JSON.stringify({ query: query, take: TAKE, skip: skip })
     });
+  }
+
+  // TÓM FYRIRSPURN SKILAR HTTP 400 (mælt 2026-09-28). `*` er það sem
+  // Cludo notar fyrir „allt"; tóma strengnum er haldið til vara. Sú
+  // fyrirspurn sem skilar 200 með skjölum á skip=0 er notuð áfram.
+  var query = null;
+  ['*', ''].some(function (q) {
+    var r = search_(q, 0);
+    var body = r.getContentText();
+    var ok = r.getResponseCode() === 200 &&
+             ((safeJsonParse_(body) || {}).TypedDocuments || []).length > 0;
+    Logger.log('🔎 fyrirspurn ' + JSON.stringify(q) + ' -> HTTP ' + r.getResponseCode() +
+               (ok ? '' : ' — ' + truncateForLog_(body, 400)));
+    if (ok) query = q;
+    return ok;
+  });
+  if (query === null) {
+    Logger.log('⚠️ engin fyrirspurn taldi upp vísinn — sjá svörin hér að ofan.');
+    return { urls: [], seen: 0, total: null, complete: false };
+  }
+
+  while (skip <= MAX_SKIP) {
+    var res = search_(query, skip);
     if (res.getResponseCode() !== 200) {
       Logger.log('⚠️ upptalning skip=' + skip + ' -> HTTP ' + res.getResponseCode() +
-                 ' — ' + truncateForLog_(res.getContentText()));
+                 ' — ' + truncateForLog_(res.getContentText(), 400));
       break;
     }
     var data = safeJsonParse_(res.getContentText()) || {};
