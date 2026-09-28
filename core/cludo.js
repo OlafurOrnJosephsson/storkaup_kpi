@@ -1294,9 +1294,12 @@ function cludoNormUrl_(u) {
 /** Vörunúmerið aftast í /vara/-slóð, án einingarendingar.
  *  .../glerhreinsir-clear-2x-5l-104886kassi -> 104886 */
 function cludoUrlSku_(u) {
+  // HVAÐA stafir sem er aftan við númerið, ekki bara STORKAUP_UNIT_SUFFIXES_:
+  // 9003652 er í sitemap sem `...-9003652kg` (mælt 2026-09-28). Með
+  // listanum einum fékk sú slóð ekkert vörunúmer, og gamla slóðin hennar
+  // lenti í HORFIN í stað GAMALT_SLUG.
   var tail = cludoNormUrl_(u).split('/').pop() || '';
-  tail = tail.replace(new RegExp('(' + STORKAUP_UNIT_SUFFIXES_.join('|') + ')$'), '');
-  var m = tail.match(/-(\d+)$/) || tail.match(/^(\d+)$/);
+  var m = tail.match(/-(\d+)[a-z]*$/) || tail.match(/^(\d+)[a-z]*$/);
   return m ? m[1] : '';
 }
 
