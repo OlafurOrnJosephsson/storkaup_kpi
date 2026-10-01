@@ -370,6 +370,7 @@ footer p { margin: 0 0 6px; }
   <footer>
     <p>Stórkaup · vöruvöktun · gögn úr storkaup.is (vörulisti og verðkerfi), BC og Magento</p>
     <p>Smelltu á „Keyra aftur“ til að sækja nýjustu stöðu.</p>
+    <p id="timings"></p>
   </footer>
 
 </div>
@@ -782,6 +783,16 @@ footer p { margin: 0 0 6px; }
     var clean = Number(r.flagged || 0) === 0;
     status.classList.toggle('bad', !clean);
     status.textContent = 'Síðast athugað: ' + fmtDate(r.lastRun);
+
+    // Hvað tók tímann — svo næsta hægagangur þurfi ekki ágiskun.
+    var tm = r.timings;
+    if (tm) {
+      var sec = function (ms) { return (Math.round((ms || 0) / 100) / 10).toLocaleString('is-IS') + ' s'; };
+      var tot = 0; for (var k in tm) tot += tm[k] || 0;
+      el('timings').textContent = 'Síðasta keyrsla: ' + sec(tot) + ' — vörulisti ' + sec(tm.catalog) +
+        ', verð ' + sec(tm.pricing) + ', sölusaga ' + sec(tm.sales) + ', flokkar ' + sec(tm.categories) +
+        ', flipar ' + sec(tm.sheets) + '.';
+    }
   }
 
   function hasGas() { return !!(window.google && google.script && google.script.run); }
@@ -807,31 +818,86 @@ footer p { margin: 0 0 6px; }
       .getPendingOrdersForUi();
   }
 
-  // Hnappur: keyra FERSKA skönnun (~1 mín).
-  function runScan() {
+  // ── Skönnun í bakgrunni ──
+  // Hnappurinn ræsir skönnunina og svarar strax; svo er spurt um stöðu á
+  // 5 sek fresti. Sama lykkja tekur við ef síðan er opnuð á meðan einhver
+  // annar (eða dagleg keyrsla) er að skanna.
+  var POLL_MS = 5000;
+  var pollTimer = null;
+
+  function setBusy(busy) {
     var btn = el('btn-check');
+    btn.disabled = busy;
+    btn.textContent = busy ? 'Keyri…' : 'Keyra aftur';
+  }
+
+  function scanStatusText(st) {
+    var t = st.phase || 'Keyri';
+    if (st.total) t += ' ' + IS(st.done) + '/' + IS(st.total);
+    if (st.startedAt) {
+      var sec = Math.max(0, Math.round((Date.now() - new Date(st.startedAt).getTime()) / 1000));
+      t += ' · ' + (sec < 60 ? sec + ' sek' : Math.floor(sec / 60) + ' mín ' + (sec % 60) + ' sek');
+    }
+    return t + '…';
+  }
+
+  function onStatus(st) {
+    var status = el('live-status');
+    if (st && (st.state === 'running' || st.state === 'queued')) {
+      setBusy(true);
+      status.classList.remove('bad');
+      status.textContent = scanStatusText(st);
+      pollTimer = setTimeout(pollStatus, POLL_MS);
+      return;
+    }
+    var wasPolling = pollTimer !== null;
+    pollTimer = null;
+    setBusy(false);
+    if (st && st.state === 'error' && wasPolling) {
+      status.classList.add('bad');
+      status.textContent = 'Villa: ' + (st.message || 'óþekkt');
+      return;
+    }
+    if (wasPolling) loadCached();   // done → sækja nýju niðurstöðuna
+  }
+
+  function pollStatus() {
+    google.script.run
+      .withSuccessHandler(onStatus)
+      .withFailureHandler(function () { pollTimer = setTimeout(pollStatus, POLL_MS * 2); })
+      .getZeroPriceScanStatusForUi();
+  }
+
+  function runScan() {
     var status = el('live-status');
     if (!hasGas()) {
       status.textContent = 'Keyrsla er aðeins virk inni á KPI-vefnum.';
       return;
     }
-    btn.disabled = true;
-    btn.textContent = 'Keyri… (~1 mín)';
+    setBusy(true);
     status.classList.remove('bad');
-    status.textContent = 'Skanna vörulistann…';
+    status.textContent = 'Ræsi skönnun…';
     google.script.run
-      .withSuccessHandler(function (r) { render(r); btn.disabled = false; btn.textContent = 'Keyra aftur'; })
+      .withSuccessHandler(function (st) { pollTimer = 0; onStatus(st); })
       .withFailureHandler(function (err) {
         status.classList.add('bad');
         status.textContent = 'Villa: ' + (err && err.message ? err.message : 'náði ekki sambandi');
-        btn.disabled = false; btn.textContent = 'Keyra aftur';
+        setBusy(false);
       })
-      .runZeroPriceScanForUi();
+      .startZeroPriceScanForUi();
   }
 
-  el('btn-check').addEventListener('click', function () { runScan(); loadOrders(); });
+  el('btn-check').addEventListener('click', function () { if (pollTimer === null) runScan(); loadOrders(); });
   loadCached();
   loadOrders();
+  // Er skönnun þegar í gangi? Þá taka við stöðunni í stað þess að sýna gamalt.
+  if (hasGas()) {
+    google.script.run
+      .withSuccessHandler(function (st) {
+        if (st && (st.state === 'running' || st.state === 'queued')) { pollTimer = 0; onStatus(st); }
+      })
+      .getZeroPriceScanStatusForUi();
+  }
 })();
 </script>
 </body>

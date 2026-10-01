@@ -4720,7 +4720,8 @@ function auditTriggers_v1() {
     onOpen:                       'spreadsheet ON_OPEN (not time-based)',
     pruneCompletedApplications:   'no installer in repo — installed by hand',
     runScheduledSeoAutomation_v1: 'every 30 min — SEO batch, install on demand',
-    collectInvoicesToDrive_v1:    'daily ~07:10 — invoice collector'
+    collectInvoicesToDrive_v1:    'daily ~07:10 — invoice collector',
+    zeroPriceScanFromTrigger_v1:  'one-off — "Keyra aftur" in vöruvöktun, deletes itself'
   };
 
   var triggers = ScriptApp.getProjectTriggers();

@@ -171,37 +171,33 @@ function fetchActiveProducts_() {
     '  }' +
     '}';
 
-  let offset = 0;
   let total = null;
   let rawCount = 0;
   const seen = {};
   const out = [];
 
-  while (true) {
-    const res = UrlFetchApp.fetch(STORKAUP_GQL_URL_, {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { Accept: '*/*', Origin: 'https://www.storkaup.is' },
-      muteHttpExceptions: true,
-      payload: JSON.stringify({
-        query: query,
-        variables: { pagination: { first: PAGE, offset: offset } },
-        operationName: 'getProductsV2'
-      })
-    });
-
+  const request_ = (offset, first) => ({
+    url: STORKAUP_GQL_URL_,
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Accept: '*/*', Origin: 'https://www.storkaup.is' },
+    muteHttpExceptions: true,
+    payload: JSON.stringify({
+      query: query,
+      variables: { pagination: { first: first || PAGE, offset: offset } },
+      operationName: 'getProductsV2'
+    })
+  });
+  const parse_ = res => {
     if (res.getResponseCode() !== 200) {
       throw new Error('getProductsV2 ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 300));
     }
     const data = JSON.parse(res.getContentText());
     if (data.errors) throw new Error('getProductsV2 errors: ' + JSON.stringify(data.errors).slice(0, 300));
+    return (data.data && data.data.getProductsV2) || {};
+  };
 
-    const conn = (data.data && data.data.getProductsV2) || {};
-    total = conn.totalCount;
-    const edges = conn.edges || [];
-    if (!edges.length) break;
-
-    edges.forEach(e => {
+  const handleEdges_ = edges => edges.forEach(e => {
       const node = e && e.node;
       if (!node) return;
       rawCount++;
@@ -231,14 +227,46 @@ function fetchActiveProducts_() {
       const at = seen[parent];
       if (at === undefined) { seen[parent] = out.length; out.push(row); return; }
       if (row.isBase && !out[at].isBase) out[at] = row;
-    });
+  });
 
-    // Skref = fjoldi rada sem KOM, ekki fast PAGE. Skili sidha faerri
-    // rodhum en beditdh var um myndi fast skref hoppa yfir mismuninn.
-    offset += edges.length;
-    if (!conn.pageInfo || !conn.pageInfo.hasNextPage) break;
-    if (offset > 50000) throw new Error('getProductsV2 pagination guard (>50000).');
-    Utilities.sleep(120);
+  // Fyrsta sidhan gefur totalCount; restin er sott SAMHLIDA (fetchAll).
+  // Maelt 2026-10-01: 23 sidhur i rodh 9,2 s, samhlida 3,2 s.
+  const first = parse_(UrlFetchApp.fetch(STORKAUP_GQL_URL_, request_(0)));
+  total = first.totalCount;
+  handleEdges_(first.edges || []);
+  let lastConn = first;
+
+  if (first.pageInfo && first.pageInfo.hasNextPage && total) {
+    if (total > 50000) throw new Error('getProductsV2 pagination guard (>50000).');
+    const offsets = [];
+    for (let o = PAGE; o < total; o += PAGE) offsets.push(o);
+    const PAR = 6;
+    for (let i = 0; i < offsets.length; i += PAR) {
+      const group = offsets.slice(i, i + PAR);
+      const resps = UrlFetchApp.fetchAll(group.map(o => request_(o)));
+      resps.forEach((res, k) => {
+        const conn = parse_(res);
+        const edges = conn.edges || [];
+        handleEdges_(edges);
+        lastConn = conn;
+        // Fast skref (PAGE) i stad "fjoldi sem kom" — skili sidha faerri
+        // rodhum en bedid var um (og hun er ekki su sidasta) er gatid fyllt
+        // med einni fyrirspurn. Tviteknar radhir hverfa i seen{}.
+        const o = group[k];
+        if (edges.length < PAGE && o + PAGE < total) {
+          handleEdges_(parse_(UrlFetchApp.fetch(STORKAUP_GQL_URL_, request_(o + edges.length, PAGE - edges.length))).edges || []);
+        }
+      });
+    }
+    // totalCount ox medan a sotti stodh: halda afram i rodh fra enda.
+    let offset = offsets.length ? offsets[offsets.length - 1] + PAGE : PAGE;
+    while (lastConn.pageInfo && lastConn.pageInfo.hasNextPage && offset < 50000) {
+      lastConn = parse_(UrlFetchApp.fetch(STORKAUP_GQL_URL_, request_(offset)));
+      const edges = lastConn.edges || [];
+      if (!edges.length) break;
+      handleEdges_(edges);
+      offset += edges.length;
+    }
   }
 
   // Offset-sidhuflakk her er slembid ostodugt (sja fetchUncategorizedProducts_).
@@ -527,6 +555,74 @@ function comingSoonVerdict_(a) {
 }
 
 /************************************************************
+ * ⚡ fetchStorkaupPricingMany_ — margar verðlotur SAMHLIÐA
+ *   Sama fyrirspurn og fetchStorkaupPricing_, en PAR lotur í einu með
+ *   UrlFetchApp.fetchAll. Áður ~90 lotur í röð með 250 ms hléi — stærsti
+ *   einstaki tímaþjófur skönnunarinnar.
+ *   401/403 → token endurnýjaður EINU SINNI og lotan reynd aftur.
+ *   429/5xx → beðið og reynt aftur (3 umferðir), svo kastað.
+ *   Skilar fylki í sömu röð og batches.
+ ************************************************************/
+function fetchStorkaupPricingMany_(batches, onProgress) {
+  const PAR = 8;
+  const query =
+    'query getProductsPricing($productSkus: [String!]!) {' +
+    '  getProductsPricing(productSkus: $productSkus) {' +
+    '    sku unitPrices { sku finalPrice priceGroupId unitOfMeasure basePrice }' +
+    '  }' +
+    '}';
+  const request_ = (skus, token) => ({
+    url: STORKAUP_GQL_URL_,
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + token, Accept: '*/*', Origin: 'https://www.storkaup.is' },
+    muteHttpExceptions: true,
+    payload: JSON.stringify({ query: query, variables: { productSkus: skus }, operationName: 'getProductsPricing' })
+  });
+
+  let token = getStorkaupAccessToken_(false);
+  let refreshed = false;
+  const out = new Array(batches.length);
+
+  for (let i = 0; i < batches.length; i += PAR) {
+    let pending = [];
+    for (let j = i; j < Math.min(i + PAR, batches.length); j++) pending.push(j);
+
+    for (let attempt = 0; attempt < 3 && pending.length; attempt++) {
+      const resps = UrlFetchApp.fetchAll(pending.map(j => request_(batches[j], token)));
+      const retry = [];
+      let authFail = false;
+      resps.forEach((res, k) => {
+        const j = pending[k];
+        const code = res.getResponseCode();
+        if (code === 200) {
+          const data = JSON.parse(res.getContentText());
+          if (data.errors) throw new Error('GraphQL errors: ' + JSON.stringify(data.errors).slice(0, 400));
+          out[j] = (data.data && data.data.getProductsPricing) || [];
+        } else if (code === 401 || code === 403) {
+          authFail = true; retry.push(j);
+        } else if (code === 429 || code >= 500) {
+          retry.push(j);
+        } else {
+          throw new Error('Storkaup GraphQL ' + code + ': ' + res.getContentText().slice(0, 300));
+        }
+      });
+      if (authFail) {
+        if (refreshed) throw new Error('Storkaup GraphQL 401 eftir endurnýjun token');
+        token = getStorkaupAccessToken_(true);
+        refreshed = true;
+      } else if (retry.length) {
+        Utilities.sleep(1500 * (attempt + 1));
+      }
+      pending = retry;
+    }
+    if (pending.length) throw new Error('Verðlotur mistókust eftir 3 tilraunir: ' + pending.length);
+    if (onProgress) onProgress(Math.min(i + PAR, batches.length), batches.length);
+  }
+  return out;
+}
+
+/************************************************************
  * 🔬 probeStorkaupPricing — sannreyna báðar uppsprettur
  ************************************************************/
 function probeStorkaupPricing() {
@@ -602,24 +698,42 @@ function checkStorkaupAuth() {
  *             outOfStock, negativeStock, noCategory, flagged }
  *    noCategory === null þýðir ÓMÆLT (flokkalesturinn bilaði), ekki 0.
  ************************************************************/
-function findZeroListPriceProducts_v1() {
+function findZeroListPriceProducts_v1(opts) {
   const cfg = loadConfig_();
+  // progress(skref, gert, alls) — skrifar stöðu fyrir appið (sjá runZeroPriceScanLocked_).
+  const progress = (opts && opts.progress) || function () {};
+  // Tími hvers skrefs í ms — vistaður með niðurstöðunni og sýndur í appinu.
+  const timings = {};
+  let tMark = Date.now();
+  const lap = name => { const now = Date.now(); timings[name] = now - tMark; tMark = now; };
 
   // 1) Virki vörulistinn (réttur alheimur)
+  progress('Vörulisti', 0, 0);
   const products = fetchActiveProducts_();
   const meta = {};
   const skus = [];
   products.forEach(p => { meta[p.parent] = p; skus.push(p.parent); });
+  lap('catalog');
 
-  // 2) Verð í lotum
+  // 2) Verð í lotum — sótt samhliða (fetchStorkaupPricingMany_)
   const BATCH = 50;
   const rows = [];
   const frameworkRows = [];   // rammasamningsvörur án almenns verðs (til heilbrigðis-eftirlits)
   let checked = 0, zeroPrice = 0, notAvailable = 0, frameworkExcluded = 0, specialOrderExcluded = 0;
 
-  for (let i = 0; i < skus.length; i += BATCH) {
-    const batch = skus.slice(i, i + BATCH);
-    const result = fetchStorkaupPricing_(batch);
+  const batches = [];
+  for (let i = 0; i < skus.length; i += BATCH) batches.push(skus.slice(i, i + BATCH));
+  progress('Verð', 0, batches.length);
+  let lastPct = -1;
+  const priceResults = fetchStorkaupPricingMany_(batches, (done, all) => {
+    // Ekki skrifa stöðu í hverri lotu — Script Properties eru hæg.
+    const pct = Math.floor(10 * done / all);
+    if (pct !== lastPct) { lastPct = pct; progress('Verð', done, all); }
+  });
+  lap('pricing');
+
+  batches.forEach((batch, bi) => {
+    const result = priceResults[bi];
 
     const bySku = {};
     result.forEach(p => { bySku[storkaupParentSku_(p.sku)] = p; });
@@ -656,10 +770,8 @@ function findZeroListPriceProducts_v1() {
       });
       if (flaggedZero) zeroPrice++;
     });
-
-    Logger.log('  …' + Math.min(i + BATCH, skus.length) + '/' + skus.length + ' (flögg: ' + rows.length + ')');
-    Utilities.sleep(250);
-  }
+  });
+  Logger.log('  verð: ' + skus.length + ' vörur í ' + batches.length + ' lotum (flögg: ' + rows.length + ')');
 
   // 2b) Mynd-eftirlit (óháð verði) — featuredImage null eða "myndvantar*"
   const imageRows = [];
@@ -696,12 +808,15 @@ function findZeroListPriceProducts_v1() {
 
   // 2c') Sölusaga á væntanlegu vörurnar. Sér-try: bili Supabase verða
   // söludálkarnir tómir (ÓMÆLT), en listinn sjálfur stendur.
+  progress('Sölusaga', 0, 0);
   let activity = null;
   try {
     activity = fetchSalesActivity_(comingRows.map(r => r[0]));
   } catch (e) {
     Logger.log('⚠️ Sölusaga mistókst — væntanlegar vörur án söludálka: ' + e.message);
   }
+  lap('sales');
+
   // 2c'') Sérpöntunarlisti úr BC (storeBcSpecialOrderList_). null = enginn
   // listi lesinn inn enn → samanburðurinn er ÓMÆLDUR, ekki 0.
   let bcSo = null;
@@ -773,6 +888,7 @@ function findZeroListPriceProducts_v1() {
   // fetchUncategorizedProducts_ um hvers vegna diff byr til drauga.
   // Sér-try: bili flokkalesturinn kostar thad EINA maelingu, ekki alla
   // skonnunina. null = OMAELT, sem er annad en 0.
+  progress('Flokkar', 0, 0);
   let noCategoryRows = [];
   let noCategory = null;
   try {
@@ -784,7 +900,10 @@ function findZeroListPriceProducts_v1() {
     Logger.log('⚠️ Flokkaeftirlit mistokst — skrad OMAELT: ' + e.message);
   }
 
+  lap('categories');
+
   // 3) Skrifa flipa
+  progress('Skrifa flipa', 0, 0);
   const ss = SpreadsheetApp.openById(cfg.SHEETS.PRODUCTS.ID);
   const sheetName = 'ZERO_PRICE_PRODUCTS';
   let sh = ss.getSheetByName(sheetName);
@@ -873,6 +992,8 @@ function findZeroListPriceProducts_v1() {
   writeTab_('NEIKVAEDUR_LAGER', negativeRows, function (a, b) { return a[2] - b[2]; });
   if (noCategory !== null) writeTab_('AN_FLOKKS', noCategoryRows);
 
+  lap('sheets');
+
   // 4) Cache fyrir hnapp / web-app
   const sample = rows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], issue: r[4], url: r[5] }));
   const cache = {
@@ -901,7 +1022,8 @@ function findZeroListPriceProducts_v1() {
     noCategory: noCategory,
     noCategorySample: noCategoryRows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], url: r[3] })),
     flagged: rows.length,
-    sample: sample
+    sample: sample,
+    timings: timings
   };
   PropertiesService.getScriptProperties().setProperty('ZERO_PRICE_LAST_RESULT', JSON.stringify(cache));
 
@@ -925,11 +1047,6 @@ function getZeroPriceResultForUi() {
 }
 
 /************************************************************
- * 🔁 runZeroPriceScanForUi — keyrir FERSKA skönnun og skilar
- *   niðurstöðu (fyrir "Keyra aftur" hnappinn). Tekur ~1 mín.
- *   Krefst gilds token; kastar 401 ef útrunninn.
- ************************************************************/
-/************************************************************
  * 📋 getComingSoonListForUi — allur VARA_VAENTANLEG flipinn
  *   Cache-inn í Script Properties ber aðeins 25 raðir (stærðarmörk);
  *   allur listinn er lesinn beint úr flipanum sem skönnunin skrifaði.
@@ -951,18 +1068,109 @@ function getComingSoonListForUi() {
   };
 }
 
+/************************************************************
+ * 🔒 runZeroPriceScanLocked_ — EINA leiðin inn í skönnunina
+ *   Script-lás: tvær skannanir samtímis (tveir smella, eða dagleg
+ *   keyrsla rekst á handvirka) myndu skrifa sömu flipa hvor ofan í
+ *   aðra. Sú sem nær ekki lásnum hættir strax.
+ *
+ *   Staða í ZERO_PRICE_SCAN_STATE fyrir appið:
+ *     { state: queued|running|done|error|busy, startedAt, finishedAt,
+ *       phase, done, total, message }
+ ************************************************************/
+var ZERO_PRICE_STATE_KEY_ = 'ZERO_PRICE_SCAN_STATE';
+// Apps Script drepur keyrslu eftir 6 mín. "running" eldra en þetta er dautt.
+var ZERO_PRICE_STALE_MS_ = 8 * 60 * 1000;
+
+function setZeroPriceScanState_(patch) {
+  const props = PropertiesService.getScriptProperties();
+  const cur = safeJsonParse_(props.getProperty(ZERO_PRICE_STATE_KEY_) || '', null) || {};
+  const next = Object.assign(cur, patch);
+  props.setProperty(ZERO_PRICE_STATE_KEY_, JSON.stringify(next));
+  return next;
+}
+
+function runZeroPriceScanLocked_() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(2000)) {
+    Logger.log('[ZEROPRICE] Önnur skönnun í gangi — hætti.');
+    return { status: 'busy' };
+  }
+  try {
+    setZeroPriceScanState_({ state: 'running', startedAt: new Date().toISOString(),
+                             finishedAt: null, phase: 'Ræsi', done: 0, total: 0, message: '' });
+    const summary = findZeroListPriceProducts_v1({
+      progress: (phase, done, total) => setZeroPriceScanState_({ phase: phase, done: done, total: total })
+    });
+    setZeroPriceScanState_({ state: 'done', finishedAt: new Date().toISOString(), phase: '' });
+    return summary;
+  } catch (e) {
+    setZeroPriceScanState_({ state: 'error', finishedAt: new Date().toISOString(),
+                             message: String(e && e.message || e) });
+    throw e;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/************************************************************
+ * 🚀 startZeroPriceScanForUi — "Keyra aftur" hnappurinn
+ *   Ræsir skönnunina í BAKGRUNNI (einskiptis-trigger) og svarar strax.
+ *   Áður keyrði hnappurinn hana beint: admin → doPost → UrlFetch sem
+ *   gefst upp eftir ~1 mín, og skönnun yfir 6 mín dó án þess að nokkur
+ *   frétti. Nú spyr appið getZeroPriceScanStatusForUi á meðan.
+ ************************************************************/
+function startZeroPriceScanForUi() {
+  const st = getZeroPriceScanStatusForUi();
+  if (st.state === 'running' || st.state === 'queued') return st;
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'zeroPriceScanFromTrigger_v1')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('zeroPriceScanFromTrigger_v1').timeBased().after(1000).create();
+  return setZeroPriceScanState_({ state: 'queued', startedAt: new Date().toISOString(),
+                                  finishedAt: null, phase: 'Í biðröð', done: 0, total: 0, message: '' });
+}
+
+// Handler einskiptis-triggersins. Eyðir sjálfum sér fyrst — after() trigger
+// hverfur ekki sjálfkrafa úr listanum og auditTriggers_v1 myndi telja hann.
+function zeroPriceScanFromTrigger_v1() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'zeroPriceScanFromTrigger_v1')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  try {
+    runZeroPriceScanLocked_();
+  } catch (e) {
+    notifyTriggerFailure_('zeroPriceScanFromTrigger_v1', e, {});
+  }
+}
+
+function getZeroPriceScanStatusForUi() {
+  const raw = PropertiesService.getScriptProperties().getProperty(ZERO_PRICE_STATE_KEY_);
+  const st = safeJsonParse_(raw || '', null) || { state: 'idle' };
+  if ((st.state === 'running' || st.state === 'queued') && st.startedAt &&
+      Date.now() - new Date(st.startedAt).getTime() > ZERO_PRICE_STALE_MS_) {
+    st.message = st.state === 'queued'
+      ? 'Skönnunin fór aldrei af stað.'
+      : 'Skönnunin hætti án svars (líklega 6 mín hámark Apps Script).';
+    st.state = 'error';
+  }
+  return st;
+}
+
+// Eldri samstillta leiðin — haldið fyrir handvirka keyrslu úr ritlinum.
 function runZeroPriceScanForUi() {
-  findZeroListPriceProducts_v1();
+  runZeroPriceScanLocked_();
   return getZeroPriceResultForUi();
 }
 
 /************************************************************
  * ⏰ scheduledZeroPriceScan_v1 — dagleg sjálfvirk keyrsla
  *   Wrapper með villumeðhöndlun (sama mynstur og aðrir scheduled-jobs).
+ *   Fer í gegnum lásinn eins og hnappurinn.
  ************************************************************/
 function scheduledZeroPriceScan_v1() {
   try {
-    return findZeroListPriceProducts_v1();
+    return runZeroPriceScanLocked_();
   } catch (e) {
     notifyTriggerFailure_('scheduledZeroPriceScan_v1', e, {});
     throw e;

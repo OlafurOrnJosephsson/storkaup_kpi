@@ -62,9 +62,21 @@ function getPendingOrdersForUi() {
   }
 }
 
-// Skönnunin tekur ~1 mín — lengur en UrlFetch leyfir. Ef beina kallið dettur
-// á tíma heldur skönnunin samt áfram í aðal-projectinu, svo hér er pollað
-// eftir ferskri niðurstöðu (lastRun breytist) í allt að 2 mínútur til viðbótar.
+// Skönnunin keyrir í BAKGRUNNI í aðal-projectinu (einskiptis-trigger).
+// start skilar strax; appið spyr um stöðu á meðan. Sjá
+// startZeroPriceScanForUi í core/storkaup_pricing.js.
+function startZeroPriceScanForUi() {
+  adminGuard_('listaverd');
+  return callCoreApi_('start_zero_price_scan');
+}
+
+function getZeroPriceScanStatusForUi() {
+  adminGuard_('listaverd');
+  return callCoreApi_('zero_price_scan_status');
+}
+
+// Eldri samstillta leiðin — appið notar hana ekki lengur. Haldið svo gömul
+// opin vafraflipi brotni ekki fyrr en þau eru endurhlaðin.
 function runZeroPriceScanForUi() {
   adminGuard_('listaverd');
 
