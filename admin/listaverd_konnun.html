@@ -154,8 +154,8 @@ footer p { margin: 0 0 6px; }
     <span>storkaup.is</span>
   </div>
 
-  <h1>Vörur með verðvanda á vef</h1>
-  <p class="sub">Vörur sem eru í birtingu á storkaup.is en viðskiptavinur getur ekki keypt almennilega — annaðhvort með <strong>listaverð 0</strong> eða merktar <strong>„Vara ekki fáanleg“</strong> (ekkert verð). Archived/draft vörur eru ekki taldar með.</p>
+  <h1>Vöruheilsa á vef</h1>
+  <p class="sub">Allt sem er í birtingu á storkaup.is, borið saman við verðkerfið, BC og flokkatréð. Hér sést hvaða vörur viðskiptavinur getur ekki keypt eða fundið almennilega: <strong>verð</strong>, <strong>sérpöntunarmerking</strong>, <strong>„Vara væntanleg“</strong>, <strong>birgðir</strong>, <strong>myndir</strong> og <strong>flokkar</strong>, ásamt pöntunum sem standa fastar. Archived/draft vörur eru ekki taldar með.</p>
 
   <div class="liverow">
     <button type="button" id="btn-check" class="btn">Keyra aftur</button>
@@ -202,8 +202,9 @@ footer p { margin: 0 0 6px; }
   </div>
 
   <section>
-    <div class="sec-label">Til skoðunar</div>
-    <h3 id="list-title">Vörur sem þarf að laga</h3>
+    <div class="sec-label">Verð</div>
+    <h3 id="list-title">Vörur með verðvanda</h3>
+    <p class="body">Vörur með <strong>listaverð 0</strong> eða merktar <strong>„Vara ekki fáanleg“</strong> (engin verðlína).</p>
     <div class="tbl-wrap">
       <div class="tbl-scroll">
         <table>
@@ -367,7 +368,7 @@ footer p { margin: 0 0 6px; }
   </section>
 
   <footer>
-    <p>Stórkaup · vöruvöktun · gögn úr verðkerfi storkaup.is</p>
+    <p>Stórkaup · vöruvöktun · gögn úr storkaup.is (vörulisti og verðkerfi), BC og Magento</p>
     <p>Smelltu á „Keyra aftur“ til að sækja nýjustu stöðu.</p>
   </footer>
 
@@ -735,8 +736,8 @@ footer p { margin: 0 0 6px; }
     el('stat-nocat').textContent  = statTxt(r.noCategory);
 
     el('list-title').textContent = Number(r.flagged || 0) === 0
-      ? 'Engar vörur þarf að laga'
-      : (IS(r.flagged) + ' vörur þarf að laga');
+      ? 'Engar vörur með verðvanda'
+      : (IS(r.flagged) + ' vörur með verðvanda');
 
     el('img-title').textContent = Number(r.missingImage || 0) === 0
       ? 'Engar vörur vantar mynd'
