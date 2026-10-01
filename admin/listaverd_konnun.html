@@ -107,6 +107,22 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .chip.bad  { color: var(--sk-bad);  background: var(--sk-bad-bg);  border: 1px solid var(--sk-bad-bd); }
 .chip.warn { color: var(--sk-warn); background: var(--sk-warn-bg); border: 1px solid var(--sk-warn-bd); }
+/* ── Allur listinn: verkfærarönd, síur, röðun ── */
+.tbl-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--sk-border); background: #fbfbfc; }
+.btn-ghost { color: var(--sk-blue); background: var(--sk-blue-bg); padding: 6px 14px; font-size: 0.82rem; }
+.tbl-scroll.full { max-height: 70vh; overflow: auto; }
+.tbl-scroll.full thead th { position: sticky; top: 0; z-index: 1; }
+.tbl-scroll.full thead tr.filter-row th { top: 41px; }
+.filter-row th { padding: 6px 8px; background: #f7f7f9; text-transform: none; letter-spacing: 0; }
+.filter-row input, .filter-row select {
+  width: 100%; min-width: 80px; font: inherit; font-size: 0.8rem; color: var(--sk-text);
+  border: 1px solid var(--sk-border); border-radius: 6px; padding: 5px 8px; background: #fff;
+}
+.filter-row input:focus-visible, .filter-row select:focus-visible { outline: 2px solid var(--sk-blue); outline-offset: 0; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--sk-blue); }
+th.sortable[aria-sort="ascending"]::after  { content: " ▲"; }
+th.sortable[aria-sort="descending"]::after { content: " ▼"; }
 .chip.ok   { color: var(--sk-ok);   background: var(--sk-ok-bg);   border: 1px solid #bfe8c9; }
 .tbl-note { padding: 12px 16px; font-size: 0.82rem; color: var(--sk-faint); border-top: 1px solid #f0f0f2; background: #fbfbfc; }
 .empty { padding: 28px 16px; text-align: center; color: var(--sk-ok); font-weight: 600; }
@@ -221,10 +237,28 @@ footer p { margin: 0 0 6px; }
     <h3 id="coming-title">Vara væntanleg</h3>
     <p class="body">Vörur með stöðu 0 eða minna í BC sem eru <strong>ekki</strong> merktar sérpöntun. Vefurinn sýnir „Vara væntanleg“ á þeim. Ef varan er ekki á leiðinni á lager ætti hún líklega að vera sérpöntun. Sölusagan kemur úr BC-reikningum; líklegustu sérpöntunarvörurnar eru efst.</p>
     <div class="tbl-wrap">
-      <div class="tbl-scroll">
+      <div class="tbl-toolbar">
+        <button type="button" id="btn-coming-all" class="btn btn-ghost">Opna allan listann</button>
+        <span class="live-status" id="coming-count"></span>
+        <button type="button" id="btn-coming-reset" class="btn btn-ghost" hidden>Hreinsa síur</button>
+      </div>
+      <div class="tbl-scroll" id="coming-scroll">
         <table>
           <thead>
-            <tr><th>SKU</th><th>Vöruheiti</th><th>Síðasta sala</th><th class="num">Reikn. 12 mán</th><th class="num">Viðsk. 12 mán</th><th>Tillaga</th></tr>
+            <tr id="coming-head"><th data-col="sku">SKU</th><th data-col="name">Vöruheiti</th><th data-col="lastSale">Síðasta sala</th><th class="num" data-col="invoices12m">Reikn. 12 mán</th><th class="num" data-col="customers12m">Viðsk. 12 mán</th><th data-col="verdict">Tillaga</th></tr>
+            <tr id="coming-filters" class="filter-row" hidden>
+              <th><input type="search" data-f="sku" placeholder="Inniheldur…" aria-label="Sía SKU"></th>
+              <th><input type="search" data-f="name" placeholder="Inniheldur…" aria-label="Sía vöruheiti"></th>
+              <th><input type="search" data-f="lastSale" placeholder="t.d. 2025 / Aldrei" aria-label="Sía síðustu sölu"></th>
+              <th><input type="search" data-f="invoices12m" placeholder="t.d. 0 / &gt;2" aria-label="Sía reikninga"></th>
+              <th><input type="search" data-f="customers12m" placeholder="t.d. &lt;=1" aria-label="Sía viðskiptavini"></th>
+              <th><select data-f="verdict" aria-label="Sía tillögu">
+                <option value="">Allt</option>
+                <option>LÍKLEGA SÉRPÖNTUN</option>
+                <option>SKOÐA</option>
+                <option>SELST REGLULEGA</option>
+              </select></th>
+            </tr>
           </thead>
           <tbody id="coming-rows">
             <tr><td colspan="6" class="empty">Hleð…</td></tr>
@@ -415,8 +449,144 @@ footer p { margin: 0 0 6px; }
     return '<span class="chip ' + cls + '">' + esc(txt) + '</span>';
   }
 
+  function comingRowHtml(r, hasSales) {
+    var n = function (v) { return (v === null || v === undefined) ? '—' : IS(v); };
+    var name = r.url
+      ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener" class="plink">' + esc(r.name) + '</a>'
+      : esc(r.name);
+    var last = r.lastSale ? esc(String(r.lastSale).substring(0, 10)) : (hasSales ? 'Aldrei' : '—');
+    return '<tr><td class="c-sku">' + esc(r.sku) + '</td><td class="c-name">' + name + '</td>' +
+           '<td class="mono">' + last + '</td><td class="num">' + n(r.invoices12m) + '</td>' +
+           '<td class="num">' + n(r.customers12m) + '</td><td>' + verdictChip(r.verdict) + '</td></tr>';
+  }
+
+  // ── Allur listinn: síur í hausnum + röðun með smelli á dálkheiti ──
+  // Talnadálkar taka samanburð (">2", "<=1", "=0", "0"); aðrir "inniheldur".
+  // "Aldrei" er sýnt fyrir tóma síðustu sölu og síast eins og það stendur.
+  var lastResult = null;
+  var full = { open: false, rows: [], sort: { col: null, dir: 1 }, filters: {} };
+  var NUM_COLS = { invoices12m: true, customers12m: true };
+
+  function cellText(r, col) {
+    if (col === 'lastSale') return r.lastSale ? String(r.lastSale) : 'Aldrei';
+    return r[col] == null ? '' : String(r[col]);
+  }
+
+  function matchFilter(r, col, f) {
+    if (!f) return true;
+    if (col === 'verdict') return r.verdict === f;
+    if (NUM_COLS[col]) {
+      var m = /^\s*(<=|>=|<|>|=)?\s*(-?\d+(?:[.,]\d+)?)\s*$/.exec(f);
+      if (m) {
+        var v = r[col], x = Number(m[2].replace(',', '.'));
+        if (v === null || v === undefined) return false;
+        switch (m[1] || '=') {
+          case '<': return v < x;  case '<=': return v <= x;
+          case '>': return v > x;  case '>=': return v >= x;
+          default:  return v === x;
+        }
+      }
+    }
+    return cellText(r, col).toLowerCase().indexOf(f.toLowerCase()) !== -1;
+  }
+
+  function renderFull() {
+    var rows = full.rows.filter(function (r) {
+      for (var col in full.filters) if (!matchFilter(r, col, full.filters[col])) return false;
+      return true;
+    });
+    var s = full.sort;
+    if (s.col) {
+      rows = rows.slice().sort(function (a, b) {
+        var x = a[s.col], y = b[s.col];
+        if (NUM_COLS[s.col]) { x = x == null ? -1 : x; y = y == null ? -1 : y; return (x - y) * s.dir; }
+        return cellText(a, s.col).localeCompare(cellText(b, s.col), 'is') * s.dir;
+      });
+    }
+    var tb = el('coming-rows');
+    tb.innerHTML = rows.length
+      ? rows.map(function (r) { return comingRowHtml(r, true); }).join('')
+      : '<tr><td colspan="6" class="empty" style="color:var(--sk-faint)">Engin vara passar við síurnar</td></tr>';
+    el('coming-count').textContent = 'Sýni ' + IS(rows.length) + ' af ' + IS(full.rows.length);
+    var anyFilter = Object.keys(full.filters).some(function (k) { return full.filters[k]; });
+    el('btn-coming-reset').hidden = !anyFilter;
+    Array.prototype.forEach.call(el('coming-head').children, function (th) {
+      var c = th.getAttribute('data-col');
+      if (c === s.col) th.setAttribute('aria-sort', s.dir === 1 ? 'ascending' : 'descending');
+      else th.removeAttribute('aria-sort');
+    });
+  }
+
+  function openLabel() {
+    var t = lastResult && measured(lastResult.comingSoon);
+    return 'Opna allan listann' + (t ? ' (' + IS(t) + ')' : '');
+  }
+
+  function openFull() {
+    var btn = el('btn-coming-all');
+    if (!hasGas()) { el('coming-count').textContent = 'Aðeins virkt inni á KPI-vefnum.'; return; }
+    btn.disabled = true;
+    btn.textContent = 'Sæki…';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false;
+        if (!res || res.status !== 'ok') {
+          btn.textContent = openLabel();
+          el('coming-count').textContent = 'Villa: ' + ((res && (res.message || res.error)) || 'óþekkt');
+          return;
+        }
+        full.open = true;
+        full.rows = res.rows || [];
+        btn.textContent = 'Loka lista';
+        el('coming-filters').hidden = false;
+        el('coming-scroll').classList.add('full');
+        Array.prototype.forEach.call(el('coming-head').children, function (th) { th.classList.add('sortable'); });
+        el('coming-note').textContent = 'Allur listinn úr VARA_VAENTANLEG flipanum (síðasta keyrsla). Smelltu á dálkheiti til að raða.';
+        renderFull();
+      })
+      .withFailureHandler(function (e) {
+        btn.disabled = false;
+        btn.textContent = openLabel();
+        el('coming-count').textContent = 'Villa: ' + (e && e.message || 'náði ekki sambandi');
+      })
+      .getComingSoonListForUi();
+  }
+
+  function closeFull() {
+    full.open = false;
+    el('btn-coming-all').textContent = 'Opna allan listann';
+    el('coming-filters').hidden = true;
+    el('btn-coming-reset').hidden = true;
+    el('coming-scroll').classList.remove('full');
+    Array.prototype.forEach.call(el('coming-head').children, function (th) {
+      th.classList.remove('sortable'); th.removeAttribute('aria-sort');
+    });
+    if (lastResult) render(lastResult);
+  }
+
+  el('btn-coming-all').addEventListener('click', function () { full.open ? closeFull() : openFull(); });
+  el('btn-coming-reset').addEventListener('click', function () {
+    full.filters = {};
+    Array.prototype.forEach.call(el('coming-filters').querySelectorAll('[data-f]'), function (i) { i.value = ''; });
+    renderFull();
+  });
+  Array.prototype.forEach.call(el('coming-filters').querySelectorAll('[data-f]'), function (inp) {
+    inp.addEventListener(inp.tagName === 'SELECT' ? 'change' : 'input', function () {
+      full.filters[inp.getAttribute('data-f')] = inp.value.trim();
+      renderFull();
+    });
+  });
+  el('coming-head').addEventListener('click', function (ev) {
+    var th = ev.target.closest('th[data-col]');
+    if (!full.open || !th) return;
+    var c = th.getAttribute('data-col');
+    full.sort = (full.sort.col === c) ? { col: c, dir: -full.sort.dir } : { col: c, dir: 1 };
+    renderFull();
+  });
+
   // likely === null thydir ad solusagan nadist ekki — tha eru dalkarnir OMAELTIR.
   function renderComing(sample, total, likely) {
+    if (full.open) return;   // allur listinn opinn — hann hefur sinn eigin myndara
     var tb = el('coming-rows');
     if (total === null || total === undefined) {
       tb.innerHTML = '<tr><td colspan="6" class="empty">Ómælt í þessari keyrslu</td></tr>';
@@ -429,16 +599,9 @@ footer p { margin: 0 0 6px; }
       return;
     }
     var hasSales = likely !== null && likely !== undefined;
-    var n = function (v) { return (v === null || v === undefined) ? '—' : IS(v); };
-    tb.innerHTML = sample.map(function (r) {
-      var name = r.url
-        ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener" class="plink">' + esc(r.name) + '</a>'
-        : esc(r.name);
-      var last = r.lastSale ? esc(String(r.lastSale).substring(0, 10)) : (hasSales ? 'Aldrei' : '—');
-      return '<tr><td class="c-sku">' + esc(r.sku) + '</td><td class="c-name">' + name + '</td>' +
-             '<td class="mono">' + last + '</td><td class="num">' + n(r.invoices12m) + '</td>' +
-             '<td class="num">' + n(r.customers12m) + '</td><td>' + verdictChip(r.verdict) + '</td></tr>';
-    }).join('');
+    el('btn-coming-all').textContent = openLabel();
+    tb.innerHTML = sample.map(function (r) { return comingRowHtml(r, hasSales); }).join('');
+    el('coming-count').textContent = '';
     var note = (total > sample.length)
       ? ('Sýni ' + IS(sample.length) + ' af ' + IS(total) + ' — fullur listi í VARA_VAENTANLEG flipanum.')
       : ('Allar ' + IS(total) + ' — fullur listi einnig í VARA_VAENTANLEG flipanum.');
@@ -528,6 +691,9 @@ footer p { margin: 0 0 6px; }
       ? 'Vara væntanleg'
       : (coming === 0 ? 'Engin vara merkt væntanleg'
           : (IS(coming) + (coming === 1 ? ' vara merkt væntanleg' : ' vörur merktar væntanlegar')));
+    lastResult = r;
+    // Ny skonnun med allan listann opinn: saekja hann aftur, annars synir hann gomul gogn.
+    if (full.open) openFull();
     renderComing(r.comingSample, coming, r.likelySpecial);
 
     var ncat = measured(r.noCategory);

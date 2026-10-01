@@ -48,6 +48,11 @@ function getZeroPriceResultForUi() {
   return callCoreApi_('zero_price_result');
 }
 
+function getComingSoonListForUi() {
+  adminGuard_('listaverd');
+  return callCoreApi_('coming_soon_list');
+}
+
 function getPendingOrdersForUi() {
   adminGuard_('listaverd');
   try {

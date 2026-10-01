@@ -790,6 +790,28 @@ function getZeroPriceResultForUi() {
  *   niðurstöðu (fyrir "Keyra aftur" hnappinn). Tekur ~1 mín.
  *   Krefst gilds token; kastar 401 ef útrunninn.
  ************************************************************/
+/************************************************************
+ * 📋 getComingSoonListForUi — allur VARA_VAENTANLEG flipinn
+ *   Cache-inn í Script Properties ber aðeins 25 raðir (stærðarmörk);
+ *   allur listinn er lesinn beint úr flipanum sem skönnunin skrifaði.
+ *   getDisplayValues: Sheets breytir 'YYYY-MM-DD' í Date við skrif,
+ *   birtingargildið er það sem við viljum aftur.
+ ************************************************************/
+function getComingSoonListForUi() {
+  const cfg = loadConfig_();
+  const sh = SpreadsheetApp.openById(cfg.SHEETS.PRODUCTS.ID).getSheetByName('VARA_VAENTANLEG');
+  if (!sh || sh.getLastRow() < 2) return { status: 'ok', rows: [] };
+  const vals = sh.getRange(2, 1, sh.getLastRow() - 1, 8).getDisplayValues();
+  const num = v => (v === '' ? null : Number(String(v).replace(/[^\d.-]/g, '')));
+  return {
+    status: 'ok',
+    rows: vals.map(r => ({
+      sku: r[0], name: r[1], qty: num(r[2]), lastSale: r[3] || null,
+      invoices12m: num(r[4]), customers12m: num(r[5]), verdict: r[6], url: r[7]
+    }))
+  };
+}
+
 function runZeroPriceScanForUi() {
   findZeroListPriceProducts_v1();
   return getZeroPriceResultForUi();

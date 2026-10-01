@@ -32,7 +32,8 @@ function handleApiAction_(body) {
   if (action === 'sync_magento_customers') return jsonResponse_(adminDelegateViaApi_(body, function () { return { ok: true, result: syncMagentoCustomers() }; }));
   if (action === 'prune_applications')     return jsonResponse_(adminDelegateViaApi_(body, function () { pruneCompletedApplications_(); return { ok: true }; }));
   if (action === 'zero_price_result')      return jsonResponse_(adminDelegateViaApi_(body, function () { return getZeroPriceResultForUi(); }));
-  if (action === 'pending_orders')         return jsonResponse_(adminDelegateViaApi_(body, function () { return getPendingOrdersForUi(); }));
+  if (action === 'coming_soon_list')       return jsonResponse_(adminDelegateViaApi_(body, function () { return getComingSoonListForUi(); }));
+  if (action === 'pending_orders')        return jsonResponse_(adminDelegateViaApi_(body, function () { return getPendingOrdersForUi(); }));
   if (action === 'run_zero_price_scan')    return jsonResponse_(adminDelegateViaApi_(body, function () { return runZeroPriceScanForUi(); }));
   // AI-drog ad vorulysingu. Keyrir HER thvi Anthropic-lykillinn byr i thessu
   // projecti; admin-appid kallar gegnum admin/delegate.js.
