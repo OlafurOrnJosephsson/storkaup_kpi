@@ -1565,6 +1565,8 @@ function fetchExistingBcCreditInvoiceKeys_(cutoffDate) {
  *   "...linur..."      → BC_LINES
  *   "...kredit..."     → BC_CREDIT_INVOICES
  *   "...solureikn..."  → BC_INVOICES
+ *   "...serpontun..."  → BC_SPECIAL_ORDER (vorulisti, ekki Supabase —
+ *                         storeBcSpecialOrderList_ i storkaup_pricing.js)
  ************************************************************/
 
 function parseBcXlsxRows_(data, schemaKey) {
@@ -1657,7 +1659,10 @@ function processBcDrop_v1(opts) {
   while (fileIter.hasNext()) {
     var file = fileIter.next();
     var norm = normalizeHeaderKeyLocal_(file.getName().replace(/\.xlsx$/i, ''));
-    var schemaKey = norm.indexOf('linur') !== -1 ? 'BC_LINES'
+    // Serpontunarlistinn fyrst: hann er ekki i Supabase heldur Script
+    // Properties — sja storeBcSpecialOrderList_ (core/storkaup_pricing.js).
+    var schemaKey = norm.indexOf('serpont') !== -1 ? 'BC_SPECIAL_ORDER'
+                  : norm.indexOf('linur') !== -1 ? 'BC_LINES'
                   : norm.indexOf('kredit') !== -1 ? 'BC_CREDIT_INVOICES'
                   : norm.indexOf('solureikn') !== -1 ? 'BC_INVOICES'
                   : norm.indexOf('vidskiptam') !== -1 ? 'BC_CUSTOMERS'
@@ -1676,7 +1681,7 @@ function processBcDrop_v1(opts) {
 
   // Process invoices before lines so dedup is consistent
   filesToProcess.sort(function(a, b) {
-    var ord = { BC_CUSTOMERS: 1, BC_INVOICES: 2, BC_CREDIT_INVOICES: 3, BC_LINES: 4 };
+    var ord = { BC_CUSTOMERS: 1, BC_INVOICES: 2, BC_CREDIT_INVOICES: 3, BC_LINES: 4, BC_SPECIAL_ORDER: 5 };
     return (ord[a.schemaKey] || 9) - (ord[b.schemaKey] || 9);
   });
 
@@ -1740,6 +1745,14 @@ function processBcDrop_v1(opts) {
       var lastCol  = sheet0.getLastColumn();
       if (lastRow < 2 || lastCol < 1) throw new Error('Empty file');
 
+      if (item.schemaKey === 'BC_SPECIAL_ORDER') {
+        var so = storeBcSpecialOrderList_(sheet0.getRange(1, 1, lastRow, lastCol).getValues(),
+                                          item.fileName, item.file.getLastUpdated());
+        processed.push({ file: item.fileName, schema: item.schemaKey, total: so.total, new: so.kept, uploaded: 0 });
+        Logger.log('[BC_DROP] ✅ ' + item.fileName + ' — serpontunarlisti vistadur: ' + so.kept + ' vorur');
+        fileOk = true;
+      } else {
+
       var headerRow  = sheet0.getRange(1, 1, 1, lastCol).getValues()[0];
       var READ_CHUNK = 20000;
       var totalRows = 0, newCount = 0, uploadedCount = 0;
@@ -1773,6 +1786,7 @@ function processBcDrop_v1(opts) {
       });
       Logger.log('[BC_DROP] ✅ ' + item.fileName + ' — uploaded: ' + uploadedCount);
       fileOk = true;
+      }
 
     } catch (e) {
       Logger.log('[BC_DROP] ❌ ' + item.fileName + ': ' + e.message);

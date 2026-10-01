@@ -435,6 +435,81 @@ function fetchSalesActivity_(skus) {
 }
 
 /************************************************************
+ * 📥 storeBcSpecialOrderList_ — sérpöntunarlisti úr BC
+ *   Kallað úr processBcDrop_v1 þegar skrá með "serpontun" í nafninu
+ *   liggur í BC_DROP. BC-vörulisti síaður á Innkaupakóða = SÉRPÖNTUN.
+ *
+ *   Af hverju: merkingin á að fara BC → Plytix → vefur, en 2026-10-01
+ *   voru 50 af 125 SÉRPÖNTUN-vörum á vef ómerktar (allar með Senda í
+ *   PIM = Já) — 47 sýndu "Vara væntanleg". Hér er BC sannleikurinn sem
+ *   skönnunin ber vefinn saman við.
+ *
+ *   Flipi BC_SERPONTUN í PRODUCTS-skjalinu, ekki Supabase: ~180 vörur,
+ *   skipt út í heild í hvert sinn. Ekki Script Property heldur — listinn
+ *   er ~13 KB, yfir 9 KB mörkunum á gildi. Aðeins dagsetningin býr þar
+ *   (BC_SPECIAL_ORDER_META). Gögnin eru jafn gömul og síðasti
+ *   útflutningur — asOf er sýnt í appinu svo það sjáist.
+ ************************************************************/
+function storeBcSpecialOrderList_(values, fileName, asOf) {
+  if (!values || values.length < 2) throw new Error('Sérpöntunarlisti tómur');
+  const head = values[0].map(h => normalizeHeaderKeyLocal_(h));
+  const find = re => head.findIndex(h => re.test(h));
+  const iNr = head.indexOf('nr');
+  const iName = find(/^lysing/);
+  const iPurch = find(/^innkaupak/);
+  const iPim = find(/^sendaipim/);
+  if (iNr === -1) throw new Error('Dálkinn "Nr." vantar í sérpöntunarlista');
+  if (iPurch === -1) throw new Error('Dálkinn "Innkaupakóði" vantar í sérpöntunarlista');
+
+  const items = [];
+  values.slice(1).forEach(r => {
+    const sku = String(r[iNr] == null ? '' : r[iNr]).trim();
+    if (!sku) return;
+    if (normalizeHeaderKeyLocal_(r[iPurch]).indexOf('serpont') === -1) return;
+    items.push({
+      sku: sku,
+      name: iName === -1 ? '' : String(r[iName] || '').slice(0, 80),
+      pim: iPim === -1 ? null : /^j/i.test(String(r[iPim] || '').trim())
+    });
+  });
+
+  const cfg = loadConfig_();
+  const ss = SpreadsheetApp.openById(cfg.SHEETS.PRODUCTS.ID);
+  let sh = ss.getSheetByName('BC_SERPONTUN');
+  if (sh) sh.clear();
+  else sh = ss.insertSheet('BC_SERPONTUN');
+  const HEADER = ['SKU', 'Lýsing', 'Senda í PIM'];
+  // Textasnið FYRIR skrif: annars verður 08405 að 8405.
+  sh.getRange(1, 1, items.length + 1, 1).setNumberFormat('@');
+  sh.getRange(1, 1, items.length + 1, HEADER.length).setValues(
+    [HEADER].concat(items.map(it => [it.sku, it.name, it.pim === null ? '' : (it.pim ? 'Já' : 'Nei')]))
+  );
+
+  PropertiesService.getScriptProperties().setProperty('BC_SPECIAL_ORDER_META', JSON.stringify({
+    asOf: (asOf instanceof Date ? asOf : new Date()).toISOString(),
+    fileName: fileName || '',
+    count: items.length
+  }));
+  return { total: values.length - 1, kept: items.length };
+}
+
+// Skilar { asOf, fileName, items } eða null ef enginn listi hefur verið lesinn inn.
+function loadBcSpecialOrderList_(ss) {
+  const meta = safeJsonParse_(PropertiesService.getScriptProperties().getProperty('BC_SPECIAL_ORDER_META') || '', null);
+  if (!meta) return null;
+  const sh = ss.getSheetByName('BC_SERPONTUN');
+  if (!sh) return null;
+  const vals = sh.getLastRow() < 2 ? [] : sh.getRange(2, 1, sh.getLastRow() - 1, 3).getDisplayValues();
+  return {
+    asOf: meta.asOf,
+    fileName: meta.fileName,
+    items: vals.filter(r => r[0]).map(r => ({
+      sku: String(r[0]).trim(), name: r[1], pim: r[2] === '' ? null : r[2] === 'Já'
+    }))
+  };
+}
+
+/************************************************************
  * 🏷️ comingSoonVerdict_ — sérpöntun eða raunverulega væntanleg?
  *   Gróf flokkun úr sölusögu einni (engin innkaupagögn í Supabase):
  *     Aldrei selt / ekkert í 12 mán  → LÍKLEGA SÉRPÖNTUN
@@ -627,8 +702,19 @@ function findZeroListPriceProducts_v1() {
   } catch (e) {
     Logger.log('⚠️ Sölusaga mistókst — væntanlegar vörur án söludálka: ' + e.message);
   }
+  // 2c'') Sérpöntunarlisti úr BC (storeBcSpecialOrderList_). null = enginn
+  // listi lesinn inn enn → samanburðurinn er ÓMÆLDUR, ekki 0.
+  let bcSo = null;
+  try {
+    bcSo = loadBcSpecialOrderList_(SpreadsheetApp.openById(cfg.SHEETS.PRODUCTS.ID));
+  } catch (e) {
+    Logger.log('⚠️ Sérpöntunarlisti úr BC ólæsilegur — samanburður ÓMÆLDUR: ' + e.message);
+  }
+  const bcSoMap = {};
+  if (bcSo && bcSo.items) bcSo.items.forEach(it => { bcSoMap[it.sku] = it; });
+
   const NO_SALES = { lastSale: null, invoices12m: 0, customers12m: 0, invoicesAll: 0 };
-  const VERDICT_ORDER = { 'LÍKLEGA SÉRPÖNTUN': 0, 'SKOÐA': 1, 'SELST REGLULEGA': 2, '': 3 };
+  const VERDICT_ORDER = { 'SÉRPÖNTUN Í BC': 0, 'LÍKLEGA SÉRPÖNTUN': 1, 'SKOÐA': 2, 'SELST REGLULEGA': 3, '': 4 };
   const comingFull = comingRows.map(r => {
     const a = activity ? (activity[r[0]] || NO_SALES) : null;
     return {
@@ -636,10 +722,11 @@ function findZeroListPriceProducts_v1() {
       lastSale: a ? a.lastSale : null,
       invoices12m: a ? a.invoices12m : null,
       customers12m: a ? a.customers12m : null,
-      verdict: comingSoonVerdict_(a)
+      // BC segir það beint — trompar ágiskun úr sölusögu.
+      verdict: bcSoMap[r[0]] ? 'SÉRPÖNTUN Í BC' : comingSoonVerdict_(a)
     };
   });
-  // Líklegustu sérpöntunarvörurnar efst; innan flokks elsta sala fyrst.
+  // BC-staðfestar efst, svo líklegustu; innan flokks elsta sala fyrst.
   comingFull.sort((x, y) =>
     (VERDICT_ORDER[x.verdict] - VERDICT_ORDER[y.verdict]) ||
     String(x.lastSale || '').localeCompare(String(y.lastSale || '')) ||
@@ -648,6 +735,38 @@ function findZeroListPriceProducts_v1() {
   const likelySpecial = activity
     ? comingFull.filter(c => c.verdict === 'LÍKLEGA SÉRPÖNTUN').length
     : null;
+
+  // 2c''') Misræmi BC ↔ vefur í báðar áttir.
+  //   Í BC, EKKI Á VEF   SÉRPÖNTUN í BC, í birtingu, vefurinn ómerktur
+  //   Á VEF, EKKI Í BC   vefurinn merktur sérpöntun, BC ekki
+  //   EKKI Í BIRTINGU    SÉRPÖNTUN + Senda í PIM = Já, en ekki á vef
+  const soRows = [];   // [sku, nafn, misræmi, staða á vef, lager, senda í PIM, url]
+  let soMissingOnWeb = null, soExtraOnWeb = null, soNotPublished = null;
+  if (bcSo) {
+    const onWeb = {};
+    products.forEach(p => {
+      onWeb[p.parent] = true;
+      const it = bcSoMap[p.parent];
+      const webState = p.specialOrder ? 'Sérpöntun'
+        : ((p.qty !== null && p.qty !== undefined && Number(p.qty) <= 0) ? 'Vara væntanleg' : 'Á lager');
+      const url = storkaupProductUrl_(p.slug);
+      if (it && !p.specialOrder) {
+        soRows.push([p.parent, p.name || it.name, 'Í BC, EKKI Á VEF', webState, p.qty, it.pim === null ? '' : (it.pim ? 'Já' : 'Nei'), url]);
+      } else if (!it && p.specialOrder) {
+        soRows.push([p.parent, p.name || '', 'Á VEF, EKKI Í BC', webState, p.qty, '', url]);
+      }
+    });
+    bcSo.items.forEach(it => {
+      if (!onWeb[it.sku] && it.pim === true) {
+        soRows.push([it.sku, it.name, 'EKKI Í BIRTINGU', '—', '', 'Já', '']);
+      }
+    });
+    const SO_ORDER = { 'Í BC, EKKI Á VEF': 0, 'Á VEF, EKKI Í BC': 1, 'EKKI Í BIRTINGU': 2 };
+    soRows.sort((a, b) => (SO_ORDER[a[2]] - SO_ORDER[b[2]]) || String(a[0]).localeCompare(String(b[0])));
+    soMissingOnWeb = soRows.filter(r => r[2] === 'Í BC, EKKI Á VEF').length;
+    soExtraOnWeb   = soRows.filter(r => r[2] === 'Á VEF, EKKI Í BC').length;
+    soNotPublished = soRows.filter(r => r[2] === 'EKKI Í BIRTINGU').length;
+  }
 
   // 2d) Flokkaeftirlit — vorur i birtingu sem tilheyra engum flokki.
   // Spurt BEINT (excludedCategories), ekki reiknad ut fra mismun: sja
@@ -738,6 +857,18 @@ function findZeroListPriceProducts_v1() {
     ]));
   }
   csh.getRange(1, 1, csh.getLastRow(), 1).setNumberFormat('@');
+
+  // SERPONTUN_MISRAEMI — aðeins ef BC-listi hefur verið lesinn inn.
+  if (bcSo) {
+    let msh = ss.getSheetByName('SERPONTUN_MISRAEMI');
+    if (msh) msh.clear();
+    else msh = ss.insertSheet('SERPONTUN_MISRAEMI');
+    const MHEADER = ['SKU', 'Product Name', 'Misræmi', 'Staða á vef', 'Lager', 'Senda í PIM', 'URL'];
+    msh.appendRow(MHEADER);
+    if (soRows.length) msh.getRange(2, 1, soRows.length, MHEADER.length).setValues(soRows);
+    msh.getRange(1, 1, msh.getLastRow(), 1).setNumberFormat('@');
+  }
+
   // Mest neikvaett fyrst — thad er versta gagnavillan.
   writeTab_('NEIKVAEDUR_LAGER', negativeRows, function (a, b) { return a[2] - b[2]; });
   if (noCategory !== null) writeTab_('AN_FLOKKS', noCategoryRows);
@@ -758,6 +889,14 @@ function findZeroListPriceProducts_v1() {
     comingSoon: comingSoon,
     likelySpecial: likelySpecial,
     comingSample: comingFull.slice(0, 25),
+    // null = enginn BC-sérpöntunarlisti lesinn inn (ÓMÆLT).
+    bcSpecial: bcSo ? {
+      asOf: bcSo.asOf, total: bcSo.items.length,
+      missingOnWeb: soMissingOnWeb, extraOnWeb: soExtraOnWeb, notPublished: soNotPublished
+    } : null,
+    specialMismatchSample: soRows.slice(0, 25).map(r => ({
+      sku: r[0], name: r[1], issue: r[2], webState: r[3], qty: r[4], pim: r[5], url: r[6]
+    })),
     negativeSample: negativeRows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], url: r[3] })),
     noCategory: noCategory,
     noCategorySample: noCategoryRows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], url: r[3] })),
@@ -766,7 +905,7 @@ function findZeroListPriceProducts_v1() {
   };
   PropertiesService.getScriptProperties().setProperty('ZERO_PRICE_LAST_RESULT', JSON.stringify(cache));
 
-  const summary = { totalActive: checked, zeroPrice: zeroPrice, notAvailable: notAvailable, frameworkExcluded: frameworkExcluded, specialOrderExcluded: specialOrderExcluded, missingImage: missingImage, outOfStock: outOfStock, negativeStock: negativeStock, comingSoon: comingSoon, likelySpecial: likelySpecial, noCategory: noCategory, flagged: rows.length };
+  const summary = { totalActive: checked, zeroPrice: zeroPrice, notAvailable: notAvailable, frameworkExcluded: frameworkExcluded, specialOrderExcluded: specialOrderExcluded, missingImage: missingImage, outOfStock: outOfStock, negativeStock: negativeStock, comingSoon: comingSoon, likelySpecial: likelySpecial, soMissingOnWeb: soMissingOnWeb, soExtraOnWeb: soExtraOnWeb, noCategory: noCategory, flagged: rows.length };
   Logger.log('✅ Verðheilsa: ' + JSON.stringify(summary));
   return summary;
 }

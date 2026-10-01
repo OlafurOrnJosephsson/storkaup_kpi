@@ -123,6 +123,7 @@ th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--sk-blue); }
 th.sortable[aria-sort="ascending"]::after  { content: " ▲"; }
 th.sortable[aria-sort="descending"]::after { content: " ▼"; }
+.chip.solid { color: #fff; background: var(--sk-bad); border: 1px solid var(--sk-bad); }
 .chip.ok   { color: var(--sk-ok);   background: var(--sk-ok-bg);   border: 1px solid #bfe8c9; }
 .tbl-note { padding: 12px 16px; font-size: 0.82rem; color: var(--sk-faint); border-top: 1px solid #f0f0f2; background: #fbfbfc; }
 .empty { padding: 28px 16px; text-align: center; color: var(--sk-ok); font-weight: 600; }
@@ -182,6 +183,10 @@ footer p { margin: 0 0 6px; }
       <div class="v mono" id="stat-oos">-</div>
       <div class="l">Ekkert laust til ráðstöfunar</div>
     </div>
+    <div class="stat bad">
+      <div class="v mono" id="stat-so">-</div>
+      <div class="l">Sérpöntun í BC, ekki á vef</div>
+    </div>
     <div class="stat warn">
       <div class="v mono" id="stat-coming">-</div>
       <div class="l">Vara væntanleg (ekki sérpöntun)</div>
@@ -233,6 +238,25 @@ footer p { margin: 0 0 6px; }
   </section>
 
   <section>
+    <div class="sec-label">Sérpöntun · BC ↔ vefur</div>
+    <h3 id="so-title">Sérpöntunarmerking</h3>
+    <p class="body">Vörur með innkaupakóðann <strong>SÉRPÖNTUN</strong> í BC bornar saman við merkinguna á vefnum. Merkingin á að fara BC → Plytix → vefur; misræmi hér þýðir að samstillingin skilaði sér ekki. Listinn kemur úr BC-útflutningi (skrá með „serpontun“ í nafninu í BC_DROP, lesin inn með BC Sync).</p>
+    <div class="tbl-wrap">
+      <div class="tbl-scroll">
+        <table>
+          <thead>
+            <tr><th>SKU</th><th>Vöruheiti</th><th>Misræmi</th><th>Staða á vef</th><th>Senda í PIM</th></tr>
+          </thead>
+          <tbody id="so-rows">
+            <tr><td colspan="5" class="empty">Hleð…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tbl-note" id="so-note">Fullur listi í <span class="mono">SERPONTUN_MISRAEMI</span> flipanum.</div>
+    </div>
+  </section>
+
+  <section>
     <div class="sec-label">Sérpöntun?</div>
     <h3 id="coming-title">Vara væntanleg</h3>
     <p class="body">Vörur með stöðu 0 eða minna í BC sem eru <strong>ekki</strong> merktar sérpöntun. Vefurinn sýnir „Vara væntanleg“ á þeim. Ef varan er ekki á leiðinni á lager ætti hún líklega að vera sérpöntun. Sölusagan kemur úr BC-reikningum; líklegustu sérpöntunarvörurnar eru efst.</p>
@@ -254,6 +278,7 @@ footer p { margin: 0 0 6px; }
               <th><input type="search" data-f="customers12m" placeholder="t.d. &lt;=1" aria-label="Sía viðskiptavini"></th>
               <th><select data-f="verdict" aria-label="Sía tillögu">
                 <option value="">Allt</option>
+                <option>SÉRPÖNTUN Í BC</option>
                 <option>LÍKLEGA SÉRPÖNTUN</option>
                 <option>SKOÐA</option>
                 <option>SELST REGLULEGA</option>
@@ -266,7 +291,7 @@ footer p { margin: 0 0 6px; }
         </table>
       </div>
       <div class="tbl-note" id="coming-note">Fullur listi í <span class="mono">VARA_VAENTANLEG</span> flipanum.</div>
-      <div class="tbl-note"><span class="chip bad">Líklega sérpöntun</span> engin sala í 12 mán &nbsp; <span class="chip warn">Skoða</span> stöku sala &nbsp; <span class="chip ok">Selst reglulega</span> 3+ reikningar á 12 mán og sala innan 90 daga</div>
+      <div class="tbl-note"><span class="chip solid">Sérpöntun í BC</span> merkt SÉRPÖNTUN í BC — vefinn vantar merkinguna &nbsp; <span class="chip bad">Líklega sérpöntun</span> engin sala í 12 mán &nbsp; <span class="chip warn">Skoða</span> stöku sala &nbsp; <span class="chip ok">Selst reglulega</span> 3+ reikningar á 12 mán og sala innan 90 daga</div>
     </div>
   </section>
 
@@ -442,11 +467,58 @@ footer p { margin: 0 0 6px; }
       : ('Allar ' + IS(total) + ' — fullur listi einnig í ' + tab + ' flipanum.');
   }
 
+  var VERDICTS = {
+    'SÉRPÖNTUN Í BC':    ['solid', 'Sérpöntun í BC'],
+    'LÍKLEGA SÉRPÖNTUN': ['bad',   'Líklega sérpöntun'],
+    'SKOÐA':             ['warn',  'Skoða'],
+    'SELST REGLULEGA':   ['ok',    'Selst reglulega']
+  };
   function verdictChip(v) {
     if (!v) return '<span style="color:var(--sk-faint)">—</span>';
-    var cls = /SÉRPÖNTUN/.test(v) ? 'bad' : (/REGLULEGA/.test(v) ? 'ok' : 'warn');
-    var txt = v.charAt(0) + v.slice(1).toLowerCase();
-    return '<span class="chip ' + cls + '">' + esc(txt) + '</span>';
+    var d = VERDICTS[v] || ['warn', v];
+    return '<span class="chip ' + d[0] + '">' + esc(d[1]) + '</span>';
+  }
+
+  var SO_ISSUES = {
+    'Í BC, EKKI Á VEF': ['solid', 'Í BC, ekki á vef'],
+    'Á VEF, EKKI Í BC': ['warn',  'Á vef, ekki í BC'],
+    'EKKI Í BIRTINGU':  ['bad',   'Ekki í birtingu']
+  };
+
+  // r.bcSpecial === null thydir ad enginn BC-listi hefur verid lesinn inn — OMAELT.
+  function renderSpecial(r) {
+    var tb = el('so-rows'), b = r.bcSpecial;
+    if (!b) {
+      el('so-title').textContent = 'Sérpöntunarmerking';
+      tb.innerHTML = '<tr><td colspan="5" class="empty" style="color:var(--sk-faint)">Enginn sérpöntunarlisti úr BC lesinn inn</td></tr>';
+      el('so-note').textContent = 'Settu BC-útflutning með „serpontun“ í nafninu í BC_DROP og keyrðu BC Sync → Importa BC skrár úr Drive Drop. Keyrðu svo skönnunina aftur.';
+      return;
+    }
+    var issues = (b.missingOnWeb || 0) + (b.extraOnWeb || 0) + (b.notPublished || 0);
+    el('so-title').textContent = issues === 0
+      ? 'BC og vefur sammála um sérpöntun'
+      : (IS(b.missingOnWeb) + ' sérpöntunarvörur ómerktar á vef');
+    var asOf = fmtDate(b.asOf).replace(/ kl\..*$/, '');
+    var parts = [IS(b.total) + ' SÉRPÖNTUN-vörur í BC-lista frá ' + asOf + '.',
+                 IS(b.missingOnWeb) + ' í BC en ekki á vef',
+                 IS(b.extraOnWeb) + ' á vef en ekki í BC',
+                 IS(b.notPublished) + ' með Senda í PIM = Já en ekki í birtingu.'];
+    var sample = r.specialMismatchSample || [];
+    if (!sample.length) {
+      tb.innerHTML = '<tr><td colspan="5" class="empty">✓ Engin frávik</td></tr>';
+    } else {
+      tb.innerHTML = sample.map(function (x) {
+        var d = SO_ISSUES[x.issue] || ['warn', x.issue];
+        var name = x.url
+          ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" class="plink">' + esc(x.name) + '</a>'
+          : esc(x.name);
+        return '<tr><td class="c-sku">' + esc(x.sku) + '</td><td class="c-name">' + name + '</td>' +
+               '<td><span class="chip ' + d[0] + '">' + esc(d[1]) + '</span></td>' +
+               '<td>' + esc(x.webState) + '</td><td>' + esc(x.pim || '—') + '</td></tr>';
+      }).join('');
+    }
+    el('so-note').textContent = parts[0] + ' ' + parts.slice(1).join(', ') +
+      (issues > sample.length ? ' Sýni ' + IS(sample.length) + ' af ' + IS(issues) + ' — fullur listi í SERPONTUN_MISRAEMI flipanum.' : '');
   }
 
   function comingRowHtml(r, hasSales) {
@@ -657,6 +729,7 @@ footer p { margin: 0 0 6px; }
     el('stat-na').textContent     = IS(r.notAvailable);
     el('stat-img').textContent    = IS(r.missingImage);
     el('stat-oos').textContent    = statTxt(r.outOfStock);
+    el('stat-so').textContent     = r.bcSpecial ? IS(r.bcSpecial.missingOnWeb) : '—';
     el('stat-coming').textContent = statTxt(r.comingSoon);
     el('stat-neg').textContent    = statTxt(r.negativeStock);
     el('stat-nocat').textContent  = statTxt(r.noCategory);
@@ -691,6 +764,7 @@ footer p { margin: 0 0 6px; }
       ? 'Vara væntanleg'
       : (coming === 0 ? 'Engin vara merkt væntanleg'
           : (IS(coming) + (coming === 1 ? ' vara merkt væntanleg' : ' vörur merktar væntanlegar')));
+    renderSpecial(r);
     lastResult = r;
     // Ny skonnun med allan listann opinn: saekja hann aftur, annars synir hann gomul gogn.
     if (full.open) openFull();
