@@ -106,6 +106,67 @@ function buildRafraenNeedKtPlain_(recipientName) {
     + 'Kveðja,\nStórkaup | Vefteymi';
 }
 
+// -- Rafræn Innskráning - vantar upplýsingar um vinnustað --------------------
+// Applicant registered under a parent kennitala (e.g. a municipality) that has
+// many sub-units (leikskólar, skólar, deildir). Nobody buys on the parent
+// itself, so we need to know which workplace to link them to.
+
+function buildRafraenNeedWorkplaceHtml_(recipientName, companyName) {
+  var name    = emailEsc_(recipientName || '');
+  var company = emailEsc_(companyName  || '');
+  var greeting = name ? 'Halló ' + name + ',' : 'Halló,';
+  var requestLine = company
+    ? 'Við höfum fengið beiðni þína um aðgang í vefverslun Stórkaups fyrir <strong>' + company + '</strong>.'
+    : 'Við höfum fengið beiðni þína um aðgang í vefverslun Stórkaups.';
+  var replyHref = 'mailto:vefur@storkaup.is?subject=' + encodeURIComponent('Vinnustaður — rafræn innskráning' + (companyName ? ' (' + companyName + ')' : ''));
+  var CSS = '<style>'
+    + '.sk-email{max-width:600px;margin:0 auto;font-family:Arial,sans-serif;font-size:14px;color:#282828}'
+    + '.sk-header{background:#fff;border:1px solid #e9e9e9;border-bottom:none;padding:28px 32px;border-radius:8px 8px 0 0}'
+    + '.sk-body{background:#fff;border:1px solid #e9e9e9;border-top:none;padding:28px 32px}'
+    + '.sk-footer{background:#f5f5f5;border:1px solid #e9e9e9;border-top:none;padding:16px 32px;border-radius:0 0 8px 8px}'
+    + '.sk-divider{border:none;border-top:1px solid #e9e9e9;margin:24px 0}'
+    + '.sk-btn{display:inline-block;background:#10069f;color:#fff!important;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none}'
+    + '</style>';
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8">' + CSS + '</head><body>'
+    + '<div class="sk-email">'
+    + '<div class="sk-header"><div style="display:flex;align-items:center;">'
+    + '<img src="https://images.prismic.io/storkaup/agbVeKYofJOwHQ9Y_klavyio-storkauplogo.jpg" alt="Stórkaup logo" style="height:64px;width:auto;vertical-align:middle;">'
+    + '</div></div>'
+    + '<div class="sk-body">'
+    + '<p style="margin:0 0 12px;font-size:18px;font-weight:700;">' + greeting + '</p>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">' + requestLine + '</p>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">Undir þessari kennitölu eru margir vinnustaðir, til dæmis leikskólar, skólar eða aðrar stofnanir og deildir. Viðskipti fara fram á hvern vinnustað fyrir sig en ekki á yfirkennitöluna sjálfa, og því þurfum við að vita fyrir hvaða vinnustað þú verslar.</p>'
+    + '<p style="margin:0 0 8px;line-height:1.6;">Vinsamlegast svaraðu þessum pósti með eftirfarandi upplýsingum:</p>'
+    + '<ul style="margin:0 0 16px;padding-left:20px;line-height:1.6;">'
+    + '<li>Nafn vinnustaðar (t.d. heiti leikskóla, skóla eða deildar)</li>'
+    + '<li>Heimilisfang vinnustaðar</li>'
+    + '<li>Kennitala vinnustaðar, ef hún er önnur en sú sem var skráð</li>'
+    + '</ul>'
+    + '<p style="margin:0 0 16px;line-height:1.6;">Um leið og upplýsingarnar berast tengjum við aðganginn þinn við réttan vinnustað.</p>'
+    + '<a class="sk-btn" href="' + emailEsc_(replyHref) + '">Senda upplýsingar</a>'
+    + '<hr class="sk-divider">'
+    + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">Ef þú hefur spurningar, hafðu samband við <a href="mailto:vefur@storkaup.is" style="color:#10069f;text-decoration:none;">vefur@storkaup.is</a></p>'
+    + '</div>'
+    + '<div class="sk-footer"><p style="margin:0;font-size:11px;color:#888;">Stórkaup ehf. | Vefverslun</p></div>'
+    + '</div></body></html>';
+}
+
+function buildRafraenNeedWorkplacePlain_(recipientName, companyName) {
+  var greeting = recipientName ? 'Halló ' + recipientName + ',' : 'Halló,';
+  var requestLine = companyName
+    ? 'Við höfum fengið beiðni þína um aðgang í vefverslun Stórkaups fyrir ' + companyName + '.'
+    : 'Við höfum fengið beiðni þína um aðgang í vefverslun Stórkaups.';
+  return greeting + '\n\n'
+    + requestLine + '\n\n'
+    + 'Undir þessari kennitölu eru margir vinnustaðir, til dæmis leikskólar, skólar eða aðrar stofnanir og deildir. Viðskipti fara fram á hvern vinnustað fyrir sig en ekki á yfirkennitöluna sjálfa, og því þurfum við að vita fyrir hvaða vinnustað þú verslar.\n\n'
+    + 'Vinsamlegast svaraðu þessum pósti með eftirfarandi upplýsingum:\n'
+    + '- Nafn vinnustaðar (t.d. heiti leikskóla, skóla eða deildar)\n'
+    + '- Heimilisfang vinnustaðar\n'
+    + '- Kennitala vinnustaðar, ef hún er önnur en sú sem var skráð\n\n'
+    + 'Um leið og upplýsingarnar berast tengjum við aðganginn þinn við réttan vinnustað.\n\n'
+    + 'Kveðja,\nStórkaup | Vefteymi';
+}
+
 // ���� Umsókn um viðskipti � email templates ������������������������������������������������������������������������
 
 function umsokn_CSS_() {

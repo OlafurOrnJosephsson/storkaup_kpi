@@ -246,6 +246,39 @@ function webapp_sendRafraenNeedKt(rowData) {
   return { ok: true, removed: idx > 0 };
 }
 
+// Applicant registered under a parent kennitala with many sub-units (e.g. a
+// municipality's leikskólar/skólar) — ask which workplace they buy for.
+// Archives to "Vantar vinnustað" (re-found by email).
+function webapp_sendRafraenNeedWorkplace(rowData) {
+  adminGuard_('umsokn');
+  var cfg     = loadConfig_();
+  var src     = APP_SOURCES.find(function(s) { return s.key === 'RAFRAEN_INNSKRANING'; });
+  var sheetId = cfg.SHEETS.RAFRAEN_INNSKRANING.ID;
+  var ss      = SpreadsheetApp.openById(sheetId);
+  var sheet   = ss.getSheets()[0];
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+  GmailApp.sendEmail(
+    rowData.email,
+    'Vantar upplýsingar um vinnustað — umsókn um rafræna innskráningu',
+    buildRafraenNeedWorkplacePlain_(rowData.name, rowData.company),
+    { htmlBody: buildRafraenNeedWorkplaceHtml_(rowData.name, rowData.company), from: 'vefur@storkaup.is', name: 'Stórkaup ehf' }
+  );
+
+  var idx = webapp_findRowIndexByEmail_(sheet, src.emailHeader, rowData.email, src.companyKtHeader, rowData.companyKt);
+  if (idx > 0) {
+    var dest = ss.getSheetByName('Vantar vinnustað');
+    if (!dest) {
+      dest = ss.insertSheet('Vantar vinnustað');
+      dest.appendRow(headers);
+      dest.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e8e8e8');
+    }
+    dest.appendRow(sheet.getRange(idx, 1, 1, headers.length).getValues()[0]);
+    sheet.deleteRow(idx);
+  }
+  return { ok: true, removed: idx > 0 };
+}
+
 function webapp_saveCreditScore(rowIndex, score) {
   adminGuard_('umsokn');
   var cfg   = loadConfig_();
