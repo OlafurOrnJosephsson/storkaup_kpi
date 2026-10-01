@@ -107,6 +107,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .chip.bad  { color: var(--sk-bad);  background: var(--sk-bad-bg);  border: 1px solid var(--sk-bad-bd); }
 .chip.warn { color: var(--sk-warn); background: var(--sk-warn-bg); border: 1px solid var(--sk-warn-bd); }
+.chip.ok   { color: var(--sk-ok);   background: var(--sk-ok-bg);   border: 1px solid #bfe8c9; }
 .tbl-note { padding: 12px 16px; font-size: 0.82rem; color: var(--sk-faint); border-top: 1px solid #f0f0f2; background: #fbfbfc; }
 .empty { padding: 28px 16px; text-align: center; color: var(--sk-ok); font-weight: 600; }
 
@@ -165,6 +166,10 @@ footer p { margin: 0 0 6px; }
       <div class="v mono" id="stat-oos">-</div>
       <div class="l">Ekkert laust til ráðstöfunar</div>
     </div>
+    <div class="stat warn">
+      <div class="v mono" id="stat-coming">-</div>
+      <div class="l">Vara væntanleg (ekki sérpöntun)</div>
+    </div>
     <div class="stat bad">
       <div class="v mono" id="stat-neg">-</div>
       <div class="l">Pantað umfram birgðir</div>
@@ -208,6 +213,26 @@ footer p { margin: 0 0 6px; }
         </table>
       </div>
       <div class="tbl-note" id="img-note">Vörur með <span class="mono">featuredImage</span> = null eða „myndvantar“. Fullur listi í <span class="mono">VANTAR_MYND</span> flipanum.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-label">Sérpöntun?</div>
+    <h3 id="coming-title">Vara væntanleg</h3>
+    <p class="body">Vörur með stöðu 0 eða minna í BC sem eru <strong>ekki</strong> merktar sérpöntun. Vefurinn sýnir „Vara væntanleg“ á þeim. Ef varan er ekki á leiðinni á lager ætti hún líklega að vera sérpöntun. Sölusagan kemur úr BC-reikningum; líklegustu sérpöntunarvörurnar eru efst.</p>
+    <div class="tbl-wrap">
+      <div class="tbl-scroll">
+        <table>
+          <thead>
+            <tr><th>SKU</th><th>Vöruheiti</th><th>Síðasta sala</th><th class="num">Reikn. 12 mán</th><th class="num">Viðsk. 12 mán</th><th>Tillaga</th></tr>
+          </thead>
+          <tbody id="coming-rows">
+            <tr><td colspan="6" class="empty">Hleð…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tbl-note" id="coming-note">Fullur listi í <span class="mono">VARA_VAENTANLEG</span> flipanum.</div>
+      <div class="tbl-note"><span class="chip bad">Líklega sérpöntun</span> engin sala í 12 mán &nbsp; <span class="chip warn">Skoða</span> stöku sala &nbsp; <span class="chip ok">Selst reglulega</span> 3+ reikningar á 12 mán og sala innan 90 daga</div>
     </div>
   </section>
 
@@ -383,6 +408,45 @@ footer p { margin: 0 0 6px; }
       : ('Allar ' + IS(total) + ' — fullur listi einnig í ' + tab + ' flipanum.');
   }
 
+  function verdictChip(v) {
+    if (!v) return '<span style="color:var(--sk-faint)">—</span>';
+    var cls = /SÉRPÖNTUN/.test(v) ? 'bad' : (/REGLULEGA/.test(v) ? 'ok' : 'warn');
+    var txt = v.charAt(0) + v.slice(1).toLowerCase();
+    return '<span class="chip ' + cls + '">' + esc(txt) + '</span>';
+  }
+
+  // likely === null thydir ad solusagan nadist ekki — tha eru dalkarnir OMAELTIR.
+  function renderComing(sample, total, likely) {
+    var tb = el('coming-rows');
+    if (total === null || total === undefined) {
+      tb.innerHTML = '<tr><td colspan="6" class="empty">Ómælt í þessari keyrslu</td></tr>';
+      el('coming-note').textContent = 'Mælingin komst ekki á í síðustu keyrslu — sjá keyrsluskrá.';
+      return;
+    }
+    if (!sample || !sample.length) {
+      tb.innerHTML = '<tr><td colspan="6" class="empty">✓ Engin vara merkt væntanleg</td></tr>';
+      el('coming-note').textContent = 'Engin vara merkt væntanleg.';
+      return;
+    }
+    var hasSales = likely !== null && likely !== undefined;
+    var n = function (v) { return (v === null || v === undefined) ? '—' : IS(v); };
+    tb.innerHTML = sample.map(function (r) {
+      var name = r.url
+        ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener" class="plink">' + esc(r.name) + '</a>'
+        : esc(r.name);
+      var last = r.lastSale ? esc(String(r.lastSale).substring(0, 10)) : (hasSales ? 'Aldrei' : '—');
+      return '<tr><td class="c-sku">' + esc(r.sku) + '</td><td class="c-name">' + name + '</td>' +
+             '<td class="mono">' + last + '</td><td class="num">' + n(r.invoices12m) + '</td>' +
+             '<td class="num">' + n(r.customers12m) + '</td><td>' + verdictChip(r.verdict) + '</td></tr>';
+    }).join('');
+    var note = (total > sample.length)
+      ? ('Sýni ' + IS(sample.length) + ' af ' + IS(total) + ' — fullur listi í VARA_VAENTANLEG flipanum.')
+      : ('Allar ' + IS(total) + ' — fullur listi einnig í VARA_VAENTANLEG flipanum.');
+    el('coming-note').textContent = (hasSales
+      ? (IS(likely) + ' líklega sérpöntun. ')
+      : 'Sölusaga náðist ekki í þessari keyrslu. ') + note;
+  }
+
   function renderOrders(r) {
     var tb = el('ord-rows');
     if (!r || r.status === 'error') {
@@ -430,6 +494,7 @@ footer p { margin: 0 0 6px; }
     el('stat-na').textContent     = IS(r.notAvailable);
     el('stat-img').textContent    = IS(r.missingImage);
     el('stat-oos').textContent    = statTxt(r.outOfStock);
+    el('stat-coming').textContent = statTxt(r.comingSoon);
     el('stat-neg').textContent    = statTxt(r.negativeStock);
     el('stat-nocat').textContent  = statTxt(r.noCategory);
 
@@ -457,6 +522,13 @@ footer p { margin: 0 0 6px; }
           : (IS(negTotal) + (negTotal === 1 ? ' vara pöntuð umfram birgðir' : ' vörur pantaðar umfram birgðir')));
     renderSimple('neg-rows', 'neg-note', r.negativeSample, negTotal,
                  'NEIKVAEDUR_LAGER', 'Engin vara pöntuð umfram birgðir');
+
+    var coming = measured(r.comingSoon);
+    el('coming-title').textContent = coming === null
+      ? 'Vara væntanleg'
+      : (coming === 0 ? 'Engin vara merkt væntanleg'
+          : (IS(coming) + (coming === 1 ? ' vara merkt væntanleg' : ' vörur merktar væntanlegar')));
+    renderComing(r.comingSample, coming, r.likelySpecial);
 
     var ncat = measured(r.noCategory);
     el('nocat-title').textContent = ncat === null

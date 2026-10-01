@@ -412,6 +412,46 @@ function fetchStorkaupPricing_(skus) {
 }
 
 /************************************************************
+ * 🧾 fetchSalesActivity_ — sölusaga úr BC fyrir lista af SKU
+ *   public.product_sales_activity_v1 (core/sql/product_sales_activity_v1.sql).
+ *   Skilar { sku: { lastSale, invoices12m, customers12m, invoicesAll } }.
+ *   Kastar ef kallið bilar — hringjandi ákveður hvað það kostar.
+ ************************************************************/
+function fetchSalesActivity_(skus) {
+  const out = {};
+  const CHUNK = 300;
+  for (let i = 0; i < skus.length; i += CHUNK) {
+    const body = callSupabaseRpc_('product_sales_activity_v1', { p_skus: skus.slice(i, i + CHUNK) });
+    (safeJsonParse_(body, []) || []).forEach(r => {
+      out[String(r.sku)] = {
+        lastSale: r.last_sale || null,
+        invoices12m: Number(r.invoices_12m || 0),
+        customers12m: Number(r.customers_12m || 0),
+        invoicesAll: Number(r.invoices_all || 0)
+      };
+    });
+  }
+  return out;
+}
+
+/************************************************************
+ * 🏷️ comingSoonVerdict_ — sérpöntun eða raunverulega væntanleg?
+ *   Gróf flokkun úr sölusögu einni (engin innkaupagögn í Supabase):
+ *     Aldrei selt / ekkert í 12 mán  → LÍKLEGA SÉRPÖNTUN
+ *     >= 3 reikningar 12 mán og sala
+ *        innan 90 daga               → SELST REGLULEGA
+ *     annað                          → SKOÐA
+ *   a === null þýðir að sölusagan náðist ekki — engin tillaga.
+ ************************************************************/
+function comingSoonVerdict_(a) {
+  if (!a) return '';
+  if (!a.lastSale || a.invoices12m === 0) return 'LÍKLEGA SÉRPÖNTUN';
+  const days = Math.floor((Date.now() - new Date(a.lastSale).getTime()) / 86400000);
+  if (a.invoices12m >= 3 && days <= 90) return 'SELST REGLULEGA';
+  return 'SKOÐA';
+}
+
+/************************************************************
  * 🔬 probeStorkaupPricing — sannreyna báðar uppsprettur
  ************************************************************/
 function probeStorkaupPricing() {
@@ -474,6 +514,7 @@ function checkStorkaupAuth() {
  *    VANTAR_MYND        featuredImage null eða "myndvantar"
  *    UPPSELT            qty <= 0            (kostar 0 fyrirspurnir)
  *    NEIKVAEDUR_LAGER   qty < 0             (hlutmengi uppselt; gagnavilla)
+ *    VARA_VAENTANLEG    qty <= 0 og ekki sérpöntun (vefurinn: "Vara væntanleg")
  *    AN_FLOKKS          engum flokki        (+2 fyrirspurnir)
  *
  *  Birgðatalan kemur með vörulistanum. Hún er VILJANDI ekki skrifuð í
@@ -517,8 +558,8 @@ function findZeroListPriceProducts_v1() {
       if (!unitPrices.length) {
         // Rammasamningsvörur eru verðlagðar per samning → engin almenn verðlína
         // er eðlileg, ekki vandamál. Útilokum frá hreinsunarlista.
-        // Sérpöntunarvörur: verðlausar að hönnun (þegar UT setur flaggið).
-        // Núna alltaf false → engin áhrif fyrr en virknin er komin inn.
+        // Sérpöntunarvörur: verðlausar að hönnun (flaggið er í notkun —
+        // 75 vörur 2026-10-01).
         if (m.specialOrder) { specialOrderExcluded++; return; }
         if (m.framework) {
           frameworkExcluded++;
@@ -558,8 +599,13 @@ function findZeroListPriceProducts_v1() {
   // Hun var adur totalQuantity, sem er teljari en ekki lager — sja
   // storkaupBaseQty_ um hvers vegna sa reitur skilar ~70 folskum
   // neikvaedum vorum og felur thaer verstu raunverulegu.
+  //
+  // VARA_VAENTANLEG: vefurinn synir "Vara vaentanleg" a ollu sem er med
+  // stodu <= 0 i BC og er EKKI sérpöntun. Margar theirra aettu i raun ad
+  // vera sérpöntun — listinn er til ad fara yfir thad.
   const outOfStockRows = [];
   const negativeRows = [];
+  const comingRows = [];
   products.forEach(p => {
     if (p.qty === null || p.qty === undefined || p.qty === '') return;
     const n = Number(p.qty);
@@ -567,9 +613,41 @@ function findZeroListPriceProducts_v1() {
     const row = [p.parent, p.name || '', n, storkaupProductUrl_(p.slug)];
     if (n <= 0) outOfStockRows.push(row);
     if (n < 0) negativeRows.push(row);
+    if (n <= 0 && !p.specialOrder) comingRows.push(row);
   });
   const outOfStock = outOfStockRows.length;
   const negativeStock = negativeRows.length;
+  const comingSoon = comingRows.length;
+
+  // 2c') Sölusaga á væntanlegu vörurnar. Sér-try: bili Supabase verða
+  // söludálkarnir tómir (ÓMÆLT), en listinn sjálfur stendur.
+  let activity = null;
+  try {
+    activity = fetchSalesActivity_(comingRows.map(r => r[0]));
+  } catch (e) {
+    Logger.log('⚠️ Sölusaga mistókst — væntanlegar vörur án söludálka: ' + e.message);
+  }
+  const NO_SALES = { lastSale: null, invoices12m: 0, customers12m: 0, invoicesAll: 0 };
+  const VERDICT_ORDER = { 'LÍKLEGA SÉRPÖNTUN': 0, 'SKOÐA': 1, 'SELST REGLULEGA': 2, '': 3 };
+  const comingFull = comingRows.map(r => {
+    const a = activity ? (activity[r[0]] || NO_SALES) : null;
+    return {
+      sku: r[0], name: r[1], qty: r[2], url: r[3],
+      lastSale: a ? a.lastSale : null,
+      invoices12m: a ? a.invoices12m : null,
+      customers12m: a ? a.customers12m : null,
+      verdict: comingSoonVerdict_(a)
+    };
+  });
+  // Líklegustu sérpöntunarvörurnar efst; innan flokks elsta sala fyrst.
+  comingFull.sort((x, y) =>
+    (VERDICT_ORDER[x.verdict] - VERDICT_ORDER[y.verdict]) ||
+    String(x.lastSale || '').localeCompare(String(y.lastSale || '')) ||
+    String(x.sku).localeCompare(String(y.sku))
+  );
+  const likelySpecial = activity
+    ? comingFull.filter(c => c.verdict === 'LÍKLEGA SÉRPÖNTUN').length
+    : null;
 
   // 2d) Flokkaeftirlit — vorur i birtingu sem tilheyra engum flokki.
   // Spurt BEINT (excludedCategories), ekki reiknad ut fra mismun: sja
@@ -644,6 +722,22 @@ function findZeroListPriceProducts_v1() {
   };
 
   writeTab_('UPPSELT', outOfStockRows);
+
+  // VARA_VAENTANLEG hefur fleiri dálka (sölusaga + tillaga) og eigin röðun.
+  let csh = ss.getSheetByName('VARA_VAENTANLEG');
+  if (csh) csh.clear();
+  else csh = ss.insertSheet('VARA_VAENTANLEG');
+  const CHEADER = ['SKU', 'Product Name', 'Lager', 'Síðasta sala', 'Reikningar 12 mán', 'Viðskiptavinir 12 mán', 'Tillaga', 'URL'];
+  csh.appendRow(CHEADER);
+  if (comingFull.length) {
+    csh.getRange(2, 1, comingFull.length, CHEADER.length).setValues(comingFull.map(c => [
+      c.sku, c.name, c.qty, c.lastSale || (activity ? 'Aldrei' : ''),
+      c.invoices12m === null ? '' : c.invoices12m,
+      c.customers12m === null ? '' : c.customers12m,
+      c.verdict, c.url
+    ]));
+  }
+  csh.getRange(1, 1, csh.getLastRow(), 1).setNumberFormat('@');
   // Mest neikvaett fyrst — thad er versta gagnavillan.
   writeTab_('NEIKVAEDUR_LAGER', negativeRows, function (a, b) { return a[2] - b[2]; });
   if (noCategory !== null) writeTab_('AN_FLOKKS', noCategoryRows);
@@ -661,6 +755,9 @@ function findZeroListPriceProducts_v1() {
     imageSample: imageRows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], url: r[3] })),
     outOfStock: outOfStock,
     negativeStock: negativeStock,
+    comingSoon: comingSoon,
+    likelySpecial: likelySpecial,
+    comingSample: comingFull.slice(0, 25),
     negativeSample: negativeRows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], url: r[3] })),
     noCategory: noCategory,
     noCategorySample: noCategoryRows.slice(0, 25).map(r => ({ sku: r[0], name: r[1], qty: r[2], url: r[3] })),
@@ -669,7 +766,7 @@ function findZeroListPriceProducts_v1() {
   };
   PropertiesService.getScriptProperties().setProperty('ZERO_PRICE_LAST_RESULT', JSON.stringify(cache));
 
-  const summary = { totalActive: checked, zeroPrice: zeroPrice, notAvailable: notAvailable, frameworkExcluded: frameworkExcluded, specialOrderExcluded: specialOrderExcluded, missingImage: missingImage, outOfStock: outOfStock, negativeStock: negativeStock, noCategory: noCategory, flagged: rows.length };
+  const summary = { totalActive: checked, zeroPrice: zeroPrice, notAvailable: notAvailable, frameworkExcluded: frameworkExcluded, specialOrderExcluded: specialOrderExcluded, missingImage: missingImage, outOfStock: outOfStock, negativeStock: negativeStock, comingSoon: comingSoon, likelySpecial: likelySpecial, noCategory: noCategory, flagged: rows.length };
   Logger.log('✅ Verðheilsa: ' + JSON.stringify(summary));
   return summary;
 }
