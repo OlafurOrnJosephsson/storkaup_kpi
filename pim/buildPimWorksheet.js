@@ -412,9 +412,22 @@ function buildPimWorksheet_() {
     row[idx.hint] = isReal ? pimDescHint_(dTrim, descCount[pimDescKey_(dTrim)] || 1) : '';
 
     // úr KPI-skjalinu
-    row[idx.cat1]      = (web && web.cat1) ? web.cat1 : plytixCategory_(p.categories, 1);
-    row[idx.cat2]      = (web && web.cat2) ? web.cat2 : plytixCategory_(p.categories, 2);
-    row[idx.cat3]      = (web && web.cat3) ? web.cat3 : plytixCategory_(p.categories, 3);
+    // FLOKKURINN KEMUR UR PLYTIX — FYRSTU SLODINNI. Brauðmylsna vefsins
+    // (PRODUCTS) er adeins varaleid fyrir vorur sem hafa enga slod i Plytix.
+    //
+    // Adur var thessu ofugt farid, og thad dreifdi vorum: vara i tveimur
+    // flokkum lenti thar sem brauðmylsnan valdi, ekki i adalflokki sinum.
+    // Maelt 2026-10-02: allar 29 Nitril hanskar hafa `Nitril hanskar` sem
+    // fyrstu slod i Plytix, en appid syndi 4 thar. Hinar 25 voru undir
+    // hinum flokknum sinum.
+    //
+    // Oll thrju login koma ur SOMU uppsprettu. Ad blanda per lag gaf slodir
+    // sem eru hvorki til i Plytix ne a vefnum.
+    const pc1 = plytixCategory_(p.categories, 1);
+    const useWeb = !pc1 && web && web.cat1;
+    row[idx.cat1]      = useWeb ? web.cat1 : pc1;
+    row[idx.cat2]      = useWeb ? web.cat2 : plytixCategory_(p.categories, 2);
+    row[idx.cat3]      = useWeb ? web.cat3 : plytixCategory_(p.categories, 3);
     row[idx.url]       = web ? web.url : '';
     // A vef: endanlegt ur birta vorulistanum. Tomt = vid nadum ekki i listann.
     row[idx.onWeb]     = enrich.onWeb ? (enrich.onWeb[p.sku] ? 'Já' : 'Nei') : '';
