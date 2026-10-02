@@ -45,6 +45,7 @@ var VI_H_ = {
   datasheet:'Gagnablað',         sds:      'Öryggisblað',
   dsUrl:  'Gagnablað (hlekkur)', sdsUrl:   'Öryggisblað (hlekkur)',
   thumb:  'Mynd (slóð)',          labels:   'Vottanir',
+  vendorNo: 'Vörunúmer birgja',
   assignee: 'Beðið um yfirlestur', askedBy: 'Beðið af',
   status: 'Staða',               note:     'Athugasemd',
   origin: 'Uppruni',
@@ -84,7 +85,8 @@ var VI_OPTIONAL_ = { hint: true, dsFile: true, sdsFile: true, brFile: true,
                      // hlekk sem vistun myndi henda thegjandi.
                      dsUrl: true, sdsUrl: true,
                      // Sama: til fra endurbyggingu 2026-10-02 (mynd + beidnir).
-                     thumb: true, assignee: true, askedBy: true, labels: true };
+                     thumb: true, assignee: true, askedBy: true, labels: true,
+                     vendorNo: true };
 
 /** Orðamark á langri lýsingu. VERÐUR að vera það sama sem PIM_WORDS_MIN_/MAX_
  *  í `pim/buildPimWorksheet.js` — lækkað úr 60 í 20 þann 2026-09-10 eftir
@@ -439,6 +441,7 @@ function voruinnihald_getGroup(sel) {
       sdsUrl: idx.sdsUrl === undefined ? '' : String(row[idx.sdsUrl] || '').trim(),
       thumb: idx.thumb === undefined ? '' : String(row[idx.thumb] || '').trim(),
       labels: idx.labels === undefined ? '' : String(row[idx.labels] || '').trim(),
+      vendorNo: idx.vendorNo === undefined ? '' : String(row[idx.vendorNo] || '').trim(),
       assignee: idx.assignee === undefined ? '' : String(row[idx.assignee] || '').trim(),
       askedBy: idx.askedBy === undefined ? '' : String(row[idx.askedBy] || '').trim(),
       status: String(row[idx.status] || '').trim(),

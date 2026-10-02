@@ -251,6 +251,9 @@ input[type=text]:focus,textarea:focus{border-color:var(--brand);background:var(-
 .spec{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:13.5px;margin:0}
 .spec dt{color:var(--ink-3)}
 .spec dd{margin:0;font-family:var(--f-mono);font-size:12.5px;overflow-wrap:anywhere}
+.spec .cp{margin-left:8px;font-family:var(--f-ui);font-size:11.5px;font-weight:600;padding:1px 8px;
+  border:1px solid var(--rule-2);border-radius:4px;background:var(--surface);color:var(--brand-ink);cursor:pointer}
+.spec .cp:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
 .was{font-family:var(--f-prose);font-size:14.5px;color:var(--ink-2);margin:0;
   max-height:150px;overflow-y:auto}
 .wasmeta{display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:wrap}
@@ -1183,13 +1186,19 @@ function render() {
   drawThumb(p); drawAsk(p, s);
   el('ds').placeholder = 'Skrifaðu lýsingu á ' + p.label.split(',')[0] + '…';
 
-  var rows = [['SKU', p.sku], ['Heiti í BC', p.label], ['Vörumerki', p.brandOld || '—']];
+  var rows = [['SKU', p.sku]];
+  // Vorunumer birgja med afritunarhnappi -- til ad fletta vorunni upp hja birgja.
+  if (p.vendorNo) rows.push(['Vörunr. birgja', p.vendorNo, true]);
+  rows.push(['Heiti í BC', p.label], ['Vörumerki', p.brandOld || '—']);
   if (p.onWeb) rows.push(['Á vef', p.onWeb]);
   // Vottanir i stad rammasamnings (2026-10-02): rammasamningurinn sagdi
   // skrifaranum ekkert, vottunin er efni sem a heima i lysingunni.
   rows.push(['Vottanir', p.labels || '—']);
   el('spec').innerHTML = rows.map(function (r) {
-    return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>';
+    return '<dt>' + esc(r[0]) + '</dt><dd>' + (r[2]
+      ? '<span class="cpv">' + esc(r[1]) + '</span>' +
+        '<button type="button" class="cp" data-copy="' + esc(r[1]) + '">Afrita</button>'
+      : esc(r[1])) + '</dd>';
   }).join('');
 
   // VISBENDING: hvers vegna lysing sem ER til dugar samt ekki.
@@ -1351,6 +1360,25 @@ el('askedlist').addEventListener('click', function (e) {
     enqueue(p.sku, patch);
     drawLink(k);
   });
+});
+
+/* Afrita: clipboard ef vafrinn leyfir, annars er textinn valinn svo
+ * Ctrl+C dugi. Apps Script-ramminn leyfir ekki alltaf clipboard. */
+el('spec').addEventListener('click', function (e) {
+  var b = e.target.closest('.cp');
+  if (!b) return;
+  var v = b.dataset.copy;
+  var done = function () { b.textContent = 'Afritað'; setTimeout(function () { b.textContent = 'Afrita'; }, 1500); };
+  var select = function () {
+    var span = b.previousElementSibling, rg = document.createRange();
+    rg.selectNodeContents(span);
+    var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rg);
+    try { if (document.execCommand('copy')) { done(); return; } } catch (err) {}
+    toast('Ýttu á Ctrl+C til að afrita.');
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(v).then(done, select);
+  } else { select(); }
 });
 
 el('ticks').addEventListener('click', function (e) {

@@ -47,6 +47,9 @@ const PIM_HEADER_MAP_ = {
   // Utdrattur getur haft annan hvorn eda baeda. Their eru sameinadir i eina
   // kolumnu svo ekkert tapist hvorn sem Plytix heldur.
   labels:      ['Product Labels'],
+  // Vorunumer birgja, svo starfsmadur geti flett vorunni upp hja birgja.
+  // Maelt 2026-10-02: 3.293 af 4.453 vorum hafa thad.
+  vendorNo:    ['Original Vendor Item No', 'Vörunúmer birgja'],
   certs:       ['Certificates'],
   // Vidhengin. MAELT I UTDRAETTINUM 2026-09-11 a 4.477 vorum i vinnusetti:
   //   Datasheet Files        1.454 (32,5%)
@@ -94,6 +97,7 @@ const PIM_ORPHAN_  = 'EKKI_A_VEF';
 const PIM_COLS_ = [
   { key: 'label',     head: 'Label (BC)',              w: 120, kind: 'lock' },
   { key: 'sku',       head: 'SKU',                     w:  90, kind: 'lock' },
+  { key: 'vendorNo',  head: 'Vörunúmer birgja',        w: 120, kind: 'lock' },
   { key: 'cat1',      head: 'Yfirflokkur',             w: 150, kind: 'join' },
   { key: 'cat2',      head: 'Flokkur',                 w: 170, kind: 'join' },
   { key: 'cat3',      head: 'Undirflokkur',            w: 180, kind: 'join' },
@@ -455,6 +459,7 @@ function buildPimWorksheet_() {
     row[idx.image]     = enrich.missingImage[p.sku] ? 'Nei' : (p.thumbnail ? 'Já' : 'Nei');
     row[idx.thumbUrl]  = p.thumbUrl || '';
     row[idx.labels]    = p.labels || '';
+    row[idx.vendorNo]  = p.vendorNo || '';
     // Rammasamningur kemur UR PLYTIX, ekki ur RAMMASAMNINGAR-flipanum.
     // Sa flipi geymir rammasamningsvorur AN VERDS (heilbrigdiseftirlit i
     // storkaup_pricing.js, sja athugasemd vid frameworkRows). Hann er thvi
@@ -1062,7 +1067,8 @@ function parsePlytixCsv_(text) {
       brFile:      pick(r, 'brFile'),
       statusKnown: col.plytixStatus !== undefined,
       framework:   /^(true|1|já|ja|yes)$/i.test(pick(r, 'framework')),
-      labels:      pimMergeLabels_(pick(r, 'labels'), pick(r, 'certs'))
+      labels:      pimMergeLabels_(pick(r, 'labels'), pick(r, 'certs')),
+      vendorNo:    pick(r, 'vendorNo')
     };
   }).filter(function (p) { return p.label; });
 }
