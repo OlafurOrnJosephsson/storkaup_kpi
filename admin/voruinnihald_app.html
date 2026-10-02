@@ -205,6 +205,14 @@ input[type=text]:focus,textarea:focus{border-color:var(--brand);background:var(-
 .tri button:last-child{border-right:0}
 .tri button[aria-pressed="true"]{background:var(--brand);color:var(--on-brand);font-weight:600}
 .pair{display:flex;gap:30px;flex-wrap:wrap}
+.pair > div{display:flex;flex-direction:column;gap:7px;min-width:0;flex:1 1 240px}
+.link{font-family:var(--f-mono);font-size:12.5px;width:100%;padding:7px 9px;border:1px solid var(--rule-2);
+  border-radius:4px;background:var(--paper);color:var(--ink)}
+.link:focus{border-color:var(--brand);outline:none;background:var(--surface)}
+.link[aria-invalid="true"]{border-color:var(--crit)}
+.linkmsg{font-size:12px;color:var(--ink-3);min-height:16px}
+.linkmsg a{color:var(--brand-ink);font-weight:600;text-decoration:none}
+.linkmsg i{color:var(--crit);font-style:normal}
 
 .acts{display:flex;align-items:center;gap:12px;margin-top:22px;padding-top:18px;
   border-top:1px solid var(--rule);flex-wrap:wrap}
@@ -407,10 +415,14 @@ footer b{color:var(--ink-2);font-weight:600}
           <div>
             <span class="lab">Gagnablað</span>
             <div class="tri" data-k="ds" id="tri-ds"></div>
+            <input type="url" class="link" id="url-ds" data-k="ds" placeholder="Hlekkur hjá birgja, https://…" autocomplete="off" hidden>
+            <span class="linkmsg" id="urlmsg-ds" hidden></span>
           </div>
           <div>
             <span class="lab">Öryggisblað</span>
             <div class="tri" data-k="sds" id="tri-sds"></div>
+            <input type="url" class="link" id="url-sds" data-k="sds" placeholder="Hlekkur hjá birgja, https://…" autocomplete="off" hidden>
+            <span class="linkmsg" id="urlmsg-sds" hidden></span>
           </div>
         </div>
 
@@ -485,6 +497,13 @@ footer b{color:var(--ink-2);font-weight:600}
 
 var FLUSH_MS = 1200;
 var USER = '', MINW = 20, MAXW = 150;
+// Hlekkjareitirnir birtast adeins thegar vinnusheetid hefur kolumnurnar
+// (eftir endurbyggingu) -- annars myndi vistun henda hlekknum thegjandi.
+var LINKS = false;
+// Voruheitin eru i bid (2026-10-02): reiturinn er skrifvarinn og hvorki
+// snertir voruna ne er sendur. Sjá VI_WRITABLE_ i voruinnihald.js.
+var NAME_FROZEN = true;
+var URL_RE = /^https?:\/\/[^\s<>"]+$/i;
 var TREE = [], filter = 'free';
 var grp = null, items = [], st = [], i = 0, landedAt = Date.now();
 var expanded = {};   // 'Yfirflokkur|Flokkur' -> opinn
@@ -880,7 +899,7 @@ function loadTree(then) {
   busy(true, 'Hleð flokkatré…');
   google.script.run
     .withSuccessHandler(function (r) {
-      USER = r.user; MINW = r.wordsMin; MAXW = r.wordsMax;
+      USER = r.user; MINW = r.wordsMin; MAXW = r.wordsMax; LINKS = !!r.linkCols;
       TREE = r.groups;
       el('who-dot').textContent = (USER || '?').slice(0, 1).toUpperCase();
       el('who-name').textContent = USER;
@@ -944,6 +963,7 @@ function openGroup(sel) {
         return {
           nm: p.nameNew || '', ds: p.descNew || '',
           tri_ds: p.datasheet || '', tri_sds: p.sds || '',
+          url_ds: p.dsUrl || '', url_sds: p.sdsUrl || '',
           status: p.status || '', origin: p.origin || '',
           touched: !!(p.nameNew || p.descNew || p.status === NOCHANGE),
           save: (p.nameNew || p.descNew || p.status === NOCHANGE) ? 'saved' : 'new',
@@ -990,6 +1010,22 @@ function drawTri(key) {
     return '<button type="button" aria-pressed="' + (v === cur) + '" data-v="' + esc(v) + '">' +
       esc(v) + '</button>';
   }).join('');
+}
+
+function drawLink(key, invalid) {
+  var inp = el('url-' + key), msg = el('urlmsg-' + key);
+  var file = key === 'ds' ? items[i].dsFile : items[i].sdsFile;
+  // Er bladid thegar i Plytix thurfum vid ekki hlekk -- tengillinn efst a
+  // vorunni vísar a thad.
+  var show = LINKS && !file;
+  inp.hidden = !show; msg.hidden = !show;
+  if (!show) return;
+  if (!invalid) inp.value = st[i]['url_' + key] || '';
+  inp.setAttribute('aria-invalid', String(!!invalid));
+  var v = st[i]['url_' + key];
+  msg.innerHTML = invalid ? '<i>Þetta er ekki slóð. Hún á að byrja á https://</i>'
+    : v ? '<a href="' + esc(v) + '" target="_blank" rel="noopener">Opna blaðið ↗</a>'
+    : 'Fannstu blaðið hjá birgjanum? Límdu hlekkinn hér.';
 }
 
 function gauge() {
@@ -1101,7 +1137,7 @@ function render() {
     el('reuse').onclick = function () { el('ds').value = p.descOld; gauge(); mark(); };
   } else { el('sibpanel').hidden = true; }
 
-  drawTri('ds'); drawTri('sds'); gauge(); drawTicks(); pace();
+  drawTri('ds'); drawTri('sds'); drawLink('ds'); drawLink('sds'); gauge(); drawTicks(); pace();
   el('saveline').textContent = stateText(s);
 }
 
@@ -1119,7 +1155,7 @@ function mark() {
     }
   })();
   var s = st[i], p = items[i];
-  var nm = el('nm').value, ds = el('ds').value;
+  var nm = NAME_FROZEN ? s.nm : el('nm').value, ds = el('ds').value;
   var changed = nm !== s.nm || ds !== s.ds;
   s.nm = nm; s.ds = ds;
   if (nm !== (p.nameNew || '') || ds !== (p.descNew || '')) s.touched = true;
@@ -1141,6 +1177,28 @@ document.querySelectorAll('.tri').forEach(function (box) {
     enqueue(items[i].sku, k === 'ds' ? { datasheet: b.dataset.v } : { sds: b.dataset.v });
   });
 });
+/* Hlekkur a blad hja birgja. Vistast um leid og reiturinn missir fokus.
+ * Gild slod setur bladid a "Já" ef thad var ekki merkt eda merkt "Nei":
+ * bladid ER til, vid vitum hvar. */
+['ds', 'sds'].forEach(function (k) {
+  el('url-' + k).addEventListener('change', function () {
+    var s = st[i], p = items[i];
+    var v = this.value.trim();
+    if (v && !URL_RE.test(v)) { drawLink(k, true); return; }
+    if (v === s['url_' + k]) { drawLink(k); return; }
+    s['url_' + k] = v; s.touched = true;
+    var patch = {}; patch[k === 'ds' ? 'dsUrl' : 'sdsUrl'] = v;
+    if (v && s['tri_' + k] !== 'Já') {
+      s['tri_' + k] = 'Já';
+      patch[k === 'ds' ? 'datasheet' : 'sds'] = 'Já';
+      drawTri(k);
+    }
+    p[k === 'ds' ? 'dsUrl' : 'sdsUrl'] = v;
+    enqueue(p.sku, patch);
+    drawLink(k);
+  });
+});
+
 el('ticks').addEventListener('click', function (e) {
   var b = e.target.closest('.tick');
   if (!b) return;
@@ -1153,7 +1211,7 @@ function commit(status) {
   mark();
   var s = st[i], p = items[i];
   var patch = {};
-  if (s.nm !== (p.nameNew || '')) patch.nameNew = s.nm;
+  if (!NAME_FROZEN && s.nm !== (p.nameNew || '')) patch.nameNew = s.nm;
   if (s.ds !== (p.descNew || '')) patch.descNew = s.ds;
   // UPPRUNI FYLGIR TEXTANUM. Hann er skradur vid upptokin, ekki agiskadur
   // eftir a — og hann uppfaerist i "AI-drög, ritstýrt" um leid og manneskja

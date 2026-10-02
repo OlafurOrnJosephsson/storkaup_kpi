@@ -43,6 +43,7 @@ var VI_H_ = {
   descOld:'Löng lýsing (núv.)',  descNew:  'Löng lýsing (ný)',
   brandOld:'Vörumerki (núv.)',   brandNew: 'Vörumerki (nýtt)',
   datasheet:'Gagnablað',         sds:      'Öryggisblað',
+  dsUrl:  'Gagnablað (hlekkur)', sdsUrl:   'Öryggisblað (hlekkur)',
   status: 'Staða',               note:     'Athugasemd',
   origin: 'Uppruni',
   onWeb:  'Á vef',               framework:'Rammasamningur',  url: 'Vefslóð',
@@ -55,7 +56,12 @@ var VI_H_ = {
  *  Listinn er hvítlisti af ásettu ráði: nýr reitur í vafranum getur ekki
  *  skrifað í læsta kólumnu fyrir slysni. */
 var VI_WRITABLE_ = ['owner', 'brandNew', 'descNew',
-                    'datasheet', 'sds', 'status', 'note', 'origin'];
+                    'datasheet', 'sds', 'dsUrl', 'sdsUrl', 'status', 'note', 'origin'];
+
+/** Hlekkir a blod hja birgja. Adeins http(s)-slod an bila er skrifud;
+ *  allt annad (texti, `javascript:`, slod med bili) er hunsad, ekki vistad. */
+var VI_URL_KEYS_ = { dsUrl: true, sdsUrl: true };
+var VI_URL_RE_ = /^https?:\/\/[^\s<>"]+$/i;
 
 // `nameNew` TEKIÐ ÚT 2026-10-02: vöruheitin eru í bið á meðan reglurnar um
 // þau eru ákveðnar (markaðsstjóri). Reiturinn er skrifvarinn í appinu, en
@@ -67,7 +73,11 @@ var VI_WRITABLE_ = ['owner', 'brandNew', 'descNew',
  *  koma bara tomar. Adeins hreinar upplysingakolumnur eiga heima her;
  *  allt sem skrifad er i eda reiknad af verdur ad vera skyldad. */
 var VI_OPTIONAL_ = { hint: true, dsFile: true, sdsFile: true, brFile: true,
-                     origin: true };
+                     origin: true,
+                     // Til fra endurbyggingu 2026-10-02. Fyrir hana felur appid
+                     // reitina (getTree skilar linkCols:false), svo enginn skrifar
+                     // hlekk sem vistun myndi henda thegjandi.
+                     dsUrl: true, sdsUrl: true };
 
 /** Orðamark á langri lýsingu. VERÐUR að vera það sama sem PIM_WORDS_MIN_/MAX_
  *  í `pim/buildPimWorksheet.js` — lækkað úr 60 í 20 þann 2026-09-10 eftir
@@ -338,7 +348,8 @@ function voruinnihald_getTree() {
 
   // `user` er NETFANGIÐ, sama gildi sem stendur i Eigandi-kolumnunni.
   return { user: user, groups: out,
-           wordsMin: VI_WORDS_MIN_, wordsMax: VI_WORDS_MAX_ };
+           wordsMin: VI_WORDS_MIN_, wordsMax: VI_WORDS_MAX_,
+           linkCols: idx.dsUrl !== undefined && idx.sdsUrl !== undefined };
 }
 
 /**
@@ -390,6 +401,8 @@ function voruinnihald_getGroup(sel) {
       descNew: String(row[idx.descNew] || '').trim(),
       datasheet: String(row[idx.datasheet] || '').trim(),
       sds: String(row[idx.sds] || '').trim(),
+      dsUrl: idx.dsUrl === undefined ? '' : String(row[idx.dsUrl] || '').trim(),
+      sdsUrl: idx.sdsUrl === undefined ? '' : String(row[idx.sdsUrl] || '').trim(),
       status: String(row[idx.status] || '').trim(),
       origin: idx.origin === undefined ? '' : String(row[idx.origin] || '').trim(),
       note: String(row[idx.note] || '').trim()
@@ -473,6 +486,11 @@ function voruinnihald_saveRows(rows) {
         Object.keys(touched).forEach(function (key) {
           var r = Number(key), inRow = touched[r];
           if (!(k in inRow) || inRow[k] === null || inRow[k] === undefined) return;
+          if (VI_URL_KEYS_[k]) {
+            var u = String(inRow[k]).trim();
+            if (u && !VI_URL_RE_.test(u)) return;   // ekki slod -> ekki skrifad
+            inRow[k] = u;
+          }
           if (String(inRow[k]) === String(vals[r][idx[k]] == null ? '' : vals[r][idx[k]])) return;
           want.push(r);
         });

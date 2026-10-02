@@ -101,6 +101,11 @@ const PIM_COLS_ = [
   { key: 'words',     head: 'Orðafjöldi',              w:  85, kind: 'calc' },
   { key: 'datasheet', head: 'Gagnablað',               w: 105, kind: 'edit' },
   { key: 'sds',       head: 'Öryggisblað',             w: 105, kind: 'edit' },
+  // HLEKKIR SEM STARFSFOLK FANN HJA BIRGJA (2026-10-02). Skrifadir ur appinu.
+  // Ekki thad sama og `(skrá)`-kolumnurnar fyrir nedan: thaer eru skrarnar sem
+  // ERU i Plytix, thessar eru thad sem a eftir ad fara thangad.
+  { key: 'dsUrl',     head: 'Gagnablað (hlekkur)',     w: 160, kind: 'edit' },
+  { key: 'sdsUrl',    head: 'Öryggisblað (hlekkur)',   w: 160, kind: 'edit' },
   // Skrarnar sjalfar ur Plytix. LESNAR, aldrei skrifadar.
   { key: 'dsFile',    head: 'Gagnablað (skrá)',        w:  95, kind: 'join' },
   { key: 'sdsFile',   head: 'Öryggisblað (skrá)',      w:  95, kind: 'join' },
@@ -354,7 +359,8 @@ function buildPimWorksheet_() {
     descCount[k] = (descCount[k] || 0) + 1;
   });
 
-  const KEEP = ['owner', 'brandNew', 'nameNew', 'descNew', 'datasheet', 'sds', 'status', 'note'];
+  const KEEP = ['owner', 'brandNew', 'nameNew', 'descNew', 'datasheet', 'sds',
+                'dsUrl', 'sdsUrl', 'status', 'note'];
   const out = [];
   const orphans = [];
   const seen = {};        // Label sem fer INN i sheetid
@@ -652,7 +658,7 @@ function writePimSheet_(sh, rows) {
   // pimColLetter_ — handskrifaðir bókstafir gerðu formúlurnar þegjandi
   // rangar um leið og kólumnu var bætt við.
   const L = {};
-  ['label', 'brandNew', 'nameNew', 'descNew', 'words', 'datasheet', 'sds',
+  ['label', 'brandNew', 'nameOld', 'nameNew', 'descNew', 'words', 'datasheet', 'sds',
    'status', 'image', 'onWeb', 'indexed', 'done'].forEach(function (k) { L[k] = pimColLetter_(k); });
   const R = function (k) { return L[k] + '2:' + L[k]; };
 
@@ -672,7 +678,11 @@ function writePimSheet_(sh, rows) {
     // gaeti half-skrifud rod talist fullbuin af thvi hun var eitt sinn
     // merkt obreytt.
     'IF((' + R('status') + '="Óbreytt")*(' + R('words') + '=0),"JÁ",IF(' +
-    '(' + R('brandNew') + '<>"")*(' + R('nameNew') + '<>"")*' +
+    // VORUHEITI: nytt EDA nuverandi. Heitin eru i bid fra 2026-10-02 og appid
+    // skrifar ekki `Vöruheiti (nýtt)` lengur. Med `nameNew<>""` einu saman gat
+    // engin vara ordid fullbuin. Adur var skilyrdid uppfyllt fyrir slysni:
+    // appid afritadi gamla heitid i reitinn vid hverja vistun.
+    '(' + R('brandNew') + '<>"")*(((' + R('nameNew') + '<>"")+(' + R('nameOld') + '<>""))>0)*' +
     '(' + R('words') + '>=' + PIM_WORDS_MIN_ + ')*(' +
     R('words') + '<=' + PIM_WORDS_MAX_ + ')*(' + R('image') + '="Já")*' +
     '((' + R('datasheet') + '="Já")+(' + R('datasheet') + '="Á ekki við"))*' +
