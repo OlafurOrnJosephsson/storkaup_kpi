@@ -111,5 +111,28 @@ function runZeroPriceScanForUi() {
 function voruinnihald_draft(ctx) {
   adminGuard_('voruinnihald');
   if (!ctx || typeof ctx !== 'object') throw new Error('Ekkert samhengi sent.');
+
+  // GAGNABLADID ER SOTT UR VINNUSHEETINU, ALDREI UR VAFRANUM (2026-10-02).
+  // Slodin sem adal-projectid saekir verdur ad koma hedan, ur sheetinu eftir
+  // SKU: annars gaeti hvada vafri sem er latid thjoninn saekja hvada slod sem
+  // er. Skrain i Plytix gengur fyrir hlekk sem starfsmadur fann hja birgja.
+  delete ctx.docUrl;
+  delete ctx.labels;
+  try {
+    var o = vi_open_(), idx = o.idx, vals = o.vals;
+    var sku = String(ctx.sku || '').trim();
+    for (var r = 1; r < vals.length; r++) {
+      if (String(vals[r][idx.sku] || '').trim() !== sku) continue;
+      var file = idx.dsFile === undefined ? '' : String(vals[r][idx.dsFile] || '').trim();
+      var link = idx.dsUrl === undefined ? '' : String(vals[r][idx.dsUrl] || '').trim();
+      // Plytix getur geymt fleiri en eina skra, kommu-adskildar. Su fyrsta.
+      ctx.docUrl = (file.split(/,(?=\s*https?:)/)[0] || link || '').trim();
+      // Vottanir ur Plytix: STADFESTAR, svo likanid ma nefna thaer.
+      ctx.labels = idx.labels === undefined ? '' : String(vals[r][idx.labels] || '').trim();
+      break;
+    }
+  } catch (e) {
+    console.warn('[VORUINNIHALD][AI] fann ekki gagnablad: ' + e.message);
+  }
   return callCoreApi_('pim_draft', { ctx: ctx });
 }

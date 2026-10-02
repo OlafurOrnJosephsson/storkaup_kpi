@@ -47,6 +47,14 @@ var PIM_AI_MIN_NOTES_ = 12;
 /** Hámark sem sent er á líkanið, svo ein löng líming sprengi ekki kallið. */
 var PIM_AI_MAX_INPUT_ = 4000;
 
+/** GAGNABLADID (2026-10-02). Se blad tengt les likanid thad lika, og tha
+ *  dugar ad starfsmadurinn segi fyrir hverja og til hvers -- eda ekkert.
+ *  Tolurnar eru i bladinu. Sama regla gildir: ekkert sem kemur hvorki fra
+ *  manneskjunni ne ur bladinu. */
+var PIM_AI_MIN_NOTES_DOC_ = 0;
+/** Staerra en thetta er sjaldnast gagnablad heldur vorulisti heillar linu. */
+var PIM_AI_MAX_DOC_BYTES_ = 15 * 1024 * 1024;
+
 /**
  * Semur drög úr því sem starfsmaðurinn gaf.
  *
@@ -61,7 +69,10 @@ function pimDraftDescription_(ctx) {
   var notes = String(ctx.notes || '').trim().slice(0, PIM_AI_MAX_INPUT_);
   var words = pimWords_(notes);
 
-  if (words < PIM_AI_MIN_NOTES_) {
+  // Slodin kemur fra admin/delegate.js, sem las hana ur vinnusheetinu.
+  var doc = ctx.docUrl ? pimAiFetchDoc_(ctx.docUrl) : { ok: false, why: '' };
+
+  if (words < (doc.ok ? PIM_AI_MIN_NOTES_DOC_ : PIM_AI_MIN_NOTES_)) {
     // HAFNAÐ, EKKI GISKAÐ. Þetta er allur varnarmúrinn: án efnis myndi
     // líkanið framleiða nákvæmlega þann texta sem verkefnið er að fjarlægja.
     return {
@@ -69,15 +80,19 @@ function pimDraftDescription_(ctx) {
       text: '',
       message: 'Skrifaðu fyrst í reitinn hvað varan er og hvaða tölur eiga við — ' +
                'minnst ' + PIM_AI_MIN_NOTES_ + ' orð, punktar duga. ' +
-               (ctx.hasDatasheet
-                 ? 'Gagnablaðið er tengt hér fyrir ofan; tölurnar eru þar.'
-                 : 'Þessi vara hefur ekkert gagnablað í Plytix, svo efnið þarf að koma frá þér.') +
+               (ctx.docUrl
+                 ? 'Gagnablaðið náðist ekki (' + doc.why + '), svo efnið þarf að koma frá þér.'
+                 : 'Þessi vara hefur ekkert gagnablað, svo efnið þarf að koma frá þér.') +
                ' Hnappurinn orðar það sem þú segir honum — hann veit ekkert um vöruna sjálfur.'
     };
   }
 
   // --- 2. Semja -------------------------------------------------------
-  var first = pimAiCall_(pimAiPrompt_(ctx, notes, null));
+  var docB64 = doc.ok ? doc.b64 : null;
+  var docMsg = doc.ok ? 'Gagnablaðið var lesið.'
+    : ctx.docUrl ? 'Gagnablaðið náðist ekki (' + doc.why + '); aðeins punktarnir þínir voru notaðir.'
+    : '';
+  var first = pimAiCall_(pimAiPrompt_(ctx, notes, null, !!docB64), docB64);
   var h1 = pimDescHint_(first, 1);
 
   // Tvennt kallar á aðra tilraun, og hvort tveggja er hlutlægt:
@@ -96,15 +111,17 @@ function pimDraftDescription_(ctx) {
     var second = pimAiCall_(pimAiPrompt_(ctx, notes, {
       words: pimAiOffenders_(first),
       tooLong: h1.indexOf('OF LANGT') >= 0 ? pimWords_(first) : 0
-    }));
+    }, !!docB64), docB64);
     var h2 = pimDescHint_(second, 1);
     // Skilum seinni tilrauninni hvort sem hún stóðst eða ekki — með merkinu.
     // Manneskjan ritstýrir hvort sem er, og þögult brottfall væri verra en
     // sýnilegt brot.
-    return { text: second, words: pimWords_(second), hint: h2, attempts: 2 };
+    return { text: second, words: pimWords_(second), hint: h2, attempts: 2,
+             docUsed: !!docB64, docMsg: docMsg };
   }
 
-  return { text: first, words: pimWords_(first), hint: h1, attempts: 1 };
+  return { text: first, words: pimWords_(first), hint: h1, attempts: 1,
+           docUsed: !!docB64, docMsg: docMsg };
 }
 
 /** Hvaða bönnuðu orð/orðasambönd eru í textanum. Notað í seinni tilraun. */
@@ -119,7 +136,7 @@ function pimAiOffenders_(t) {
   return out;
 }
 
-function pimAiPrompt_(ctx, notes, fix) {
+function pimAiPrompt_(ctx, notes, fix, hasDoc) {
   var path = [ctx.cat1, ctx.cat2, ctx.cat3].filter(Boolean).join(' › ');
   var p = [];
 
@@ -128,9 +145,23 @@ function pimAiPrompt_(ctx, notes, fix) {
   p.push('  Heiti: ' + (ctx.name || ctx.label || ''));
   p.push('  Flokkur: ' + (path || '(ótilgreindur)'));
   if (ctx.descOld) p.push('  Núverandi lýsing (má nota sem hráefni): ' + ctx.descOld);
+  // Vottanir koma ur Plytix gegnum admin/delegate.js, ekki ur vafranum.
+  if (ctx.labels) p.push('  Vottanir (staðfestar í Plytix, má nefna): ' + ctx.labels);
   p.push('');
-  p.push('Efnið frá starfsmanni Stórkaups — ÞETTA ER ALLT SEM ÞÚ VEIST:');
-  p.push(notes);
+  if (hasDoc) {
+    p.push('Gagnablað vörunnar fylgir sem PDF. Notaðu tölur og staðreyndir úr því,');
+    p.push('en AÐEINS þær sem eiga við nákvæmlega þessa vöru. Gagnablöð ná oft');
+    p.push('yfir heila línu af gerðum; ef ekki er ljóst hvaða gildi á við þessa');
+    p.push('gerð, slepptu því. Þýddu á íslensku. Ekkert úr blaðinu um verð');
+    p.push('eða ábyrgð. Vottanir AÐEINS þær sem eru staðfestar hér að ofan, því');
+    p.push('blaðið getur nefnt vottun sem gildir um aðra gerð eða er útrunnin.');
+    p.push('');
+    p.push('Efnið frá starfsmanni Stórkaups (gengur fyrir blaðinu ef þau stangast á):');
+    p.push(notes || '(ekkert — skrifaðu úr gagnablaðinu einu)');
+  } else {
+    p.push('Efnið frá starfsmanni Stórkaups — ÞETTA ER ALLT SEM ÞÚ VEIST:');
+    p.push(notes);
+  }
   p.push('');
   if (fix && fix.words && fix.words.length) {
     p.push('Fyrri tilraun þín notaði þetta orðalag, sem er bannað: ' +
@@ -156,7 +187,8 @@ function pimAiSystem_() {
     'vandamál á vinnutíma.',
     '',
     'ÓFRÁVÍKJANLEG REGLA: þú mátt EKKERT segja sem kemur ekki fram í efninu',
-    'sem þér er gefið. Enga eiginleika, engar tölur, enga notkun, engin efni',
+    'sem þér er gefið: punktum starfsmannsins og gagnablaðinu ef það fylgir.',
+    'Enga eiginleika, engar tölur, enga notkun, engin efni',
     'sem þú giskar á út frá vöruheitinu. Sé efnið rýrt skrifarðu stutta lýsingu.',
     'Stutt og satt er rétt; langt og ágiskað er rangt.',
     '',
@@ -250,7 +282,31 @@ function pimAiSelfTest_v1() {
   return r;
 }
 
-function pimAiCall_(prompt) {
+/**
+ * Saekir gagnabladid sem PDF og skilar base64. Hafnar ollu sem er ekki PDF:
+ * hlekkur hja birgja getur verid vorusida, ekki skjal, og thad a ekki ad
+ * fara a likanid. Plytix-slodir bera stundum bil og hornklofa, sem eru
+ * kodud eins og appid gerir (sja safeUrl i voruinnihald_app.html).
+ */
+function pimAiFetchDoc_(url) {
+  var u = String(url || '').trim();
+  if (!/^https?:\/\//i.test(u)) return { ok: false, why: 'ógild slóð' };
+  if (!/%[0-9A-Fa-f]{2}/.test(u)) u = encodeURI(u);
+  try {
+    var res = UrlFetchApp.fetch(u, { muteHttpExceptions: true, followRedirects: true });
+    if (res.getResponseCode() !== 200) return { ok: false, why: 'HTTP ' + res.getResponseCode() };
+    var bytes = res.getBlob().getBytes();
+    if (bytes.length > PIM_AI_MAX_DOC_BYTES_) return { ok: false, why: 'of stórt' };
+    // %PDF i fyrstu baetunum -- Content-Type er ekki alltaf rettur hja birgjum.
+    var head = String.fromCharCode.apply(null, bytes.slice(0, 5).map(function (b) { return b & 0xff; }));
+    if (head.indexOf('%PDF') !== 0) return { ok: false, why: 'ekki PDF-skjal' };
+    return { ok: true, b64: Utilities.base64Encode(bytes) };
+  } catch (e) {
+    return { ok: false, why: 'náðist ekki' };
+  }
+}
+
+function pimAiCall_(prompt, docB64) {
   var cfg = loadConfig_();
   var key = pimAiKey_(cfg);
   var api = (cfg.API && (cfg.API.Anthropic || cfg.API.Claude)) || {};
@@ -268,14 +324,22 @@ function pimAiCall_(prompt) {
     },
     payload: JSON.stringify({
       model: model,
-      max_tokens: 700,
+      // Med skjali hugsar likanid meira, og hugsun telst med i max_tokens.
+      max_tokens: docB64 ? 3000 : 700,
       // ENGIN `temperature`. Anthropic svaraði 400 á claude-sonnet-5:
       // "`temperature` is deprecated for this model" (mælt 2026-09-11).
       // Nýrri módel stýra þessu sjálf. Það sem heldur textanum í skefjum er
       // hvort sem er ekki hitastigið heldur tvennt annað: kerfisleiðbeiningin
       // bannar að finna nokkuð upp, og `pimDescHint_` dæmir útkomuna.
       system: pimAiSystem_(),
-      messages: [{ role: 'user', content: prompt }]
+      // Skjalid a undan textanum. cache_control: seinni tilraunin (ORÐALAG /
+      // OF LANGT) sendir sama skjalid aftur innan fimm minutna.
+      messages: [{ role: 'user', content: docB64 ? [
+        { type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: docB64 },
+          cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: prompt }
+      ] : prompt }]
     }),
     muteHttpExceptions: true
   });
@@ -286,6 +350,9 @@ function pimAiCall_(prompt) {
     throw new Error('Anthropic svaraði ' + code + ': ' + String(body).slice(0, 300));
   }
   var parsed = safeJsonParse_(body) || {};
+  if (parsed.stop_reason === 'refusal') {
+    throw new Error('Líkanið hafnaði beiðninni. Skrifaðu lýsinguna sjálf/ur eða reyndu aðra punkta.');
+  }
   var text = extractClaudeMessageContent_(parsed);
   return pimAiClean_(text);
 }

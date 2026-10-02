@@ -444,8 +444,8 @@ footer b{color:var(--ink-2);font-weight:600}
             <span class="note" id="ainote"></span>
           </div>
           <ol class="aihow">
-            <li>Skrifaðu <b>punkta</b> í lýsingarreitinn hér fyrir ofan: hvað varan er, tölurnar úr gagnablaðinu og til hvers hún er notuð. Til dæmis: <i>atvinnuryksuga, 22 kPa, 10 L tankur, fyrir skóla og hótel</i>.</li>
-            <li>Ýttu á hnappinn. Gervigreindin orðar punktana þína sem lýsingu eftir ritstílnum. Hún bætir engu við sem þú skrifaðir ekki.</li>
+            <li>Skrifaðu <b>punkta</b> í lýsingarreitinn hér fyrir ofan: hvað varan er, til hvers hún er notuð og fyrir hverja. Til dæmis: <i>atvinnuryksuga, fyrir skóla og hótel, dagleg ræsting</i>.</li>
+            <li>Ýttu á hnappinn. Gervigreindin orðar punktana sem lýsingu eftir ritstílnum. <b>Ef gagnablað er tengt les hún það líka</b> og tekur tölurnar þaðan, svo þú þarft ekki að skrifa þær upp. Hún bætir engu við sem kemur hvorki frá þér né úr blaðinu.</li>
             <li><b>Lestu yfir og lagaðu.</b> Ekkert vistast fyrr en þú ýtir á Vista og næsta.</li>
           </ol>
         </div>
@@ -703,7 +703,7 @@ el('ai').onclick = function () {
       aiDraftText = r.text;          // til ad sja hvort manneskja breyti
       gauge(); mark(); drawTicks();
 
-      var msg = r.words + ' orð.';
+      var msg = r.words + ' orð.' + (r.docMsg ? ' ' + r.docMsg : '');
       if (r.hint) msg += ' Greinirinn merkir þetta: ' + r.hint + '. Lagaðu áður en þú vistar.';
       else msg += ' Lestu yfir — þú berð ábyrgð á því sem þú vistar.';
       aiNote(msg, !!r.hint);
@@ -1185,7 +1185,9 @@ function render() {
 
   var rows = [['SKU', p.sku], ['Heiti í BC', p.label], ['Vörumerki', p.brandOld || '—']];
   if (p.onWeb) rows.push(['Á vef', p.onWeb]);
-  rows.push(['Rammasamningur', p.framework ? 'Já' : 'Nei']);
+  // Vottanir i stad rammasamnings (2026-10-02): rammasamningurinn sagdi
+  // skrifaranum ekkert, vottunin er efni sem a heima i lysingunni.
+  rows.push(['Vottanir', p.labels || '—']);
   el('spec').innerHTML = rows.map(function (r) {
     return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>';
   }).join('');
@@ -1229,9 +1231,11 @@ function render() {
     : '<span class="none">Engin skjöl í Plytix</span>';
 
   aiDraftText = null;
-  aiNote(p.dsFile
-    ? 'Opnaðu gagnablaðið, skrifaðu tölurnar og notkunina í punktum hér að ofan, og ýttu svo á hnappinn.'
-    : 'Skrifaðu í punktum hvað varan er og hvaða tölur eiga við, og ýttu svo á hnappinn.');
+  // Gagnabladid er lesid af thjoninum (skrain i Plytix, annars hlekkur
+  // starfsmanns). Tha duga stuttir punktar -- tolurnar eru i bladinu.
+  aiNote((p.dsFile || p.dsUrl)
+    ? 'Gagnablaðið fylgir með og er lesið. Stuttir punktar duga: fyrir hverja og til hvers. Þú mátt líka ýta beint á hnappinn.'
+    : 'Ekkert gagnablað. Skrifaðu í punktum hvað varan er og hvaða tölur eiga við, og ýttu svo á hnappinn.');
 
   el('was').textContent = p.descOld || '(engin)';
   var cls = p.descIsName ? 'crit' : p.descWords >= MINW ? 'good' : 'warn';

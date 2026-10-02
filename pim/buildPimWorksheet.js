@@ -41,6 +41,13 @@ const PIM_HEADER_MAP_ = {
   thumbnail:   ['Thumbnail', 'Main image', 'Aðalmynd'],
   plytixStatus: ['Status', 'Staða í Plytix'],
   framework:   ['Framework Agreement Product'],
+  // VOTTANIR -- TVEIR eiginleikar i Plytix (maelt 2026-10-02):
+  //   Product Labels  732 vorur, 12 gildi (Food safe, Svansmerking, FSC, Vegan ...)
+  //   Certificates    383 vorur,  6 gildi (Svansmerkt, FSC, EU Ecolabel, OEKO-TEX ...)
+  // Utdrattur getur haft annan hvorn eda baeda. Their eru sameinadir i eina
+  // kolumnu svo ekkert tapist hvorn sem Plytix heldur.
+  labels:      ['Product Labels'],
+  certs:       ['Certificates'],
   // Vidhengin. MAELT I UTDRAETTINUM 2026-09-11 a 4.477 vorum i vinnusetti:
   //   Datasheet Files        1.454 (32,5%)
   //   Safety Datasheet Files   356 ( 8,0%)
@@ -127,6 +134,7 @@ const PIM_COLS_ = [
   { key: 'onWeb',     head: 'Á vef',                   w:  85, kind: 'join' },
   { key: 'indexed',   head: 'Í leitarvísi',            w: 100, kind: 'join' },
   { key: 'framework', head: 'Rammasamningur',          w: 120, kind: 'join' },
+  { key: 'labels',    head: 'Vottanir',                w: 160, kind: 'join' },
   { key: 'done',      head: 'Fullbúið',                w:  85, kind: 'calc' },
   { key: 'url',       head: 'Vefslóð',                 w: 220, kind: 'join' }
 ];
@@ -446,6 +454,7 @@ function buildPimWorksheet_() {
     row[idx.indexed]   = web ? 'Já' : '';
     row[idx.image]     = enrich.missingImage[p.sku] ? 'Nei' : (p.thumbnail ? 'Já' : 'Nei');
     row[idx.thumbUrl]  = p.thumbUrl || '';
+    row[idx.labels]    = p.labels || '';
     // Rammasamningur kemur UR PLYTIX, ekki ur RAMMASAMNINGAR-flipanum.
     // Sa flipi geymir rammasamningsvorur AN VERDS (heilbrigdiseftirlit i
     // storkaup_pricing.js, sja athugasemd vid frameworkRows). Hann er thvi
@@ -1052,7 +1061,8 @@ function parsePlytixCsv_(text) {
       sdsFile:     pick(r, 'sdsFile'),
       brFile:      pick(r, 'brFile'),
       statusKnown: col.plytixStatus !== undefined,
-      framework:   /^(true|1|já|ja|yes)$/i.test(pick(r, 'framework'))
+      framework:   /^(true|1|já|ja|yes)$/i.test(pick(r, 'framework')),
+      labels:      pimMergeLabels_(pick(r, 'labels'), pick(r, 'certs'))
     };
   }).filter(function (p) { return p.label; });
 }
@@ -1075,6 +1085,18 @@ function parsePlytixCsv_(text) {
  *
  *  Fyrsta slóðin ræður. 99,7% Completed-vara hafa nákvæmlega þrjú lög, svo
  *  varaleiðin á dýpsta lag kviknar sjaldan. */
+/** Sameinar Product Labels og Certificates: einkvaem gildi, i rod, kommu-adskilin. */
+function pimMergeLabels_(a, b) {
+  const seen = {}, out = [];
+  [a, b].forEach(function (v) {
+    String(v || '').split(',').forEach(function (x) {
+      x = x.trim();
+      if (x && !seen[x.toLowerCase()]) { seen[x.toLowerCase()] = true; out.push(x); }
+    });
+  });
+  return out.join(', ');
+}
+
 function plytixCategory_(path, level) {
   if (!path) return '';
   const first = String(path).split(new RegExp(',(?=' + PIM_CATEGORY_ROOT_ + '>)'))[0];
