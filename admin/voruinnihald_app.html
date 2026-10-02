@@ -773,9 +773,20 @@ function status2(b) {
   return 'taken';
 }
 
+/* Rod yfirflokka eins og a vefnum, ekki stafrofsrod. Yfirflokkur sem er
+ * ekki a listanum fer aftast, i stafrofsrod. Borid saman an hastafa. */
+var L1_ORDER = ['rekstrarvörur', 'matvörur', 'heilbrigðisvörur', 'vélar og tæki',
+                'áfengi og nikótín'];
+function byL1(a, b) {
+  var ia = L1_ORDER.indexOf(String(a).toLowerCase()), ib = L1_ORDER.indexOf(String(b).toLowerCase());
+  if (ia === -1) ia = 99;
+  if (ib === -1) ib = 99;
+  return ia - ib || String(a).localeCompare(String(b), 'is');
+}
+
 function drawMine() {
   var n2 = nest(), cards = [];
-  Object.keys(n2).sort().forEach(function (l1) {
+  Object.keys(n2).sort(byL1).forEach(function (l1) {
     Object.keys(n2[l1]).sort().forEach(function (l2) {
       var b = n2[l1][l2];
       var mine = b.groups.filter(function (t) { return t.owner === USER; });
@@ -821,7 +832,7 @@ function drawMine() {
  */
 function drawTree() {
   var n2 = nest();
-  var html = Object.keys(n2).sort().map(function (l1) {
+  var html = Object.keys(n2).sort(byL1).map(function (l1) {
     var fl = n2[l1];
     var keys = Object.keys(fl).sort();
     var tw = 0, tn = 0, tu = 0, tk = 0;
