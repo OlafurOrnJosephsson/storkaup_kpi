@@ -54,8 +54,14 @@ var VI_H_ = {
  *  allt annað kemur úr Plytix eða PRODUCTS og yfirskrifast við endurbyggingu.
  *  Listinn er hvítlisti af ásettu ráði: nýr reitur í vafranum getur ekki
  *  skrifað í læsta kólumnu fyrir slysni. */
-var VI_WRITABLE_ = ['owner', 'brandNew', 'nameNew', 'descNew',
+var VI_WRITABLE_ = ['owner', 'brandNew', 'descNew',
                     'datasheet', 'sds', 'status', 'note', 'origin'];
+
+// `nameNew` TEKIÐ ÚT 2026-10-02: vöruheitin eru í bið á meðan reglurnar um
+// þau eru ákveðnar (markaðsstjóri). Reiturinn er skrifvarinn í appinu, en
+// vafrinn sendir samt `nameNew` = gamla heitið við hverja vistun (forfyllt
+// í reitinn), svo vörnin verður að vera hér. Bættu því aftur við þegar
+// reglurnar liggja fyrir.
 
 /** Kolumnur sem mega vanta. Sja vi_open_ — thaer fella ekki appid, thaer
  *  koma bara tomar. Adeins hreinar upplysingakolumnur eiga heima her;

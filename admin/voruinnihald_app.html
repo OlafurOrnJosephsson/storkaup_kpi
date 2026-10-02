@@ -172,6 +172,7 @@ input[type=text],textarea{width:100%;font-family:var(--f-prose);color:var(--ink)
   background:var(--paper);border:1px solid var(--rule-2);border-radius:4px;
   padding:10px 12px;font-size:16px;line-height:1.55}
 input[type=text]{font-size:17px}
+input[type=text][readonly]{background:var(--surface-2);color:var(--ink-2);cursor:default}
 textarea{min-height:190px;resize:vertical}
 input[type=text]:focus,textarea:focus{border-color:var(--brand);background:var(--surface)}
 
@@ -380,8 +381,8 @@ footer b{color:var(--ink-2);font-weight:600}
       <div class="desk">
         <div class="fld">
           <label class="lab" for="nm">Vöruheiti</label>
-          <p class="hint">Vörutegund, týpa, afbrigði, stærð. Engin lýsingarorð.</p>
-          <input type="text" id="nm" autocomplete="off">
+          <p class="hint">Vöruheitin eru í bið á meðan reglurnar um þau eru ákveðnar. Heitið sést hér en breytist ekki í þessari umferð.</p>
+          <input type="text" id="nm" autocomplete="off" readonly aria-readonly="true">
         </div>
 
         <div class="fld">
@@ -443,12 +444,13 @@ footer b{color:var(--ink-2);font-weight:600}
           <div class="sib" id="sib"></div>
         </div>
         <div class="panel">
-          <h2>Reglur sem linterinn athugar</h2>
+          <h2>Minnislisti fyrir lýsinguna</h2>
           <ul class="rules">
-            <li><code>R3</code> Bil fyrir einingu: <b>500 ml</b>, ekki 500ml</li>
-            <li><code>R5</code> Pakkning aftast: <b>20x 3stk</b></li>
-            <li><code>R9</code> Engin markaðsorð: frábær, hágæða</li>
-            <li><code>R14</code> Ekki Title Case á íslensku</li>
+            <li>Fyrsta setningin: <b>hvað varan er og fyrir hvern</b></li>
+            <li>Til hvers hún er notuð, og hvar</li>
+            <li>Spurningarnar sem koma í síma</li>
+            <li>Engin markaðsorð: frábær, hágæða. Talan í staðinn</li>
+            <li>Ekki vöruheitið endurtekið</li>
           </ul>
         </div>
       </div>
