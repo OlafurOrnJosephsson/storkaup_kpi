@@ -264,9 +264,32 @@ input[type=text]:focus,textarea:focus{border-color:var(--brand);background:var(-
 .sib button{margin-top:8px;font-family:inherit;font-size:12.5px;font-weight:600;
   background:transparent;border:1px solid var(--rule-2);color:var(--brand-ink);
   padding:5px 11px;border-radius:4px;cursor:pointer;display:block}
-.rules{margin:0;padding:0;list-style:none;font-size:13px;display:flex;
+.rules{margin:0;padding:0 0 0 18px;font-size:13px;display:flex;
   flex-direction:column;gap:7px}
-.rules li{display:grid;grid-template-columns:auto 1fr;gap:9px;color:var(--ink-2)}
+.rules li{color:var(--ink-2)}
+.thumb{display:block;width:100%;max-height:210px;object-fit:contain;background:#fff;
+  border:1px solid var(--rule);border-radius:5px;margin:0 0 12px}
+.aihow{margin:8px 0 0;padding:0 0 0 18px;font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.aihow b{color:var(--ink)}
+.nt{font-family:var(--f-ui)!important;font-size:14px!important;min-height:64px!important}
+.ask{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-2)}
+.ask select{font-family:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--rule-2);
+  border-radius:4px;background:var(--paper);color:var(--ink)}
+.askban{margin:0 0 16px;padding:11px 13px;border-radius:7px;font-size:13.5px;line-height:1.5;
+  background:var(--brand-wash);border:1px solid var(--brand);color:var(--ink)}
+.askban b{font-weight:650}
+.askban q{display:block;margin-top:4px;color:var(--ink-2);quotes:none;white-space:pre-wrap}
+.askban button{margin-top:8px;font-family:inherit;font-size:12.5px;font-weight:600;padding:5px 12px;
+  border-radius:4px;border:1px solid var(--brand);background:var(--surface);color:var(--brand-ink);cursor:pointer}
+.help{margin:12px 0 0;font-size:12.5px;color:var(--ink-3);line-height:1.55;max-width:70ch}
+.help b{color:var(--ink-2);font-weight:600}
+.asklist{display:flex;flex-direction:column;gap:6px}
+.askrow{display:grid;grid-template-columns:1fr auto;gap:2px 12px;text-align:left;font-family:inherit;
+  padding:10px 12px;border:1px solid var(--brand);border-radius:6px;background:var(--brand-wash);
+  color:var(--ink);cursor:pointer}
+.askrow .an{font-weight:600;font-size:14px;overflow-wrap:anywhere}
+.askrow .ap{font-size:12px;color:var(--ink-3);font-family:var(--f-mono)}
+.askrow .aq{grid-column:1/-1;font-size:12.5px;color:var(--ink-2)}
 .rules code{font-family:var(--f-mono);font-size:11px;color:var(--brand-ink);
   background:var(--brand-wash);padding:1px 5px;border-radius:3px;height:fit-content}
 
@@ -349,6 +372,11 @@ footer b{color:var(--ink-2);font-weight:600}
       <div><dt>Skrifað</dt><dd id="j-done">—<span class="of"> lýsingar</span></dd></div>
     </dl>
 
+    <div class="mine" id="askedbox" hidden>
+      <h2>Beðið um þig</h2>
+      <div class="asklist" id="askedlist"></div>
+    </div>
+
     <div class="mine">
       <h2>Mitt</h2>
       <div class="minelist" id="minelist"></div>
@@ -387,6 +415,7 @@ footer b{color:var(--ink-2);font-weight:600}
 
     <div class="cols">
       <div class="desk">
+        <div class="askban" id="askban" hidden></div>
         <div class="fld">
           <label class="lab" for="nm">Vöruheiti</label>
           <p class="hint">Vöruheitin eru í bið á meðan reglurnar um þau eru ákveðnar. Heitið sést hér en breytist ekki í þessari umferð.</p>
@@ -409,6 +438,16 @@ footer b{color:var(--ink-2);font-weight:600}
             </div>
             <div class="scale"><span>0</span><span id="s-min">20</span><span id="s-max">150</span><span>200</span></div>
           </div>
+
+          <div class="ai">
+            <button type="button" id="ai">Orða punktana mína</button>
+            <span class="note" id="ainote"></span>
+          </div>
+          <ol class="aihow">
+            <li>Skrifaðu <b>punkta</b> í lýsingarreitinn hér fyrir ofan: hvað varan er, tölurnar úr gagnablaðinu og til hvers hún er notuð. Til dæmis: <i>atvinnuryksuga, 22 kPa, 10 L tankur, fyrir skóla og hótel</i>.</li>
+            <li>Ýttu á hnappinn. Gervigreindin orðar punktana þína sem lýsingu eftir ritstílnum. Hún bætir engu við sem þú skrifaðir ekki.</li>
+            <li><b>Lestu yfir og lagaðu.</b> Ekkert vistast fyrr en þú ýtir á Vista og næsta.</li>
+          </ol>
         </div>
 
         <div class="fld pair">
@@ -426,6 +465,15 @@ footer b{color:var(--ink-2);font-weight:600}
           </div>
         </div>
 
+        <div class="fld">
+          <label class="lab" for="nt">Athugasemd eða spurning</label>
+          <textarea id="nt" class="nt" placeholder="T.d. „Er þetta sama vara og 104886?“ eða „Vantar gagnablað hjá birgja“"></textarea>
+          <div class="ask" id="askrow" hidden>
+            <label for="ask">Biðja annan að kíkja á vöruna:</label>
+            <select id="ask"><option value="">Enginn</option></select>
+          </div>
+        </div>
+
         <div class="acts">
           <button class="btn" id="next" type="button">Vista og næsta</button>
           <button class="btn ghost" id="same" type="button">Engin breyting</button>
@@ -433,18 +481,20 @@ footer b{color:var(--ink-2);font-weight:600}
           <span class="saveline" id="saveline">—</span>
           <span class="netstate" id="netstate">allt vistað</span>
         </div>
+        <p class="help">
+          <b>Vista og næsta:</b> lýsingin fer í yfirlestur.
+          <b>Engin breyting:</b> varan er í lagi eins og hún er og telst afgreidd.
+          <b>Merkja spurningu:</b> þú veist ekki eitthvað og getur ekki klárað. Skrifaðu spurninguna í athugasemdina; varan fer á spurningalistann og þú heldur áfram með næstu.
+        </p>
       </div>
 
       <div class="ref">
         <div class="panel">
           <p class="hint" id="hint" hidden></p>
           <h2>Varan</h2>
+          <img class="thumb" id="thumb" alt="" hidden>
           <dl class="spec" id="spec"></dl>
           <div class="docs" id="docs"></div>
-          <div class="ai">
-            <button type="button" id="ai">Orða punktana mína</button>
-            <span class="note" id="ainote"></span>
-          </div>
         </div>
         <div class="panel">
           <h2>Núverandi lýsing</h2>
@@ -500,6 +550,8 @@ var USER = '', MINW = 20, MAXW = 150;
 // Hlekkjareitirnir birtast adeins thegar vinnusheetid hefur kolumnurnar
 // (eftir endurbyggingu) -- annars myndi vistun henda hlekknum thegjandi.
 var LINKS = false;
+// Beidnir um yfirlestur: adeins thegar vinnusheetid hefur kolumnurnar.
+var ASSIGN = false, TEAM = [], ASKED = [];
 // Voruheitin eru i bid (2026-10-02): reiturinn er skrifvarinn og hvorki
 // snertir voruna ne er sendur. Sjá VI_WRITABLE_ i voruinnihald.js.
 var NAME_FROZEN = true;
@@ -899,7 +951,17 @@ function drawTree() {
   el('tree').innerHTML = html ||
     '<p class="empty">Ekkert laust i thessari syn. Skiptu a Allt.</p>';
 }
-function drawBoard() { drawJob(); drawMine(); drawTree(); }
+function drawAsked() {
+  el('askedbox').hidden = !ASKED.length;
+  el('askedlist').innerHTML = ASKED.map(function (a, n) {
+    return '<button type="button" class="askrow" data-ask="' + n + '">' +
+      '<span class="an">' + esc(a.label) + '</span>' +
+      '<span class="ap">' + esc(a.sku) + '</span>' +
+      '<span class="aq">' + esc((a.by ? a.by + ': ' : '') + (a.note || 'Engin athugasemd')) + '</span>' +
+      '</button>';
+  }).join('');
+}
+function drawBoard() { drawJob(); drawAsked(); drawMine(); drawTree(); }
 
 /* ------------------------------------------------------------ þjónskoll */
 function busy(on, msg) {
@@ -911,6 +973,7 @@ function loadTree(then) {
   google.script.run
     .withSuccessHandler(function (r) {
       USER = r.user; MINW = r.wordsMin; MAXW = r.wordsMax; LINKS = !!r.linkCols;
+      ASSIGN = !!r.assignCols; TEAM = r.team || []; ASKED = r.asked || [];
       TREE = r.groups;
       el('who-dot').textContent = (USER || '?').slice(0, 1).toUpperCase();
       el('who-name').textContent = USER;
@@ -962,7 +1025,7 @@ function release(sel) {
     .voruinnihald_release(sel);
 }
 
-function openGroup(sel) {
+function openGroup(sel, atSku) {
   busy(true, 'Hleð vörum…');
   google.script.run
     .withSuccessHandler(function (rows) {
@@ -975,13 +1038,19 @@ function openGroup(sel) {
           nm: p.nameNew || '', ds: p.descNew || '',
           tri_ds: p.datasheet || '', tri_sds: p.sds || '',
           url_ds: p.dsUrl || '', url_sds: p.sdsUrl || '',
+          note: p.note || '', assignee: p.assignee || '',
           status: p.status || '', origin: p.origin || '',
           touched: !!(p.nameNew || p.descNew || p.status === NOCHANGE),
           save: (p.nameNew || p.descNew || p.status === NOCHANGE) ? 'saved' : 'new',
           ms: 0
         };
       });
-      i = 0; landedAt = Date.now();
+      i = 0;
+      if (atSku) {
+        var at = rows.findIndex(function (q) { return q.sku === atSku; });
+        if (at >= 0) i = at;
+      }
+      landedAt = Date.now();
       showView('write'); render();
     })
     .withFailureHandler(function (e) {
@@ -1021,6 +1090,44 @@ function drawTri(key) {
     return '<button type="button" aria-pressed="' + (v === cur) + '" data-v="' + esc(v) + '">' +
       esc(v) + '</button>';
   }).join('');
+}
+
+function drawThumb(p) {
+  var img = el('thumb');
+  var u = String(p.thumb || '').trim();
+  if (!u) { img.hidden = true; img.removeAttribute('src'); return; }
+  img.onerror = function () { img.hidden = true; };
+  img.src = /%[0-9A-Fa-f]{2}/.test(u) ? u : encodeURI(u);
+  img.alt = p.label;
+  img.hidden = false;
+}
+
+function drawAsk(p, s) {
+  el('askrow').hidden = !ASSIGN;
+  if (ASSIGN) {
+    el('ask').innerHTML = '<option value="">Enginn</option>' + TEAM.filter(function (t) {
+      return t !== USER;
+    }).map(function (t) {
+      return '<option value="' + esc(t) + '"' + (t === s.assignee ? ' selected' : '') + '>' +
+        esc(t.split('@')[0]) + '</option>';
+    }).join('');
+  }
+  var ban = el('askban');
+  if (ASSIGN && s.assignee === USER) {
+    ban.innerHTML = '<b>' + esc(p.askedBy || 'Einhver') + ' bað þig að kíkja á þessa vöru.</b>' +
+      (s.note ? '<q>' + esc(s.note) + '</q>' : '') +
+      '<button type="button" id="askdone">Búið, taka af listanum mínum</button>';
+    ban.hidden = false;
+    el('askdone').onclick = function () {
+      s.assignee = ''; p.assignee = '';
+      enqueue(p.sku, { assignee: '' });
+      ASKED = ASKED.filter(function (a) { return a.sku !== p.sku; });
+      drawAsk(p, s);
+      toast('Tekið af listanum þínum.');
+    };
+  } else {
+    ban.hidden = true;
+  }
 }
 
 function drawLink(key, invalid) {
@@ -1072,6 +1179,8 @@ function render() {
   var p = items[i], s = st[i];
   el('nm').value = s.nm || p.nameOld;
   el('ds').value = s.ds;
+  el('nt').value = s.note;
+  drawThumb(p); drawAsk(p, s);
   el('ds').placeholder = 'Skrifaðu lýsingu á ' + p.label.split(',')[0] + '…';
 
   var rows = [['SKU', p.sku], ['Heiti í BC', p.label], ['Vörumerki', p.brandOld || '—']];
@@ -1188,6 +1297,36 @@ document.querySelectorAll('.tri').forEach(function (box) {
     enqueue(items[i].sku, k === 'ds' ? { datasheet: b.dataset.v } : { sds: b.dataset.v });
   });
 });
+/* Athugasemd: vistast thegar reiturinn missir fokus. */
+el('nt').addEventListener('change', function () {
+  var s = st[i], p = items[i], v = this.value;
+  if (v === (p.note || '')) return;
+  s.note = v; p.note = v; s.touched = true;
+  enqueue(p.sku, { note: v });
+});
+
+/* Beidni um yfirlestur. Thjonninn skrar sjalfur hver bad um. */
+el('ask').addEventListener('change', function () {
+  var s = st[i], p = items[i], v = this.value;
+  s.assignee = v; p.assignee = v;
+  // Athugasemdin fylgir med svo sa sem faer beidnina viti hvad hann a ad skoda.
+  var patch = { assignee: v };
+  var nt = el('nt').value;
+  if (nt !== (p.note || '')) { patch.note = nt; s.note = nt; p.note = nt; }
+  enqueue(p.sku, patch);
+  if (v) {
+    toast(v.split('@')[0] + ' sér vöruna undir „Beðið um þig“.' +
+          (nt.trim() ? '' : ' Skrifaðu hvað á að skoða í athugasemdina.'));
+  }
+});
+
+el('askedlist').addEventListener('click', function (e) {
+  var b = e.target.closest('[data-ask]');
+  if (!b) return;
+  var a = ASKED[Number(b.dataset.ask)];
+  if (a) openGroup({ cat1: a.cat1, cat2: a.cat2, cat3: a.cat3 }, a.sku);
+});
+
 /* Hlekkur a blad hja birgja. Vistast um leid og reiturinn missir fokus.
  * Gild slod setur bladid a "Já" ef thad var ekki merkt eda merkt "Nei":
  * bladid ER til, vid vitum hvar. */
@@ -1245,7 +1384,21 @@ function advance(status) {
 }
 el('next').onclick = function () { advance('Til yfirlesturs'); };
 el('same').onclick = function () { advance(NOCHANGE); };
-el('skip').onclick = function () { advance('Spurning'); };
+el('skip').onclick = function () {
+  // Spurning an spurningar segir engum neitt. Athugasemdin er skylda.
+  var nt = el('nt').value.trim();
+  if (!nt) {
+    el('nt').focus();
+    toast('Skrifaðu spurninguna í athugasemdina fyrst.');
+    return;
+  }
+  var s = st[i], p = items[i];
+  if (el('nt').value !== (p.note || '')) {
+    s.note = el('nt').value; p.note = s.note;
+    enqueue(p.sku, { note: s.note });
+  }
+  advance('Spurning');
+};
 
 el('back').onclick = function () {
   commit();

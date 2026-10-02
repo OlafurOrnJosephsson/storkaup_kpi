@@ -44,6 +44,8 @@ var VI_H_ = {
   brandOld:'Vörumerki (núv.)',   brandNew: 'Vörumerki (nýtt)',
   datasheet:'Gagnablað',         sds:      'Öryggisblað',
   dsUrl:  'Gagnablað (hlekkur)', sdsUrl:   'Öryggisblað (hlekkur)',
+  thumb:  'Mynd (slóð)',
+  assignee: 'Beðið um yfirlestur', askedBy: 'Beðið af',
   status: 'Staða',               note:     'Athugasemd',
   origin: 'Uppruni',
   onWeb:  'Á vef',               framework:'Rammasamningur',  url: 'Vefslóð',
@@ -56,7 +58,10 @@ var VI_H_ = {
  *  Listinn er hvítlisti af ásettu ráði: nýr reitur í vafranum getur ekki
  *  skrifað í læsta kólumnu fyrir slysni. */
 var VI_WRITABLE_ = ['owner', 'brandNew', 'descNew',
-                    'datasheet', 'sds', 'dsUrl', 'sdsUrl', 'status', 'note', 'origin'];
+                    'datasheet', 'sds', 'dsUrl', 'sdsUrl', 'status', 'note', 'origin',
+                    // `askedBy` er skrifad af thjoninum ur `assignee` -- sja
+                    // voruinnihald_saveRows. Gildi fra vafranum er hunsad.
+                    'assignee', 'askedBy'];
 
 /** Hlekkir a blod hja birgja. Adeins http(s)-slod an bila er skrifud;
  *  allt annad (texti, `javascript:`, slod med bili) er hunsad, ekki vistad. */
@@ -77,7 +82,9 @@ var VI_OPTIONAL_ = { hint: true, dsFile: true, sdsFile: true, brFile: true,
                      // Til fra endurbyggingu 2026-10-02. Fyrir hana felur appid
                      // reitina (getTree skilar linkCols:false), svo enginn skrifar
                      // hlekk sem vistun myndi henda thegjandi.
-                     dsUrl: true, sdsUrl: true };
+                     dsUrl: true, sdsUrl: true,
+                     // Sama: til fra endurbyggingu 2026-10-02 (mynd + beidnir).
+                     thumb: true, assignee: true, askedBy: true };
 
 /** Orðamark á langri lýsingu. VERÐUR að vera það sama sem PIM_WORDS_MIN_/MAX_
  *  í `pim/buildPimWorksheet.js` — lækkað úr 60 í 20 þann 2026-09-10 eftir
@@ -153,6 +160,14 @@ function vi_open_() {
  * myndi þá skrifa gildi sem gagnaprófunin hafnar. Skýr villa hér er betri en
  * Sheets-undantekning sem segir ekkert um hvað eigi að gera.
  */
+/** Lidid: netfongin i VORUINNIHALD_APP_EMAILS, lagstafir. Sama rod sem
+ *  adgangurinn og Eigandi-fellilistinn nota. */
+function vi_team_() {
+  var sets = loadConfig_().SETTINGS || {};
+  var raw = String(sets.VORUINNIHALD_APP_EMAILS || sets.PIM_OWNERS || '');
+  return raw.split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+}
+
 function vi_me_() {
   var email = adminGuard_('voruinnihald');
   var cfg = loadConfig_();
@@ -331,6 +346,23 @@ function voruinnihald_getTree() {
     if (own) g.owners[own] = (g.owners[own] || 0) + 1;
   }
 
+  // Vorur sem einhver bad THIG ad kikja a, hvar sem thaer eru i trenu.
+  var asked = [];
+  if (idx.assignee !== undefined) {
+    for (var r2 = 1; r2 < vals.length; r2++) {
+      if (String(vals[r2][idx.assignee] || '').trim().toLowerCase() !== user) continue;
+      asked.push({
+        sku: String(vals[r2][idx.sku] || '').trim(),
+        label: String(vals[r2][idx.label] || '').trim(),
+        cat1: String(vals[r2][idx.cat1] || '').trim(),
+        cat2: String(vals[r2][idx.cat2] || '').trim(),
+        cat3: String(vals[r2][idx.cat3] || '').trim(),
+        by: idx.askedBy === undefined ? '' : String(vals[r2][idx.askedBy] || '').trim(),
+        note: String(vals[r2][idx.note] || '').trim()
+      });
+    }
+  }
+
   var out = Object.keys(map).map(function (k) {
     var g = map[k];
     // Flokkur telst tekinn af þeim sem á flestar raðir í honum. Ein kólumna
@@ -349,7 +381,9 @@ function voruinnihald_getTree() {
   // `user` er NETFANGIÐ, sama gildi sem stendur i Eigandi-kolumnunni.
   return { user: user, groups: out,
            wordsMin: VI_WORDS_MIN_, wordsMax: VI_WORDS_MAX_,
-           linkCols: idx.dsUrl !== undefined && idx.sdsUrl !== undefined };
+           linkCols: idx.dsUrl !== undefined && idx.sdsUrl !== undefined,
+           assignCols: idx.assignee !== undefined && idx.askedBy !== undefined,
+           team: vi_team_(), asked: asked };
 }
 
 /**
@@ -403,6 +437,9 @@ function voruinnihald_getGroup(sel) {
       sds: String(row[idx.sds] || '').trim(),
       dsUrl: idx.dsUrl === undefined ? '' : String(row[idx.dsUrl] || '').trim(),
       sdsUrl: idx.sdsUrl === undefined ? '' : String(row[idx.sdsUrl] || '').trim(),
+      thumb: idx.thumb === undefined ? '' : String(row[idx.thumb] || '').trim(),
+      assignee: idx.assignee === undefined ? '' : String(row[idx.assignee] || '').trim(),
+      askedBy: idx.askedBy === undefined ? '' : String(row[idx.askedBy] || '').trim(),
       status: String(row[idx.status] || '').trim(),
       origin: idx.origin === undefined ? '' : String(row[idx.origin] || '').trim(),
       note: String(row[idx.note] || '').trim()
@@ -468,10 +505,20 @@ function voruinnihald_saveRows(rows) {
     // raðir flokks liggja saman því buildPimWorksheet raðar eftir
     // Level 1 → 2 → 3. Í reynd er þetta eitt kall eins og áður.
     var saved = 0, unknown = [], touched = {};
+    var team = null;
     rows.forEach(function (inRow) {
       var sku = String((inRow && inRow.sku) || '').trim();
       var r0 = rowBySku[sku];
       if (!sku || r0 === undefined) { if (sku) unknown.push(sku); return; }
+      // BEIDNI: adeins netfang ur lidinu, og `askedBy` er alltaf sa sem
+      // vistar -- aldrei thad sem vafrinn segir.
+      delete inRow.askedBy;
+      if ('assignee' in inRow) {
+        var a = String(inRow.assignee || '').trim().toLowerCase();
+        team = team || vi_team_();
+        if (a && team.indexOf(a) === -1) { delete inRow.assignee; }
+        else { inRow.assignee = a; inRow.askedBy = a ? user : ''; }
+      }
       touched[r0] = inRow;
       saved++;
     });

@@ -116,7 +116,14 @@ const PIM_COLS_ = [
   // thurrt. Fyrir NYJAN texta tharf enga agiskun: appid veit hver skrifadi.
   { key: 'origin',    head: 'Uppruni',                 w: 130, kind: 'edit' },
   { key: 'note',      head: 'Athugasemd',              w: 260, kind: 'edit', wrap: true },
+  // BEIDNI UM YFIRLESTUR (2026-10-02). `assignee` = netfang thess sem a ad
+  // kikja a voruna; `askedBy` skrifar THJONNINN, aldrei vafrinn, svo enginn
+  // getur skrad beidni i nafni annars.
+  { key: 'assignee',  head: 'Beðið um yfirlestur',     w: 150, kind: 'edit' },
+  { key: 'askedBy',   head: 'Beðið af',                w: 150, kind: 'edit' },
   { key: 'image',     head: 'Mynd í lagi',             w: 100, kind: 'join' },
+  // Slodin a myndina i Plytix, svo appid geti synt hana. Adeins lesin.
+  { key: 'thumbUrl',  head: 'Mynd (slóð)',             w:  90, kind: 'join' },
   { key: 'onWeb',     head: 'Á vef',                   w:  85, kind: 'join' },
   { key: 'indexed',   head: 'Í leitarvísi',            w: 100, kind: 'join' },
   { key: 'framework', head: 'Rammasamningur',          w: 120, kind: 'join' },
@@ -360,7 +367,10 @@ function buildPimWorksheet_() {
   });
 
   const KEEP = ['owner', 'brandNew', 'nameNew', 'descNew', 'datasheet', 'sds',
-                'dsUrl', 'sdsUrl', 'status', 'note'];
+                'dsUrl', 'sdsUrl', 'status', 'note', 'assignee', 'askedBy',
+                // `origin` VANTADI HER fra upphafi (bætt vid 2026-10-02):
+                // Uppruni (handskrifad / AI-drog) taemdist vid hverja endurbyggingu.
+                'origin'];
   const out = [];
   const orphans = [];
   const seen = {};        // Label sem fer INN i sheetid
@@ -435,6 +445,7 @@ function buildPimWorksheet_() {
     // sonnun fyrir NEI — sja athugasemdina i readKpiEnrichment_. Tomt = othekkt.
     row[idx.indexed]   = web ? 'Já' : '';
     row[idx.image]     = enrich.missingImage[p.sku] ? 'Nei' : (p.thumbnail ? 'Já' : 'Nei');
+    row[idx.thumbUrl]  = p.thumbUrl || '';
     // Rammasamningur kemur UR PLYTIX, ekki ur RAMMASAMNINGAR-flipanum.
     // Sa flipi geymir rammasamningsvorur AN VERDS (heilbrigdiseftirlit i
     // storkaup_pricing.js, sja athugasemd vid frameworkRows). Hann er thvi
@@ -1035,6 +1046,7 @@ function parsePlytixCsv_(text) {
       description: pick(r, 'description'),
       categories:  pick(r, 'categories'),
       thumbnail:   pick(r, 'thumbnail') !== '',
+      thumbUrl:    pick(r, 'thumbnail'),
       plytixStatus: pick(r, 'plytixStatus'),
       dsFile:      pick(r, 'dsFile'),
       sdsFile:     pick(r, 'sdsFile'),
