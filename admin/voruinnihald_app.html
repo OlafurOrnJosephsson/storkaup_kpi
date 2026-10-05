@@ -427,7 +427,7 @@ footer b{color:var(--ink-2);font-weight:600}
 
         <div class="fld">
           <label class="lab" for="ds">Löng lýsing</label>
-          <p class="hint">Fyrsta setningin segir hvað varan er og fyrir hvern, og verður að standa sjálfstæð. Einfaldar vörur ná ekki mörgum orðum og eiga ekki að teygja sig.</p>
+          <p class="hint">Fyrsta setningin segir hvað varan er og fyrir hvern, og verður að standa sjálfstæð. Tölur fara í punktalista neðst, ein á línu: <code>- Afl: 700W</code>. Einfaldar vörur ná ekki mörgum orðum og eiga ekki að teygja sig.</p>
           <textarea id="ds"></textarea>
 
           <div class="gauge" id="gauge" data-v="short">
@@ -586,8 +586,9 @@ var esc = function (s) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
   });
 };
+// Punktalistar (2026-10-05): "- " fremst i linu er snid, ekki ord.
 var words = function (t) {
-  var m = String(t == null ? '' : t).trim().match(/\S+/g);
+  var m = String(t == null ? '' : t).replace(/^[ \t]*-[ \t]+/gm, '').trim().match(/\S+/g);
   return m ? m.length : 0;
 };
 var IS = function (n) { return Number(n || 0).toLocaleString('is-IS'); };

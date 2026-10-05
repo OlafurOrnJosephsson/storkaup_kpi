@@ -153,7 +153,9 @@ const PIM_COLS_ = [
 // aldrei sönn. Efra markið er óbreytt.
 //
 // Þetta gildi VERÐUR að vera það sama og MIN_W/MAX_W í skrifsýninni.
-const PIM_WORDS_MIN_ = 20;
+// Laekkad ur 20 i 10 (2026-10-05): matvorur sem segja sig sjalfar i
+// voruheitinu thurfa ekki langa lysingu. VERDUR ad stemma vid VI_WORDS_MIN_.
+const PIM_WORDS_MIN_ = 10;
 const PIM_WORDS_MAX_ = 150;
 
 // 'Óbreytt' baettist vid 2026-09-11: varan var SKODUD og tharf enga
@@ -218,8 +220,9 @@ function pimPrefillYesNo_(current, file) {
   return String(file == null ? '' : file).trim() ? 'Já' : '';
 }
 
+// Punktalistar (2026-10-05): "- " fremst i linu er snid, ekki ord.
 function pimWords_(t) {
-  const m = String(t == null ? '' : t).trim().match(/\S+/g);
+  const m = String(t == null ? '' : t).replace(/^[ \t]*-[ \t]+/gm, '').trim().match(/\S+/g);
   return m ? m.length : 0;
 }
 
@@ -704,9 +707,11 @@ function writePimSheet_(sh, rows) {
   // Skiptir öllu fyrir hraða þegar raðirnar eru þúsundir.
   sh.getRange(L.words + '2').setFormula(
     '=ARRAYFORMULA(IF(' + R('label') + '="","",' +
+    // Punktalistar (2026-10-05): linubil verda bil og "- " fremst i linu
+    // er fjarlaegt, annars rynnu ord saman yfir linur og strikin teldust ord.
     'IF(TRIM(' + R('descNew') + ')="",0,' +
-    'LEN(TRIM(' + R('descNew') + '))-' +
-    'LEN(SUBSTITUTE(TRIM(' + R('descNew') + ')," ",""))+1)))'
+    'LEN(TRIM(REGEXREPLACE(REGEXREPLACE(' + R('descNew') + ',"(^|\\n)[ \\t]*-[ \\t]+"," "),"\\s+"," ")))-' +
+    'LEN(SUBSTITUTE(TRIM(REGEXREPLACE(REGEXREPLACE(' + R('descNew') + ',"(^|\\n)[ \\t]*-[ \\t]+"," "),"\\s+"," "))," ",""))+1)))'
   );
   // ARRAYFORMULA ræður ekki við AND()/OR(): margföldun = AND, samlagning = OR.
   sh.getRange(L.done + '2').setFormula(

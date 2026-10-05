@@ -96,7 +96,7 @@ var VI_OPTIONAL_ = { hint: true, dsFile: true, sdsFile: true, brFile: true,
  *  sheetsins gildinu og vistun fellur. */
 var VI_STATUS_NOCHANGE_ = 'Óbreytt';
 
-var VI_WORDS_MIN_ = 20;
+var VI_WORDS_MIN_ = 10;   // laekkad ur 20, 2026-10-05
 var VI_WORDS_MAX_ = 150;
 
 // ---------------------------------------------------------------------------
@@ -289,8 +289,9 @@ function vi_key_(a, b, c) {
   return [a || '', b || '', c || ''].join('\u0000');
 }
 
+// Punktalistar (2026-10-05): "- " fremst i linu er snid, ekki ord.
 function vi_words_(t) {
-  var m = String(t == null ? '' : t).trim().match(/\S+/g);
+  var m = String(t == null ? '' : t).replace(/^[ \t]*-[ \t]+/gm, '').trim().match(/\S+/g);
   return m ? m.length : 0;
 }
 

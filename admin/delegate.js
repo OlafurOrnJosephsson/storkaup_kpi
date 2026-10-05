@@ -118,6 +118,7 @@ function voruinnihald_draft(ctx) {
   // er. Skrain i Plytix gengur fyrir hlekk sem starfsmadur fann hja birgja.
   delete ctx.docUrl;
   delete ctx.labels;
+  delete ctx.hint;
   try {
     var o = vi_open_(), idx = o.idx, vals = o.vals;
     var sku = String(ctx.sku || '').trim();
@@ -129,6 +130,8 @@ function voruinnihald_draft(ctx) {
       ctx.docUrl = (file.split(/,(?=\s*https?:)/)[0] || link || '').trim();
       // Vottanir ur Plytix: STADFESTAR, svo likanid ma nefna thaer.
       ctx.labels = idx.labels === undefined ? '' : String(vals[r][idx.labels] || '').trim();
+      // Visbending appsins um gomlu lysinguna (AFRITUÐ, HTML, ORÐALAG).
+      ctx.hint = idx.hint === undefined ? '' : String(vals[r][idx.hint] || '').trim();
       break;
     }
   } catch (e) {
