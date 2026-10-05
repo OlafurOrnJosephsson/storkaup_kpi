@@ -111,6 +111,8 @@ function onOpen() {
       ui.createMenu('Admin')
         .addItem('Clear Customer Analysis', 'menu_clearCustomerAnalysis')
         .addItem('Clear All Summaries', 'menu_clearAllSummaries')
+        .addSeparator()
+        .addItem('🍪 Storkaup session cookie — setja nýtt', 'menu_setStorkaupSessionCookie')
     )
     .addToUi();
 }
@@ -1059,4 +1061,17 @@ function toast_(msg, title) {
   } catch (err) {
     Logger.log('toast_ skipped: ' + err);
   }
+}
+
+function menu_setStorkaupSessionCookie() {
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.prompt(
+    'Storkaup session cookie',
+    'Innskráð(ur) á storkaup.is → Network → /api/auth/session → Copy as cURL.\n' +
+    'Límdu Cookie-gildið (eða bara authjs.storkaup.session-token=…). ^-escape úr cmd er í lagi.',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  const out = setStorkaupSessionCookie_(resp.getResponseText());
+  ui.alert(out.ok ? '✅ ' + out.message : '❌ ' + out.message);
 }

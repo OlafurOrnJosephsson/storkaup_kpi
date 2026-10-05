@@ -46,15 +46,7 @@ function getStorkaupAccessToken_(forceRefresh) {
     if (cached && (Date.now() - ts) < TTL) return cached;
   }
 
-  // Chrome "Copy as cURL (cmd)" escapar með ^ (^%^7C, ^$, ^" aftast) —
-  // eitt ^ aftan á session-token og /api/auth/session skilar null.
-  const cookie = String(props.getProperty('STORKAUP_SESSION_COOKIE') || '')
-    .trim()
-    .replace(/^-b\s+/i, '')
-    .replace(/^cookie:\s*/i, '')
-    .replace(/\^(.)/g, '$1')
-    .replace(/\^$/, '')
-    .replace(/^"+|"+$/g, '');
+  const cookie = normalizeStorkaupCookie_(props.getProperty('STORKAUP_SESSION_COOKIE'));
   if (cookie) {
     const res = UrlFetchApp.fetch('https://www.storkaup.is/api/auth/session', {
       method: 'get',
@@ -85,6 +77,40 @@ function getStorkaupAccessToken_(forceRefresh) {
   throw new Error(
     'Vantar STORKAUP_SESSION_COOKIE (sjálfvirkt, mælt með) eða STORKAUP_GQL_BEARER (handvirkt).'
   );
+}
+
+/************************************************************
+ * 🍪 normalizeStorkaupCookie_
+ *   Chrome "Copy as cURL (cmd)" escapar með ^ (^%^7C, ^$, ^" aftast) —
+ *   eitt ^ aftan á session-token og /api/auth/session skilar null.
+ *   Tekur líka við "-b ..." og "Cookie: ..." eins og það er límt.
+ ************************************************************/
+function normalizeStorkaupCookie_(raw) {
+  return String(raw || '')
+    .trim()
+    .replace(/^-b\s+/i, '')
+    .replace(/^cookie:\s*/i, '')
+    .replace(/\^(.)/g, '$1')
+    .replace(/\^$/, '')
+    .replace(/^"+|"+$/g, '');
+}
+
+/************************************************************
+ * 🍪 setStorkaupSessionCookie_ — vista nýtt cookie með kóða
+ *   Script Properties-ritillinn vistar stundum ekki (gildið
+ *   hrekkur til baka við refresh, engin villa). Hér er það
+ *   skrifað beint, token-cache hreinsað og cookie-ið prófað.
+ ************************************************************/
+function setStorkaupSessionCookie_(raw) {
+  const cookie = normalizeStorkaupCookie_(raw);
+  if (!/session-token/.test(cookie)) {
+    return { ok: false, message: 'Fann ekki session-token í því sem var límt inn.' };
+  }
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('STORKAUP_SESSION_COOKIE', cookie);
+  props.deleteProperty('STORKAUP_ACCESS_TOKEN');
+  props.deleteProperty('STORKAUP_ACCESS_TOKEN_TS');
+  return checkStorkaupAuth();
 }
 
 function storkaupParentSku_(rawSku) {
