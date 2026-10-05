@@ -46,7 +46,15 @@ function getStorkaupAccessToken_(forceRefresh) {
     if (cached && (Date.now() - ts) < TTL) return cached;
   }
 
-  const cookie = props.getProperty('STORKAUP_SESSION_COOKIE');
+  // Chrome "Copy as cURL (cmd)" escapar með ^ (^%^7C, ^$, ^" aftast) —
+  // eitt ^ aftan á session-token og /api/auth/session skilar null.
+  const cookie = String(props.getProperty('STORKAUP_SESSION_COOKIE') || '')
+    .trim()
+    .replace(/^-b\s+/i, '')
+    .replace(/^cookie:\s*/i, '')
+    .replace(/\^(.)/g, '$1')
+    .replace(/\^$/, '')
+    .replace(/^"+|"+$/g, '');
   if (cookie) {
     const res = UrlFetchApp.fetch('https://www.storkaup.is/api/auth/session', {
       method: 'get',
@@ -64,8 +72,9 @@ function getStorkaupAccessToken_(forceRefresh) {
     }
     throw new Error(
       'Storkaup session cookie útrunnið/ógilt. Sæktu nýtt: innskráð(ur) → ' +
-      'Network → /api/auth/session → Copy as cURL → afritaðu Cookie-hausinn í ' +
-      'Script Property STORKAUP_SESSION_COOKIE.'
+      'Network → /api/auth/session → Copy as cURL (bash) → afritaðu ' +
+      'authjs.storkaup.session-token=… í Script Property STORKAUP_SESSION_COOKIE. ' +
+      '(HTTP ' + res.getResponseCode() + ')'
     );
   }
 
