@@ -293,6 +293,21 @@ input[type=text]:focus,textarea:focus{border-color:var(--brand);background:var(-
 .askrow .an{font-weight:600;font-size:14px;overflow-wrap:anywhere}
 .askrow .ap{font-size:12px;color:var(--ink-3);font-family:var(--f-mono)}
 .askrow .aq{grid-column:1/-1;font-size:12.5px;color:var(--ink-2)}
+.rel h3{font-size:12px;font-weight:600;color:var(--ink-3);margin:10px 0 5px}
+.rel h3:first-of-type{margin-top:0}
+.rchips{display:flex;flex-wrap:wrap;gap:6px}
+.rchip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:4px 9px;border-radius:5px;
+  border:1px solid var(--rule-2);background:var(--surface);color:var(--ink-2);max-width:100%}
+.rchip .rs{font-family:var(--f-mono);font-size:11px;color:var(--ink-3)}
+.rchip button{font-family:inherit;font-size:12px;font-weight:700;line-height:1;padding:2px 6px;border-radius:4px;
+  border:1px solid var(--rule-2);background:var(--paper);color:var(--brand-ink);cursor:pointer}
+.rchip.mine{border-color:var(--brand);background:var(--brand-wash)}
+.relnone{font-size:12.5px;color:var(--ink-3)}
+.reladd{display:flex;gap:6px;margin-top:8px}
+.reladd input{font-family:var(--f-mono);font-size:12.5px;padding:5px 8px;border:1px solid var(--rule-2);
+  border-radius:4px;background:var(--paper);color:var(--ink);width:130px}
+.reladd button{font-family:inherit;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:4px;
+  border:1px solid var(--brand);background:var(--surface);color:var(--brand-ink);cursor:pointer}
 .rules code{font-family:var(--f-mono);font-size:11px;color:var(--brand-ink);
   background:var(--brand-wash);padding:1px 5px;border-radius:3px;height:fit-content}
 
@@ -503,6 +518,14 @@ footer b{color:var(--ink-2);font-weight:600}
           <h2>Núverandi lýsing</h2>
           <p class="was" id="was"></p>
           <div class="wasmeta" id="wasmeta"></div>
+        </div>
+        <div class="panel rel" id="relpanel">
+          <h2>Tengdar vörur</h2>
+          <div id="relbody"></div>
+          <div class="reladd">
+            <input type="text" id="reladd-sku" placeholder="Vörunúmer" autocomplete="off">
+            <button type="button" id="reladd-btn">Bæta við tillögu</button>
+          </div>
         </div>
         <div class="panel" id="sibpanel" hidden>
           <h2>Systurvörur</h2>
@@ -1043,6 +1066,7 @@ function openGroup(sel, atSku) {
           tri_ds: p.datasheet || '', tri_sds: p.sds || '',
           url_ds: p.dsUrl || '', url_sds: p.sdsUrl || '',
           note: p.note || '', assignee: p.assignee || '',
+          relNew: splitSkus(p.relNew),
           status: p.status || '', origin: p.origin || '',
           touched: !!(p.nameNew || p.descNew || p.status === NOCHANGE),
           save: (p.nameNew || p.descNew || p.status === NOCHANGE) ? 'saved' : 'new',
@@ -1094,6 +1118,52 @@ function drawTri(key) {
     return '<button type="button" aria-pressed="' + (v === cur) + '" data-v="' + esc(v) + '">' +
       esc(v) + '</button>';
   }).join('');
+}
+
+function splitSkus(v) {
+  return String(v || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+}
+
+/* TENGDAR VORUR. Thrennt til ad velja ur, og tillaga starfsmannsins sem fer
+ * i vinnusheetid. Ekkert breytist i Plytix fyrr en tillagan er flutt inn. */
+function drawRel(p, s) {
+  var names = p.relNames || {};
+  var mine = {};
+  s.relNew.forEach(function (k) { mine[k] = true; });
+  var chip = function (sku, extra, btn) {
+    return '<span class="rchip' + (mine[sku] ? ' mine' : '') + '">' +
+      '<span>' + esc(names[sku] || 'Vara') + '</span><span class="rs">' + esc(sku) + '</span>' +
+      (extra ? '<span class="rs">' + esc(extra) + '</span>' : '') + (btn || '') + '</span>';
+  };
+  var add = function (sku) {
+    return mine[sku] ? '' : '<button type="button" data-reladd="' + esc(sku) + '" title="Bæta við tillögu">+</button>';
+  };
+  var html = '';
+  var now = splitSkus(p.relNow), desc = splitSkus(p.relDesc), sugg = p.relSugg || [];
+  html += '<h3>Tengdar á vefnum núna</h3>' + (now.length
+    ? '<div class="rchips">' + now.map(function (k) { return chip(k, '', ''); }).join('') + '</div>'
+    : '<p class="relnone">Engar.</p>');
+  if (desc.length) {
+    html += '<h3>Nefndar í núverandi lýsingu</h3><div class="rchips">' +
+      desc.map(function (k) { return chip(k, '', add(k)); }).join('') + '</div>';
+  }
+  if (sugg.length) {
+    html += '<h3>Oft keyptar saman (körfugreining)</h3><div class="rchips">' +
+      sugg.map(function (g) { return chip(g.sku, g.reason || '', add(g.sku)); }).join('') + '</div>';
+  }
+  html += '<h3>Tillagan þín</h3>' + (s.relNew.length
+    ? '<div class="rchips">' + s.relNew.map(function (k) {
+        return chip(k, '', '<button type="button" data-reldel="' + esc(k) + '" title="Taka út">×</button>');
+      }).join('') + '</div>'
+    : '<p class="relnone">Engin. Bættu við með + eða vörunúmeri.</p>');
+  el('relbody').innerHTML = html;
+}
+
+function relSave(p, s) {
+  p.relNew = s.relNew.join(', ');
+  s.touched = true;
+  enqueue(p.sku, { relNew: p.relNew });
+  drawRel(p, s);
 }
 
 function drawThumb(p) {
@@ -1184,7 +1254,7 @@ function render() {
   el('nm').value = s.nm || p.nameOld;
   el('ds').value = s.ds;
   el('nt').value = s.note;
-  drawThumb(p); drawAsk(p, s);
+  drawThumb(p); drawAsk(p, s); drawRel(p, s);
   el('ds').placeholder = 'Skrifaðu lýsingu á ' + p.label.split(',')[0] + '…';
 
   var rows = [['SKU', p.sku]];
@@ -1311,6 +1381,27 @@ document.querySelectorAll('.tri').forEach(function (box) {
     enqueue(items[i].sku, k === 'ds' ? { datasheet: b.dataset.v } : { sds: b.dataset.v });
   });
 });
+el('relpanel').addEventListener('click', function (e) {
+  var p = items[i], s = st[i];
+  var a = e.target.closest('[data-reladd]'), d = e.target.closest('[data-reldel]');
+  if (a) {
+    var k = a.dataset.reladd;
+    if (s.relNew.indexOf(k) === -1) s.relNew.push(k);
+    relSave(p, s);
+  } else if (d) {
+    s.relNew = s.relNew.filter(function (x) { return x !== d.dataset.reldel; });
+    relSave(p, s);
+  } else if (e.target.id === 'reladd-btn') {
+    var v = el('reladd-sku').value.trim().replace(/^STO_/i, '');
+    if (!/^[0-9A-Za-z_\-]{3,20}$/.test(v)) { toast('Skrifaðu vörunúmer, t.d. 119739.'); return; }
+    if (v === p.sku) { toast('Þetta er varan sjálf.'); return; }
+    if (s.relNew.indexOf(v) === -1) s.relNew.push(v);
+    el('reladd-sku').value = '';
+    relSave(p, s);
+    toast('Vörunúmer sem er ekki í vörulistanum vistast ekki.');
+  }
+});
+
 /* Athugasemd: vistast thegar reiturinn missir fokus. */
 el('nt').addEventListener('change', function () {
   var s = st[i], p = items[i], v = this.value;

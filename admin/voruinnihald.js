@@ -46,6 +46,8 @@ var VI_H_ = {
   dsUrl:  'Gagnablað (hlekkur)', sdsUrl:   'Öryggisblað (hlekkur)',
   thumb:  'Mynd (slóð)',          labels:   'Vottanir',
   vendorNo: 'Vörunúmer birgja',
+  relNow: 'Tengdar vörur (núv.)', relDesc: 'Tengdar í lýsingu',
+  relNew: 'Tillaga að tengdum vörum',
   assignee: 'Beðið um yfirlestur', askedBy: 'Beðið af',
   status: 'Staða',               note:     'Athugasemd',
   origin: 'Uppruni',
@@ -62,7 +64,7 @@ var VI_WRITABLE_ = ['owner', 'brandNew', 'descNew',
                     'datasheet', 'sds', 'dsUrl', 'sdsUrl', 'status', 'note', 'origin',
                     // `askedBy` er skrifad af thjoninum ur `assignee` -- sja
                     // voruinnihald_saveRows. Gildi fra vafranum er hunsad.
-                    'assignee', 'askedBy'];
+                    'assignee', 'askedBy', 'relNew'];
 
 /** Hlekkir a blod hja birgja. Adeins http(s)-slod an bila er skrifud;
  *  allt annad (texti, `javascript:`, slod med bili) er hunsad, ekki vistad. */
@@ -86,7 +88,7 @@ var VI_OPTIONAL_ = { hint: true, dsFile: true, sdsFile: true, brFile: true,
                      dsUrl: true, sdsUrl: true,
                      // Sama: til fra endurbyggingu 2026-10-02 (mynd + beidnir).
                      thumb: true, assignee: true, askedBy: true, labels: true,
-                     vendorNo: true };
+                     vendorNo: true, relNow: true, relDesc: true, relNew: true };
 
 /** Orðamark á langri lýsingu. VERÐUR að vera það sama sem PIM_WORDS_MIN_/MAX_
  *  í `pim/buildPimWorksheet.js` — lækkað úr 60 í 20 þann 2026-09-10 eftir
@@ -290,6 +292,34 @@ function vi_key_(a, b, c) {
 }
 
 // Punktalistar (2026-10-05): "- " fremst i linu er snid, ekki ord.
+/** Sama normalisering og normSku_ i buildPimWorksheet.js: forskeyti og
+ *  einingarending burt, tolur an forleidandi nulla. */
+function vi_norm_(v) {
+  var s = String(v == null ? '' : v).trim();
+  if (!s) return '';
+  s = s.replace(/^[A-Za-zÁÉÍÓÚÝÐÞÆÖ]+[_\-\s]+/, '').replace(/[_\-](STK|KASSI|BRETTI|PK|PAKKI)$/i, '');
+  return /^\d+$/.test(s) ? String(parseInt(s, 10)) : s.toUpperCase();
+}
+
+/** Tillogur ur korfugreiningu (TENGSL_TILLOGUR i sama skjali): SKU i A,
+ *  tillaga i D, einkunn i G, astaeda i H. Tomur eda horfinn flipi = engar. */
+function vi_basketSuggestions_(ss) {
+  var out = {};
+  var sh = ss.getSheetByName('TENGSL_TILLOGUR');
+  if (!sh || sh.getLastRow() < 2) return out;
+  var v = sh.getRange(2, 1, sh.getLastRow() - 1, 8).getValues();
+  v.forEach(function (r) {
+    var a = vi_norm_(r[0]), b = vi_norm_(r[3]);
+    if (!a || !b || a === b) return;
+    (out[a] = out[a] || []).push({ sku: b, score: Number(r[6]) || null, reason: String(r[7] || '').trim() });
+  });
+  Object.keys(out).forEach(function (k) {
+    out[k].sort(function (x, y) { return (y.score || 0) - (x.score || 0); });
+    out[k] = out[k].slice(0, 6);
+  });
+  return out;
+}
+
 function vi_words_(t) {
   var m = String(t == null ? '' : t).replace(/^[ \t]*-[ \t]+/gm, '').trim().match(/\S+/g);
   return m ? m.length : 0;
@@ -402,6 +432,7 @@ function voruinnihald_getGroup(sel) {
   var o = vi_open_(), idx = o.idx, vals = o.vals;
   var want = vi_rows_(vals, idx, sel);
   var items = [];
+  var sugg = vi_basketSuggestions_(o.sh.getParent());
 
   for (var q = 0; q < want.length; q++) {
     var r = want[q];
@@ -443,6 +474,10 @@ function voruinnihald_getGroup(sel) {
       thumb: idx.thumb === undefined ? '' : String(row[idx.thumb] || '').trim(),
       labels: idx.labels === undefined ? '' : String(row[idx.labels] || '').trim(),
       vendorNo: idx.vendorNo === undefined ? '' : String(row[idx.vendorNo] || '').trim(),
+      relNow: idx.relNow === undefined ? '' : String(row[idx.relNow] || '').trim(),
+      relDesc: idx.relDesc === undefined ? '' : String(row[idx.relDesc] || '').trim(),
+      relNew: idx.relNew === undefined ? '' : String(row[idx.relNew] || '').trim(),
+      relSugg: sugg[sku] || [],
       assignee: idx.assignee === undefined ? '' : String(row[idx.assignee] || '').trim(),
       askedBy: idx.askedBy === undefined ? '' : String(row[idx.askedBy] || '').trim(),
       status: String(row[idx.status] || '').trim(),
@@ -450,6 +485,24 @@ function voruinnihald_getGroup(sel) {
       note: String(row[idx.note] || '').trim()
     });
   }
+  // Heiti a tengdu vorunum, svo appid syni "Lok a kaffimal" en ekki bara 119739.
+  // Tengdar vorur eru oft i odrum flokki, svo leitad er i ollu sheetinu.
+  var need = {};
+  items.forEach(function (it) {
+    [it.relNow, it.relDesc, it.relNew].join(',').split(',').forEach(function (x) {
+      x = x.trim(); if (x) need[x] = true;
+    });
+    it.relSugg.forEach(function (g) { need[g.sku] = true; });
+  });
+  var names = {};
+  if (Object.keys(need).length) {
+    for (var q = 1; q < vals.length; q++) {
+      var k = String(vals[q][idx.sku] || '').trim();
+      if (need[k]) names[k] = String(vals[q][idx.label] || '').trim();
+    }
+  }
+  items.forEach(function (it) { it.relNames = names; });
+
   if (!items.length) {
     throw new Error('Enginn flokkur með slóðina ' +
       [sel.cat1, sel.cat2, sel.cat3].filter(Boolean).join(' › ') + '.');
@@ -518,6 +571,14 @@ function voruinnihald_saveRows(rows) {
       // BEIDNI: adeins netfang ur lidinu, og `askedBy` er alltaf sa sem
       // vistar -- aldrei thad sem vafrinn segir.
       delete inRow.askedBy;
+      if ('relNew' in inRow) {
+        var seenRel = {}, keep = [];
+        String(inRow.relNew || '').split(',').forEach(function (x) {
+          var s = vi_norm_(x);
+          if (s && s !== sku && rowBySku[s] !== undefined && !seenRel[s]) { seenRel[s] = true; keep.push(s); }
+        });
+        inRow.relNew = keep.join(', ');
+      }
       if ('assignee' in inRow) {
         var a = String(inRow.assignee || '').trim().toLowerCase();
         team = team || vi_team_();

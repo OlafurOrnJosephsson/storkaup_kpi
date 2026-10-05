@@ -50,6 +50,9 @@ const PIM_HEADER_MAP_ = {
   // Vorunumer birgja, svo starfsmadur geti flett vorunni upp hja birgja.
   // Maelt 2026-10-02: 3.293 af 4.453 vorum hafa thad.
   vendorNo:    ['Original Vendor Item No', 'Vörunúmer birgja'],
+  // Tengdar vorur i Plytix: "STO_9000792#1, STO_9004492_KASSI#1". Maelt
+  // 2026-10-05: 2.036 af 4.453 vorum hafa tengsl.
+  related:     ['Related Products'],
   certs:       ['Certificates'],
   // Vidhengin. MAELT I UTDRAETTINUM 2026-09-11 a 4.477 vorum i vinnusetti:
   //   Datasheet Files        1.454 (32,5%)
@@ -127,6 +130,12 @@ const PIM_COLS_ = [
   // thurrt. Fyrir NYJAN texta tharf enga agiskun: appid veit hver skrifadi.
   { key: 'origin',    head: 'Uppruni',                 w: 130, kind: 'edit' },
   { key: 'note',      head: 'Athugasemd',              w: 260, kind: 'edit', wrap: true },
+  // TENGDAR VORUR (2026-10-05). `relNow` er thad sem er i Plytix, `relDesc`
+  // eru vorunumer sem gamla lysingin nefnir ("passar a vnr. 102890") og eru
+  // ekki tengd nu thegar. `relNew` er tillaga starfsmanns ur appinu.
+  { key: 'relNow',    head: 'Tengdar vörur (núv.)',    w: 160, kind: 'join' },
+  { key: 'relDesc',   head: 'Tengdar í lýsingu',       w: 140, kind: 'join' },
+  { key: 'relNew',    head: 'Tillaga að tengdum vörum', w: 180, kind: 'edit' },
   // BEIDNI UM YFIRLESTUR (2026-10-02). `assignee` = netfang thess sem a ad
   // kikja a voruna; `askedBy` skrifar THJONNINN, aldrei vafrinn, svo enginn
   // getur skrad beidni i nafni annars.
@@ -382,7 +391,7 @@ function buildPimWorksheet_() {
   });
 
   const KEEP = ['owner', 'brandNew', 'nameNew', 'descNew', 'datasheet', 'sds',
-                'dsUrl', 'sdsUrl', 'status', 'note', 'assignee', 'askedBy',
+                'dsUrl', 'sdsUrl', 'status', 'note', 'assignee', 'askedBy', 'relNew',
                 // `origin` VANTADI HER fra upphafi (bætt vid 2026-10-02):
                 // Uppruni (handskrifad / AI-drog) taemdist vid hverja endurbyggingu.
                 'origin'];
@@ -391,6 +400,10 @@ function buildPimWorksheet_() {
   const seen = {};        // Label sem fer INN i sheetid
   const inFile = {};      // Label sem er i skranni, hvad sem stodunni lidur
   let updated = 0, added = 0, skipped = 0;
+
+  // Oll SKU i utdraettinum: pimDescSkuRefs_ tekur adeins vorunumer sem eru til.
+  const allSkus = {};
+  products.forEach(function (q) { if (q.sku) allSkus[q.sku] = true; });
 
   products.forEach(function (p) {
     const label = String(p.label || '').trim();
@@ -463,6 +476,9 @@ function buildPimWorksheet_() {
     row[idx.thumbUrl]  = p.thumbUrl || '';
     row[idx.labels]    = p.labels || '';
     row[idx.vendorNo]  = p.vendorNo || '';
+    const relNow = pimRelatedList_(p.related, p.sku);
+    row[idx.relNow]    = relNow.join(', ');
+    row[idx.relDesc]   = pimDescSkuRefs_(p.description, p.sku, allSkus, relNow).join(', ');
     // Rammasamningur kemur UR PLYTIX, ekki ur RAMMASAMNINGAR-flipanum.
     // Sa flipi geymir rammasamningsvorur AN VERDS (heilbrigdiseftirlit i
     // storkaup_pricing.js, sja athugasemd vid frameworkRows). Hann er thvi
@@ -1073,7 +1089,8 @@ function parsePlytixCsv_(text) {
       statusKnown: col.plytixStatus !== undefined,
       framework:   /^(true|1|já|ja|yes)$/i.test(pick(r, 'framework')),
       labels:      pimMergeLabels_(pick(r, 'labels'), pick(r, 'certs')),
-      vendorNo:    pick(r, 'vendorNo')
+      vendorNo:    pick(r, 'vendorNo'),
+      related:     pick(r, 'related')
     };
   }).filter(function (p) { return p.label; });
 }
@@ -1106,6 +1123,34 @@ function pimMergeLabels_(a, b) {
     });
   });
   return out.join(', ');
+}
+
+/** Tengdar vorur ur Plytix sem SKU-listi a sama formi og SKU-kolumnan:
+ *  "#1" (magn) og _STK/_KASSI-endingar burt, tvitekningar og varan sjalf ut. */
+function pimRelatedList_(raw, self) {
+  const seen = {}, out = [];
+  String(raw || '').split(',').forEach(function (x) {
+    let s = x.split('#')[0].trim().replace(/[_\-](STK|KASSI|BRETTI|PK|PAKKI)$/i, '');
+    s = normSku_(s);
+    if (!s || s === self || seen[s]) return;
+    seen[s] = true; out.push(s);
+  });
+  return out;
+}
+
+/** Vorunumer sem lysingin nefnir og eru til i vorulistanum, an vorunnar
+ *  sjalfrar og an theirra sem eru tengd nu thegar. 5-7 stafa tolur sem
+ *  standa einar (ekki hluti af 12,5 eda 1.000). */
+function pimDescSkuRefs_(desc, self, allSkus, already) {
+  const t = String(desc || '').replace(/<[^>]+>/g, ' ');
+  const skip = {};
+  (already || []).forEach(function (s) { skip[s] = true; });
+  const out = [];
+  (t.match(/(?:^|[^\d,.])(\d{5,7})(?![\d,.]\d)/g) || []).forEach(function (m) {
+    const s = normSku_(m.replace(/^\D/, ''));
+    if (s && s !== self && allSkus[s] && !skip[s]) { skip[s] = true; out.push(s); }
+  });
+  return out;
 }
 
 function plytixCategory_(path, level) {
