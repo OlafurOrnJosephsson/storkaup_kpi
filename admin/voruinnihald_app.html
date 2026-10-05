@@ -578,6 +578,8 @@ var USER = '', MINW = 20, MAXW = 150;
 var LINKS = false;
 // Beidnir um yfirlestur: adeins thegar vinnusheetid hefur kolumnurnar.
 var ASSIGN = false, TEAM = [], ASKED = [];
+// Tillaga ad tengdum vorum: adeins thegar kolumnan er til (eftir endurbyggingu).
+var RELCOLS = false;
 // Voruheitin eru i bid (2026-10-02): reiturinn er skrifvarinn og hvorki
 // snertir voruna ne er sendur. Sjá VI_WRITABLE_ i voruinnihald.js.
 var NAME_FROZEN = true;
@@ -1001,6 +1003,7 @@ function loadTree(then) {
     .withSuccessHandler(function (r) {
       USER = r.user; MINW = r.wordsMin; MAXW = r.wordsMax; LINKS = !!r.linkCols;
       ASSIGN = !!r.assignCols; TEAM = r.team || []; ASKED = r.asked || [];
+      RELCOLS = !!r.relCols;
       TREE = r.groups;
       el('who-dot').textContent = (USER || '?').slice(0, 1).toUpperCase();
       el('who-name').textContent = USER;
@@ -1136,7 +1139,7 @@ function drawRel(p, s) {
       (extra ? '<span class="rs">' + esc(extra) + '</span>' : '') + (btn || '') + '</span>';
   };
   var add = function (sku) {
-    return mine[sku] ? '' : '<button type="button" data-reladd="' + esc(sku) + '" title="Bæta við tillögu">+</button>';
+    return (mine[sku] || !RELCOLS) ? '' : '<button type="button" data-reladd="' + esc(sku) + '" title="Bæta við tillögu">+</button>';
   };
   var html = '';
   var now = splitSkus(p.relNow), desc = splitSkus(p.relDesc), sugg = p.relSugg || [];
@@ -1151,6 +1154,8 @@ function drawRel(p, s) {
     html += '<h3>Oft keyptar saman (körfugreining)</h3><div class="rchips">' +
       sugg.map(function (g) { return chip(g.sku, g.reason || '', add(g.sku)); }).join('') + '</div>';
   }
+  el('relpanel').querySelector('.reladd').hidden = !RELCOLS;
+  if (!RELCOLS) { el('relbody').innerHTML = html; return; }
   html += '<h3>Tillagan þín</h3>' + (s.relNew.length
     ? '<div class="rchips">' + s.relNew.map(function (k) {
         return chip(k, '', '<button type="button" data-reldel="' + esc(k) + '" title="Taka út">×</button>');

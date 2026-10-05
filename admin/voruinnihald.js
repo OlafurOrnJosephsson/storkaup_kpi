@@ -416,6 +416,7 @@ function voruinnihald_getTree() {
            wordsMin: VI_WORDS_MIN_, wordsMax: VI_WORDS_MAX_,
            linkCols: idx.dsUrl !== undefined && idx.sdsUrl !== undefined,
            assignCols: idx.assignee !== undefined && idx.askedBy !== undefined,
+           relCols: idx.relNew !== undefined,
            team: vi_team_(), asked: asked };
 }
 
