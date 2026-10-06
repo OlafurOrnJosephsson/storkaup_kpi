@@ -766,29 +766,7 @@ function writePimSheet_(sh, rows) {
     .requireValueInList(PIM_STATUSES_, true).setAllowInvalid(true).build();
   const dvYesNo = SpreadsheetApp.newDataValidation()
     .requireValueInList(PIM_YESNO_, true).setAllowInvalid(false).build();
-  const owners = pimOwners_();
-  if (owners.length) {
-    // setAllowInvalid(TRUE): vidvorun, ekki hofnun. Skipt ur false 2026-09-10.
-    //
-    // HVERS VEGNA: gagnaprofunin er ljosmynd af config-rodhinni tekin VID
-    // BYGGINGU. Leidrettirdu rodhina en byggir ekki (eda byggir innan fimm
-    // minutna medan loadConfig_ cache-ar ennþa gamla gildid) heldur sheetid
-    // gamla listann. Tha hafnar thad thvi sem appid skrifar og skraning
-    // brotnar med skilabodum sem nefna gamla listann — sem las eins og
-    // config-rodhin vaeri enn rong.
-    //
-    // Strong hofnun var til ad verja handinnslatt. Nu skrifar APPID thennan
-    // reit og gildid kemur ur adminGuard_, svo thad getur ekki verid
-    // innslattarvilla. Handinnslattur faer enn appelsinugulan thrihyrning.
-    // Vidvorun laetur gliðnun milli config og sheets kosta merki, ekki
-    // utfall.
-    const dvOwner = SpreadsheetApp.newDataValidation()
-      .requireValueInList(owners, true).setAllowInvalid(true).build();
-    sh.getRange(2, pimColNum_('owner'), lastRow - 1, 1).setDataValidation(dvOwner);
-  } else {
-    Logger.log('ℹ️ PIM_OWNERS vantar í STORKAUP_CONFIG → SETTINGS. Eigandi-kólumnan ' +
-               'er frjáls texti. Bættu við röð: SETTINGS | PIM_OWNERS | Nafn1, Nafn2, ...');
-  }
+  applyPimOwnerValidation_(sh, lastRow);
 
   sh.getRange(2, pimColNum_('status'), lastRow - 1, 1).setDataValidation(dvStatus);
   // Sitt hvort kallið — ekki gengið út frá því að viðhengin séu samliggjandi.
@@ -1189,6 +1167,49 @@ function pimOwners_() {
   // varð til. Sé hvorug til er ENGIN gagnaprófun sett — sjá kallstaðinn.
   const raw = String(sets.VORUINNIHALD_APP_EMAILS || sets.PIM_OWNERS || '');
   return raw.split(',').map(function (x) { return String(x).trim(); }).filter(Boolean);
+}
+
+/** Fellilistinn a Eigandi-kolumnunni. Kallad vid byggingu OG ur
+ *  menu_refreshPimOwners: nyr notandi i VORUINNIHALD_APP_EMAILS a ekki ad
+ *  kosta heila Plytix-byggingu til ad hverfa rauda thrihyrningnum. */
+function applyPimOwnerValidation_(sh, lastRow) {
+  const owners = pimOwners_();
+  if (!owners.length) {
+    Logger.log('ℹ️ VORUINNIHALD_APP_EMAILS vantar í STORKAUP_CONFIG → SETTINGS. ' +
+               'Eigandi-kólumnan er frjáls texti.');
+    return 0;
+  }
+  // setAllowInvalid(TRUE): vidvorun, ekki hofnun. Skipt ur false 2026-09-10.
+  //
+  // HVERS VEGNA: gagnaprofunin er ljosmynd af config-rodhinni tekin VID
+  // BYGGINGU. Leidrettirdu rodhina en byggir ekki (eda byggir innan fimm
+  // minutna medan loadConfig_ cache-ar ennþa gamla gildid) heldur sheetid
+  // gamla listann. Tha hafnar thad thvi sem appid skrifar og skraning
+  // brotnar med skilabodum sem nefna gamla listann — sem las eins og
+  // config-rodhin vaeri enn rong.
+  //
+  // Strong hofnun var til ad verja handinnslatt. Nu skrifar APPID thennan
+  // reit og gildid kemur ur adminGuard_, svo thad getur ekki verid
+  // innslattarvilla. Handinnslattur faer enn appelsinugulan thrihyrning.
+  // Vidvorun laetur gliðnun milli config og sheets kosta merki, ekki
+  // utfall.
+  const dvOwner = SpreadsheetApp.newDataValidation()
+    .requireValueInList(owners, true).setAllowInvalid(true).build();
+  sh.getRange(2, pimColNum_('owner'), lastRow - 1, 1).setDataValidation(dvOwner);
+  return owners.length;
+}
+
+/** Valmynd: endurnyjar Eigandi-fellilistann ur config an byggingar.
+ *  Hreinsar config-cache fyrst svo nyskradur notandi skili ser strax. */
+function menu_refreshPimOwners() {
+  clearConfigCache();
+  const ss = SpreadsheetApp.openById(loadConfig_().SHEETS.PIM.ID);
+  const sh = ss.getSheetByName(PIM_SHEET_);
+  if (!sh || sh.getLastRow() < 2) throw new Error(PIM_SHEET_ + ' fannst ekki eða er tómt.');
+  const n = applyPimOwnerValidation_(sh, sh.getLastRow());
+  const msg = 'Eigandi-fellilisti endurnýjaður: ' + n + ' netföng.';
+  Logger.log('[PIM] ' + msg);
+  toast_(msg);
 }
 
 /** Lagtalan sem PIM_OWNER_LEVEL_ segir til um ('Level 3' -> 3).
