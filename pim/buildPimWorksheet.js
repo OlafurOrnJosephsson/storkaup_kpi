@@ -750,28 +750,7 @@ function writePimSheet_(sh, rows) {
     ',"JÁ","NEI"))))'
   );
 
-  // Stada og vidhengin eru afram STRONG: their listar eru fastir i kodanum og
-  // geta ekki glidnad fra config, og reitirnir eru handvaldir i sheetinu.
-  // setAllowInvalid(TRUE) — vidvorun, ekki hofnun. Skipt ur false 2026-09-11.
-  //
-  // Gagnaprofunin er LJOSMYND tekin vid byggingu. Baetist stada vid i kodanum
-  // (`Óbreytt` gerdi thad) thekkir sheetid hana ekki fyrr en thad er byggt
-  // aftur — og thar til er hvert skrif ur appinu HORD VILLA sem stodvar
-  // vistun. Sama rok og fyrir Eigandi-kolumnuna: rek milli kodans og
-  // sheetsins a ad kosta raudan thrihyrning, ekki bilad app.
-  //
-  // Thetta veikir ekkert: `Fullbúið` reiknast ur formulunni, sem ber stoduna
-  // saman vid fost gildi og laetur ranga stodu einfaldlega ekki telja.
-  const dvStatus = SpreadsheetApp.newDataValidation()
-    .requireValueInList(PIM_STATUSES_, true).setAllowInvalid(true).build();
-  const dvYesNo = SpreadsheetApp.newDataValidation()
-    .requireValueInList(PIM_YESNO_, true).setAllowInvalid(false).build();
-  applyPimOwnerValidation_(sh, lastRow);
-
-  sh.getRange(2, pimColNum_('status'), lastRow - 1, 1).setDataValidation(dvStatus);
-  // Sitt hvort kallið — ekki gengið út frá því að viðhengin séu samliggjandi.
-  sh.getRange(2, pimColNum_('datasheet'), lastRow - 1, 1).setDataValidation(dvYesNo);
-  sh.getRange(2, pimColNum_('sds'), lastRow - 1, 1).setDataValidation(dvYesNo);
+  applyPimValidations_(sh, lastRow);
 
   const all   = sh.getRange(2, 1, lastRow - 1, nCols);
   const words = sh.getRange(2, pimColNum_('words'), lastRow - 1, 1);
@@ -1169,9 +1148,43 @@ function pimOwners_() {
   return raw.split(',').map(function (x) { return String(x).trim(); }).filter(Boolean);
 }
 
-/** Fellilistinn a Eigandi-kolumnunni. Kallad vid byggingu OG ur
- *  menu_refreshPimOwners: nyr notandi i VORUINNIHALD_APP_EMAILS a ekki ad
- *  kosta heila Plytix-byggingu til ad hverfa rauda thrihyrningnum. */
+/** Allar gagnaprofanir Vinnusheet. Kallad vid byggingu OG ur
+ *  menu_refreshPimOwners.
+ *
+ *  HREINSAR FYRST, A OLLU SHEETINU. `sh.clear()` hreinsar innihald og snid
+ *  en EKKI gagnaprofanir. Thegar kolumna baetist vid (Vísbending 2026-09-11,
+ *  Vörunúmer birgja 2026-10-02) hlidrast allt til haegri, en gamla Já/Nei-
+ *  reglan situr eftir a gomlu stadsetningunni. 2026-10-06 sat hun a
+ *  `Löng lýsing (ný)` og hver vistun lysingar var HORD VILLA ur appinu. */
+function applyPimValidations_(sh, lastRow) {
+  sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).clearDataValidations();
+
+  // Stada og vidhengin eru afram STRONG: their listar eru fastir i kodanum og
+  // geta ekki glidnad fra config, og reitirnir eru handvaldir i sheetinu.
+  // setAllowInvalid(TRUE) — vidvorun, ekki hofnun. Skipt ur false 2026-09-11.
+  //
+  // Gagnaprofunin er LJOSMYND tekin vid byggingu. Baetist stada vid i kodanum
+  // (`Óbreytt` gerdi thad) thekkir sheetid hana ekki fyrr en thad er byggt
+  // aftur — og thar til er hvert skrif ur appinu HORD VILLA sem stodvar
+  // vistun. Sama rok og fyrir Eigandi-kolumnuna: rek milli kodans og
+  // sheetsins a ad kosta raudan thrihyrning, ekki bilad app.
+  //
+  // Thetta veikir ekkert: `Fullbúið` reiknast ur formulunni, sem ber stoduna
+  // saman vid fost gildi og laetur ranga stodu einfaldlega ekki telja.
+  const dvStatus = SpreadsheetApp.newDataValidation()
+    .requireValueInList(PIM_STATUSES_, true).setAllowInvalid(true).build();
+  const dvYesNo = SpreadsheetApp.newDataValidation()
+    .requireValueInList(PIM_YESNO_, true).setAllowInvalid(false).build();
+  const n = applyPimOwnerValidation_(sh, lastRow);
+
+  sh.getRange(2, pimColNum_('status'), lastRow - 1, 1).setDataValidation(dvStatus);
+  // Sitt hvort kallið — ekki gengið út frá því að viðhengin séu samliggjandi.
+  sh.getRange(2, pimColNum_('datasheet'), lastRow - 1, 1).setDataValidation(dvYesNo);
+  sh.getRange(2, pimColNum_('sds'), lastRow - 1, 1).setDataValidation(dvYesNo);
+  return n;
+}
+
+/** Fellilistinn a Eigandi-kolumnunni, ur VORUINNIHALD_APP_EMAILS. */
 function applyPimOwnerValidation_(sh, lastRow) {
   const owners = pimOwners_();
   if (!owners.length) {
@@ -1199,15 +1212,16 @@ function applyPimOwnerValidation_(sh, lastRow) {
   return owners.length;
 }
 
-/** Valmynd: endurnyjar Eigandi-fellilistann ur config an byggingar.
- *  Hreinsar config-cache fyrst svo nyskradur notandi skili ser strax. */
+/** Valmynd: setur allar gagnaprofanir upp a nytt an byggingar (nyr notandi
+ *  i config, eda gomul regla sem situr a rangri kolumnu). Hreinsar
+ *  config-cache fyrst svo nyskradur notandi skili ser strax. */
 function menu_refreshPimOwners() {
   clearConfigCache();
   const ss = SpreadsheetApp.openById(loadConfig_().SHEETS.PIM.ID);
   const sh = ss.getSheetByName(PIM_SHEET_);
   if (!sh || sh.getLastRow() < 2) throw new Error(PIM_SHEET_ + ' fannst ekki eða er tómt.');
-  const n = applyPimOwnerValidation_(sh, sh.getLastRow());
-  const msg = 'Eigandi-fellilisti endurnýjaður: ' + n + ' netföng.';
+  const n = applyPimValidations_(sh, sh.getLastRow());
+  const msg = 'Gagnaprófanir endurnýjaðar. Eigandi-listi: ' + n + ' netföng.';
   Logger.log('[PIM] ' + msg);
   toast_(msg);
 }

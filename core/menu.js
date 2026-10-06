@@ -76,7 +76,7 @@ function onOpen() {
     .addSubMenu(
       ui.createMenu('Vöruinnihald')
         .addItem('Byggja vinnusheet úr Plytix-útdrætti', 'menu_buildPimWorksheet')
-        .addItem('Endurnýja Eigandi-fellilista', 'menu_refreshPimOwners')
+        .addItem('Endurnýja fellilista (Eigandi, Staða, Já/Nei)', 'menu_refreshPimOwners')
     )
     .addSubMenu(
       ui.createMenu('Tools')
