@@ -99,6 +99,95 @@ function exportPimLongDescription_() {
 }
 
 const PIM_AMBIGUOUS_ = '\u0000tvírætt';
+const PIM_IMPORTED_STATUS_ = 'Flutt inn';
+
+/**
+ * Valmynd: eftir innflutning í Plytix. Les NÝJUSTU skrána í `innflutningur`
+ * og færir vörurnar í henni úr Samþykkt í Flutt inn. Útflutningurinn tekur
+ * aðeins Samþykkt, svo þær fara ekki aftur.
+ *
+ * Merkt er AÐEINS ef röðin er enn Samþykkt OG textinn í sheetinu gefur
+ * nákvæmlega það HTML sem fór í skrána. Hafi einhver breytt lýsingunni eftir
+ * útflutning er það ekki sá texti sem fór inn, og röðin bíður næsta
+ * útflutnings í stað þess að vera merkt þegjandi sem komin.
+ *
+ * Að skrá hafi verið búin til sannar ekki innflutning — þess vegna spyr
+ * glugginn fyrst. Endanleg sönnun kemur úr næsta Plytix-útdrætti.
+ */
+function menu_markPimExportImported() {
+  const ui = SpreadsheetApp.getUi();
+  const file = pimLatestExportFile_();
+  const grid = Utilities.parseCsv(file.getBlob().getDataAsString('UTF-8'));
+  const sent = {};
+  for (let r = 1; r < grid.length; r++) {
+    if (grid[r][0]) sent[normSku_(grid[r][0])] = String(grid[r][1] || '');
+  }
+  const n = Object.keys(sent).length;
+  const ok = ui.alert('Merkja sem Flutt inn',
+    file.getName() + '\n' + n + ' vörur.\n\nErtu búinn að flytja þessa skrá inn í Plytix?',
+    ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+
+  const r = markPimImported_(sent);
+  const lines = [
+    r.marked + ' merktar Flutt inn.',
+    r.already + ' voru þegar Flutt inn.',
+    r.notApproved.length + ' ekki lengur Samþykkt — ekki snertar.',
+    r.changed.length + ' með breyttan texta eftir útflutning — ekki snertar.',
+    r.missing.length + ' fundust ekki í sheetinu.'
+  ];
+  Logger.log('[PIM][FLUTT INN] ' + file.getName() + ' | ' + lines.join(' | '));
+  ['notApproved', 'changed', 'missing'].forEach(function (k) {
+    if (r[k].length) Logger.log('[PIM][FLUTT INN] ' + k + ': ' + r[k].join('; '));
+  });
+  ui.alert('Merkja sem Flutt inn', lines.join('\n'), ui.ButtonSet.OK);
+}
+
+function markPimImported_(sent) {
+  const cfg = loadConfig_();
+  const sh = SpreadsheetApp.openById(cfg.SHEETS.PIM.ID).getSheetByName(PIM_SHEET_);
+  const vals = sh.getDataRange().getValues();
+  const head = vals[0].map(normHeader_);
+  const col = {};
+  ['label', 'sku', 'descNew', 'status'].forEach(function (k) {
+    col[k] = head.indexOf(normHeader_(PIM_COLS_[pimColNum_(k) - 1].head));
+    if (col[k] === -1) throw new Error('Kólumna „' + PIM_COLS_[pimColNum_(k) - 1].head + '" finnst ekki.');
+  });
+
+  const out = { marked: 0, already: 0, notApproved: [], changed: [], missing: [] };
+  const seen = {};
+  for (let r = 1; r < vals.length; r++) {
+    const key = normSku_(vals[r][col.sku]);
+    if (!(key in sent)) continue;
+    seen[key] = true;
+    const who = key + ' ' + String(vals[r][col.label] || '').slice(0, 40);
+    const status = String(vals[r][col.status]).trim();
+    if (status === PIM_IMPORTED_STATUS_) { out.already++; continue; }
+    if (status !== PIM_EXPORT_STATUS_) { out.notApproved.push(who + ' (' + status + ')'); continue; }
+    if (pimDescToHtml_(String(vals[r][col.descNew] || '').trim()) !== sent[key]) {
+      out.changed.push(who); continue;
+    }
+    // Reitur fyrir reit, aldrei spönn: sjá voruinnihald_saveRows um hvernig
+    // setValues yfir spönn skrifar til baka yfir það sem aðrir breyttu.
+    sh.getRange(r + 1, col.status + 1).setValue(PIM_IMPORTED_STATUS_);
+    out.marked++;
+  }
+  Object.keys(sent).forEach(function (k) { if (!seen[k]) out.missing.push(k); });
+  SpreadsheetApp.flush();
+  return out;
+}
+
+function pimLatestExportFile_() {
+  const it = pimExportFolder_().getFiles();
+  let newest = null;
+  while (it.hasNext()) {
+    const f = it.next();
+    if (!/^plytix_import_.*\.csv$/i.test(f.getName())) continue;
+    if (!newest || f.getDateCreated() > newest.getDateCreated()) newest = f;
+  }
+  if (!newest) throw new Error('Engin útflutningsskrá í ' + PIM_EXPORT_SUBFOLDER_ + '.');
+  return newest;
+}
 
 /** sheet-SKU (normSku_) → Plytix-SKU stafrétt, úr nýjasta útdrættinum. */
 function pimPlytixSkuMap_() {

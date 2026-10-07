@@ -79,6 +79,7 @@ function onOpen() {
         .addItem('Endurnýja fellilista (Eigandi, Staða, Já/Nei)', 'menu_refreshPimOwners')
         .addSeparator()
         .addItem('Útflutningur í Plytix (Long Description)', 'menu_exportPimLongDescription')
+        .addItem('Merkja síðasta útflutning sem Flutt inn', 'menu_markPimExportImported')
     )
     .addSubMenu(
       ui.createMenu('Tools')
