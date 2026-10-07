@@ -852,8 +852,12 @@ function stateText(s) {
 }
 
 /* ---------------------------------------------------------------- borð */
+/* Skrifadar af theim sem vantadi. Eldri thjonn skilar ekki wdone: tha er
+   done thakid vid w, sem er sama villan og adur en aldrei verri. */
+function wd(t) { return t.wdone !== undefined ? t.wdone : Math.min(t.done, t.w); }
+
 function statusOf(t) {
-  if (t.w > 0 && t.done >= t.w) return 'done';
+  if (t.w > 0 && wd(t) >= t.w) return 'done';
   if (!t.owner) return 'free';
   return t.owner === USER ? 'mine' : 'taken';
 }
@@ -861,7 +865,7 @@ function statusOf(t) {
 function drawJob() {
   var n = 0, w = 0, done = 0, claimed = 0, imp = 0, rev = 0, appr = 0;
   TREE.forEach(function (t) {
-    n += t.n; w += t.w; done += t.done;
+    n += t.n; w += t.w; done += wd(t);   // af þeim sem vantaði, sama og nefnarinn
     imp += t.imported || 0; rev += t.review || 0; appr += t.approved || 0;
     if (t.owner) claimed++;
   });
@@ -893,8 +897,8 @@ function nest() {
     var k1 = t.cat1 || '(enginn flokkur)';
     var k2 = t.cat2 || '(ekkert lag)';
     var a = out[k1] = out[k1] || {};
-    var b = a[k2] = a[k2] || { n: 0, w: 0, done: 0, owners: {}, groups: [] };
-    b.n += t.n; b.w += t.w; b.done += t.done; b.groups.push(t);
+    var b = a[k2] = a[k2] || { n: 0, w: 0, done: 0, wdone: 0, owners: {}, groups: [] };
+    b.n += t.n; b.w += t.w; b.done += t.done; b.wdone += wd(t); b.groups.push(t);
     if (t.owner) b.owners[t.owner] = (b.owners[t.owner] || 0) + 1;
   });
   return out;
@@ -903,7 +907,7 @@ function nest() {
 /** Stada a Flokki. `mine` adeins ef ALLIR undirflokkar eru minir; `mine` med
  *  hluta er lika mitt, en textinn segir fra thvi. */
 function status2(b) {
-  if (b.w > 0 && b.done >= b.w) return 'done';
+  if (b.w > 0 && b.wdone >= b.w) return 'done';
   var names = Object.keys(b.owners);
   if (!names.length) return 'free';
   if (names.indexOf(USER) >= 0) return 'mine';
@@ -928,15 +932,15 @@ function drawMine() {
       var b = n2[l1][l2];
       var mine = b.groups.filter(function (t) { return t.owner === USER; });
       if (!mine.length) return;
-      var w = 0, done = 0, rev = 0, appr = 0, imp = 0;
+      var w = 0, done = 0, wdone = 0, rev = 0, appr = 0, imp = 0;
       mine.forEach(function (t) {
-        w += t.w; done += t.done;
+        w += t.w; done += t.done; wdone += wd(t);
         rev += t.review || 0; appr += t.approved || 0; imp += t.imported || 0;
       });
-      var pct = w ? Math.min(100, Math.round(done / w * 100)) : 100;
+      var pct = w ? Math.min(100, Math.round(wdone / w * 100)) : 100;
       var partial = mine.length < b.groups.length;
       cards.push('<div class="mcard"><div class="t">' + esc(l2) + '</div>' +
-        '<div class="p">' + IS(done) + ' / ' + IS(w) + ' lysingar &middot; ' +
+        '<div class="p">' + IS(wdone) + ' / ' + IS(w) + ' sem vantaði &middot; ' + IS(done) + ' skrifaðar &middot; ' +
         IS(mine.length) + ' af ' + IS(b.groups.length) + ' undirflokkum' +
         (partial ? ' &middot; hluti' : '') + '</div>' +
         // FERILLINN: skrifað segir ekki að það sé komið á vefinn.
@@ -948,7 +952,7 @@ function drawMine() {
         '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
         '<div class="kidlist">' + mine.map(function (t) {
           return '<button type="button" class="kid" data-key="' + esc(keyOf(t)) +
-            '" data-done="' + (t.w && t.done >= t.w ? 1 : 0) + '">' +
+            '" data-done="' + (t.w && wd(t) >= t.w ? 1 : 0) + '">' +
             '<span class="kn">' + esc(t.cat3 || '(ekkert undirlag)') + '</span>' +
             '<span class="kp">' + IS(t.done) + ' skrifaðar</span>' +
             // Alltaf fjórði reiturinn, tómur ef enginn, svo `v.` standi í línu.
@@ -1028,7 +1032,7 @@ function drawTree() {
         '<span class="w">' + IS(sw) + '<em>' + (filter === 'review' ? 'til yfirl.' : part ? 'laus skrif' : 'skrif') + '</em></span>' +
         '<span class="n">' + IS(sn) + ' vorur</span>' +
         '<span class="st">' + esc(txt) +
-        (s2 === 'mine' && b.done ? ' ' + IS(b.done) + '/' + IS(b.w) : '') +
+        (s2 === 'mine' && b.w ? ' ' + IS(b.wdone) + '/' + IS(b.w) : '') +
         '</span></button>' +
         (open ? '<div class="kids">' + kids.map(function (t) {
           var s3 = statusOf(t);
@@ -1043,7 +1047,7 @@ function drawTree() {
               : '<span class="w">' + IS(t.w) + '<em>skrif</em></span>') +
             '<span class="n">' + IS(t.n) + ' vorur</span>' +
             '<span class="st">' + t3 +
-            (s3 === 'mine' && t.done ? ' ' + IS(t.done) + '/' + IS(t.w) : '') +
+            (s3 === 'mine' && t.w ? ' ' + IS(wd(t)) + '/' + IS(t.w) : '') +
             '</span></button>';
         }).join('') + '</div>' : '');
     }).filter(Boolean).join('');

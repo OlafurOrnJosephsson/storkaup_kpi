@@ -393,14 +393,21 @@ function voruinnihald_getTree() {
     var g = map[key];
     if (!g) {
       g = map[key] = { cat1: a1, cat2: a2, cat3: c3, n: 0, w: 0, done: 0,
-                       review: 0, approved: 0, imported: 0, owners: {} };
+                       review: 0, approved: 0, imported: 0, wdone: 0, owners: {} };
     }
     g.n++;
 
     var descOld = String(row[idx.descOld] || '').trim();
     var label = String(row[idx.label] || '').trim();
-    if (!descOld || descOld === label) g.w++;
-    if (vi_isDone_(row[idx.descNew], row[idx.status])) g.done++;
+    var needs = !descOld || descOld === label;
+    var isDone = vi_isDone_(row[idx.descNew], row[idx.status]);
+    if (needs) g.w++;
+    if (isDone) g.done++;
+    // wdone = skrifaðar AF ÞEIM SEM VANTAÐI (2026-10-07). done telur líka
+    // endurskrifaðar vörur sem höfðu lýsingu, svo done >= w sagði flokk
+    // kláraðan (Þurrlager: 65 skrifaðar ≥ 41) þó vantandi lýsingar stæðu
+    // óskrifaðar. „Klárað" og framvinda miða við wdone.
+    if (needs && isDone) g.wdone++;
     // FERILLINN EFTIR SKRIF (2026-10-07). `done` segir hvort lýsing sé skrifuð,
     // ekki hvort hún sé komin á vefinn. Án þessara þriggja leit flokkur með
     // 49 innfluttum lýsingum eins út og flokkur með 49 óyfirlesnum.
@@ -441,7 +448,7 @@ function voruinnihald_getTree() {
     return {
       cat1: g.cat1, cat2: g.cat2, cat3: g.cat3,
       n: g.n, w: g.w, done: g.done,
-      review: g.review, approved: g.approved, imported: g.imported,
+      review: g.review, approved: g.approved, imported: g.imported, wdone: g.wdone,
       owner: top, mixed: names.length > 1
     };
   });
