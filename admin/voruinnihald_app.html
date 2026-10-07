@@ -350,7 +350,7 @@ footer b{color:var(--ink-2);font-weight:600}
 .kids .grp .nm{font-weight:500;font-size:13.5px}
 .kids .grp .w{font-size:14px}
 .mcard .kidlist{display:flex;flex-direction:column;gap:3px;margin-top:2px}
-.mcard .kid{display:grid;grid-template-columns:1fr auto auto;gap:9px;
+.mcard .kid{display:grid;grid-template-columns:1fr auto auto auto;gap:9px;
   align-items:center;font-size:12.5px;background:var(--surface);
   border:1px solid var(--rule);border-radius:4px;padding:5px 9px;
   cursor:pointer;font-family:inherit;color:var(--ink);text-align:left}
@@ -358,6 +358,12 @@ footer b{color:var(--ink-2);font-weight:600}
 .mcard .kid .kp{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-3);
   font-variant-numeric:tabular-nums}
 .mcard .kid[data-done="1"] .kp{color:var(--good)}
+.mcard .kid .kp.imp{color:var(--good);font-weight:600}
+.mcard .stages{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 2px}
+.mcard .st{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:99px}
+.mcard .st.rev{color:var(--warn);background:var(--warn-wash)}
+.mcard .st.appr{color:var(--brand-ink);background:var(--brand-wash)}
+.mcard .st.imp{color:var(--good);background:var(--good-wash)}
 
 /* --- vistunarstada --- */
 .tick[data-s="failed"]{background:var(--crit-wash);border-color:var(--crit)}
@@ -388,6 +394,7 @@ footer b{color:var(--ink-2);font-weight:600}
       <div><dt>Lýsingar að skrifa</dt><dd id="j-w">—</dd></div>
       <div><dt>Tekið</dt><dd id="j-claimed">—<span class="of"> flokkar</span></dd></div>
       <div><dt>Skrifað</dt><dd id="j-done">—<span class="of"> lýsingar</span></dd></div>
+      <div><dt>Í Plytix</dt><dd id="j-imp">—</dd></div>
     </dl>
 
     <div class="mine" id="askedbox" hidden>
@@ -811,9 +818,10 @@ function statusOf(t) {
 }
 
 function drawJob() {
-  var n = 0, w = 0, done = 0, claimed = 0;
+  var n = 0, w = 0, done = 0, claimed = 0, imp = 0, rev = 0, appr = 0;
   TREE.forEach(function (t) {
     n += t.n; w += t.w; done += t.done;
+    imp += t.imported || 0; rev += t.review || 0; appr += t.approved || 0;
     if (t.owner) claimed++;
   });
   el('j-groups').textContent = IS(TREE.length);
@@ -821,6 +829,8 @@ function drawJob() {
   el('j-w').textContent = IS(w);
   el('j-claimed').innerHTML = IS(claimed) + '<span class="of"> af ' + IS(TREE.length) + '</span>';
   el('j-done').innerHTML = IS(done) + '<span class="of"> af ' + IS(w) + '</span>';
+  el('j-imp').innerHTML = IS(imp) + '<span class="of"> lýsingar</span>';
+  el('j-imp').title = IS(rev) + ' til yfirlesturs · ' + IS(appr) + ' samþykktar, bíða innflutnings';
   el('sub').textContent = IS(TREE.length) + ' flokkar · ' + IS(w) + ' lýsingar að skrifa';
 }
 
@@ -877,20 +887,31 @@ function drawMine() {
       var b = n2[l1][l2];
       var mine = b.groups.filter(function (t) { return t.owner === USER; });
       if (!mine.length) return;
-      var w = 0, done = 0;
-      mine.forEach(function (t) { w += t.w; done += t.done; });
+      var w = 0, done = 0, rev = 0, appr = 0, imp = 0;
+      mine.forEach(function (t) {
+        w += t.w; done += t.done;
+        rev += t.review || 0; appr += t.approved || 0; imp += t.imported || 0;
+      });
       var pct = w ? Math.min(100, Math.round(done / w * 100)) : 100;
       var partial = mine.length < b.groups.length;
       cards.push('<div class="mcard"><div class="t">' + esc(l2) + '</div>' +
         '<div class="p">' + IS(done) + ' / ' + IS(w) + ' lysingar &middot; ' +
         IS(mine.length) + ' af ' + IS(b.groups.length) + ' undirflokkum' +
         (partial ? ' &middot; hluti' : '') + '</div>' +
+        // FERILLINN: skrifað segir ekki að það sé komið á vefinn.
+        ((rev || appr || imp) ? '<div class="stages">' +
+          (rev ? '<span class="st rev">' + IS(rev) + ' til yfirlesturs</span>' : '') +
+          (appr ? '<span class="st appr">' + IS(appr) + ' samþykktar</span>' : '') +
+          (imp ? '<span class="st imp">' + IS(imp) + ' í Plytix</span>' : '') +
+          '</div>' : '') +
         '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
         '<div class="kidlist">' + mine.map(function (t) {
           return '<button type="button" class="kid" data-key="' + esc(keyOf(t)) +
             '" data-done="' + (t.w && t.done >= t.w ? 1 : 0) + '">' +
             '<span class="kn">' + esc(t.cat3 || '(ekkert undirlag)') + '</span>' +
-            '<span class="kp">' + IS(t.done) + '/' + IS(t.w) + '</span>' +
+            '<span class="kp">' + IS(t.done) + ' skrifaðar</span>' +
+            // Alltaf fjórði reiturinn, tómur ef enginn, svo `v.` standi í línu.
+            '<span class="kp imp">' + (t.imported ? IS(t.imported) + ' í Plytix' : '') + '</span>' +
             '<span class="kp">' + IS(t.n) + ' v.</span></button>';
         }).join('') + '</div>' +
         '<div class="mrow"><button type="button" class="rel" data-rel1="' +
