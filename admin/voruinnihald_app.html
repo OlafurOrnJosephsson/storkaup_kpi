@@ -299,6 +299,11 @@ input[type=text]:focus,textarea:focus{border-color:var(--brand);background:var(-
 .askrow .aq{grid-column:1/-1;font-size:12.5px;color:var(--ink-2)}
 .rel h3{font-size:12px;font-weight:600;color:var(--ink-3);margin:10px 0 5px}
 .rel h3:first-of-type{margin-top:0}
+.plbox{display:flex;flex-wrap:wrap;gap:6px}
+.plb{font-family:inherit;font-size:12.5px;padding:5px 11px;border-radius:99px;cursor:pointer;
+  border:1px solid var(--rule-2);background:var(--surface);color:var(--ink-2)}
+.plb[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:var(--on-brand);font-weight:600}
+.plb.chg{outline:2px solid var(--warn);outline-offset:1px}
 .rchips{display:flex;flex-wrap:wrap;gap:6px}
 .rchip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:4px 9px;border-radius:5px;
   border:1px solid var(--rule-2);background:var(--surface);color:var(--ink-2);max-width:100%}
@@ -495,6 +500,12 @@ footer b{color:var(--ink-2);font-weight:600}
           </div>
         </div>
 
+        <div class="fld" id="plfld" hidden>
+          <span class="lab">Vottanir</span>
+          <p class="hint">Hakaðu við vottanir sem varan hefur samkvæmt gagnablaði eða umbúðum. Forhakað er það sem er á vefnum núna. Breyting fer í yfirlestur og þaðan í Plytix.</p>
+          <div class="plbox" id="plbox"></div>
+        </div>
+
         <div class="fld">
           <label class="lab" for="nt">Athugasemd eða spurning</label>
           <textarea id="nt" class="nt" placeholder="T.d. „Er þetta sama vara og 104886?“ eða „Vantar gagnablað hjá birgja“"></textarea>
@@ -592,6 +603,8 @@ var LINKS = false;
 var ASSIGN = false, TEAM = [], ASKED = [];
 // Tillaga ad tengdum vorum: adeins thegar kolumnan er til (eftir endurbyggingu).
 var RELCOLS = false;
+// Vottanir (Product Labels): adeins thegar kolumnurnar eru til (eftir endurbyggingu).
+var PLCOLS = false, LABELS = [];
 // Voruheitin eru i bid (2026-10-02): reiturinn er skrifvarinn og hvorki
 // snertir voruna ne er sendur. Sjá VI_WRITABLE_ i voruinnihald.js.
 var NAME_FROZEN = true;
@@ -1037,6 +1050,7 @@ function loadTree(then) {
       USER = r.user; MINW = r.wordsMin; MAXW = r.wordsMax; LINKS = !!r.linkCols;
       ASSIGN = !!r.assignCols; TEAM = r.team || []; ASKED = r.asked || [];
       RELCOLS = !!r.relCols;
+      PLCOLS = !!r.plCols; LABELS = r.labelValues || [];
       TREE = r.groups;
       el('who-dot').textContent = (USER || '?').slice(0, 1).toUpperCase();
       el('who-name').textContent = USER;
@@ -1120,6 +1134,7 @@ function openGroup(sel, atSku) {
           url_ds: p.dsUrl || '', url_sds: p.sdsUrl || '',
           note: p.note || '', assignee: p.assignee || '',
           relNew: splitSkus(p.relNew),
+          pl: plList(p.plNew || p.plOld),
           status: p.status || '', origin: p.origin || '',
           touched: !!(p.nameNew || p.descNew || p.status === NOCHANGE),
           save: (p.nameNew || p.descNew || p.status === NOCHANGE) ? 'saved' : 'new',
@@ -1212,6 +1227,51 @@ function drawRel(p, s) {
       }).join('') + '</div>'
     : '<p class="relnone">Engin. Bættu við með + eða vörunúmeri.</p>');
   el('relbody').innerHTML = html;
+}
+
+/* ------------------------------------------------------------- vottanir */
+/* Mengi, ekki listi: rodun og ha/lagstafir skipta ekki mali. Sama regla og
+   pimLabelList_ i byggingunni, svo samanburdurinn thar stemmi. */
+function plList(v) {
+  var seen = {}, out = [];
+  String(v || '').split(',').forEach(function (x) {
+    x = x.trim();
+    if (x && !seen[x.toLowerCase()]) { seen[x.toLowerCase()] = true; out.push(x); }
+  });
+  return out.sort(function (a, b) { return a.localeCompare(b, 'is'); });
+}
+function plKey(v) { return plList(v).join(', ').toLowerCase(); }
+
+function drawPl(p, s) {
+  el('plfld').hidden = !PLCOLS;
+  if (!PLCOLS) return;
+  var on = {}, opts = LABELS.slice();
+  s.pl.forEach(function (x) {
+    on[x.toLowerCase()] = true;
+    if (!opts.some(function (o) { return o.toLowerCase() === x.toLowerCase(); })) opts.push(x);
+  });
+  var was = {};
+  plList(p.plOld).forEach(function (x) { was[x.toLowerCase()] = true; });
+  el('plbox').innerHTML = opts.map(function (o) {
+    var k = o.toLowerCase();
+    var chg = !!on[k] !== !!was[k];
+    return '<button type="button" class="plb' + (chg ? ' chg' : '') + '" data-pl="' + esc(o) +
+      '" aria-pressed="' + (on[k] ? 'true' : 'false') + '">' + esc(o) + '</button>';
+  }).join('');
+}
+
+/* Vistast strax, eins og tengdu vorurnar. ALLT MENGID fer i plNew; se thad
+   aftur ordid eins og vefurinn er tæmist reiturinn (engin breyting). */
+function plSave(p, s) {
+  var v = plKey(s.pl.join(',')) === plKey(p.plOld) ? '' : s.pl.join(', ');
+  if (v === (p.plNew || '')) { drawPl(p, s); return; }
+  p.plNew = v;
+  s.touched = true;
+  // Samthykkt/innflutt vara med nyjum vottunum fer aftur i yfirlestur. Thjonninn
+  // gerir thad lika (voruinnihald_saveRows); thetta heldur skjanum rettum.
+  if (LOCKED[s.status]) s.status = REVIEW;
+  enqueue(p.sku, { plNew: v });
+  drawPl(p, s);
 }
 
 function relSave(p, s) {
@@ -1343,7 +1403,7 @@ function render() {
   el('nm').value = s.nm || p.nameOld;
   el('ds').value = s.ds;
   el('nt').value = s.note;
-  drawThumb(p); drawAsk(p, s); drawRel(p, s);
+  drawThumb(p); drawAsk(p, s); drawRel(p, s); drawPl(p, s);
   el('ds').placeholder = 'Skrifaðu lýsingu á ' + p.label.split(',')[0] + '…';
 
   var rows = [['SKU', p.sku]];
@@ -1472,6 +1532,14 @@ document.querySelectorAll('.tri').forEach(function (box) {
     drawTri(k);
     enqueue(items[i].sku, k === 'ds' ? { datasheet: b.dataset.v } : { sds: b.dataset.v });
   });
+});
+el('plbox').addEventListener('click', function (e) {
+  var b = e.target.closest('[data-pl]');
+  if (!b) return;
+  var p = items[i], s = st[i], v = b.dataset.pl, k = v.toLowerCase();
+  var has = s.pl.some(function (x) { return x.toLowerCase() === k; });
+  s.pl = has ? s.pl.filter(function (x) { return x.toLowerCase() !== k; }) : plList(s.pl.concat([v]).join(','));
+  plSave(p, s);
 });
 el('relpanel').addEventListener('click', function (e) {
   var p = items[i], s = st[i];

@@ -45,6 +45,7 @@ var VI_H_ = {
   datasheet:'Gagnablað',         sds:      'Öryggisblað',
   dsUrl:  'Gagnablað (hlekkur)', sdsUrl:   'Öryggisblað (hlekkur)',
   thumb:  'Mynd (slóð)',          labels:   'Vottanir',
+  plOld:  'Product Labels (núv.)', plNew:   'Vottanir (nýtt)',
   vendorNo: 'Vörunúmer birgja',
   relNow: 'Tengdar vörur (núv.)', relDesc: 'Tengdar í lýsingu',
   relNew: 'Tillaga að tengdum vörum',
@@ -64,7 +65,7 @@ var VI_WRITABLE_ = ['owner', 'brandNew', 'descNew',
                     'datasheet', 'sds', 'dsUrl', 'sdsUrl', 'status', 'note', 'origin',
                     // `askedBy` er skrifad af thjoninum ur `assignee` -- sja
                     // voruinnihald_saveRows. Gildi fra vafranum er hunsad.
-                    'assignee', 'askedBy', 'relNew'];
+                    'assignee', 'askedBy', 'relNew', 'plNew'];
 
 /** Hlekkir a blod hja birgja. Adeins http(s)-slod an bila er skrifud;
  *  allt annad (texti, `javascript:`, slod med bili) er hunsad, ekki vistad. */
@@ -88,7 +89,9 @@ var VI_OPTIONAL_ = { hint: true, dsFile: true, sdsFile: true, brFile: true,
                      dsUrl: true, sdsUrl: true,
                      // Sama: til fra endurbyggingu 2026-10-02 (mynd + beidnir).
                      thumb: true, assignee: true, askedBy: true, labels: true,
-                     vendorNo: true, relNow: true, relDesc: true, relNew: true };
+                     vendorNo: true, relNow: true, relDesc: true, relNew: true,
+                     // Til fra endurbyggingu 2026-10-07 (getTree: plCols).
+                     plOld: true, plNew: true };
 
 /** Orðamark á langri lýsingu. VERÐUR að vera það sama sem PIM_WORDS_MIN_/MAX_
  *  í `pim/buildPimWorksheet.js` — lækkað úr 60 í 20 þann 2026-09-10 eftir
@@ -431,7 +434,32 @@ function voruinnihald_getTree() {
            linkCols: idx.dsUrl !== undefined && idx.sdsUrl !== undefined,
            assignCols: idx.assignee !== undefined && idx.askedBy !== undefined,
            relCols: idx.relNew !== undefined,
+           plCols: idx.plOld !== undefined && idx.plNew !== undefined,
+           labelValues: vi_labelValues_(vals, idx),
            team: vi_team_(), asked: asked };
+}
+
+/**
+ * Gildin sem gátreitirnir bjóða: öll Product Labels sem einhver vara ber í
+ * Plytix, algengast fyrst. Lesið úr sheetinu, ekki harðkóðað — bæti Plytix
+ * við gildi birtist það hér við næstu byggingu, án kóðabreytingar. Gildi sem
+ * er ekki til í Plytix yrði hafnað í innflutningi, svo nýtt gildi kemur
+ * þaðan, ekki úr appinu.
+ */
+function vi_labelValues_(vals, idx) {
+  if (idx.plOld === undefined) return [];
+  var cnt = {}, name = {};
+  for (var r = 1; r < vals.length; r++) {
+    String(vals[r][idx.plOld] || '').split(',').forEach(function (x) {
+      x = x.trim();
+      if (!x) return;
+      var k = x.toLowerCase();
+      cnt[k] = (cnt[k] || 0) + 1;
+      name[k] = name[k] || x;
+    });
+  }
+  return Object.keys(cnt).sort(function (a, b) { return cnt[b] - cnt[a]; })
+    .map(function (k) { return name[k]; });
 }
 
 /**
@@ -488,6 +516,8 @@ function voruinnihald_getGroup(sel) {
       sdsUrl: idx.sdsUrl === undefined ? '' : String(row[idx.sdsUrl] || '').trim(),
       thumb: idx.thumb === undefined ? '' : String(row[idx.thumb] || '').trim(),
       labels: idx.labels === undefined ? '' : String(row[idx.labels] || '').trim(),
+      plOld: idx.plOld === undefined ? '' : String(row[idx.plOld] || '').trim(),
+      plNew: idx.plNew === undefined ? '' : String(row[idx.plNew] || '').trim(),
       vendorNo: idx.vendorNo === undefined ? '' : String(row[idx.vendorNo] || '').trim(),
       relNow: idx.relNow === undefined ? '' : String(row[idx.relNow] || '').trim(),
       relDesc: idx.relDesc === undefined ? '' : String(row[idx.relDesc] || '').trim(),
@@ -594,7 +624,8 @@ function voruinnihald_saveRows(rows) {
       //   texti óbreyttur → staðan stendur (Spurning er meðvituð og fer í gegn)
       //   texti breyttur  → Til yfirlesturs, hvað sem vafrinn sendi
       if (idx.status !== undefined && VI_STATUS_LOCKED_[String(vals[r0][idx.status] || '').trim()]) {
-        var textChanged = ['nameNew', 'descNew'].some(function (k) {
+        // Vottanir teljast með: þær fara í Plytix eins og textinn.
+        var textChanged = ['nameNew', 'descNew', 'plNew'].some(function (k) {
           if (VI_WRITABLE_.indexOf(k) === -1 || idx[k] === undefined) return false;
           if (!(k in inRow) || inRow[k] === null || inRow[k] === undefined) return false;
           return String(inRow[k]) !== String(vals[r0][idx[k]] == null ? '' : vals[r0][idx[k]]);
@@ -771,7 +802,9 @@ function voruinnihald_submit(sel) {
     var sent = [], unwritten = 0;
     mine.forEach(function (r) {
       if (!VI_STATUS_OPEN_[String(vals[r][idx.status] || '').trim()]) return;
-      if (String(vals[r][idx.descNew] || '').trim()) sent.push(r); else unwritten++;
+      // Vottun ein og sér er líka verk sem fer í Plytix.
+      var pl = idx.plNew === undefined ? '' : String(vals[r][idx.plNew] || '').trim();
+      if (String(vals[r][idx.descNew] || '').trim() || pl) sent.push(r); else unwritten++;
     });
     // Samfelldar runur af RÖÐUM SEM Á AÐ SKRIFA — aldrei spönn sem nær yfir
     // annarra raðir (sjá voruinnihald_saveRows).

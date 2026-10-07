@@ -43,7 +43,11 @@ const PIM_EXPORT_ATTRS_ = [
   { key: 'descNew',  head: 'Long Description', slug: 'long_description',
     toPlytix: function (t) { return pimDescToHtml_(t); }, noHtml: true },
   { key: 'brandNew', head: 'Brand Name',       slug: 'brand_name',
-    toPlytix: function (t) { return t; } }
+    toPlytix: function (t) { return t; } },
+  // ALLT MENGIÐ, á sniði Plytix (`A,B`, ekkert bil). Sent aðeins ef það er
+  // annað en `Product Labels (núv.)` — óbreytt mengi er ekki verk.
+  { key: 'plNew',    head: 'Product Labels',   slug: 'product_labels',
+    toPlytix: function (t) { return pimLabelList_(t).join(','); }, ifDiffers: 'plOld' }
 ];
 
 function menu_exportPim() {
@@ -78,26 +82,37 @@ function pimExportOpen_() {
   const vals = sh.getDataRange().getValues();
   const head = vals[0].map(normHeader_);
   const col = {};
-  ['label', 'sku', 'status'].concat(PIM_EXPORT_ATTRS_.map(function (a) { return a.key; }))
-    .forEach(function (k) {
-      col[k] = head.indexOf(normHeader_(PIM_COLS_[pimColNum_(k) - 1].head));
-      if (col[k] === -1) throw new Error('Kólumna „' + PIM_COLS_[pimColNum_(k) - 1].head + '" finnst ekki.');
-    });
-  return { sh: sh, vals: vals, col: col };
+  const find = function (k) { return head.indexOf(normHeader_(PIM_COLS_[pimColNum_(k) - 1].head)); };
+  ['label', 'sku', 'status'].forEach(function (k) {
+    col[k] = find(k);
+    if (col[k] === -1) throw new Error('Kólumna „' + PIM_COLS_[pimColNum_(k) - 1].head + '" finnst ekki.');
+  });
+  // Eigindarkólumnur eru VALKVÆÐAR: ný eigind er ekki í sheetinu fyrr en það
+  // er byggt aftur, og það á ekki að stöðva útflutning hinna.
+  const attrs = PIM_EXPORT_ATTRS_.filter(function (a) {
+    col[a.key] = find(a.key);
+    if (a.ifDiffers) col[a.ifDiffers] = find(a.ifDiffers);
+    return col[a.key] !== -1 && (!a.ifDiffers || col[a.ifDiffers] !== -1);
+  });
+  return { sh: sh, vals: vals, col: col, attrs: attrs };
 }
 
 function exportPim_() {
-  const o = pimExportOpen_(), vals = o.vals, col = o.col;
+  const o = pimExportOpen_(), vals = o.vals, col = o.col, attrs = o.attrs;
   const plytixSku = pimPlytixSkuMap_();
 
   const out = {};
-  PIM_EXPORT_ATTRS_.forEach(function (a) { out[a.key] = [['SKU', a.head]]; });
+  attrs.forEach(function (a) { out[a.key] = [['SKU', a.head]]; });
   const skip = { unknown: [], ambiguous: [], html: [] };
 
   for (let r = 1; r < vals.length; r++) {
     const row = vals[r];
     if (String(row[col.status]).trim() !== PIM_EXPORT_STATUS_) continue;
-    const has = PIM_EXPORT_ATTRS_.filter(function (a) { return String(row[col[a.key]] || '').trim(); });
+    const has = attrs.filter(function (a) {
+      const v = String(row[col[a.key]] || '').trim();
+      if (!v) return false;
+      return !a.ifDiffers || a.toPlytix(v) !== a.toPlytix(String(row[col[a.ifDiffers]] || '').trim());
+    });
     if (!has.length) continue;
 
     const key = normSku_(row[col.sku]);
@@ -120,7 +135,7 @@ function exportPim_() {
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmm');
   const folder = pimExportFolder_();
   const files = [];
-  PIM_EXPORT_ATTRS_.forEach(function (a) {
+  attrs.forEach(function (a) {
     const rows = out[a.key];
     if (rows.length < 2) return;
     const name = 'plytix_import_' + a.slug + '_' + stamp + '.csv';
@@ -184,6 +199,7 @@ function markPimImported_(sent) {
     if (status !== PIM_EXPORT_STATUS_) { out.notApproved.push(who + ' (' + status + ')'); continue; }
     const same = PIM_EXPORT_ATTRS_.every(function (a) {
       if (!(a.key in sent[key])) return true;
+      if (col[a.key] === -1) return false;
       return a.toPlytix(String(vals[r][col[a.key]] || '').trim()) === sent[key][a.key];
     });
     if (!same) { out.changed.push(who); continue; }

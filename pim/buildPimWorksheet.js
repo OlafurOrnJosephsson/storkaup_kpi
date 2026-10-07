@@ -148,6 +148,13 @@ const PIM_COLS_ = [
   { key: 'indexed',   head: 'Í leitarvísi',            w: 100, kind: 'join' },
   { key: 'framework', head: 'Rammasamningur',          w: 120, kind: 'join' },
   { key: 'labels',    head: 'Vottanir',                w: 160, kind: 'join' },
+  // VOTTANIR SEM STARFSFÓLK BÆTIR VIÐ (2026-10-07). Aðeins Product Labels —
+  // það er eigindin sem vefurinn sýnir. Certificates bíður þar til hún fer á
+  // vefinn. `plNew` geymir ALLT MENGIÐ, ekki viðbótina: Plytix Overwrite
+  // skiptir út fjölvali, svo viðbót ein myndi þurrka núverandi vottanir.
+  // Tómt = engin breyting.
+  { key: 'plOld',     head: 'Product Labels (núv.)',   w: 160, kind: 'join' },
+  { key: 'plNew',     head: 'Vottanir (nýtt)',         w: 180, kind: 'edit' },
   { key: 'done',      head: 'Fullbúið',                w:  85, kind: 'calc' },
   { key: 'url',       head: 'Vefslóð',                 w: 220, kind: 'join' }
 ];
@@ -396,7 +403,7 @@ function buildPimWorksheet_() {
                 'dsUrl', 'sdsUrl', 'status', 'note', 'assignee', 'askedBy', 'relNew',
                 // `origin` VANTADI HER fra upphafi (bætt vid 2026-10-02):
                 // Uppruni (handskrifad / AI-drog) taemdist vid hverja endurbyggingu.
-                'origin'];
+                'origin', 'plNew'];
   const out = [];
   const orphans = [];
   const seen = {};        // Label sem fer INN i sheetid
@@ -477,6 +484,7 @@ function buildPimWorksheet_() {
     row[idx.image]     = enrich.missingImage[p.sku] ? 'Nei' : (p.thumbnail ? 'Já' : 'Nei');
     row[idx.thumbUrl]  = p.thumbUrl || '';
     row[idx.labels]    = p.labels || '';
+    row[idx.plOld]     = p.productLabels || '';
     row[idx.vendorNo]  = p.vendorNo || '';
     const relNow = pimRelatedList_(p.related, p.sku);
     row[idx.relNow]    = relNow.join(', ');
@@ -623,11 +631,29 @@ function pimPlytixCheck_(row, idx, p) {
   if (st !== 'Samþykkt' && st !== 'Flutt inn') return '';
   const dn = String(row[idx.descNew] || '').trim();
   const bn = String(row[idx.brandNew] || '').trim();
-  if (!dn && !bn) return '';
+  const pl = String(row[idx.plNew] || '').trim();
+  if (!dn && !bn && !pl) return '';
   const ok = (!dn || pimHtmlNorm_(pimDescToHtml_(dn)) === pimHtmlNorm_(p.description)) &&
-             (!bn || bn === String(p.brand || '').trim());
+             (!bn || bn === String(p.brand || '').trim()) &&
+             (!pl || pimLabelKey_(pl) === pimLabelKey_(p.productLabels));
   if (st === 'Samþykkt') return ok ? 'confirmed' : '';
   return ok ? 'match' : 'drift';
+}
+
+/** Fjölval → listi: kommuaðskilið, tvítekningar út (óháð há/lágstöfum),
+ *  raðað. Plytix geymir `A,B` án bils; sheetið `A, B`. Hvort tveggja lesið. */
+function pimLabelList_(s) {
+  const seen = {}, out = [];
+  String(s == null ? '' : s).split(',').forEach(function (x) {
+    x = x.trim();
+    if (x && !seen[x.toLowerCase()]) { seen[x.toLowerCase()] = true; out.push(x); }
+  });
+  return out.sort(function (a, b) { return a.localeCompare(b, 'is'); });
+}
+
+/** Samanburðarlykill fyrir mengi vottana — röð og há/lágstafir skipta ekki máli. */
+function pimLabelKey_(s) {
+  return pimLabelList_(s).map(function (x) { return x.toLowerCase(); }).join('|');
 }
 
 /** Plytix-ritillinn má hnika bilum og `<br/>`; það er ekki efnisbreyting. */
@@ -1095,6 +1121,10 @@ function parsePlytixCsv_(text) {
       statusKnown: col.plytixStatus !== undefined,
       framework:   /^(true|1|já|ja|yes)$/i.test(pick(r, 'framework')),
       labels:      pimMergeLabels_(pick(r, 'labels'), pick(r, 'certs')),
+      // Product Labels EINT: það sem vefurinn sýnir sem vottunarmerki og það
+      // sem `Vottanir (nýtt)` er borið saman við. `labels` blandar Certificates
+      // inn og dugar ekki til samanburðar.
+      productLabels: pimLabelList_(pick(r, 'labels')).join(', '),
       vendorNo:    pick(r, 'vendorNo'),
       related:     pick(r, 'related')
     };
