@@ -1,10 +1,10 @@
 /************************************************************
  * 📤 plytix_export.js — Vinnusheet → CSV til innflutnings í Plytix
  *
- * Valmynd: Vöruinnihald → Útflutningur í Plytix (Long Description).
- * Skrifar `SKU,Long Description` í undirmöppuna `innflutningur` í
- * PIM_DROP. Óli hleður henni upp í Plytix (Imports → Upload,
- * „Create or update products").
+ * Valmynd: Vöruinnihald → Útflutningur í Plytix.
+ * Skrifar EINA SKRÁ Á EIGIND (sjá PIM_EXPORT_ATTRS_) í undirmöppuna
+ * `innflutningur` í PIM_DROP, allar með sama tímastimpli. Óli hleður þeim
+ * upp í Plytix (Imports → Upload, „Only update existing").
  *
  * ── ÞRJÁR REGLUR SEM VERJA PLYTIX ──────────────────────────────────
  *  1. SKU ER PLYTIX-SKU, STAFRÉTT. Sheetið geymir `9004581`, Plytix
@@ -13,35 +13,53 @@
  *     útdrættinum; finnist það ekki, eða tvö Plytix-SKU falla á sama
  *     sheet-SKU, er röðinni SLEPPT og hún nefnd.
  *  2. EIN EIGIND Á SKRÁ, ENGIR TÓMIR REITIR. Tómur reitur í innflutningi
- *     getur hreinsað eigindina. Skráin tekur aðeins raðir með texta.
+ *     getur hreinsað eigindina ef „Erase existing" er valið. Hver skrá tekur
+ *     aðeins raðir með gildi í sinni eigind, svo stillingin skiptir ekki máli.
  *  3. EKKERT HTML ÚR SHEETINU. Lýsing sem ber `<tag>` var límd inn og er
  *     sleppt — breytingin myndi escape-a hana og vefurinn sýna merkin.
  *
- * Staðan er EKKI færð í „Flutt inn" hér. Að skrá hafi verið búin til
- * segir ekki að hún hafi farið inn. Það segir næsti Plytix-útdráttur.
+ * EKKI MEÐ, VILJANDI (2026-10-07):
+ *   Commercial Name    vöruheitin eru í bið hjá markaðsstjóra (2026-10-02).
+ *   Related Products   tengsl í Plytix eru vensl, ekki eigind; óprófað hvort
+ *                      innflutningur BÆTIR VIÐ eða SKIPTIR ÚT. `relNew` er
+ *                      tillaga, og útskipting myndi þurrka núverandi tengsl.
  *
- * Skráin fer í UNDIRMÖPPU, ekki í drop-möppuna sjálfa: readLatestPlytixCsv_
- * tekur nýjustu .csv þar, og innflutningsskráin myndi annars lesast sem
+ * Staðan er EKKI færð í „Flutt inn" hér. Það gerir „Merkja síðasta
+ * útflutning sem Flutt inn", og byggingin staðfestir úr Plytix-útdrætti.
+ *
+ * Skrárnar fara í UNDIRMÖPPU, ekki í drop-möppuna sjálfa: readLatestPlytixCsv_
+ * tekur nýjustu .csv þar, og innflutningsskrá myndi annars lesast sem
  * útdráttur við næstu byggingu.
  ************************************************************/
 
 const PIM_EXPORT_SUBFOLDER_ = 'innflutningur';
 const PIM_EXPORT_STATUS_    = 'Samþykkt';
+const PIM_AMBIGUOUS_        = '\u0000tvírætt';
+const PIM_IMPORTED_STATUS_  = 'Flutt inn';
 
-function menu_exportPimLongDescription() {
-  const r = exportPimLongDescription_();
-  const lines = [
-    r.count + ' vörur í ' + r.fileName + '.',
-    '',
-    'Sleppt:',
+// Röðin hér er röð skránna í glugganum. `toPlytix` er það sem fer í skrána
+// og það sem merkingin ber saman við — sama fall á báðum stöðum.
+const PIM_EXPORT_ATTRS_ = [
+  { key: 'descNew',  head: 'Long Description', slug: 'long_description',
+    toPlytix: function (t) { return pimDescToHtml_(t); }, noHtml: true },
+  { key: 'brandNew', head: 'Brand Name',       slug: 'brand_name',
+    toPlytix: function (t) { return t; } }
+];
+
+function menu_exportPim() {
+  const r = exportPim_();
+  const lines = [];
+  if (!r.files.length) lines.push('Ekkert samþykkt til að flytja út.');
+  r.files.forEach(function (f) { lines.push(f.count + ' vörur → ' + f.name); });
+  lines.push('', 'Sleppt:',
     '  ' + r.skip.unknown.length + ' SKU finnst ekki í Plytix-útdrættinum',
     '  ' + r.skip.ambiguous.length + ' SKU passar við fleiri en eina Plytix-vöru',
     '  ' + r.skip.html.length + ' lýsingar innihalda HTML',
-    '',
-    'Upplýsingar um sleppt raðir eru í keyrsluskránni.',
-    '',
-    r.url
-  ];
+    '', 'Upplýsingar um sleppt raðir eru í keyrsluskránni.');
+  if (r.files.length) {
+    lines.push('', 'Hver skrá sér í Plytix. Mappa: SKU → SKU, og eigindin á sjálfa sig.',
+               '', r.folderUrl);
+  }
   Logger.log('[PIM][UTFLUTNINGUR] ' + lines.join(' | '));
   try {
     SpreadsheetApp.getUi().alert('Útflutningur í Plytix', lines.join('\n'),
@@ -51,40 +69,48 @@ function menu_exportPimLongDescription() {
   }
 }
 
-function exportPimLongDescription_() {
+/** Kólumnur Vinnusheet eftir KÓLUMNUHEITI — sheetið getur verið byggt með
+ *  eldri kólumnuröð. Kastar ef skyldukólumna vantar. */
+function pimExportOpen_() {
   const cfg = loadConfig_();
   const sh = SpreadsheetApp.openById(cfg.SHEETS.PIM.ID).getSheetByName(PIM_SHEET_);
   if (!sh || sh.getLastRow() < 2) throw new Error(PIM_SHEET_ + ' fannst ekki eða er tómt.');
-
-  // Eftir KÓLUMNUHEITI, eins og byggingin og appið — sheetið getur verið
-  // byggt með eldri kólumnuröð.
   const vals = sh.getDataRange().getValues();
   const head = vals[0].map(normHeader_);
   const col = {};
-  ['label', 'sku', 'descNew', 'status'].forEach(function (k) {
-    const want = normHeader_(PIM_COLS_[pimColNum_(k) - 1].head);
-    col[k] = head.indexOf(want);
-    if (col[k] === -1) throw new Error('Kólumna „' + PIM_COLS_[pimColNum_(k) - 1].head + '" finnst ekki.');
-  });
+  ['label', 'sku', 'status'].concat(PIM_EXPORT_ATTRS_.map(function (a) { return a.key; }))
+    .forEach(function (k) {
+      col[k] = head.indexOf(normHeader_(PIM_COLS_[pimColNum_(k) - 1].head));
+      if (col[k] === -1) throw new Error('Kólumna „' + PIM_COLS_[pimColNum_(k) - 1].head + '" finnst ekki.');
+    });
+  return { sh: sh, vals: vals, col: col };
+}
 
+function exportPim_() {
+  const o = pimExportOpen_(), vals = o.vals, col = o.col;
   const plytixSku = pimPlytixSkuMap_();
 
-  const out = [['SKU', 'Long Description']];
+  const out = {};
+  PIM_EXPORT_ATTRS_.forEach(function (a) { out[a.key] = [['SKU', a.head]]; });
   const skip = { unknown: [], ambiguous: [], html: [] };
+
   for (let r = 1; r < vals.length; r++) {
     const row = vals[r];
     if (String(row[col.status]).trim() !== PIM_EXPORT_STATUS_) continue;
-    const text = String(row[col.descNew] || '').trim();
-    if (!text) continue;
+    const has = PIM_EXPORT_ATTRS_.filter(function (a) { return String(row[col[a.key]] || '').trim(); });
+    if (!has.length) continue;
 
     const key = normSku_(row[col.sku]);
     const who = key + ' ' + String(row[col.label] || '').slice(0, 40);
     const raw = plytixSku[key];
     if (!raw) { skip.unknown.push(who); continue; }
     if (raw === PIM_AMBIGUOUS_) { skip.ambiguous.push(who); continue; }
-    if (/<\/?[a-z][^>]*>/i.test(text)) { skip.html.push(who); continue; }
 
-    out.push([raw, pimDescToHtml_(text)]);
+    has.forEach(function (a) {
+      const text = String(row[col[a.key]]).trim();
+      if (a.noHtml && /<\/?[a-z][^>]*>/i.test(text)) { skip.html.push(who); return; }
+      out[a.key].push([raw, a.toPlytix(text)]);
+    });
   }
 
   Object.keys(skip).forEach(function (k) {
@@ -92,43 +118,43 @@ function exportPimLongDescription_() {
   });
 
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmm');
-  const fileName = 'plytix_import_long_description_' + stamp + '.csv';
-  const file = pimExportFolder_().createFile(fileName, pimToCsv_(out), MimeType.CSV);
+  const folder = pimExportFolder_();
+  const files = [];
+  PIM_EXPORT_ATTRS_.forEach(function (a) {
+    const rows = out[a.key];
+    if (rows.length < 2) return;
+    const name = 'plytix_import_' + a.slug + '_' + stamp + '.csv';
+    folder.createFile(name, pimToCsv_(rows), MimeType.CSV);
+    files.push({ name: name, count: rows.length - 1 });
+  });
 
-  return { count: out.length - 1, fileName: fileName, url: file.getUrl(), skip: skip };
+  return { files: files, skip: skip, folderUrl: folder.getUrl() };
 }
 
-const PIM_AMBIGUOUS_ = '\u0000tvírætt';
-const PIM_IMPORTED_STATUS_ = 'Flutt inn';
-
 /**
- * Valmynd: eftir innflutning í Plytix. Les NÝJUSTU skrána í `innflutningur`
- * og færir vörurnar í henni úr Samþykkt í Flutt inn. Útflutningurinn tekur
- * aðeins Samþykkt, svo þær fara ekki aftur.
+ * Valmynd: eftir innflutning í Plytix. Les skrár NÝJASTA útflutningsins
+ * (sama tímastimpil) og færir vörurnar í þeim úr Samþykkt í Flutt inn.
+ * Útflutningurinn tekur aðeins Samþykkt, svo þær fara ekki aftur.
  *
- * Merkt er AÐEINS ef röðin er enn Samþykkt OG textinn í sheetinu gefur
- * nákvæmlega það HTML sem fór í skrána. Hafi einhver breytt lýsingunni eftir
- * útflutning er það ekki sá texti sem fór inn, og röðin bíður næsta
- * útflutnings í stað þess að vera merkt þegjandi sem komin.
+ * Merkt er AÐEINS ef röðin er enn Samþykkt OG hvert gildi sem fór í skrá er
+ * enn það sem sheetið gefur. Hafi einhver breytt eftir útflutning er það ekki
+ * sá texti sem fór inn, og röðin bíður næsta útflutnings í stað þess að vera
+ * merkt þegjandi sem komin.
  *
  * Að skrá hafi verið búin til sannar ekki innflutning — þess vegna spyr
- * glugginn fyrst. Endanleg sönnun kemur úr næsta Plytix-útdrætti.
+ * glugginn fyrst. Byggingin staðfestir svo úr næsta Plytix-útdrætti.
  */
 function menu_markPimExportImported() {
   const ui = SpreadsheetApp.getUi();
-  const file = pimLatestExportFile_();
-  const grid = Utilities.parseCsv(file.getBlob().getDataAsString('UTF-8'));
-  const sent = {};
-  for (let r = 1; r < grid.length; r++) {
-    if (grid[r][0]) sent[normSku_(grid[r][0])] = String(grid[r][1] || '');
-  }
-  const n = Object.keys(sent).length;
+  const batch = pimLatestExportBatch_();
+  const n = Object.keys(batch.sent).length;
   const ok = ui.alert('Merkja sem Flutt inn',
-    file.getName() + '\n' + n + ' vörur.\n\nErtu búinn að flytja þessa skrá inn í Plytix?',
-    ui.ButtonSet.YES_NO);
+    batch.names.join('\n') + '\n' + n + ' vörur.\n\n' +
+    'Ertu búinn að flytja ' + (batch.names.length > 1 ? 'ALLAR þessar skrár' : 'þessa skrá') +
+    ' inn í Plytix?', ui.ButtonSet.YES_NO);
   if (ok !== ui.Button.YES) return;
 
-  const r = markPimImported_(sent);
+  const r = markPimImported_(batch.sent);
   const lines = [
     r.marked + ' merktar Flutt inn.',
     r.already + ' voru þegar Flutt inn.',
@@ -136,24 +162,16 @@ function menu_markPimExportImported() {
     r.changed.length + ' með breyttan texta eftir útflutning — ekki snertar.',
     r.missing.length + ' fundust ekki í sheetinu.'
   ];
-  Logger.log('[PIM][FLUTT INN] ' + file.getName() + ' | ' + lines.join(' | '));
+  Logger.log('[PIM][FLUTT INN] ' + batch.names.join(', ') + ' | ' + lines.join(' | '));
   ['notApproved', 'changed', 'missing'].forEach(function (k) {
     if (r[k].length) Logger.log('[PIM][FLUTT INN] ' + k + ': ' + r[k].join('; '));
   });
   ui.alert('Merkja sem Flutt inn', lines.join('\n'), ui.ButtonSet.OK);
 }
 
+/** sent: { sheet-SKU: { attrKey: gildið í skránni } } */
 function markPimImported_(sent) {
-  const cfg = loadConfig_();
-  const sh = SpreadsheetApp.openById(cfg.SHEETS.PIM.ID).getSheetByName(PIM_SHEET_);
-  const vals = sh.getDataRange().getValues();
-  const head = vals[0].map(normHeader_);
-  const col = {};
-  ['label', 'sku', 'descNew', 'status'].forEach(function (k) {
-    col[k] = head.indexOf(normHeader_(PIM_COLS_[pimColNum_(k) - 1].head));
-    if (col[k] === -1) throw new Error('Kólumna „' + PIM_COLS_[pimColNum_(k) - 1].head + '" finnst ekki.');
-  });
-
+  const o = pimExportOpen_(), sh = o.sh, vals = o.vals, col = o.col;
   const out = { marked: 0, already: 0, notApproved: [], changed: [], missing: [] };
   const seen = {};
   for (let r = 1; r < vals.length; r++) {
@@ -164,9 +182,11 @@ function markPimImported_(sent) {
     const status = String(vals[r][col.status]).trim();
     if (status === PIM_IMPORTED_STATUS_) { out.already++; continue; }
     if (status !== PIM_EXPORT_STATUS_) { out.notApproved.push(who + ' (' + status + ')'); continue; }
-    if (pimDescToHtml_(String(vals[r][col.descNew] || '').trim()) !== sent[key]) {
-      out.changed.push(who); continue;
-    }
+    const same = PIM_EXPORT_ATTRS_.every(function (a) {
+      if (!(a.key in sent[key])) return true;
+      return a.toPlytix(String(vals[r][col[a.key]] || '').trim()) === sent[key][a.key];
+    });
+    if (!same) { out.changed.push(who); continue; }
     // Reitur fyrir reit, aldrei spönn: sjá voruinnihald_saveRows um hvernig
     // setValues yfir spönn skrifar til baka yfir það sem aðrir breyttu.
     sh.getRange(r + 1, col.status + 1).setValue(PIM_IMPORTED_STATUS_);
@@ -177,16 +197,33 @@ function markPimImported_(sent) {
   return out;
 }
 
-function pimLatestExportFile_() {
+/** Skrár nýjasta útflutnings: allar `plytix_import_<slug>_<stimpill>.csv`
+ *  með nýjasta stimplinum. Eldri skrár með eina eigind (fyrir 2026-10-07)
+ *  lesast eins. */
+function pimLatestExportBatch_() {
+  const re = /^plytix_import_(.+)_(\d{4}-\d{2}-\d{2}_\d{4})\.csv$/i;
   const it = pimExportFolder_().getFiles();
-  let newest = null;
+  const all = [];
   while (it.hasNext()) {
-    const f = it.next();
-    if (!/^plytix_import_.*\.csv$/i.test(f.getName())) continue;
-    if (!newest || f.getDateCreated() > newest.getDateCreated()) newest = f;
+    const f = it.next(), m = re.exec(f.getName());
+    if (m) all.push({ f: f, slug: m[1], stamp: m[2] });
   }
-  if (!newest) throw new Error('Engin útflutningsskrá í ' + PIM_EXPORT_SUBFOLDER_ + '.');
-  return newest;
+  if (!all.length) throw new Error('Engin útflutningsskrá í ' + PIM_EXPORT_SUBFOLDER_ + '.');
+  const latest = all.map(function (x) { return x.stamp; }).sort().pop();
+
+  const sent = {}, names = [];
+  all.filter(function (x) { return x.stamp === latest; }).forEach(function (x) {
+    const a = PIM_EXPORT_ATTRS_.filter(function (y) { return y.slug === x.slug; })[0];
+    if (!a) return;
+    names.push(x.f.getName());
+    const grid = Utilities.parseCsv(x.f.getBlob().getDataAsString('UTF-8'));
+    for (let r = 1; r < grid.length; r++) {
+      if (!grid[r][0]) continue;
+      const k = normSku_(grid[r][0]);
+      (sent[k] = sent[k] || {})[a.key] = String(grid[r][1] || '');
+    }
+  });
+  return { sent: sent, names: names };
 }
 
 /** sheet-SKU (normSku_) → Plytix-SKU stafrétt, úr nýjasta útdrættinum. */

@@ -177,6 +177,10 @@ textarea{min-height:190px;resize:vertical}
 input[type=text]:focus,textarea:focus{border-color:var(--brand);background:var(--surface)}
 
 .gauge{margin-top:11px}
+.lint{margin:8px 0 0;padding:7px 10px 7px 26px;font-size:12.5px;line-height:1.45;
+  color:var(--warn);background:var(--warn-wash);border-radius:4px}
+.lint li+li{margin-top:3px}
+.lint code{font-family:var(--f-mono);font-size:11.5px}
 .gauge-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
 .gcount{font-family:var(--f-mono);font-size:20px;font-weight:600;
   font-variant-numeric:tabular-nums;letter-spacing:-.02em}
@@ -463,6 +467,7 @@ footer b{color:var(--ink-2);font-weight:600}
             </div>
             <div class="scale"><span>0</span><span id="s-min">20</span><span id="s-max">150</span><span>200</span></div>
           </div>
+          <ul class="lint" id="lint" hidden></ul>
 
           <div class="ai">
             <button type="button" id="ai">Orða punktana mína</button>
@@ -1270,7 +1275,41 @@ function drawLink(key, invalid) {
     : 'Fannstu blaðið hjá birgjanum? Límdu hlekkinn hér.';
 }
 
+/**
+ * Ritvillur sem appið getur séð á meðan skrifað er (2026-10-07). Mælt á
+ * fyrstu 68 lýsingunum: þrjár af fjórum í úrtaki höfðu eina af þessum, og
+ * yfirlesturinn þurfti að grípa þær allar. Viðvörun, ekki hindrun.
+ *
+ * Bil á eftir punkti/kommu: aðeins á eftir orði með 3+ stöfum eða sviga,
+ * svo `t.d.`, `o.s.frv.` og `0,5` sleppi. Slóðir eru teknar út fyrst.
+ */
+var LINT_FACTS = /(^|[^\w])(Pakkning|Geymsla|Geymsluþol|Þyngd|Stærð|Afl|Rúmmál|Magn|Uppruni|Mál|Litur)\s*:/i;
+function htmlText(h) {
+  h = String(h || '');
+  if (!/<\/?(p|ul|li|br)\b/i.test(h)) return h;
+  var d = document.createElement('div');
+  d.innerHTML = h.replace(/<li[^>]*>/gi, '\n- ').replace(/<\/p>/gi, '\n\n').replace(/<br\s*\/?>/gi, '\n');
+  return d.textContent.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function lint(text) {
+  var out = [], t = String(text || '').replace(/(https?:\/\/|www\.)\S+/gi, ' ');
+  var m = /(?:[A-Za-zÀ-ÿ]{3,}|[)\]])[.,](?=[A-Za-zÀ-ÿ])/.exec(t);
+  if (m) out.push('Vantar bil á eftir greinarmerki: <code>' + esc(t.substr(Math.max(0, m.index + m[0].length - 12), 20)) + '</code>');
+  m = /[a-zà-ÿ]{3,}\. ([a-zà-ÿ])/.exec(t);
+  if (m) out.push('Lítill stafur á eftir punkti: <code>' + esc(t.substr(m.index, 24)) + '</code>');
+  var inline = t.split('\n').filter(function (l) { return !/^\s*[-•*]\s/.test(l) && LINT_FACTS.test(l); });
+  if (inline.length) {
+    var f = LINT_FACTS.exec(inline[0]);
+    out.push('<code>' + esc(f[2]) + ':</code> stendur í texta. Tölur fara í punktalista, ein á línu: <code>- ' + esc(f[2]) + ': …</code>');
+  }
+  return out;
+}
+
 function gauge() {
+  var issues = lint(el('ds').value);
+  el('lint').innerHTML = issues.map(function (x) { return '<li>' + x + '</li>'; }).join('');
+  el('lint').hidden = !issues.length;
   var n = words(el('ds').value);
   el('gn').textContent = n;
   el('gf').style.width = Math.min(100, n / 200 * 100) + '%';
@@ -1368,7 +1407,9 @@ function render() {
     ? 'Gagnablaðið fylgir með og er lesið. Stuttir punktar duga: fyrir hverja og til hvers. Þú mátt líka ýta beint á hnappinn.'
     : 'Ekkert gagnablað. Skrifaðu í punktum hvað varan er og hvaða tölur eiga við, og ýttu svo á hnappinn.');
 
-  el('was').textContent = p.descOld || '(engin)';
+  // Innfluttar lýsingar eru HTML í Plytix. Sýndar sem texti, eins og þær
+  // voru skrifaðar, ekki sem merkjasúpa.
+  el('was').textContent = htmlText(p.descOld) || '(engin)';
   var cls = p.descIsName ? 'crit' : p.descWords >= MINW ? 'good' : 'warn';
   var meta = '<span class="chip ' + cls + '">' + p.descWords + ' orð</span>';
   if (p.descIsName) meta += '<span class="chip crit">= vöruheitið</span>';

@@ -78,7 +78,7 @@ function onOpen() {
         .addItem('Byggja vinnusheet úr Plytix-útdrætti', 'menu_buildPimWorksheet')
         .addItem('Endurnýja fellilista (Eigandi, Staða, Já/Nei)', 'menu_refreshPimOwners')
         .addSeparator()
-        .addItem('Útflutningur í Plytix (Long Description)', 'menu_exportPimLongDescription')
+        .addItem('Útflutningur í Plytix (lýsing + vörumerki)', 'menu_exportPim')
         .addItem('Merkja síðasta útflutning sem Flutt inn', 'menu_markPimExportImported')
     )
     .addSubMenu(

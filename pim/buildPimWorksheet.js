@@ -293,6 +293,8 @@ function menu_buildPimWorksheet() {
   if (r.unknownOwners) {
     msg += ' ⚠️ ' + r.unknownOwners + ' nöfn ekki í PIM_OWNERS — sjá keyrsluskrá.';
   }
+  if (r.confirmed) msg += ' ' + r.confirmed + ' staðfestar í Plytix → Flutt inn.';
+  if (r.drift) msg += ' ⚠️ ' + r.drift + ' Flutt inn en Plytix segir annað (PLYTIX ≠ NÝ í Vísbendingu).';
 
   // Í KEYRSLUSKRÁNA LÍKA, EKKI BARA Í TOASTIÐ.
   //
@@ -399,7 +401,7 @@ function buildPimWorksheet_() {
   const orphans = [];
   const seen = {};        // Label sem fer INN i sheetid
   const inFile = {};      // Label sem er i skranni, hvad sem stodunni lidur
-  let updated = 0, added = 0, skipped = 0;
+  let updated = 0, added = 0, skipped = 0, confirmed = 0, drift = 0;
 
   // Oll SKU i utdraettinum: pimDescSkuRefs_ tekur adeins vorunumer sem eru til.
   const allSkus = {};
@@ -495,6 +497,24 @@ function buildPimWorksheet_() {
     KEEP.forEach(function (k) { row[idx[k]] = prevRow ? prevRow[idx[k]] : ''; });
     if (!prev) { row[idx.status] = 'Ekki byrjað'; added++; } else { updated++; }
 
+    // STAÐFESTING ÚR PLYTIX (2026-10-07). „Merkja sem Flutt inn" segir að
+    // skrá hafi verið flutt inn; þetta segir hvort textinn SÉ í Plytix.
+    //   Samþykkt + Plytix = okkar texti → Flutt inn (merkingu gleymt, eða
+    //                                     flutt inn án valmyndarinnar)
+    //   Flutt inn + Plytix ≠ okkar texti → PLYTIX ≠ NÝ í Vísbendingu: einhver
+    //                                     breytti í Plytix, eða innflutningur
+    //                                     féll. Staðan er EKKI færð — það er
+    //                                     manneskju að skera úr.
+    // Okkar eigin HTML á ekki að fá `HTML`-merkið, sem er ætlað texta límdum
+    // af vefsíðum birgja.
+    const pc = pimPlytixCheck_(row, idx, p);
+    if (pc === 'confirmed') { row[idx.status] = 'Flutt inn'; confirmed++; }
+    if (pc === 'confirmed' || pc === 'match') row[idx.hint] = '';
+    if (pc === 'drift') {
+      drift++;
+      row[idx.hint] = 'PLYTIX ≠ NÝ' + (row[idx.hint] ? ' · ' + row[idx.hint] : '');
+    }
+
     // FORFYLLING UR PLYTIX: skrain er til, svo svarid er JA.
     //
     // Thetta er STADREYND, ekki mat, og starfsmadur getur ekki bætt neinu vid
@@ -585,7 +605,36 @@ function buildPimWorksheet_() {
 
   return { updated: updated, added: added, gone: gone, skipped: skipped,
            orphans: orphans.length, total: out.length,
-           assigned: assigned, unknownOwners: unknown.length };
+           assigned: assigned, unknownOwners: unknown.length,
+           confirmed: confirmed, drift: drift };
+}
+
+/**
+ * Ber texta sheetsins saman við Plytix fyrir eina röð (sjá kallstaðinn).
+ *   'confirmed'  Samþykkt og allt sem við eigum er komið í Plytix
+ *   'match'      Flutt inn og stemmir
+ *   'drift'      Flutt inn en Plytix segir annað
+ *   ''           ekkert að bera saman
+ * Ber saman þær eigindir sem útflutningurinn sendir: Long Description og
+ * Brand Name — hverja aðeins ef reiturinn í sheetinu er fylltur.
+ */
+function pimPlytixCheck_(row, idx, p) {
+  const st = String(row[idx.status] || '').trim();
+  if (st !== 'Samþykkt' && st !== 'Flutt inn') return '';
+  const dn = String(row[idx.descNew] || '').trim();
+  const bn = String(row[idx.brandNew] || '').trim();
+  if (!dn && !bn) return '';
+  const ok = (!dn || pimHtmlNorm_(pimDescToHtml_(dn)) === pimHtmlNorm_(p.description)) &&
+             (!bn || bn === String(p.brand || '').trim());
+  if (st === 'Samþykkt') return ok ? 'confirmed' : '';
+  return ok ? 'match' : 'drift';
+}
+
+/** Plytix-ritillinn má hnika bilum og `<br/>`; það er ekki efnisbreyting. */
+function pimHtmlNorm_(h) {
+  return String(h == null ? '' : h)
+    .replace(/&nbsp;/g, ' ').replace(/<br\s*\/?>/gi, '<br>')
+    .replace(/>\s+</g, '><').replace(/\s+/g, ' ').trim();
 }
 
 // ---------------------------------------------------------------------------
