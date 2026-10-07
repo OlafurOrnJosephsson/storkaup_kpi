@@ -97,6 +97,11 @@ var VI_OPTIONAL_ = { hint: true, dsFile: true, sdsFile: true, brFile: true,
  *  PIM_STATUSES_ i `pim/buildPimWorksheet.js`, annars hafnar gagnaprofun
  *  sheetsins gildinu og vistun fellur. */
 var VI_STATUS_NOCHANGE_ = 'Óbreytt';
+var VI_STATUS_REVIEW_   = 'Til yfirlesturs';
+/** Komnar í gegnum yfirlestur. Sjá voruinnihald_saveRows. */
+var VI_STATUS_LOCKED_   = { 'Samþykkt': true, 'Flutt inn': true };
+/** Skrifað en ekki sent í yfirlestur — það sem „Skila flokknum" færir. */
+var VI_STATUS_OPEN_     = { '': true, 'Ekki byrjað': true, 'Í vinnslu': true };
 
 var VI_WORDS_MIN_ = 10;   // laekkad ur 20, 2026-10-05
 var VI_WORDS_MAX_ = 150;
@@ -581,6 +586,22 @@ function voruinnihald_saveRows(rows) {
       // BEIDNI: adeins netfang ur lidinu, og `askedBy` er alltaf sa sem
       // vistar -- aldrei thad sem vafrinn segir.
       delete inRow.askedBy;
+      // SAMÞYKKT / FLUTT INN ERU VARIN HÉR, EKKI BARA Í VAFRANUM (2026-10-07).
+      // Vafrinn man stöðuna frá því flokkurinn var opnaður. Samþykki Óli vöru
+      // í sheetinu á meðan sölumaður er með flokkinn opinn, og hann smellir
+      // „Næsta" án breytingar, sendi vafrinn gamla `Til yfirlesturs` og
+      // samþykkið þurrkaðist út. Hér er lesin NÚVERANDI staða sheetsins.
+      //   texti óbreyttur → staðan stendur (Spurning er meðvituð og fer í gegn)
+      //   texti breyttur  → Til yfirlesturs, hvað sem vafrinn sendi
+      if (idx.status !== undefined && VI_STATUS_LOCKED_[String(vals[r0][idx.status] || '').trim()]) {
+        var textChanged = ['nameNew', 'descNew'].some(function (k) {
+          if (VI_WRITABLE_.indexOf(k) === -1 || idx[k] === undefined) return false;
+          if (!(k in inRow) || inRow[k] === null || inRow[k] === undefined) return false;
+          return String(inRow[k]) !== String(vals[r0][idx[k]] == null ? '' : vals[r0][idx[k]]);
+        });
+        if (textChanged) inRow.status = VI_STATUS_REVIEW_;
+        else if (inRow.status === VI_STATUS_REVIEW_ || inRow.status === VI_STATUS_NOCHANGE_) delete inRow.status;
+      }
       if ('relNew' in inRow) {
         var seenRel = {}, keep = [];
         String(inRow.relNew || '').split(',').forEach(function (x) {
@@ -720,6 +741,53 @@ function voruinnihald_release(sel) {
     console.log('[VORUINNIHALD][AUDIT] ' + user + ' slepti ' + JSON.stringify(sel) +
                 ' (' + rows.length + ' radir)');
     return { ok: true, rows: rows.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * „Skila flokknum": sölumaðurinn segist búinn.
+ *
+ * Færir SKRIFAÐAR vörur í flokknum sem eru enn opnar (tóm staða, Ekki byrjað,
+ * Í vinnslu) í Til yfirlesturs. Snertir ekki það sem er þegar í yfirlestri,
+ * samþykkt, innflutt, Óbreytt eða Spurning. Aðeins raðir þar sem hann er
+ * Eigandi.
+ *
+ * Eigandinn helst. Spjaldið í „Mitt" sýnir þá ferilinn áfram (yfirlestur →
+ * samþykkt → í Plytix), og ef hann heldur áfram að vinna fer breyting í
+ * yfirlestur eins og hver önnur — sjá voruinnihald_saveRows. „Sleppa
+ * flokknum" er sér aðgerð.
+ */
+function voruinnihald_submit(sel) {
+  var user = vi_me_();
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(VI_LOCK_MS_)) throw new Error('Reyndu aftur eftir smá stund.');
+  try {
+    var o = vi_open_(), sh = o.sh, idx = o.idx, vals = o.vals;
+    var mine = vi_rows_(vals, idx, sel).filter(function (r) {
+      return String(vals[r][idx.owner] || '').trim() === user;
+    });
+    var sent = [], unwritten = 0;
+    mine.forEach(function (r) {
+      if (!VI_STATUS_OPEN_[String(vals[r][idx.status] || '').trim()]) return;
+      if (String(vals[r][idx.descNew] || '').trim()) sent.push(r); else unwritten++;
+    });
+    // Samfelldar runur af RÖÐUM SEM Á AÐ SKRIFA — aldrei spönn sem nær yfir
+    // annarra raðir (sjá voruinnihald_saveRows).
+    var runs = [];
+    sent.forEach(function (r) {
+      var last = runs.length ? runs[runs.length - 1] : null;
+      if (last && r === last[last.length - 1] + 1) last.push(r); else runs.push([r]);
+    });
+    runs.forEach(function (run) {
+      sh.getRange(run[0] + 1, idx.status + 1, run.length, 1)
+        .setValues(run.map(function () { return [VI_STATUS_REVIEW_]; }));
+    });
+    SpreadsheetApp.flush();
+    console.log('[VORUINNIHALD][AUDIT] ' + user + ' skiladi ' + JSON.stringify(sel) +
+                ' (' + sent.length + ' i yfirlestur, ' + unwritten + ' oskrifadar)');
+    return { ok: true, sent: sent.length, unwritten: unwritten, rows: mine.length };
   } finally {
     lock.releaseLock();
   }

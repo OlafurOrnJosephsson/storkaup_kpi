@@ -914,7 +914,9 @@ function drawMine() {
             '<span class="kp imp">' + (t.imported ? IS(t.imported) + ' í Plytix' : '') + '</span>' +
             '<span class="kp">' + IS(t.n) + ' v.</span></button>';
         }).join('') + '</div>' +
-        '<div class="mrow"><button type="button" class="rel" data-rel1="' +
+        '<div class="mrow"><button type="button" class="go" data-sub1="' +
+        esc(l1) + '" data-sub2="' + esc(l2) +
+        '">Skila flokknum</button><button type="button" class="rel" data-rel1="' +
         esc(l1) + '" data-rel2="' + esc(l2) +
         '">Sleppa flokknum</button></div></div>');
     });
@@ -1071,6 +1073,23 @@ function take(sel) {
       busy(false); toast((e && e.message) || 'Náði ekki að taka flokkinn.');
     })
     .voruinnihald_claim(sel);
+}
+
+/** „Ég er búinn": skrifaðar vörur í vinnslu → Til yfirlesturs. Sjá
+ *  voruinnihald_submit. Spyr fyrst — þetta er afhending, ekki vistun. */
+function submitGroup(sel) {
+  if (!confirm('Skila „' + sel.cat2 + '" í yfirlestur?\n\nSkrifaðar vörur sem eru enn í vinnslu ' +
+               'fara í yfirlestur. Þú heldur flokknum, og ef þú breytir einhverju eftir á ' +
+               'fer sú vara aftur í yfirlestur.')) return;
+  busy(true, 'Skila…');
+  google.script.run
+    .withSuccessHandler(function (r) {
+      busy(false); loadTree();
+      toast(r.sent + ' vörur sendar í yfirlestur' +
+            (r.unwritten ? ' · ' + r.unwritten + ' óskrifaðar eftir' : '') + '.');
+    })
+    .withFailureHandler(function (e) { busy(false); toast((e && e.message) || 'Villa.'); })
+    .voruinnihald_submit(sel);
 }
 
 function release(sel) {
@@ -1585,8 +1604,11 @@ el('filters').addEventListener('click', function (e) {
   drawTree();
 });
 el('minelist').addEventListener('click', function (e) {
-  var o = e.target.closest('[data-key]'), r = e.target.closest('[data-rel2]');
-  if (o) {
+  var o = e.target.closest('[data-key]'), r = e.target.closest('[data-rel2]'),
+      sb = e.target.closest('[data-sub2]');
+  if (sb) {
+    submitGroup({ cat1: sb.dataset.sub1, cat2: sb.dataset.sub2 });
+  } else if (o) {
     var t = findByKey(o.dataset.key);
     if (t) openGroup(selOf(t));
   } else if (r) {
