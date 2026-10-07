@@ -856,8 +856,19 @@ function stateText(s) {
    done thakid vid w, sem er sama villan og adur en aldrei verri. */
 function wd(t) { return t.wdone !== undefined ? t.wdone : Math.min(t.done, t.w); }
 
+/* KLARAD. Tvaer leidir:
+   - allt sem vantadi er skrifad (w > 0, wdone >= w), eda
+   - ekkert vantar lengur OG eitthvad er komid i Plytix OG ekkert bidur.
+   Seinni leidin er til thvi innflutningur faerir w nidur i 0: lysingin er
+   tha til i Plytix. An hennar datt Pasta (allt innflutt) ut ur Klarad.
+   Undirflokkur med w = 0 sem enginn hefur snert faer EKKI Klarad. */
+function isDoneGrp(w, wdone, imported, review, approved) {
+  if (w > 0) return wdone >= w;
+  return (imported || 0) > 0 && !(review || 0) && !(approved || 0);
+}
+
 function statusOf(t) {
-  if (t.w > 0 && wd(t) >= t.w) return 'done';
+  if (isDoneGrp(t.w, wd(t), t.imported, t.review, t.approved)) return 'done';
   if (!t.owner) return 'free';
   return t.owner === USER ? 'mine' : 'taken';
 }
@@ -897,8 +908,10 @@ function nest() {
     var k1 = t.cat1 || '(enginn flokkur)';
     var k2 = t.cat2 || '(ekkert lag)';
     var a = out[k1] = out[k1] || {};
-    var b = a[k2] = a[k2] || { n: 0, w: 0, done: 0, wdone: 0, owners: {}, groups: [] };
+    var b = a[k2] = a[k2] || { n: 0, w: 0, done: 0, wdone: 0, imported: 0, review: 0,
+                                approved: 0, owners: {}, groups: [] };
     b.n += t.n; b.w += t.w; b.done += t.done; b.wdone += wd(t); b.groups.push(t);
+    b.imported += t.imported || 0; b.review += t.review || 0; b.approved += t.approved || 0;
     if (t.owner) b.owners[t.owner] = (b.owners[t.owner] || 0) + 1;
   });
   return out;
@@ -907,7 +920,7 @@ function nest() {
 /** Stada a Flokki. `mine` adeins ef ALLIR undirflokkar eru minir; `mine` med
  *  hluta er lika mitt, en textinn segir fra thvi. */
 function status2(b) {
-  if (b.w > 0 && b.wdone >= b.w) return 'done';
+  if (isDoneGrp(b.w, b.wdone, b.imported, b.review, b.approved)) return 'done';
   var names = Object.keys(b.owners);
   if (!names.length) return 'free';
   if (names.indexOf(USER) >= 0) return 'mine';
@@ -952,7 +965,7 @@ function drawMine() {
         '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
         '<div class="kidlist">' + mine.map(function (t) {
           return '<button type="button" class="kid" data-key="' + esc(keyOf(t)) +
-            '" data-done="' + (t.w && wd(t) >= t.w ? 1 : 0) + '">' +
+            '" data-done="' + (statusOf(t) === 'done' ? 1 : 0) + '">' +
             '<span class="kn">' + esc(t.cat3 || '(ekkert undirlag)') + '</span>' +
             '<span class="kp">' + IS(t.done) + ' skrifaðar</span>' +
             // Alltaf fjórði reiturinn, tómur ef enginn, svo `v.` standi í línu.
