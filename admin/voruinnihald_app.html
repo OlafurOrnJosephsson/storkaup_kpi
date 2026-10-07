@@ -258,7 +258,7 @@ input[type=text]:focus,textarea:focus{border-color:var(--brand);background:var(-
 .spec .cp{margin-left:8px;font-family:var(--f-ui);font-size:11.5px;font-weight:600;padding:1px 8px;
   border:1px solid var(--rule-2);border-radius:4px;background:var(--surface);color:var(--brand-ink);cursor:pointer}
 .spec .cp:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
-.was{font-family:var(--f-prose);font-size:14.5px;color:var(--ink-2);margin:0;
+.was{font-family:var(--f-prose);font-size:14.5px;color:var(--ink-2);margin:0;white-space:pre-line;
   max-height:150px;overflow-y:auto}
 .wasmeta{display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:wrap}
 .chip{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:99px;
@@ -862,13 +862,16 @@ function wd(t) { return t.wdone !== undefined ? t.wdone : Math.min(t.done, t.w);
    Seinni leidin er til thvi innflutningur faerir w nidur i 0: lysingin er
    tha til i Plytix. An hennar datt Pasta (allt innflutt) ut ur Klarad.
    Undirflokkur med w = 0 sem enginn hefur snert faer EKKI Klarad. */
-function isDoneGrp(w, wdone, imported, review, approved) {
+function isDoneGrp(w, wdone, imported, review, approved, n, done) {
+  // ALLAR VORUR GRAENAR (fullbunar) = klarad, hvad sem w segir. Thad er thad
+  // sem skrifarinn ser i reitunum efst, svo bordid a ad segja thad sama.
+  if (n > 0 && done >= n) return true;
   if (w > 0) return wdone >= w;
   return (imported || 0) > 0 && !(review || 0) && !(approved || 0);
 }
 
 function statusOf(t) {
-  if (isDoneGrp(t.w, wd(t), t.imported, t.review, t.approved)) return 'done';
+  if (isDoneGrp(t.w, wd(t), t.imported, t.review, t.approved, t.n, t.done)) return 'done';
   if (!t.owner) return 'free';
   return t.owner === USER ? 'mine' : 'taken';
 }
@@ -920,7 +923,7 @@ function nest() {
 /** Stada a Flokki. `mine` adeins ef ALLIR undirflokkar eru minir; `mine` med
  *  hluta er lika mitt, en textinn segir fra thvi. */
 function status2(b) {
-  if (isDoneGrp(b.w, b.wdone, b.imported, b.review, b.approved)) return 'done';
+  if (isDoneGrp(b.w, b.wdone, b.imported, b.review, b.approved, b.n, b.done)) return 'done';
   var names = Object.keys(b.owners);
   if (!names.length) return 'free';
   if (names.indexOf(USER) >= 0) return 'mine';
