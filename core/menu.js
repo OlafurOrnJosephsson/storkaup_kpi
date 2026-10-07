@@ -77,6 +77,8 @@ function onOpen() {
       ui.createMenu('Vöruinnihald')
         .addItem('Byggja vinnusheet úr Plytix-útdrætti', 'menu_buildPimWorksheet')
         .addItem('Endurnýja fellilista (Eigandi, Staða, Já/Nei)', 'menu_refreshPimOwners')
+        .addSeparator()
+        .addItem('Útflutningur í Plytix (Long Description)', 'menu_exportPimLongDescription')
     )
     .addSubMenu(
       ui.createMenu('Tools')
