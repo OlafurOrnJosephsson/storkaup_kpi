@@ -503,6 +503,10 @@ function buildPimWorksheet_() {
     // frá starfsfólki — varðveitt (úr endurkortlagðri röð, sjá remapPrev_)
     const prevRow = prev ? remapPrev_(prev) : null;
     KEEP.forEach(function (k) { row[idx[k]] = prevRow ? prevRow[idx[k]] : ''; });
+    // Varan ER í útdrættinum: „horfin"-merki frá fyrri byggingu eru úrelt.
+    // 2026-10-07 las bygging gamlan útdrátt (nýi var ekki kominn í Drive) og
+    // merkti 45 vörur EKKI Í PLYTIX. Án þessa sætu þau merki þar að eilífu.
+    row[idx.note] = pimStripGoneMarks_(row[idx.note]);
     if (!prev) { row[idx.status] = 'Ekki byrjað'; added++; } else { updated++; }
 
     // STAÐFESTING ÚR PLYTIX (2026-10-07). „Merkja sem Flutt inn" segir að
@@ -638,6 +642,17 @@ function pimPlytixCheck_(row, idx, p) {
              (!pl || pimLabelKey_(pl) === pimLabelKey_(p.productLabels));
   if (st === 'Samþykkt') return ok ? 'confirmed' : '';
   return ok ? 'match' : 'drift';
+}
+
+/** Tekur „horfin"-merkin sem byggingin setur framan á Athugasemd (sjá
+ *  „horfið úr Plytix") af. Aðeins þau — texti starfsfólks er ósnertur. */
+function pimStripGoneMarks_(note) {
+  let s = String(note == null ? '' : note), prev;
+  do {
+    prev = s;
+    s = s.replace(/^\s*(EKKI Í PLYTIX|EKKI Í BIRTINGU|PLYTIX-STAÐA: [^(]*?) \(\d{4}-\d{2}-\d{2}\)\.\s*/, '');
+  } while (s !== prev);
+  return s;
 }
 
 /** Fjölval → listi: kommuaðskilið, tvítekningar út (óháð há/lágstöfum),
