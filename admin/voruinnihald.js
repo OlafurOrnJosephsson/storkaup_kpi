@@ -71,6 +71,9 @@ var VI_WRITABLE_ = ['owner', 'brandNew', 'descNew',
  *  allt annad (texti, `javascript:`, slod med bili) er hunsad, ekki vistad. */
 var VI_URL_KEYS_ = { dsUrl: true, sdsUrl: true };
 var VI_URL_RE_ = /^https?:\/\/[^\s<>"]+$/i;
+/** VERÐUR að vera það sama sem PIM_YESNO_ í pim/buildPimWorksheet.js —
+ *  það er listinn sem gagnaprófunin í sheetinu hafnar eftir (strangt). */
+var VI_YESNO_ = ['Já', 'Nei', 'Á ekki við'];
 
 // `nameNew` TEKIÐ ÚT 2026-10-02: vöruheitin eru í bið á meðan reglurnar um
 // þau eru ákveðnar (markaðsstjóri). Reiturinn er skrifvarinn í appinu, en
@@ -101,6 +104,7 @@ var VI_OPTIONAL_ = { hint: true, dsFile: true, sdsFile: true, brFile: true,
  *  sheetsins gildinu og vistun fellur. */
 var VI_STATUS_NOCHANGE_ = 'Óbreytt';
 var VI_STATUS_REVIEW_   = 'Til yfirlesturs';
+var VI_STATUS_APPROVED_ = 'Samþykkt';
 /** Komnar í gegnum yfirlestur. Sjá voruinnihald_saveRows. */
 var VI_STATUS_LOCKED_   = { 'Samþykkt': true, 'Flutt inn': true };
 /** Skrifað en ekki sent í yfirlestur — það sem „Skila flokknum" færir. */
@@ -174,6 +178,20 @@ function vi_open_() {
  */
 /** Lidid: netfongin i VORUINNIHALD_APP_EMAILS, lagstafir. Sama rod sem
  *  adgangurinn og Eigandi-fellilistinn nota. */
+/**
+ * Yfirlesari: má opna flokk sem annar hefur tekið og samþykkja í appinu.
+ * STORKAUP_CONFIG → SETTINGS → VORUINNIHALD_REVIEWERS (kommu-aðskilin
+ * netföng). Eigandinn (deployerinn) er alltaf yfirlesari, eins og í
+ * adminGuard_, svo enginn læsist úti þó röðin vanti.
+ */
+function vi_isReviewer_(email) {
+  email = String(email || '').trim().toLowerCase();
+  if (!email) return false;
+  if (email === String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase()) return true;
+  var raw = String((loadConfig_().SETTINGS || {}).VORUINNIHALD_REVIEWERS || '');
+  return raw.split(',').map(function (x) { return x.trim().toLowerCase(); }).indexOf(email) !== -1;
+}
+
 function vi_team_() {
   var sets = loadConfig_().SETTINGS || {};
   var raw = String(sets.VORUINNIHALD_APP_EMAILS || sets.PIM_OWNERS || '');
@@ -436,6 +454,7 @@ function voruinnihald_getTree() {
            relCols: idx.relNew !== undefined,
            plCols: idx.plOld !== undefined && idx.plNew !== undefined,
            labelValues: vi_labelValues_(vals, idx),
+           reviewer: vi_isReviewer_(user),
            team: vi_team_(), asked: asked };
 }
 
@@ -569,6 +588,7 @@ function voruinnihald_getGroup(sel) {
  * vafranum er ekki nothæf.
  */
 function voruinnihald_saveRows(rows) {
+  var reviewer = null;                      // flett upp aðeins ef þarf
   var user = adminGuard_('voruinnihald');   // netfang naegir hér — engin
                                             // skrif i Eigandi-kolumnuna
 
@@ -616,6 +636,14 @@ function voruinnihald_saveRows(rows) {
       // BEIDNI: adeins netfang ur lidinu, og `askedBy` er alltaf sa sem
       // vistar -- aldrei thad sem vafrinn segir.
       delete inRow.askedBy;
+      // HVER MÁ SAMÞYKKJA (2026-10-07). Áður tók þjónninn hvaða stöðu sem
+      // vafrinn sendi. `Flutt inn` kemur aldrei úr appinu — aðeins útflutningur
+      // og bygging setja hana. `Samþykkt` aðeins frá yfirlesara.
+      if (inRow.status === 'Flutt inn') delete inRow.status;
+      if (inRow.status === VI_STATUS_APPROVED_) {
+        if (reviewer === null) reviewer = vi_isReviewer_(user);
+        if (!reviewer) delete inRow.status;
+      }
       // SAMÞYKKT / FLUTT INN ERU VARIN HÉR, EKKI BARA Í VAFRANUM (2026-10-07).
       // Vafrinn man stöðuna frá því flokkurinn var opnaður. Samþykki Óli vöru
       // í sheetinu á meðan sölumaður er með flokkinn opinn, og hann smellir
@@ -630,7 +658,8 @@ function voruinnihald_saveRows(rows) {
           if (!(k in inRow) || inRow[k] === null || inRow[k] === undefined) return false;
           return String(inRow[k]) !== String(vals[r0][idx[k]] == null ? '' : vals[r0][idx[k]]);
         });
-        if (textChanged) inRow.status = VI_STATUS_REVIEW_;
+        // Yfirlesari sem breytir OG samþykkir í sama skrefi heldur samþykkinu.
+        if (textChanged && inRow.status !== VI_STATUS_APPROVED_) inRow.status = VI_STATUS_REVIEW_;
         else if (inRow.status === VI_STATUS_REVIEW_ || inRow.status === VI_STATUS_NOCHANGE_) delete inRow.status;
       }
       if ('relNew' in inRow) {
@@ -647,6 +676,13 @@ function voruinnihald_saveRows(rows) {
         if (a && team.indexOf(a) === -1) { delete inRow.assignee; }
         else { inRow.assignee = a; inRow.askedBy = a ? user : ''; }
       }
+      // GILDI SEM SHEETIÐ HAFNAR ERU TEKIN ÚT FYRIR SKRIF (2026-10-07).
+      // Skrifin eru kólumna fyrir kólumnu. Félli Gagnablað á gagnaprófun
+      // væri lýsingin þegar skrifuð, kallið „mistækist", og vafrinn sendi
+      // allt aftur. Hálf vistun sem endurtekur sig er verri en engin.
+      ['datasheet', 'sds'].forEach(function (k) {
+        if (k in inRow && inRow[k] !== '' && VI_YESNO_.indexOf(String(inRow[k])) === -1) delete inRow[k];
+      });
       touched[r0] = inRow;
       saved++;
     });

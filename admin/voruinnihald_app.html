@@ -423,6 +423,7 @@ footer b{color:var(--ink-2);font-weight:600}
         <div class="filters" id="filters">
           <button type="button" data-f="free" aria-pressed="true">Laust</button>
           <button type="button" data-f="all" aria-pressed="false">Allt</button>
+          <button type="button" data-f="review" aria-pressed="false" id="f-review" hidden>Yfirlestur</button>
         </div>
       </div>
       <div id="tree"></div>
@@ -516,6 +517,7 @@ footer b{color:var(--ink-2);font-weight:600}
         </div>
 
         <div class="acts">
+          <button class="btn" id="approve" type="button" hidden>Samþykkja og næsta</button>
           <button class="btn" id="next" type="button">Vista og næsta</button>
           <button class="btn ghost" id="same" type="button">Engin breyting</button>
           <button class="btn ghost" id="skip" type="button">Merkja spurningu</button>
@@ -605,6 +607,10 @@ var ASSIGN = false, TEAM = [], ASKED = [];
 var RELCOLS = false;
 // Vottanir (Product Labels): adeins thegar kolumnurnar eru til (eftir endurbyggingu).
 var PLCOLS = false, LABELS = [];
+// Yfirlesari (VORUINNIHALD_REVIEWERS + eigandinn): opnar flokka annarra og
+// samthykkir i appinu. Thjonninn framfylgir thvi lika (voruinnihald_saveRows).
+var REVIEWER = false, reviewMode = false;
+var APPROVED = 'Samþykkt';
 // Voruheitin eru i bid (2026-10-02): reiturinn er skrifvarinn og hvorki
 // snertir voruna ne er sendur. Sjá VI_WRITABLE_ i voruinnihald.js.
 var NAME_FROZEN = true;
@@ -617,6 +623,7 @@ var queue = {};          // sku -> { sku, ...reitir sem breyttust }
 var inFlight = null;     // raðirnar sem eru í loftinu núna
 var flushTimer = null;
 var netErr = false;
+var failCount = 0, SAVE_MAX_TRIES = 4;
 
 /* FULL SLOÐ ER LYKILLINN, ekki undirflokksheitið.
    Mælt í sheetinu 2026-09-10: 77 heiti liggja undir fleiri en einni slóð.
@@ -679,6 +686,7 @@ function flush() {
     .withSuccessHandler(function (res) {
       inFlight = null;
       netErr = false;
+      failCount = 0;
       rows.forEach(function (r) { setRowState(r.sku, 'saved'); });
       if (res && res.unknown) toast(res.unknown + ' SKU fundust ekki í sheetinu.');
       paintSaveState(); drawTicks(); pace();
@@ -695,11 +703,22 @@ function flush() {
       });
       inFlight = null;
       netErr = true;
+      failCount++;
       paintSaveState(); drawTicks();
+      clearTimeout(flushTimer);
+      // GEFST UPP EFTIR NOKKRAR TILRAUNIR (2026-10-07). Áður var reynt aftur
+      // á 6 s fresti endalaust. Villa sem endurtekur sig (t.d. gagnaprófun)
+      // lagast ekki af sjálfu sér, og flipi sem gleymdist opinn hefði sent
+      // sama gamla textann aftur og aftur. Textinn er enn í röðinni og fer
+      // með næstu vistun sem notandinn gerir.
+      if (failCount >= SAVE_MAX_TRIES) {
+        toast('Vistun brást ' + failCount + ' sinnum og er hætt að reyna. Textinn er óskertur ' +
+              'í glugganum — afritaðu hann og endurhlaðaðu síðuna. ' + ((err && err.message) || ''));
+        return;
+      }
       toast('Vistun brást — textinn er óskertur og reynt aftur. ' +
             ((err && err.message) || ''));
-      clearTimeout(flushTimer);
-      flushTimer = setTimeout(flush, 6000);
+      flushTimer = setTimeout(flush, 6000 * failCount);
     })
     .voruinnihald_saveRows(rows);
 }
@@ -712,7 +731,11 @@ function setRowState(sku, state) {
 function paintSaveState() {
   var q = Object.keys(queue).length + (inFlight ? inFlight.length : 0);
   var box = el('netstate');
-  if (netErr) { box.innerHTML = '<i>vistun brást · reynt aftur</i>'; return; }
+  if (netErr) {
+    box.innerHTML = failCount >= SAVE_MAX_TRIES ? '<i>vistun brást · endurhlaðið síðuna</i>'
+                                                : '<i>vistun brást · reynt aftur</i>';
+    return;
+  }
   if (inFlight) { box.textContent = 'vistar ' + inFlight.length + '…'; return; }
   box.innerHTML = q ? esc(q + ' bíða vistunar') : '<b>allt vistað</b>';
 }
@@ -973,10 +996,17 @@ function drawTree() {
       // Fellt ut adeins thegar ENGIN laus vinna er eftir i flokknum.
       if (filter === 'free' && freeW === 0) return '';
 
-      var shown = filter === 'free' ? freeKids : b.groups;
-      var part = filter === 'free' && freeKids.length < b.groups.length;
-      var sw = filter === 'free' ? freeW : b.w;
-      var sn = filter === 'free' ? freeN : b.n;
+      // YFIRLESTUR: undirflokkar med vorur sem bida yfirlesturs, hver sem a thá.
+      var revKids = b.groups.filter(function (t) { return (t.review || 0) > 0; });
+      if (filter === 'review' && !revKids.length) return '';
+      var revW = 0, revN = 0;
+      revKids.forEach(function (t) { revW += t.review; revN += t.n; });
+
+      var shown = filter === 'free' ? freeKids : filter === 'review' ? revKids : b.groups;
+      var part = (filter === 'free' && freeKids.length < b.groups.length) ||
+                 (filter === 'review' && revKids.length < b.groups.length);
+      var sw = filter === 'free' ? freeW : filter === 'review' ? revW : b.w;
+      var sn = filter === 'free' ? freeN : filter === 'review' ? revN : b.n;
       tw += sw; tn += sn; tu += shown.length; tk++;
 
       var open = !!expanded[l1 + '|' + l2];
@@ -994,8 +1024,8 @@ function drawTree() {
         '<span class="cv">&#9654;</span>' +
         '<span class="nm">' + esc(l2) +
         '<em>' + IS(shown.length) + (part ? ' af ' + IS(b.groups.length) : '') +
-        ' undirflokkar' + (part ? ' lausir' : '') + '</em></span>' +
-        '<span class="w">' + IS(sw) + '<em>' + (part ? 'laus skrif' : 'skrif') + '</em></span>' +
+        ' undirflokkar' + (part ? (filter === 'review' ? ' með yfirlestur' : ' lausir') : '') + '</em></span>' +
+        '<span class="w">' + IS(sw) + '<em>' + (filter === 'review' ? 'til yfirl.' : part ? 'laus skrif' : 'skrif') + '</em></span>' +
         '<span class="n">' + IS(sn) + ' vorur</span>' +
         '<span class="st">' + esc(txt) +
         (s2 === 'mine' && b.done ? ' ' + IS(b.done) + '/' + IS(b.w) : '') +
@@ -1004,10 +1034,13 @@ function drawTree() {
           var s3 = statusOf(t);
           var t3 = s3 === 'free' ? 'Taka' : s3 === 'mine' ? 'Mitt'
             : s3 === 'done' ? 'Klarad' : esc(t.owner);
+          // Yfirlesari opnar flokka annarra; adrir sja tha en geta ekki opnad.
           return '<button type="button" class="grp" data-st="' + s3 +
-            '" data-key="' + esc(keyOf(t)) + '"' + (s3 === 'taken' ? ' disabled' : '') + '>' +
+            '" data-key="' + esc(keyOf(t)) + '"' + (s3 === 'taken' && !REVIEWER ? ' disabled' : '') + '>' +
             '<span class="nm">' + esc(t.cat3 || '(ekkert undirlag)') + '</span>' +
-            '<span class="w">' + IS(t.w) + '<em>skrif</em></span>' +
+            (filter === 'review'
+              ? '<span class="w">' + IS(t.review) + '<em>til yfirl.</em></span>'
+              : '<span class="w">' + IS(t.w) + '<em>skrif</em></span>') +
             '<span class="n">' + IS(t.n) + ' vorur</span>' +
             '<span class="st">' + t3 +
             (s3 === 'mine' && t.done ? ' ' + IS(t.done) + '/' + IS(t.w) : '') +
@@ -1051,6 +1084,9 @@ function loadTree(then) {
       ASSIGN = !!r.assignCols; TEAM = r.team || []; ASKED = r.asked || [];
       RELCOLS = !!r.relCols;
       PLCOLS = !!r.plCols; LABELS = r.labelValues || [];
+      REVIEWER = !!r.reviewer;
+      el('f-review').hidden = !REVIEWER;
+      el('approve').hidden = !REVIEWER;
       TREE = r.groups;
       el('who-dot').textContent = (USER || '?').slice(0, 1).toUpperCase();
       el('who-name').textContent = USER;
@@ -1119,7 +1155,8 @@ function release(sel) {
     .voruinnihald_release(sel);
 }
 
-function openGroup(sel, atSku) {
+function openGroup(sel, atSku, review) {
+  reviewMode = !!review;
   busy(true, 'Hleð vörum…');
   google.script.run
     .withSuccessHandler(function (rows) {
@@ -1145,6 +1182,9 @@ function openGroup(sel, atSku) {
       if (atSku) {
         var at = rows.findIndex(function (q) { return q.sku === atSku; });
         if (at >= 0) i = at;
+      } else if (reviewMode) {
+        var first = rows.findIndex(function (q) { return q.status === REVIEW; });
+        if (first >= 0) i = first;
       }
       landedAt = Date.now();
       showView('write'); render();
@@ -1411,6 +1451,8 @@ function render() {
   if (p.vendorNo) rows.push(['Vörunr. birgja', p.vendorNo, true]);
   rows.push(['Heiti í BC', p.label], ['Vörumerki', p.brandOld || '—']);
   if (LOCKED[s.status]) rows.push(['Staða', LOCKED[s.status] + '. Breyting fer aftur í yfirlestur.']);
+  else if (REVIEWER && s.status) rows.push(['Staða', s.status]);
+  if (reviewMode && p.owner && p.owner !== USER) rows.push(['Skrifað af', p.owner]);
   if (p.onWeb) rows.push(['Á vef', p.onWeb]);
   // Vottanir i stad rammasamnings (2026-10-02): rammasamningurinn sagdi
   // skrifaranum ekkert, vottunin er efni sem a heima i lysingunni.
@@ -1659,7 +1701,11 @@ function commit(status) {
   //                     (flipar, Til baka): textinn í Plytix er þá ekki
   //                     lengur sá sem stendur í sheetinu.
   var textChanged = 'nameNew' in patch || 'descNew' in patch;
-  if (LOCKED[s.status]) {
+  if (status === APPROVED) {
+    // Yfirlesari samthykkir. Innflutt vara an breytingar er thegar komin —
+    // samthykki faerdi hana nidur i Samthykkt og a naesta utflutning.
+    if (s.status === 'Flutt inn' && !textChanged) status = null;
+  } else if (LOCKED[s.status]) {
     if (textChanged) status = REVIEW;
     else if (status === REVIEW || status === NOCHANGE) status = null;
   }
@@ -1679,6 +1725,7 @@ function advance(status) {
   render(); pace();
 }
 el('next').onclick = function () { advance(REVIEW); };
+el('approve').onclick = function () { advance(APPROVED); };
 el('same').onclick = function () { advance(NOCHANGE); };
 el('skip').onclick = function () {
   // Spurning an spurningar segir engum neitt. Athugasemdin er skylda.
@@ -1733,7 +1780,10 @@ el('tree').addEventListener('click', function (e) {
     if (g.disabled) return;
     var t = findByKey(g.dataset.key);
     if (!t) return;
-    if (statusOf(t) === 'free') take(selOf(t)); else openGroup(selOf(t));
+    // Yfirlestur: opnar flokkinn an thess ad taka hann, a fyrstu voru sem bidur.
+    var rev = REVIEWER && (filter === 'review' || statusOf(t) === 'taken');
+    if (rev) openGroup(selOf(t), null, true);
+    else if (statusOf(t) === 'free') take(selOf(t)); else openGroup(selOf(t));
     return;
   }
   var b = e.target.closest('.l2');
