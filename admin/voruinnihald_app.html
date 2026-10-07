@@ -773,6 +773,11 @@ function hintWhy(h) {
 
 /* ------------------------------------------------------------------ fullbúið */
 var NOCHANGE = 'Óbreytt';
+var REVIEW   = 'Til yfirlesturs';
+// Komin í gegnum yfirlestur. Sjá commit() um hvers vegna „Næsta" snertir
+// þær ekki nema textanum sé breytt.
+var LOCKED   = { 'Samþykkt': 'Samþykkt — bíður innflutnings í Plytix',
+                 'Flutt inn': 'Komin í Plytix' };
 
 /* Sama regla og `vi_isDone_` a thjoninum: skrifud lysing gildir eftir
    ordamarki, annars telst rodhin afgreidd ef hun var merkt obreytt.
@@ -1266,6 +1271,7 @@ function render() {
   // Vorunumer birgja med afritunarhnappi -- til ad fletta vorunni upp hja birgja.
   if (p.vendorNo) rows.push(['Vörunr. birgja', p.vendorNo, true]);
   rows.push(['Heiti í BC', p.label], ['Vörumerki', p.brandOld || '—']);
+  if (LOCKED[s.status]) rows.push(['Staða', LOCKED[s.status] + '. Breyting fer aftur í yfirlestur.']);
   if (p.onWeb) rows.push(['Á vef', p.onWeb]);
   // Vottanir i stad rammasamnings (2026-10-02): rammasamningurinn sagdi
   // skrifaranum ekkert, vottunin er efni sem a heima i lysingunni.
@@ -1496,6 +1502,18 @@ function commit(status) {
   // eftir a — og hann uppfaerist i "AI-drög, ritstýrt" um leid og manneskja
   // breytir stafkrok i drogunum.
   if (s.origin !== (p.origin || '')) patch.origin = s.origin;
+  // SAMÞYKKT / FLUTT INN (2026-10-07). „Næsta" setti alltaf Til
+  // yfirlesturs, svo sá sem fletti í gegnum flokk færði samþykkta eða
+  // innflutta vöru niður með einum smelli án þess að breyta staf.
+  //   texti óbreyttur → staðan stendur (Spurning er meðvituð og fær að fara)
+  //   texti breyttur  → Til yfirlesturs, líka þegar vistað er án hnapps
+  //                     (flipar, Til baka): textinn í Plytix er þá ekki
+  //                     lengur sá sem stendur í sheetinu.
+  var textChanged = 'nameNew' in patch || 'descNew' in patch;
+  if (LOCKED[s.status]) {
+    if (textChanged) status = REVIEW;
+    else if (status === REVIEW || status === NOCHANGE) status = null;
+  }
   if (status) { patch.status = status; s.status = status; }
   if (!Object.keys(patch).length) return false;
   p.nameNew = s.nm; p.descNew = s.ds;      // spegill svo tvivistun geri ekkert
@@ -1511,7 +1529,7 @@ function advance(status) {
   landedAt = Date.now();
   render(); pace();
 }
-el('next').onclick = function () { advance('Til yfirlesturs'); };
+el('next').onclick = function () { advance(REVIEW); };
 el('same').onclick = function () { advance(NOCHANGE); };
 el('skip').onclick = function () {
   // Spurning an spurningar segir engum neitt. Athugasemdin er skylda.
