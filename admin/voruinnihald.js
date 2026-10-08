@@ -893,6 +893,7 @@ function voruinnihald_submit(sel) {
  * Keyrt handvirkt úr Apps Script-ritlinum. Skrifar í keyrsluskrá.
  */
 function voruinnihald_diagnoseTree() {
+  adminGuard_('voruinnihald');   // kallanlegt úr vafra eins og öll föll án _
   var o = vi_open_(), idx = o.idx, vals = o.vals;
   var l1 = {}, byName = {}, empty = { cat1: 0, cat2: 0, cat3: 0 }, total = 0;
 

@@ -46,6 +46,9 @@ function loadConfig_() {
 }
 
 function clearConfigCache() {
+  // Kallanlegt með google.script.run eins og öll föll án _ — því varið.
+  // Úr ritlinum ertu eigandinn og kemst alltaf í gegn.
+  adminGuard_();
   const props = PropertiesService.getScriptProperties();
   props.deleteProperty('STORKAUP_CONFIG_CACHE_V2');
   props.deleteProperty('STORKAUP_CONFIG_CACHE_V2_TS');
@@ -239,9 +242,8 @@ function validateConfig_(cfg) {
     );
   }
 }
-/**
- * PUBLIC API WRAPPER FOR LIBRARY USERS
- */
-function loadConfig() {
-  return loadConfig_();
-}
+// loadConfig() (án _) var hér til 2026-10-08 sem "library wrapper". Admin er
+// ekki library — en hvert fall án _ í vefappi er kallanlegt með
+// google.script.run, svo það skilaði allri stillingunni, SERVICE_ROLE_KEY
+// meðtöldum, til hvaða @storkaup.is-notanda sem var. Ekkert kallaði á það.
+// Bætið því EKKI við aftur; notið loadConfig_().
