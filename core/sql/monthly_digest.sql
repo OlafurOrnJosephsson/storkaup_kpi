@@ -277,6 +277,10 @@ select jsonb_build_object(
 );
 $function$;
 
-grant execute on function public.monthly_digest_stats(date) to anon, authenticated;
+-- service_role only (2026-10-08, security_revoke_anon_digests.sql). The only
+-- caller is core/email.js via callSupabaseRpc_ with the service_role key.
+-- Do not re-grant anon: this returns BC revenue and top customers.
+revoke all on function public.monthly_digest_stats(date) from public, anon, authenticated;
+grant execute on function public.monthly_digest_stats(date) to service_role;
 
 notify pgrst, 'reload schema';
