@@ -321,11 +321,16 @@ unregistered embed pin, found the moment the `lookup.js` hard-coding came out.
 Both had been there all along; the tool simply could not see past the one file
 it was written for.
 
-`/kpi/activation` is **live but unlinked** — it is not in the site nav (its own
-nav is the nine-link version from June), so it is reachable only by typing the
-URL. Its SQL backend (`core/sql/web_activation.sql`) is applied and answering.
-Decide whether to link it, fold it into the forgangslisti, or take it down;
-until then it edits the same priority flags as `/kpi/forgangslisti` does.
+`/kpi/activation` is **unfinished, not dead.** Built 2026-06-15..16 and never
+linked; it also rendered **blank** until 2026-10-08, because its page code
+loaded `activation.js` without a `STORKAUP_CONFIG` block (the script bails on
+load without one, and site-wide code deliberately carries none). That day the
+config block was added above the script tag and the page came up: 714
+companies with a web account have never ordered, 71 lapsing, 470 lapsed. It
+still carries the June nine-link nav, is reachable only by URL, and writes the
+same priority flags as `/kpi/forgangslisti` (flag + rep, no touch log).
+Decide whether to finish it as a "find targets" view or fold it into the
+forgangslisti before linking it.
 
 **Live**, per the deployer. All three bootstrap pins live in **one place** —
 Webflow *site-wide* custom code, two `<script>` tags that carry both the
