@@ -4684,10 +4684,42 @@ function removeTriggersByHandler_v1(handlerFn) {
  * Run manually from Apps Script IDE to verify trigger state.
  * Returns array of trigger descriptors; also writes to Logger.
  */
+/**
+ * The required time-trigger schedule: handler → { cadence, install }.
+ * Single source for BOTH auditTriggers_v1 (what must exist) and
+ * resetRecommendedTimeTriggers_v1 (what gets reinstalled). Cadences are read
+ * from the install* functions, not guessed.
+ *
+ * A function, not a top-level var: the installers live in several files
+ * (email.js, storkaup_pricing.js), and Apps Script gives no guarantee that
+ * those files load before this one.
+ *
+ * Until 2026-10-08 the two functions kept separate lists. The reset removed
+ * 13 handlers and reinstalled 10 — Cludo, CustomerAnalysis and Klaviyo were
+ * deleted and never put back. That came in with 542ab7d (2026-05-11), the
+ * same window in which those triggers went missing for three months.
+ */
+function requiredTimeTriggers_() {
+  return {
+    safePoll_v2:                      { cadence: 'every 5 min',                          install: installSafePollTrigger_v2 },
+    scheduledMagentoSync_v1:          { cadence: 'hourly ~:20',                          install: installScheduledMagentoSyncTrigger_v1 },
+    scheduledKlaviyoSync_v1:          { cadence: 'every 15 min',                         install: installScheduledKlaviyoSyncTrigger_v1 },
+    scheduledReferenceSync_v1:        { cadence: 'every 6h ~:50',                        install: installScheduledReferenceSyncTrigger_v1 },
+    scheduledCludoSync_v1:            { cadence: 'every 12h ~:55',                       install: installScheduledCludoSyncTrigger_v1 },
+    scheduledCustomerAnalysisSync_v1: { cadence: 'daily ~05:25',                         install: installScheduledCustomerAnalysisSyncTrigger_v1 },
+    scheduledSearchConsoleSync_v1:    { cadence: 'daily ~05:30',                         install: installScheduledSearchConsoleSyncTrigger_v1 },
+    scheduledGa4Sync_v1:              { cadence: 'daily ~06:30',                         install: installScheduledGa4SyncTrigger_v1 },
+    scheduledZeroPriceScan_v1:        { cadence: 'daily ~06:50',                         install: installZeroPriceScanTrigger_v1 },
+    runDailySanityChecks_v1:          { cadence: 'daily ~07:40',                         install: installDailySanityChecksTrigger_v1 },
+    scheduledNewwebStatusSync_v2:     { cadence: 'daily ~11:30 & ~17:30 (2 triggers)',  install: installNewwebStatusSyncTrigger_v2 },
+    scheduledWeeklyDigest:            { cadence: 'Mondays ~08:00',                       install: installWeeklyDigestTrigger_v1 },
+    scheduledMonthlyDigest:           { cadence: 'monthly, 1st ~08:00',                  install: installMonthlyDigestTrigger_v1 }
+  };
+}
+
 function auditTriggers_v1() {
   // ── REQUIRED — must be installed. Absent => [AUDIT][WARN] Missing trigger.
-  // Mirrors the handler list in resetRecommendedTimeTriggers_v1(); keep the two
-  // in sync. Cadences below are read from the install* functions, not guessed.
+  // Built from requiredTimeTriggers_(), the same map the reset reinstalls from.
   //
   // Corrected 2026-08-06. The previous map had FIVE wrong cadences
   // (sanity checks, reference, magento, cludo, klaviyo) and was missing four
@@ -4697,21 +4729,11 @@ function auditTriggers_v1() {
   // audit's warnings were noise and three were real. That noise is why
   // scheduledCustomerAnalysisSync_v1 and scheduledKlaviyoSync_v1 sat
   // uninstalled from 2026-05-11 to 2026-08-06 without anyone noticing.
-  var EXPECTED = {
-    safePoll_v2:                      'every 5 min',
-    scheduledMagentoSync_v1:          'hourly ~:20',
-    scheduledKlaviyoSync_v1:          'every 15 min',
-    scheduledReferenceSync_v1:        'every 6h ~:50',
-    scheduledCludoSync_v1:            'every 12h ~:55',
-    scheduledCustomerAnalysisSync_v1: 'daily ~05:25',
-    scheduledSearchConsoleSync_v1:    'daily ~05:30',
-    scheduledGa4Sync_v1:              'daily ~06:30',
-    scheduledZeroPriceScan_v1:        'daily ~06:50',
-    runDailySanityChecks_v1:          'daily ~07:40',
-    scheduledNewwebStatusSync_v2:     'daily ~11:30 & ~17:30 (2 triggers)',
-    scheduledWeeklyDigest:            'Mondays ~08:00',
-    scheduledMonthlyDigest:           'monthly, 1st ~08:00'
-  };
+  var REQUIRED = requiredTimeTriggers_();
+  var EXPECTED = {};
+  Object.keys(REQUIRED).forEach(function(handler) {
+    EXPECTED[handler] = REQUIRED[handler].cadence;
+  });
 
   // ── KNOWN BUT OPTIONAL — recognised so they do not log as "Unknown handler",
   // never warned about when absent. Adding these to EXPECTED would just move the
@@ -4832,43 +4854,34 @@ function installNewwebStatusSyncTrigger_v2() {
 }
 
 function resetRecommendedTimeTriggers_v1() {
-  var handlers = [
-    'safePoll_v2',
-    'runDailySanityChecks_v1',
-    'scheduledReferenceSync_v1',
-    'scheduledMagentoSync_v1',
-    'scheduledGa4Sync_v1',
-    'scheduledCludoSync_v1',
-    'scheduledCustomerAnalysisSync_v1',
-    'scheduledKlaviyoSync_v1',
-    'scheduledNewwebStatusSync_v2',
-    'scheduledWeeklyDigest',
-    'scheduledMonthlyDigest',
-    'scheduledZeroPriceScan_v1',
-    'scheduledSearchConsoleSync_v1'
-  ];
+  // Remove and reinstall ONE handler at a time. The old version deleted all
+  // thirteen first and then reinstalled, so anything that stopped it in between
+  // (execution limit, quota, a closed tab) left every trigger gone. Now an
+  // interruption costs at most the one handler in flight — and the audit at
+  // the end names it.
+  var REQUIRED = requiredTimeTriggers_();
+  var results = {};
+  var failed = [];
 
-  handlers.forEach(function(fn) {
-    removeTriggersByHandler_v1(fn);
+  Object.keys(REQUIRED).forEach(function(fn) {
+    try {
+      removeTriggersByHandler_v1(fn);
+      results[fn] = REQUIRED[fn].install();
+    } catch (e) {
+      failed.push(fn);
+      results[fn] = { error: String(e && e.message || e) };
+      Logger.log('[TRIGGERS][ERROR] Reinstall failed for ' + fn + ': ' + results[fn].error);
+    }
   });
 
-  var installed = [
-    installSafePollTrigger_v2(),
-    installDailySanityChecksTrigger_v1(),
-    installScheduledReferenceSyncTrigger_v1(),
-    installScheduledMagentoSyncTrigger_v1(),
-    installScheduledGa4SyncTrigger_v1(),
-    installNewwebStatusSyncTrigger_v2(),
-    installWeeklyDigestTrigger_v1(),
-    installMonthlyDigestTrigger_v1(),
-    installZeroPriceScanTrigger_v1(),
-    installScheduledSearchConsoleSyncTrigger_v1()
-  ];
-
-  Logger.log('[TRIGGERS][INFO] Recommended trigger schedule reset completed.');
+  var audit = auditTriggers_v1();
+  Logger.log('[TRIGGERS][INFO] Recommended trigger schedule reset completed' +
+    (failed.length ? ' with ' + failed.length + ' failure(s): ' + failed.join(', ') : '.'));
   return {
-    removedHandlers: handlers,
-    installed: installed
+    installed: results,
+    failed: failed,
+    missing: audit.missing,
+    ok: failed.length === 0 && audit.ok
   };
 }
 

@@ -68,7 +68,7 @@ are reading or editing. `clasp` flattens `core/x.js` to `core/x` in the project.
 
 | File | Holds |
 |---|---|
-| [core/utils.js](core/utils.js) | The grab-bag, and the biggest file (4.7k lines, 123 fns). **Trigger management** — `auditTriggers_v1`, `resetRecommendedTimeTriggers_v1`, ten `install*Trigger*`. Also `loadTableBySchema_`, `applySheetStyling_`, Supabase upserts, backfills, and the date/string/number/fuzzy helpers. |
+| [core/utils.js](core/utils.js) | The grab-bag, and the biggest file (4.7k lines, 123 fns). **Trigger management** — `auditTriggers_v1`, `resetRecommendedTimeTriggers_v1`, `requiredTimeTriggers_` (the one map both read), the `install*Trigger*` functions. Also `loadTableBySchema_`, `applySheetStyling_`, Supabase upserts, backfills, and the date/string/number/fuzzy helpers. |
 | [core/menu.js](core/menu.js) | `onOpen` and every `menu_*` entry point. Start here to find what a menu item actually calls. |
 | [core/config.js](core/config.js) | `loadConfig_()` and the STORKAUP_CONFIG reader. |
 | [core/schema.js](core/schema.js) | `STORKAUP_SCHEMA` header maps. Data only, no functions. |
@@ -163,10 +163,16 @@ Title rules (V3, from SEO review Apr 2025):
 - LVL3: `Vara | Hook (magn/tegund/notkunarsvið) | Stórkaup`
 - No adjectives. No "í heildsölu" on LVL2/3. No "pantaðu í dag" / "skjót afhending" CTA.
 
+## GA4 / GTM tracking notes
+
+- `scheduledGa4Sync_v1` les aðeins event-fjölda fyrir `add_to_cart`, `begin_checkout` og `purchase` (auk sessions/users/pageviews/eventCount og channel). Aðrar GTM-breytingar hafa ekki áhrif á KPI.
+- **2026-10-01 (GTM v96):** purchase hætti að teljast þegar gamlar pantanir eru skoðaðar í Mínum síðum. Fer nú bara af stað eftir `/afgreida` og einu sinni á pöntun (localStorage). `purchases` og `ga4_purchase_ratio_7d` lækka frá þessum degi. **GTM v97 (sama dag):** `begin_checkout` sendist einu sinni á hverja heimsókn í `/afgreida` (10 mín) og lækkar líka — leiðrétting, ekki hrun. Sjá P8-5–P8-7 í NEXT_TASKS.md.
+- GTM-export: `gtm/`.
+
 ## Key scheduled triggers
 
 **`auditTriggers_v1()` is the source of truth, not this table.** It reads the
-installed triggers and compares them against the `EXPECTED` map in
+installed triggers and compares them against `requiredTimeTriggers_()` in
 [core/utils.js](core/utils.js); that map's cadences come from the `install*`
 functions. Run it before trusting any list of what is scheduled.
 
@@ -198,20 +204,27 @@ the window; bare `safePoll_v2()` obeys it and will silently no-op at 03:00.
 called `installMonthlyDigestTrigger_v1()` and `auditTriggers_v1` listed the
 handler under `OPTIONAL` ("install on demand"), so an absent trigger was never
 warned about — the same silence that hid four uninstalled triggers for three
-months. It is now in `EXPECTED` and in `resetRecommendedTimeTriggers_v1`.
+months. It is now in `requiredTimeTriggers_()`, which both the audit and the
+reset read.
 
 **The trigger is installed and verified** — `auditTriggers_v1` on 2026-09-09
 returned `[AUDIT][OK] All 13 required triggers are installed`, 16 triggers
 total (14 required instances plus `onOpen` and `pruneCompletedApplications`),
 no warnings. Nothing left to run here.
 
-**Do not reach for `resetRecommendedTimeTriggers_v1()` to install one trigger.**
-It calls `removeTriggersByHandler_v1` on all thirteen handlers *first* and then
-reinstalls them, `safePoll_v2` included. Stop it between the delete and the
-install — execution limit, quota, a closed tab — and they stay deleted. That is
-the exact failure this section is about. The individual `install*Trigger*`
-functions are idempotent: each checks for an existing trigger and returns
-`{created:false}` instead of adding a second one.
+**The reset used to delete three triggers for good.** Until 2026-10-08
+`resetRecommendedTimeTriggers_v1()` removed thirteen handlers and reinstalled
+ten — Cludo, CustomerAnalysis and Klaviyo were never put back. The bug came in
+with `542ab7d` (2026-05-11), the same window in which exactly those went
+missing. Audit and reset now share one map, `requiredTimeTriggers_()` in
+[core/utils.js](core/utils.js); add a handler there and both see it.
+
+**Still, do not reach for the reset to install one trigger.** It now removes
+and reinstalls one handler at a time and runs the audit at the end, so an
+interruption costs at most the handler in flight — but it still touches
+`safePoll_v2`. The individual `install*Trigger*` functions are idempotent: each
+checks for an existing trigger and returns `{created:false}` instead of adding
+a second one.
 
 **Two OPTIONAL jobs have no trigger, and the audit will never tell you.**
 By design — `OPTIONAL` handlers are recognised so they do not log as unknown,
