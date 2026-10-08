@@ -304,7 +304,7 @@ nothing to the dashboards. Change one, move that one.
 |---|---|---|
 | `Webflow/lookup.js` | `<script src>` inside the `lookup-embed.html` Embed | `/kpi/voruuppfletting` |
 | `Webflow/activation.js` | page custom code — **no embed file in this repo** | `/kpi/activation` |
-| `Webflow/forgangslisti.js` | `<script src>` inside the `forgangslisti-embed.html` Embed | `/kpi/forgangslisti` |
+| `Webflow/forgangslisti.js` | page head code — mirrored in `forgangslisti-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/forgangslisti` |
 | `Webflow/portal.js` | `<script src>` inside the `portal-embed.html` Embed | `/kpi/voruportal` |
 
 ⚠️ This list read "The exception is `Webflow/lookup.js`" until 2026-09-21 —
@@ -343,7 +343,7 @@ page Embed), so each row carries its own date:
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
 | `activation.js`, **in page custom code** (independent) | `84372c6` | 2026-06-15, `/kpi/activation` only — read off the live page 2026-09-21 |
 | `portal.js` script-tag src, **inside the Embed** (independent) | `c037bbd` | 2026-09-22, `/kpi/voruportal` only |
-| `forgangslisti.js` script-tag src, **inside the Embed** (independent) | `72c872c` | 2026-09-21, **á `/kpi/forgangslisti-nyr` á meðan** — sjá neðan |
+| `forgangslisti.js` script-tag src, **in page head code** (independent) | `72c872c` | 2026-09-21; on `/kpi/forgangslisti` since 2026-10-08 — read off view-source that day |
 
 `2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —
 gained `?customer=` deep-link support, so the new forgangslisti's row link has
@@ -361,13 +361,14 @@ datasheet / safety-sheet / brochure links, and a copy-and-open button for
 supplier portals. The check caught this row stale on the same deploy that
 shipped it — the table was updated from the tool's output, not from memory.
 
-**`/kpi/forgangslisti-nyr` is a staging slug, not the destination.** The new
-module is published there while it is being tried out; `/kpi/forgangslisti`
-still runs the old `data-module="customer-profiles"` list. Two pages therefore
-write to the same `customer_priority_flags_raw` rows right now — harmless, but
-finish the swap: move the Embed onto `/kpi/forgangslisti`, delete the old list
-markup **in the same publish**, and delete this staging page. Then this row's
-page reference changes and this paragraph goes away.
+**The forgangslisti swap is done (2026-10-08).** The staging page got the
+`/kpi/forgangslisti` slug, the old `data-module="customer-profiles"` list page
+was deleted, and `/kpi/forgangslisti-nyr` 301s to it. Its `<script src>` sits
+in **page head code**, not in the body Embed, which holds only the mount
+`<div>`. Never both: `forgangslisti.js` has no double-boot guard, so two
+script tags mean every click writes twice. Check with view-source → exactly
+one `forgangslisti.js`. [Webflow/forgangslisti-embed.html](Webflow/forgangslisti-embed.html)
+documents both parts and still carries the pin the check tool reads.
 
 ⚠️ **This table describes the site; it does not govern it.** On 2026-09-21 it
 still read `4131408` while the site was already serving `5368032`. A warning
