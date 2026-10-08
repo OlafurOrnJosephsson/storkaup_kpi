@@ -199,6 +199,14 @@ functions. Run it before trusting any list of what is scheduled.
 `safePollNow_v2()` or the NEWWEB menu item — they pass `force: true` and ignore
 the window; bare `safePoll_v2()` obeys it and will silently no-op at 03:00.
 
+**A stopped `safePoll_v2` alerts within the hour.** It writes Script Property
+`SAFEPOLL_LAST_OK_MS` after every completed run; `checkSafePollWatchdog_()`
+reads it at the top of the hourly `scheduledMagentoSync_v1` and emails
+`[KPI ALERT] safePoll_v2 er stopp` (throttled 3h). The daily sanity check reads
+the same value via `evaluateSafePollHeartbeat_()`. Before 2026-10-08 that
+check was the only reader, ran once a day, and logged as `warning` — which
+never emails — so a dead order pipeline sent nothing at all.
+
 **The monthly digest was dead code until 2026-09-01.** `scheduledMonthlyDigest`
 ([core/email.js](core/email.js)) and its installer both existed, but nothing
 called `installMonthlyDigestTrigger_v1()` and `auditTriggers_v1` listed the

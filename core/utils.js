@@ -3057,6 +3057,81 @@ function parseDashboardCompatPayload_(rawText) {
   return data || null;
 }
 
+/**
+ * Lífsmark safePoll_v2, metið (2026-10-08).
+ *
+ * safePoll_v2 setur Script Property SAFEPOLL_LAST_OK_MS eftir hverja keyrslu
+ * sem klárar (core/newsales_v2.js). Þetta fall segir hvort hún sé of gömul.
+ * Sameiginlegt fyrir daglegu athugunina og klukkutímavaktina.
+ *
+ * Tímaglugginn er virtur (getNewwebRunWindowDecision_v2_): slökkt 00:00-06:59,
+ * svo þá er engin krafa. Fyrstu MAX_AGE_MIN mínúturnar eftir 07:00 er síðasta
+ * lífsmark eðlilega frá gærkvöldinu (síðasta keyrsla ~23:45) og mörkin eru
+ * víkkuð um næturhléið. Án þess félli vaktin klukkan 07:20 alla daga — og með
+ * einföldum fresti í staðinn myndi daglega athugunin (~07:40) aldrei falla.
+ */
+function evaluateSafePollHeartbeat_() {
+  var MAX_AGE_MIN = 90;          // 5 mín að degi, 15 mín á kvöldin — 90 er rúmt
+  var NIGHT_GAP_MIN = 7 * 60;    // 00:00-06:59
+  var tz = Session.getScriptTimeZone() || 'GMT';
+  var now = new Date();
+  var hour = Number(Utilities.formatDate(now, tz, 'H'));
+  var minute = Number(Utilities.formatDate(now, tz, 'm'));
+
+  if (hour < 7) {
+    return { applies: false, ok: true,
+      details: 'Næturgluggi (00:00-06:59) — safePoll_v2 á ekki að keyra, engin krafa gerð' };
+  }
+
+  var minSinceOpen = (hour - 7) * 60 + minute;
+  var limitMin = MAX_AGE_MIN + (minSinceOpen < MAX_AGE_MIN ? NIGHT_GAP_MIN : 0);
+
+  var raw = PropertiesService.getScriptProperties().getProperty('SAFEPOLL_LAST_OK_MS');
+  if (!raw) {
+    return { applies: true, ok: false, ageMin: null, limitMin: limitMin,
+      details: 'Ekkert lífsmark skráð (SAFEPOLL_LAST_OK_MS vantar). safePoll_v2 hefur '
+        + 'ekki klárað keyrslu síðan lífsmarkið var tekið upp, eða Script Property var eytt.' };
+  }
+
+  var ageMin = Math.round((now.getTime() - Number(raw)) / 60000);
+  var ok = ageMin <= limitMin;
+  return { applies: true, ok: ok, ageMin: ageMin, limitMin: limitMin,
+    details: ok
+      ? ('safePoll_v2 keyrði fyrir ' + ageMin + ' mín')
+      : ('safePoll_v2 hefur ekki klárað keyrslu í ' + ageMin + ' mín (mörk ' + limitMin
+          + '). Magento-pantanir berast ekki inn.') };
+}
+
+/**
+ * Klukkutímavakt á safePoll_v2 (2026-10-08). Kallað fremst í
+ * scheduledMagentoSync_v1, sem keyrir á klukkutíma fresti — enginn nýr trigger.
+ *
+ * Áður var lífsmarkið aðeins lesið í runDailySanityChecks_v1 (~07:40), og þá
+ * sem 'warning' sem sendir ekki póst. Dauð pantanapípa gat því staðið þar til
+ * einhver tók eftir tómu mælaborði. Kastar aldrei: má ekki fella Magento-syncið.
+ */
+function checkSafePollWatchdog_() {
+  try {
+    var hb = evaluateSafePollHeartbeat_();
+    if (hb.ok) return hb;
+    sendOpsAlert_(
+      '[KPI ALERT] safePoll_v2 er stopp — Magento-pantanir berast ekki inn',
+      hb.details + '\n\n'
+        + 'Athuga:\n'
+        + '1. auditTriggers_v1() — er trigger fyrir safePoll_v2 enn uppsettur?\n'
+        + '   Ef ekki: installSafePollTrigger_v2() (ekki resetRecommendedTimeTriggers_v1).\n'
+        + '2. Executions í Apps Script — er safePoll_v2 að falla eða að fá ekki lás?\n'
+        + '3. safePollNow_v2() — keyrir handvirkt framhjá tímaglugganum.',
+      'safepoll_watchdog',
+      getAlertThrottleMinutes_('safepoll_watchdog', 180)
+    );
+    return hb;
+  } catch (e) {
+    Logger.log('[SAFEPOLL][WARN] Watchdog failed: ' + e);
+    return null;
+  }
+}
+
 function runDailySanityChecks_v1() {
   var lock = null;
   var runId = null;
@@ -3290,34 +3365,13 @@ function runDailySanityChecks_v1() {
    * er að haga sér nákvæmlega eins og til var ætlast.
    */
   function checkSafePollHeartbeat_() {
-    var MAX_AGE_MIN = 90;   // 5 mín innan vinnutíma, 15 mín á kvöldin — 90 er rúmt
+    // 'error', ekki 'warning' (2026-10-08). Var 'warning' í öllum greinum, og
+    // pósturinn hér að neðan fer aðeins þegar failedCount > 0 — svo stopp
+    // pantanapípa sendi aldrei neitt. Sjá líka checkSafePollWatchdog_, sem
+    // grípur þetta innan klukkustundar í stað næsta morguns.
     try {
-      var tz   = Session.getScriptTimeZone() || 'GMT';
-      var hour = Number(Utilities.formatDate(new Date(), tz, 'H'));
-
-      if (hour < 7) {
-        addCheck_('safepoll_heartbeat', true,
-          'Næturgluggi (00:00-06:59) — safePoll_v2 á ekki að keyra, engin krafa gerð',
-          'warning');
-        return;
-      }
-
-      var raw = PropertiesService.getScriptProperties().getProperty('SAFEPOLL_LAST_OK_MS');
-      if (!raw) {
-        addCheck_('safepoll_heartbeat', false,
-          'Ekkert lífsmark skráð. Væntanlegt eftir næstu keyrslu safePoll_v2; '
-            + 'ef það birtist ekki innan 15 mín er pípan stopp.',
-          'warning');
-        return;
-      }
-
-      var ageMin = Math.round((Date.now() - Number(raw)) / 60000);
-      var ok = ageMin <= MAX_AGE_MIN;
-      addCheck_('safepoll_heartbeat', ok,
-        ok ? ('safePoll_v2 keyrði fyrir ' + ageMin + ' mín')
-           : ('safePoll_v2 hefur ekki klárað keyrslu í ' + ageMin + ' mín (mörk '
-              + MAX_AGE_MIN + '). Magento-pantanir berast ekki inn.'),
-        'warning');
+      var hb = evaluateSafePollHeartbeat_();
+      addCheck_('safepoll_heartbeat', hb.ok, hb.details, hb.applies ? 'error' : 'warning');
     } catch (e) {
       addCheck_('safepoll_heartbeat', true,
         'Gat ekki lesið lífsmark (' + e + ') — athugun sleppt', 'warning');
@@ -3794,6 +3848,10 @@ function scheduledMagentoSync_v1() {
   var startedAt = new Date();
   var runId = null;
   Logger.log('[MAGSYNC][INFO] Started scheduledMagentoSync_v1 at ' + startedAt.toISOString());
+
+  // Áður en lásinn er tekinn: vaktin les eina Script Property og má ekki
+  // sleppa því að keyra þótt safePoll_v2 haldi lásnum.
+  checkSafePollWatchdog_();
 
   var previousMagentoSyncIso = PropertiesService.getScriptProperties().getProperty('MAGENTO_CUSTOMERS_LAST_SYNC');
   var result = {
