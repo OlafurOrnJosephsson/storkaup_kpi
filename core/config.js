@@ -239,9 +239,10 @@ function validateConfig_(cfg) {
     );
   }
 }
-/**
- * PUBLIC API WRAPPER FOR LIBRARY USERS
- */
-function loadConfig() {
-  return loadConfig_();
-}
+// loadConfig() (án _) var hér frá 2026-02-16 til 2026-10-08 sem "library
+// wrapper". Ekkert kallaði á það. Hvert fall án _ er kallanlegt með
+// google.script.run um leið og verkefnið þjónar HtmlService-síðu — og frá
+// 2026-05-15 til 2026-07-02 þjónaði nafnlausa deploymentið ?app=umsokn. Þá
+// gat hver sem hafði /exec-slóðina sótt allt config, lykla meðtalda.
+// Bætið því EKKI við aftur; notið loadConfig_().
+
