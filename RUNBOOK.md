@@ -5,12 +5,27 @@
 This runbook covers daily operations for:
 - NEWWEB ingestion (Magento orders -> GAS sheet -> Supabase)
 - Magento customer sync
-- BC sync to Supabase (for web vs BC % and related metrics)
+- BC import (**manual**: BC Sync menu -> `processBcDrop_v1`, XLSX dropped in Drive by `bc_sync.ps1`). Dashboard monthly BC ratios are entered by hand per month (`window.STORKAUP_BC_MANUAL`), not read from Supabase.
 
 ## Apps Script projects
 
-- **Main project** (repo root) — all ingest triggers + the anonymous web app (Typeform webhook, key-protected dashboard/badge/cache-help + delegation). Live `/exec` runs a pinned version; `clasp push` updates `@HEAD` only, so cut a new version with `clasp deploy -i <deploymentId>` to activate web-app changes.
-- **Admin-apps project** (`admin/`) — umsókn + vöruvöktun/listaverð HTML apps behind Google login (`access: DOMAIN`) + `SETTINGS.ADMIN_APP_EMAILS` allowlist. `cd admin && clasp push`, then `clasp deploy` for a new version. Access attempts log `[ADMIN][AUDIT] …` in that project's Executions.
+- **Main project** (repo root) — all ingest triggers + the anonymous web app (Typeform webhook, key-protected dashboard/badge/cache-help + delegation).
+- **Admin-apps project** (`admin/`) — umsókn, vöruvöktun/listaverð and vöruinnihald HTML apps behind Google login (`access: DOMAIN`) + `SETTINGS.ADMIN_APP_EMAILS` allowlist. Access attempts log `[ADMIN][AUDIT] …` in that project's Executions.
+
+### Deploying (`gas_deploy.ps1`)
+
+Live `/exec` runs a pinned version; `clasp push` updates `@HEAD` only. Always deploy through the script, which holds both deployment IDs and refuses `@HEAD`:
+
+- `.\gas_deploy.ps1 "desc"` — push + new version, both projects.
+- `.\gas_deploy.ps1 "desc" -Only Main` / `-Only Admin` — one project.
+- `.\gas_deploy.ps1 "desc" -PushOnly` — push without a new version (`/exec` keeps running the old code).
+
+It runs `clasp push --force` then `clasp deploy -i <pinned id>` per project, and ends with a non-blocking `node tools/check-webflow-pins.js`.
+
+- **Never run `clasp deploy` without `-i`** — that creates a NEW deployment, changes the `/exec` URL and breaks the Webflow iframe and the admin nav links.
+- **The main project must get a new version too, not just a push.** Admin actions (the vöruvöktun "Keyra aftur" zero-price scan, Magento customer sync, PIM drafts, …) call the main project's `doPost` via `admin/delegate.js`; that `/exec` is pinned, so a push alone leaves the button running stale code.
+- A root push uploads **every** uncommitted change under `core/` and any `.js` in a non-ignored subdirectory (`pim/` included). Check `git status` first.
+- **200-version limit.** Each non-`-PushOnly` run creates a version. When a project hits the Apps Script cap, `clasp deploy` fails and the script prints that the push succeeded but no version was set — `/exec` still runs the old code. Delete old versions in the Apps Script editor (Project history), then re-run.
 
 If someone reports "You need access" / a blank umsókn or vöruvöktun screen: they are almost certainly on an account not in `ADMIN_APP_EMAILS` (or not a @storkaup.is account), OR the link is being opened in an iframe instead of a new tab. Check the admin project's Executions for the `access DENIED for <email>` line.
 
@@ -22,19 +37,20 @@ Both Typeform forms POST to the main project's `doPost` at `…/exec?token=<API.
 
 Failure alerts for key triggers are enabled in code.
 
-1. Open Apps Script -> `Project Settings` -> `Script properties`
-2. Add property:
-   - Key: `ALERT_EMAILS`
-   - Value: comma-separated recipients (example: `ops@storkaup.is,olafur@storkaup.is`)
-3. Save, then run one trigger manually to confirm normal execution.
+Recipients (comma- or semicolon-separated) are read from the first of these that is set (`getAlertRecipients_`):
+1. STORKAUP_CONFIG `SETTINGS.ALERT_EMAILS` (preferred)
+2. STORKAUP_CONFIG `API.ALERTS.EMAILS`
+3. Script Property `ALERT_EMAILS` (Apps Script -> `Project Settings` -> `Script properties`)
+
+A value in the config sheet overrides the Script Property.
 
 Notes:
-- Alerts are throttled per job (15-minute dedupe window).
+- Alerts are throttled per job. Default dedupe window is 15 min; the safePoll watchdog uses 180, daily sanity checks and stuck pending orders use 720.
 - If `ALERT_EMAILS` is missing, logs will show `[ALERT][WARN] No ALERT_EMAILS configured`.
 - Optional: tune alert throttle in Script Properties:
-  - `ALERT_MIN_INTERVAL_MINUTES` (global default for all jobs)
+  - `ALERT_MIN_INTERVAL_MINUTES` (global default for all jobs — if set, it also replaces the 180/720 job defaults above)
   - `ALERT_MIN_INTERVAL_MINUTES__scheduledMagentoSync_v1` (per-job override)
-  - Same per-job key pattern works for other jobs, e.g. `__scheduledCludoSync_v1`
+  - Same per-job key pattern works for other jobs, e.g. `__scheduledCludoSync_v1`, `__safepoll_watchdog`, `__runDailySanityChecks_v1`
   - Example: set Magento to `180` to avoid hourly alert spam during prolonged incidents.
 
 ## Primary Functions (Apps Script)
@@ -54,6 +70,18 @@ Notes:
   - Either:
     - `[NEWWEB][INFO] NEWWEB v2 import completed {"inserted":N,...}`
     - or `[NEWWEB][INFO] Engar nýjar pantanir frá Magento (v2)`
+- Watchdog: `safePoll_v2` writes Script Property `SAFEPOLL_LAST_OK_MS` after each
+  completed run (it writes no `ingestion_runs` row). `checkSafePollWatchdog_()`
+  runs at the top of the hourly `scheduledMagentoSync_v1`, before it takes the
+  lock. If the heartbeat is older than 90 min (widened by the night gap just
+  after 07:00; no requirement 00:00-06:59) it emails
+  `[KPI ALERT] safePoll_v2 er stopp — Magento-pantanir berast ekki inn`
+  (throttled to 180 min). The daily sanity check reports the same heartbeat as
+  an error (`safepoll_heartbeat`). Response:
+  1. Run `auditTriggers_v1()`. If `safePoll_v2` is missing, run
+     `installSafePollTrigger_v2()` — not the reset (see Trigger Baseline).
+  2. Check Executions for failing `safePoll_v2` runs or lock contention.
+  3. Run `safePollNow_v2()` by hand to catch up.
 
 ### 2) Magento customers
 - Function: `scheduledMagentoSync_v1`
@@ -63,12 +91,23 @@ Notes:
   - `Fetch Magento Customers — incremental`
   - completion with `magentoSync":"ok"`
 
-### 3) BC sync (important for web vs BC share)
-- Function: `scheduledBcSync_v1`
-- Purpose: Incremental BC invoices + credit invoices + lines + BC customers upsert to Supabase.
-- Expected logs:
-  - `[BCSYNC][INFO] Completed scheduledBcSync_v1 ...`
-  - result includes uploaded counters for invoices/creditInvoices/lines/customers.
+### 3) BC import (manual — no trigger)
+- `scheduledBcSync_v1` was deleted 2026-04-30. BC loads only by hand.
+- Procedure: `bc_sync.ps1` uploads the BC XLSX exports to the Drive drop folder
+  (`SETTINGS.BC_DROP_FOLDER_ID`). They sit unread until someone clicks
+  **BC Sync -> Importa BC skrár úr Drive Drop** (`processBcDrop_v1`). Processed
+  files move to the `archive/` subfolder.
+- Export a rolling ~3-month window from BC, not full history. Nothing schedules
+  this, so **a skipped month is a real gap** in `bc_lines_raw`.
+- New export format? Run `diagnoseBcDropHeaders_v1` first (reports unknown/missing
+  columns, touches no files).
+- **Never run `processBcDropForce_v1` on the invoice file** — it nulls `order_no`
+  and `email` across history. It force-upserts only what the file contains; it
+  is not a full rebuild (that needs a deliberate full-history export).
+- Expected log: `[BC_DROP] Done. Processed: N, Errors: M`; returns
+  `{ok, processed, errors}`.
+- The `ingestion_runs` row is still written under job_name `scheduledBcSync_v1`
+  (trigger_type `drive_drop`), so freshness queries keep that name.
 
 ### 4) Klaviyo campaign events (v1)
 - Function: `scheduledKlaviyoSync_v1`
@@ -81,21 +120,25 @@ Notes:
 - Function: `runDailySanityChecks_v1`
 - Purpose: Validate KPI trust with alert-on-fail checks.
 - Current checks:
-  - Dashboard share metrics are within valid bounds
-  - Key ingestion jobs have no recent errors and are not stale
-  - `klaviyo_attributed_orders_30d <= web_orders_30d`
-  - Warning if last BC sync processed zero rows
+  - `dashboard_share_bounds` — dashboard share metrics within valid bounds
+  - `ingestion_errors_24h`, `ingestion_partial_24h`
+  - `ingestion_freshness` — recent success for Magento (6h), Cludo (24h),
+    CustomerAnalysis (36h), Klaviyo (4h)
+  - `safepoll_heartbeat` — **error** severity, so it emails
+  - `klaviyo_orders_le_web_orders_30d`
+  - `ga4_purchase_ratio_7d` (warning)
+  - `stuck_pending_orders` (warning; cross-checks `raw.bc_invoices_raw`, sends
+    its own alert)
 - Expected logs:
   - `[SANITY][INFO] runDailySanityChecks_v1 result: ...`
-  - Alert only if one or more `FAIL` checks occur
+  - The summary email goes only if one or more error-severity checks `FAIL`;
+    warnings alone do not send it.
 
 ## Manual Recovery / Backfill
 
 Use only when incremental sync is clearly behind or data was re-exported.
 
-- Full invoices backfill: `runBcInvoicesFullBackfill_v1`
-- Full lines backfill (chunked safer): `runBcLinesFullBackfillChunk_v1`
-- Incremental BC wrapper: `runBcIncrementalSync_v1`
+- BC: only `processBcDrop_v1` / `processBcDropForce_v1` (see section 3 above)
 - Sales reps reference sync: `syncSalesRepsRefToSupabase_v1`
 - Optional marts refresh: `refreshSupabaseMarts_v1`
 - NEWWEB missing-field repair (recent rows): `reconcileNewwebMissingData_v2`
@@ -108,13 +151,23 @@ Note: `refresh_mv_top_products_all` may timeout (statement timeout) during busy 
    - `safePoll_v2` mostly completed
    - no recurring failures
 2. `scheduledMagentoSync_v1` recent run has `magentoSync":"ok"`
-3. `scheduledBcSync_v1` recent run completed
+3. `auditTriggers_v1()` logs `[AUDIT][OK] All 13 required triggers are installed`
 4. Confirm `[SALES_REPS_REF][INFO] Sync completed. Uploaded: N` in Magento/ref sync logs
 5. Spot-check one fresh order in `NEWWEB` sheet + frontend
 
+Monthly: someone has run BC Sync -> Importa BC skrár this month (`ingestion_runs`
+row with job_name `scheduledBcSync_v1`, trigger_type `drive_drop`), and the BC
+drop folder holds no unprocessed XLSX.
+
 ## Metric Contract
 
-Monthly sheet (`Sales - Monthly`) has two web-share metric families:
+Dashboard BC cards: monthly cards use net BC figures entered by hand in
+`window.STORKAUP_BC_MANUAL`; daily cards use `day_kpi_pack`; the canonical web
+tag is `salesperson_code = 'VEFUR'`.
+
+The sheet metric families below are **legacy and frozen** (the BC_INVOICES sheet
+is no longer written — see "Not an issue: BC columns are 0" below). Kept for
+reference. Monthly sheet (`Sales - Monthly`) has two web-share metric families:
 
 - `Web Orders % of BC` and `Web % of BC`:
   - Canonical BC-booked web share (Power BI parity)
@@ -125,13 +178,15 @@ Monthly sheet (`Sales - Monthly`) has two web-share metric families:
   - Operational comparison (`OLDWEB + NEWWEB`) versus the same net BC denominator
   - Expected to differ from canonical BC-booked share
 
-Dashboard cards should use canonical values (`Web Orders % of BC`, `Web % of BC` logic).
 
 ## SQL Verification (Supabase)
 
 Use when dashboard and sheet differ.
 
-1. Dashboard month values:
+1. Dashboard month values. `webOrdersPct` / `webRevenuePct` are **null by design**
+   (BC stripped from the anon RPC); only `salesRepPct` and `selfServePct` are
+   meaningful. For BC figures compare against `STORKAUP_BC_MANUAL` or
+   `mart.v_bc_monthly_net_v1` (service_role / authenticated; not anon).
 ```sql
 select
   api.dashboard_compat('2026-02')->'month'->>'webOrdersPct' as web_orders_pct,
@@ -156,16 +211,16 @@ order by 1,3;
 
 ## Common Issues
 
-### Issue: `Permission denied while enabling APIs: <api> for GCP project 159224455440`
+### Issue: `Permission denied while enabling APIs: <api> for GCP project <number>`
 - Symptom: any Google service call fails with this, e.g.
   `[BC_DROP] Cannot open drop folder: Permission denied while enabling APIs: drive`
 - Cause: the main Apps Script project is attached to a **Standard** GCP project
-  (`storkaup-kpi-core`, number `159224455440`), not a default one. Apps Script
+  (see Apps Script -> Project Settings for its number), not a default one. Apps Script
   auto-enables APIs only in *default* projects. In a Standard project every
   Google API must be enabled manually in Cloud Console before first use —
   Apps Script's auto-enable attempt is denied, and the call fails at runtime.
 - Action:
-  1. Open `https://console.cloud.google.com/apis/library/<api>.googleapis.com?project=159224455440`
+  1. Open `https://console.cloud.google.com/apis/library/<api>.googleapis.com?project=<project number>`
      (e.g. `drive.googleapis.com`) and click **Enable**.
   2. Wait a few seconds for propagation, then re-run.
   3. If the console shows "you don't have permission", it is an IAM/org-policy
@@ -186,14 +241,14 @@ order by 1,3;
   does not fix it. Also `Web Orders % of BC` / `Web % of BC` are 0.0% from 2025-09.
 - Cause: **known and accepted (2026-08-05), do not chase.** SALES_SUMMARIES reads
   the **BC_INVOICES Google Sheet**, and nothing writes to that sheet any more —
-  `processBcDrop_v1` loads BC into **Supabase only** (`core/utils.js:1501`).
+  `processBcDrop_v1` loads BC into **Supabase only** (`core/utils.js`).
   Every code reference to `BC_INVOICES` is a read. The sheet has been frozen
   since it was last pasted into manually (~2026-04), so `Build All` just re-reads
   stale data. Separately, the 0.0% web-share columns broke in 2025-09 because
   `SALESPERSON_CODE` stopped mapping when BC moved to SaaS and renamed the header
-  (`core/schema.js:100`) — so even pasting fresh data would leave those at 0.
+  (`SALESPERSON_CODE` in `core/schema.js`) — so even pasting fresh data would leave those at 0.
 - Why it is safe to leave: the only consumer of these columns is
-  `getLiveBcWebShare_` in `webapp.js:240`, serving `?action=dashboard`, which no
+  `getLiveBcWebShare_` in `webapp.js`, serving `?action=dashboard`, which no
   Webflow page calls. Nothing user-facing depends on them.
 - The real BC numbers live in Supabase and are correct: `public.day_kpi_pack`
   (BC fields deliberately nulled for anon), `mart.v_bc_monthly_net_v1`,
@@ -261,11 +316,13 @@ order by 1,3;
 - Symptom: `[NEWWEB][WARN] Another v2 run in progress`
 - Action:
   - Usually safe (lock protection works)
-  - If excessive, lower trigger frequency or optimize heavy operations
+  - If excessive, do **not** change the 5-minute trigger (non-negotiable). Look
+    for long-running runs or lock contention instead — `scheduledMagentoSync_v1`
+    and other jobs share the script lock.
 
 ### Issue: repeated sync failure alerts during transient API outages
 - Behavior:
-  - Scheduled sync jobs now retry transient failures once before marking the run failed.
+  - `scheduledReferenceSync_v1` and `scheduledCustomerAnalysisSync_v1` wrap their steps in `runWithRetries_` (one retry) before marking the run failed. Other jobs (`scheduledMagentoSync_v1`, Klaviyo, Cludo, …) do not retry.
   - Transient patterns include common `429/5xx/timeout` errors.
 - Action:
   1. Keep alert throttles at sane values (example: 60-180 minutes for high-frequency jobs).
@@ -276,14 +333,40 @@ order by 1,3;
 - If Magento has no newer orders than checkpoint, this is expected.
 - Verify latest Magento order timestamp is newer than checkpoint.
 
+### Restoring a priority flag
+- `raw.customer_priority_flags_history` (AFTER UPDATE OR DELETE trigger) keeps
+  the old row of every update and delete on `raw.customer_priority_flags_raw`:
+  `op`, `via_role` (`anon` = a Webflow page, `service_role` = GAS), `old_row` /
+  `new_row` jsonb.
+- Writers: Webflow `forgangslisti.js`, `customer-profiles.js`, `activation.js`
+  via anon RPCs, and `importPriorityFlagsFromSheet_v1` (default `replaceAll`
+  deletes all rows first).
+- Restore: use the snippet under "ENDURHEIMT" in
+  [core/sql/customer_priority_flags_history.sql](core/sql/customer_priority_flags_history.sql)
+  (latest `DELETE` row for the customer, `jsonb_populate_record` on `old_row`,
+  `on conflict do nothing`). Run it in the Supabase SQL editor — the history
+  table is service_role only.
+- TRUNCATE is not captured.
+
 ## Trigger Baseline
 
-Expected active trigger functions:
-- `safePoll_v2`
-- `scheduledMagentoSync_v1`
-- `scheduledBcSync_v1`
-- `scheduledCludoSync_v1`
-- `scheduledCustomerAnalysisSync_v1`
-- `scheduledKlaviyoSync_v1`
-- `runDailySanityChecks_v1`
-- `onOpen`
+Do not keep a hand list here. `requiredTimeTriggers_()` in
+[core/utils.js](core/utils.js) is the source of truth (13 required handlers),
+shared by `auditTriggers_v1()` and `resetRecommendedTimeTriggers_v1()`.
+
+Recovering a lost trigger:
+1. Run `auditTriggers_v1()`. It logs `[AUDIT][WARN] Missing trigger for: X` per
+   missing handler, or `[AUDIT][OK] All 13 required triggers are installed`.
+2. Run that handler's own `install*Trigger*` function (listed in
+   `requiredTimeTriggers_()`). They are idempotent — `{created:false}` if one
+   already exists.
+3. `resetRecommendedTimeTriggers_v1()` now removes and reinstalls one handler at
+   a time and ends with an audit, so an interruption loses at most one handler.
+   It still deletes and recreates `safePoll_v2`, so it is not the first tool to
+   reach for.
+
+OPTIONAL handlers are recognised but **never warned about when absent**:
+`onOpen`, `pruneCompletedApplications`, `collectInvoicesToDrive_v1`,
+`runScheduledSeoAutomation_v1`, `zeroPriceScanFromTrigger_v1`. As of
+2026-09-09 neither `collectInvoicesToDrive_v1` nor
+`runScheduledSeoAutomation_v1` is installed (see CLAUDE.md).

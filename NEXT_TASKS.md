@@ -87,10 +87,10 @@
 
 | ID | Task | Owner | Status | Acceptance Check |
 |---|---|---|---|---|
-| P1-1 | Freeze current prod script pins (Webflow/jsDelivr commit IDs) and document them | Olafur | Done | Production pin section added to `README.md`; pins tracked in docs and Webflow custom code |
-| P1-2 | Add quick runbook for daily operations (`safePoll_v2`, `scheduledMagentoSync_v1`, `scheduledBcSync_v1`) | Olafur | Done | `RUNBOOK.md` added; core function guidance and failure playbook documented |
-| P1-3 | Add Apps Script failure alerting for key triggers | Olafur | Done | `notifyTriggerFailure_` wired for key scheduled triggers + `safePoll_v2`; configure `ALERT_EMAILS` in Script Properties |
-| P1-4 | Keep `safePoll_v2` + new staggered trigger schedule validated for 7 days | Olafur | Done | `safePoll_v2` continues at 5-minute cadence; BC / Magento / sanity jobs run in intended windows without repeated overlap failures |
+| P1-1 | Freeze current prod script pins (Webflow/jsDelivr commit IDs) and document them | Olafur | Done | Production pin section added to `README.md`; pins tracked in docs and Webflow custom code (now `CLAUDE.md` → Current production pins; README forwards) |
+| P1-2 | Add quick runbook for daily operations (`safePoll_v2`, `scheduledMagentoSync_v1`, `scheduledBcSync_v1`) | Olafur | Done | `RUNBOOK.md` added; core function guidance and failure playbook documented. BC is now `processBcDrop_v1` via the BC Sync menu (`scheduledBcSync_v1` removed 2026-04-30); RUNBOOK update tracked under P11-9 |
+| P1-3 | Add Apps Script failure alerting for key triggers | Olafur | Done | `notifyTriggerFailure_` wired for key scheduled triggers + `safePoll_v2`; configure `ALERT_EMAILS` in STORKAUP_CONFIG → SETTINGS (Script Property is a fallback) |
+| P1-4 | Keep `safePoll_v2` + new staggered trigger schedule validated for 7 days | Olafur | Done | `safePoll_v2` continues at 5-minute cadence; BC / Magento / sanity jobs run in intended windows without repeated overlap failures (BC trigger removed 2026-04-30; BC is now menu-driven) |
 
 ## Priority 2 - Data Quality and Consistency
 
@@ -134,7 +134,7 @@
 |---|---|---|---|---|
 | P6-1 | Validate `website_kpi_pack` RPC in Supabase and confirm all dashboard cards render | Olafur | Done | All KPI cards confirmed live in production (2026-04-17) |
 | P6-2 | Fix `Dagsetning:` date label on `/kpi/vefur-kpi` showing American format (04/16/2026) | Olafur | Done | `formatDayLabel` rewritten to manual `dd.mm.yyyy` — no Intl locale dependency; deploy to Webflow and update pin |
-| P6-3 | Pin `website-dashboard.js` + `website-dashboard-bootstrap.js` in Webflow and update pins below | Olafur | Done | Webflow deploy rev updated to `cb56c43`; all pages confirmed loading |
+| P6-3 | Pin `website-dashboard.js` + `website-dashboard-bootstrap.js` in Webflow and update pins below | Olafur | Done | Webflow deploy rev updated to `cb56c43` (historical; current pins in `CLAUDE.md`); all pages confirmed loading |
 | P6-4 | Define phase 2 scope for website dashboard (segments, funnels, or trend lines) | Olafur | Todo | P8-2 lokið og P8-4 lagfært — purchase tracking virkar aftur; funnel scope hægt að skilgreina |
 
 ## Priority 7 - SEO Manager
@@ -167,10 +167,28 @@
 
 | ID | Task | Owner | Status | Acceptance Check |
 |---|---|---|---|---|
-| P10-1 | Confirm `ALERT_EMAILS` Script Property is set in Apps Script | Olafur | Done | `ALERT_EMAILS` stillt í STORKAUP_CONFIG → SETTINGS tab (2026-05-13) |
+| P10-1 | Confirm `ALERT_EMAILS` is set (SETTINGS, Script Property fallback) | Olafur | Done | `ALERT_EMAILS` stillt í STORKAUP_CONFIG → SETTINGS tab (2026-05-13) |
 | P10-2 | Decide fate of `scheduledCustomerAnalysisSync_v1` (disable if low-value and noisy) | Olafur | Done | Halda — knýr `mv_customer_profiles_labeled_trends` (Forgangslisti); 0% error rate |
-| P10-3 | Add `auditTriggerSchedule_v1()` menu function to log active trigger cadences | Olafur | Done | `auditTriggers_v1()` er þegar til í core/utils.js og gerir þetta |
+| P10-3 | Add `auditTriggerSchedule_v1()` menu function to log active trigger cadences | Olafur | Done | `auditTriggers_v1()` er þegar til í core/utils.js og gerir þetta (keyrt úr function picker, ekki valmynd). Ber saman við `requiredTimeTriggers_()` — 13 skyldu-handlerar, sama kort og `resetRecommendedTimeTriggers_v1` síðan P11-1 |
 | P10-4 | Turn off `DEBUG = true` in `Webflow/dashboard.js` and `Webflow/website-dashboard.js` for production | Olafur | Done | `DEBUG = false` í báðum skrám (dashboard.js:14, website-dashboard.js:6) |
+
+## Priority 11 - Úr yfirferð 2026-10-08
+
+Repo-yfirferðin 2026-10-08 (staða + „er þetta CRM?“) skilaði forgangsröðuðum
+lista. Það sem var klárað sama dag er skráð Done; það sem kom upp á leiðinni
+er skráð hér svo það týnist ekki.
+
+| ID | Task | Owner | Status | Acceptance Check |
+|---|---|---|---|---|
+| P11-1 | `resetRecommendedTimeTriggers_v1` setti aðeins 10 af 13 upp aftur | Olafur | Done | `requiredTimeTriggers_()` eitt kort fyrir audit + reset (`f243274`) |
+| P11-2 | Stopp `safePoll_v2` sendi engan póst | Olafur | Done | `checkSafePollWatchdog_` á klst. fresti + heartbeat `error` (`6ba3a9d`) |
+| P11-3 | Óvarið `loadConfig()` í admin skilaði `SERVICE_ROLE_KEY` | Olafur | Done | Fjarlægt; `clearConfigCache` + `voruinnihald_diagnoseTree` varin (`a31774c`) |
+| P11-4 | Tóm staða eyddi forgangsflaggi óafturkræft | Olafur | Done | `raw.customer_priority_flags_history` + trigger, keyrt í Supabase (`0c70321`) |
+| P11-5 | Loka anon á digest-RPC | Olafur | Done | `weekly/monthly_digest_stats` service_role only; TEST-póstur staðfestur (`8c48bff`) |
+| P11-6 | Loka anon á les-RPC sem Webflow-síður nota enn | Olafur | Blocked | Lokast með auth-færslu; sjá öryggisúttektina (utan git) |
+| P11-7 | Forgangslista-skiptin | Olafur | Done | `/kpi/forgangslisti` keyrir nýja listann, -nyr 301, script 1/1 (`3946db1`) |
+| P11-8 | Ákveða og klára `/kpi/activation` | Olafur | Todo | Virkar síðan 2026-10-08 (config vantaði); 714 með vefaðgang hafa aldrei pantað. Óákveðið: sér markhópasýn eða sía í forgangslistanum. Tillögur: hliðarstika í stað júní-nav, skriftir aðeins „Bæta á forgangslista“, tengja í nav |
+| P11-9 | Uppfæra ARCHITECTURE, RUNBOOK, GOALS, README og þessa skrá að raunveruleikanum | Olafur | In progress | Skjölin lýsa BC-drop (enginn trigger), skriftum úr framenda, PIM-hlutanum og núverandi triggerum |
 
 ## Current Production Pins
 
@@ -179,8 +197,9 @@ Production pins now live in a single source of truth: **`CLAUDE.md` → Current 
 ## Weekly Review Checklist
 
 1. Check Apps Script executions for failures in the last 24h.
-2. Confirm new NEWWEB rows continue landing during business hours.
-3. Confirm BC sync ran in both intended daily windows and dashboard BC share still matches Supabase.
-4. Confirm Magento incremental sync has no recurring 401 or timeout errors.
-5. Spot-check one parent/child customer case for profile correctness.
-6. Move completed tasks to `Done` and add next concrete action.
+2. Confirm new NEWWEB rows continue landing during business hours (`safePoll_v2` window: every run 07:00-21:59, quarter-hours 22:00-23:59, off 00:00-06:59). No `[KPI ALERT] safePoll_v2 er stopp` email this week (`checkSafePollWatchdog_`, hourly inside `scheduledMagentoSync_v1`) and `safepoll_heartbeat` OK in `runDailySanityChecks_v1`. Manual run: `safePollNow_v2()`, not bare `safePoll_v2()`.
+3. Run `auditTriggers_v1()` (function picker) and expect `[AUDIT][OK] All 13 required triggers are installed`. If one is missing, run its idempotent `install*` function — not `resetRecommendedTimeTriggers_v1`. The audit never warns about OPTIONAL jobs (`collectInvoicesToDrive_v1`, `runScheduledSeoAutomation_v1`); see CLAUDE.md.
+4. Check BC freshness by hand — BC has no trigger and is not in the sanity check's freshness map. Has someone run BC Sync → `processBcDrop_v1` on a recent `bc_sync.ps1` export (rolling ~3-month window, so a skipped month is a real gap)? Does the dashboard's BC last-sync timestamp (`bc-last-sync-at`, from `bc_sync_status`) look recent, and does BC share still match Supabase?
+5. Confirm Magento incremental sync has no recurring 401 or timeout errors. `ingestion_partial_24h` in the sanity check means a sub-step (e.g. a mart refresh) failed, not the whole job.
+6. Spot-check one parent/child customer case for profile correctness.
+7. Move completed tasks to `Done` and add next concrete action.
