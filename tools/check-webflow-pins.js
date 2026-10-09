@@ -43,9 +43,20 @@ const PAGE = process.env.STORKAUP_PIN_PAGE ||
              'https://storkaup.webflow.io/kpi/top-products';
 const CLAUDE_MD = path.join(__dirname, '..', 'CLAUDE.md');
 
-// Lykilorðahliðin má ALDREI bera þetta. Sjá hausinn.
-const NEVER_ON_GATE = ['gasKey', 'supabaseUrl', 'publishableKey',
-                       'STORKAUP_BC_MANUAL', 'EXEC_URL'];
+// ENGIN KPI-síða má bera þetta (2026-10-09). Webflow-lykilorðið er farið og
+// allar síður eru opinberar; innskráning (Webflow/auth.js) ver gögnin.
+// `supabaseUrl` og `publishableKey` eru EKKI lengur á listanum: þau eru
+// opinber að hönnun, og eftir kpi_auth_revoke_anon.sql opnar anon ekkert.
+// Áður varði listinn aðeins lykilorðaskjáinn; leyndarmálin voru page-scoped,
+// svo nú er leitað á HVERRI KPI-síðu (KPI_PAGES), ekki bara einni.
+const NEVER_PUBLIC = ['gasKey', 'STORKAUP_BC_MANUAL', 'EXEC_URL'];
+
+// Allar KPI-síður sem leitað er á. Slóð sem skilar 404 er tilkynnt (rangt
+// slug eða síða horfin) en fellir ekki athugunina.
+// Grunnlistinn; við hann bætast allar /kpi/-slóðir í nav-i forsíðunnar
+// (main), svo ný síða í nav-inu er skoðuð án þess að nokkur muni eftir
+// að skrá hana hér. /kpi/emails og /kpi/umsoknir eru ekki í nav-inu.
+const KPI_PAGES = ['/', '/kpi/emails', '/kpi/umsoknir'];
 
 function parseExpected(md) {
   // Pinnatöflurnar eru í kaflanum "Current production pins". Leitað er að
@@ -246,6 +257,45 @@ async function main() {
   const live = parseLive(html);
   const liveRev = live.revs.length === 1 ? live.revs[0] : null;
 
+  // ALLAR KPI-SÍÐURNAR (2026-10-09). Án lykilorðs er hver síða lesanleg, svo
+  // embed-pinnarnir sjást þar sem þeir eru — og leyndarmál, sem voru
+  // page-scoped, verða að vera skoðuð á HVERRI síðu, ekki einni.
+  const origin = new URL(PAGE).origin;
+  const scans = [];
+  const pages = KPI_PAGES.slice();
+  try {
+    const home = await (await fetch(origin + '/', { redirect: 'follow' })).text();
+    (home.match(/href="(\/kpi\/[^"#?]+)"/g) || []).forEach(function (m) {
+      const p = m.slice(6, -1);
+      if (pages.indexOf(p) === -1) pages.push(p);
+    });
+  } catch (e) { /* forsíðan náðist ekki — grunnlistinn dugar */ }
+  for (const p of pages) {
+    try {
+      const r = await fetch(origin + p, { redirect: 'follow' });
+      const h = await r.text();
+      scans.push({ path: p, status: r.status, html: h,
+                   leaks: NEVER_PUBLIC.filter(function (k) { return h.indexOf(k) !== -1; }),
+                   srcs: parseLive(h).srcs });
+    } catch (e) {
+      scans.push({ path: p, status: 'VILLA', html: '', leaks: [], srcs: {} });
+    }
+  }
+  const seen = {};   // skrá -> { pin -> [síður] }
+  scans.forEach(function (s) {
+    Object.keys(s.srcs).forEach(function (f) {
+      seen[f] = seen[f] || {};
+      (seen[f][s.srcs[f]] = seen[f][s.srcs[f]] || []).push(s.path);
+    });
+  });
+  function livePin(js) {
+    const pins = Object.keys(seen[js] || {});
+    if (pins.length === 1) return { pin: pins[0], note: '' };
+    if (pins.length > 1) return { pin: null, note: 'MISMUNANDI PINNAR: ' + pins.map(function (k) {
+      return k + ' (' + seen[js][k].join(', ') + ')'; }).join('; ') };
+    return { pin: live.srcs[js] || null, note: 'fannst á engri KPI-síðu' };
+  }
+
   const rows = [
     row('data-storkaup-rev', expected.rev, liveRev,
         live.revs.length > 1 ? 'FLEIRI EN EITT GILDI: ' + live.revs.join(', ') : ''),
@@ -254,8 +304,8 @@ async function main() {
     row('website-dashboard-bootstrap.js', expected.websiteBootstrap,
         live.srcs['website-dashboard-bootstrap.js']),
   ].concat(EMBED_PINNED.map(function (spec) {
-    return row(spec.js, expected[spec.key], live.srcs[spec.js] || null,
-               'í Embed á bak við lykilorð — ekki lesanlegt héðan');
+    const lp = livePin(spec.js);
+    return row(spec.js, expected[spec.key], lp.pin, lp.note);
   }));
 
   const w = Math.max.apply(null, rows.map(function (r) { return r.name.length; }));
@@ -268,14 +318,20 @@ async function main() {
                 (r.note ? '  — ' + r.note : ''));
   });
 
-  const leaks = NEVER_ON_GATE.filter(function (k) { return html.indexOf(k) !== -1; });
+  const leakPages = scans.filter(function (s) { return s.leaks.length; });
+  const leaks = leakPages.map(function (s) { return s.path + ': ' + s.leaks.join(', '); });
+  const missing = scans.filter(function (s) { return s.status !== 200 && s.status !== 401; });
   console.log('');
   if (leaks.length) {
-    console.log('  ⚠️  LEYNDARMÁL Á LYKILORÐASKJÁNUM: ' + leaks.join(', '));
-    console.log('     Þau eru í site-wide custom code og eiga að vera page-scoped.');
+    console.log('  ⚠️  LEYNDARMÁL Á OPINBERRI SÍÐU: ' + leaks.join(' | '));
+    console.log('     Fjarlægið úr page head code. gasKey/BC-tölur eiga aðeins heima í config / gagnagrunni.');
   } else {
-    console.log('  ✓ Ekkert leyndarmál á lykilorðaskjánum (' +
-                NEVER_ON_GATE.join(', ') + ').');
+    console.log('  ✓ Ekkert leyndarmál á ' + (scans.length - missing.length) + ' KPI-síðum (' +
+                NEVER_PUBLIC.join(', ') + ').');
+  }
+  if (missing.length) {
+    console.log('  ? Svöruðu ekki 200: ' + missing.map(function (s) { return s.path + ' (' + s.status + ')'; }).join(', ') +
+                ' — rangt slug í KPI_PAGES eða síða horfin.');
   }
 
   const fresh = freshness(liveRev);

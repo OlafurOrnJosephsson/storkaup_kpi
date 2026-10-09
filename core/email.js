@@ -2,6 +2,11 @@
 
 var EMAIL_LOG_ = '[EMAIL]';
 var ICE_MONTHS_ = ['jan.', 'feb.', 'mar.', 'apr.', 'maí', 'jún.', 'júl.', 'ágú.', 'sep.', 'okt.', 'nóv.', 'des.'];
+// Slóð og innskráning KPI-vefsins (2026-10-09). Ein lína þegar kpi.storkaup.is
+// kemur (P11-16). Webflow-lykilorðið er farið — innskráning er með Google.
+var KPI_BASE_URL_ = 'https://storkaup.webflow.io';
+var KPI_SIGNIN_TEXT_ = 'Innskráning: @storkaup.is Google-aðgangurinn þinn';
+
 var ICE_MONTHS_FULL_ = ['janúar', 'febrúar', 'mars', 'apríl', 'maí', 'júní', 'júlí', 'ágúst', 'september', 'október', 'nóvember', 'desember'];
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -118,7 +123,7 @@ function menu_sendWelcomeEmail() {
     if (!rcpts.length) { ui.alert('Ekkert gilt netfang.'); return; }
 
     GmailApp.sendEmail(rcpts.join(','), 'Velkomin á KPI yfirlit Stórkaups',
-      'Við höfum sett upp gagnvirkar KPI síður.\n\nAðgangsorð: Stortkaup_2026\n\nDashboard: https://storkaup.webflow.io/kpi/dashboard', {
+      'Við höfum sett upp gagnvirkar KPI síður.\n\n' + KPI_SIGNIN_TEXT_ + '\n\nMælaborð: ' + KPI_BASE_URL_ + '/', {
       htmlBody: buildWelcomeEmailHtml_(),
       from: 'vefur@storkaup.is',
       name: 'Stórkaup ehf'
@@ -245,7 +250,7 @@ function buildWeeklyDigestHtml_(s) {
     + '<div class="sk-body">'
     + '<div style="font-size:18px;font-weight:700;color:#282828;margin:4px 0 10px;">Vikulegt yfirlit — ' + period + '</div>'
     + '<p style="margin:0 0 12px;color:#444;line-height:1.6;font-size:13px;">Yfirlit yfir helstu tölur vikunnar hjá Stórkaup. Allar tölur eru sjálfvirkt sóttar úr kerfinu.</p>'
-    + '<p style="margin:0 0 20px;font-size:13px;background:#f5f6ff;border:1px solid #e9e9e9;border-radius:6px;padding:10px 14px;color:#5b5b5b;">Aðgangsorð: <strong style="color:#282828;">Stortkaup_2026</strong></p>'
+    + '<p style="margin:0 0 20px;font-size:13px;background:#f5f6ff;border:1px solid #e9e9e9;border-radius:6px;padding:10px 14px;color:#5b5b5b;">Innskráning: <strong style="color:#282828;">@storkaup.is Google-aðgangurinn þinn</strong></p>'
 
     // Vefsala
     + '<p class="sk-lbl">Vefsala</p>'
@@ -274,14 +279,14 @@ function buildWeeklyDigestHtml_(s) {
 
     // CTA
     + '<div style="text-align:center;padding:8px 0 4px;">'
-    + '<a class="sk-btn" href="https://storkaup.webflow.io/kpi/dashboard">Sjá allar tölur á mælaborðinu</a>'
+    + '<a class="sk-btn" href="' + KPI_BASE_URL_ + '/">Sjá allar tölur á mælaborðinu</a>'
     + '</div>'
     + '</div>' // sk-body
 
     // Footer
     + '<div class="sk-footer">'
     + '<p style="margin:0;font-size:11px;color:#888;">Stórkaup ehf. &middot; Sent sjálfvirkt á mánudögum kl. 08:00 &middot; '
-    + '<a href="https://storkaup.webflow.io/kpi/dashboard" style="color:#888;">storkaup.webflow.io</a></p>'
+    + '<a href="' + KPI_BASE_URL_ + '/" style="color:#888;">storkaup.webflow.io</a></p>'
     + '</div>'
 
     + '</div></body></html>';
@@ -325,10 +330,10 @@ function buildWelcomeEmailHtml_() {
     + '<div class="sk-body">'
     + '<p style="margin:0 0 6px;font-size:15px;font-weight:600;">Kæru starfsmenn Stórkaups</p>'
     + '<p style="margin:0 0 12px;color:#444;line-height:1.6;">Við höfum sett upp gagnvirkar síður þar sem hægr er að fylgjast með sölu, viðskiptavinum og vefumferð. Hér eru tenglar beint á þær síður sem eru í boði.</p>'
-    + '<p style="margin:0 0 16px;font-size:13px;background:#f5f6ff;border:1px solid #e9e9e9;border-radius:6px;padding:10px 14px;color:#5b5b5b;">Aðgangsorð: <strong style="color:#282828;">Stortkaup_2026</strong></p>'
+    + '<p style="margin:0 0 16px;font-size:13px;background:#f5f6ff;border:1px solid #e9e9e9;border-radius:6px;padding:10px 14px;color:#5b5b5b;">Innskráning: <strong style="color:#282828;">@storkaup.is Google-aðgangurinn þinn</strong></p>'
     + '<hr class="sk-divider">'
     + '<p class="sk-lbl">Yfirlit</p>'
-    + card('Mælaborð', 'Dagleg KPI yfirlit – pantanir, sala, samanbuður við meðaltal', '/kpi/dashboard')
+    + card('Mælaborð', 'Dagleg KPI yfirlit – pantanir, sala, samanbuður við meðaltal', '/')
     + card('Sölutölur', 'Söluþróun, BC velta og vefpantanir', '/kpi/solutolur')
     + '<hr class="sk-divider">'
     + '<p class="sk-lbl">Viðskiptavinir</p>'
@@ -378,8 +383,8 @@ function buildWeeklyDigestPlain_(s) {
     'Pantanir : ' + emailNum_(s.klaviyo_orders),
     'Sala     : ' + emailIskShort_(emailNum_(s.klaviyo_revenue_excl)) + ' (án VSK)',
     '',
-    'Aðgangsorð: Stortkaup_2026',
-    'KPI: https://storkaup.webflow.io/kpi/dashboard'
+    KPI_SIGNIN_TEXT_,
+    'KPI: ' + KPI_BASE_URL_ + '/'
   );
   return lines.join('\n');
 }
@@ -678,15 +683,15 @@ function buildMonthlyDigestHtml_(s) {
 
     // CTA
     + '<div style="text-align:center;padding:8px 0 4px;">'
-    + '<a class="sk-btn" href="https://storkaup.webflow.io/kpi/dashboard">Sjá allar tölur á mælaborðinu</a>'
+    + '<a class="sk-btn" href="' + KPI_BASE_URL_ + '/">Sjá allar tölur á mælaborðinu</a>'
     + '</div>'
     + '</div>' // sk-body
 
     // Footer
     + '<div class="sk-footer">'
     + '<p style="margin:0;font-size:11px;color:#888;">Stórkaup ehf. &middot; Sent sjálfvirkt 1. hvers mánaðar &middot; '
-    + '<a href="https://storkaup.webflow.io/kpi/dashboard" style="color:#888;">storkaup.webflow.io</a></p>'
-    + '<p style="margin:10px 0 0;font-size:13px;background:#f5f6ff;border:1px solid #e9e9e9;border-radius:6px;padding:10px 14px;color:#5b5b5b;">Aðgangsorð: <strong style="color:#282828;">Stortkaup_2026</strong></p>'
+    + '<a href="' + KPI_BASE_URL_ + '/" style="color:#888;">storkaup.webflow.io</a></p>'
+    + '<p style="margin:10px 0 0;font-size:13px;background:#f5f6ff;border:1px solid #e9e9e9;border-radius:6px;padding:10px 14px;color:#5b5b5b;">Innskráning: <strong style="color:#282828;">@storkaup.is Google-aðgangurinn þinn</strong></p>'
     + '</div>'
 
     + '</div></body></html>';
@@ -872,7 +877,7 @@ function buildMonthlyDigestPlain_(s) {
       'Vefpantanir : ' + emailNum_(rr.mtd_orders) + (rr.projected_orders != null ? ' (spá: ' + emailNum_(rr.projected_orders) + ')' : ''),
       'Vefvelta    : ' + emailIskShort_(emailNum_(rr.mtd_revenue_excl)) + (rr.projected_revenue_excl != null ? ' (spá: ' + emailIskShort_(emailNum_(rr.projected_revenue_excl)) + ')' : ''));
   }
-  lines.push('', 'Aðgangsorð: Stortkaup_2026', 'KPI: https://storkaup.webflow.io/kpi/dashboard');
+  lines.push('', KPI_SIGNIN_TEXT_, 'KPI: ' + KPI_BASE_URL_ + '/');
   return lines.join('\n');
 }
 
