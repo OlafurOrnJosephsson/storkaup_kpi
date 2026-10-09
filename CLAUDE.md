@@ -354,13 +354,13 @@ page Embed), so each row carries its own date:
 
 | What | Value | Set |
 |---|---|---|
-| `data-storkaup-rev` — governs all bootstrap child files | `30f0908` | 2026-09-22 |
-| `dashboard-bootstrap.js` script-tag src | `30f0908` | 2026-09-22 (pin only — see below) |
+| `data-storkaup-rev` — governs all bootstrap child files | `af0191a` | 2026-10-09 — `dashboard.js` reads BC figures from the DB, `website-dashboard.js` no longer needs `gasKey` |
+| `dashboard-bootstrap.js` script-tag src | `af0191a` | 2026-10-09 (pin only — file unchanged since `30f0908`) |
 | `website-dashboard-bootstrap.js` script-tag src | `30f0908` | 2026-09-22 (pin only — see below) |
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
 | `activation.js`, **in page custom code** (independent) | `84372c6` | 2026-06-15, `/kpi/activation` only — read off the live page 2026-09-21 |
 | `portal.js` script-tag src, **inside the Embed** (independent) | `c037bbd` | 2026-09-22, `/kpi/voruportal` only |
-| `auth.js` script-tag src, **site-wide head** (independent) | `97a6cd6` | 2026-10-09 — sign-in for KPI pages, see RUNBOOK → KPI page sign-in |
+| `auth.js` script-tag src, **site-wide head** (independent) | `af0191a` | 2026-10-09 — sign-in for KPI pages + token on GAS calls, see RUNBOOK → KPI page sign-in |
 | `forgangslisti.js` script-tag src, **in page head code** (independent) | `72c872c` | 2026-09-21; on `/kpi/forgangslisti` since 2026-10-08 — read off view-source that day |
 
 `2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —

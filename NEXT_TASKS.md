@@ -185,7 +185,10 @@ er skráð hér svo það týnist ekki.
 | P11-3 | Óvarið `loadConfig()` í admin skilaði `SERVICE_ROLE_KEY` | Olafur | Done | Fjarlægt; `clearConfigCache` + `voruinnihald_diagnoseTree` varin (`a31774c`) |
 | P11-4 | Tóm staða eyddi forgangsflaggi óafturkræft | Olafur | Done | `raw.customer_priority_flags_history` + trigger, keyrt í Supabase (`0c70321`) |
 | P11-5 | Loka anon á digest-RPC | Olafur | Done | `weekly/monthly_digest_stats` service_role only; TEST-póstur staðfestur (`8c48bff`) |
-| P11-6 | Loka anon á les-RPC sem Webflow-síður nota enn | Olafur | Blocked | Lokast með auth-færslu; sjá öryggisúttektina (utan git) |
+| P11-6 | Loka anon á les-RPC sem Webflow-síður nota enn | Olafur | Done | 2026-10-09: Google-innskráning á KPI-síður (`Webflow/auth.js`, Cloud Identity Free, `raw.kpi_staff_access`), `kpi_auth_revoke_anon.sql` keyrt — anon nær engu. `gasKey` og BC-tölur úr síðukóða (token á GAS-köll, `raw.bc_manual_monthly`). Sjá RUNBOOK → KPI page sign-in |
+| P11-15 | Databricks sem uppspretta BC (í stað XLSX-drops og handvirkra mánaðartalna) | Olafur | Todo | Bíður aðgangs. Athuga töflur/ferskleika, service principal, IP-takmarkanir; BC-tölur í `raw.bc_manual_monthly` reiknaðar sjálfkrafa |
+| P11-16 | `kpi.storkaup.is` sem lén KPI-vefsins | Olafur | Todo | Webflow: mockup í afrit, KPI-mappan ein eftir, forsíða → `/kpi/dashboard`. CNAME hjá UT Haga (opinbert hjá Skyggni + innra AD-DNS). Bæta léninu við Google OAuth origins + Supabase redirect URLs |
+| P11-17 | Hlutverk á KPI-síðum og einn aðgangslisti fyrir öpp og síður | Olafur | Todo | Hlutverkadálkur í `raw.kpi_staff_access`; viðkvæm föll (viðskiptavinir, kaupendaskúffa) athuga hlutverk; admin-öppin lesa sama lista í stað `*_APP_EMAILS` |
 | P11-7 | Forgangslista-skiptin | Olafur | Done | `/kpi/forgangslisti` keyrir nýja listann, -nyr 301, script 1/1 (`3946db1`) |
 | P11-8 | Ákveða og klára `/kpi/activation` | Olafur | Todo | Virkar síðan 2026-10-08 (config vantaði); 714 með vefaðgang hafa aldrei pantað. Óákveðið: sér markhópasýn eða sía í forgangslistanum. Tillögur: hliðarstika í stað júní-nav, skriftir aðeins „Bæta á forgangslista“, tengja í nav |
 | P11-9 | Uppfæra ARCHITECTURE, RUNBOOK, GOALS, README og þessa skrá að raunveruleikanum | Olafur | Done | Hvert skjal yfirfarið og sannreynt gegn kóða (`a3112bf`) |
