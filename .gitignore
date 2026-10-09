@@ -18,6 +18,7 @@ bc_drop/
 SECURITY_REVIEW.md
 SECURITY_RESPONSE.md
 POWERBI_DATABRICKS_GAP.md
+SECURITY_*_DRAFT.md
 
 # Live DB schema snapshot — full structure dump; repo is public, so ignored by
 # default until we decide deliberately whether structure disclosure is fine.
