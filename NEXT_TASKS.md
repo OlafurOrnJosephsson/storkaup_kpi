@@ -192,7 +192,7 @@ er skráð hér svo það týnist ekki.
 | P11-10 | Umsókn-app: skrá geranda á aðgerðir; `webapp_saveCreditScore` skrifar eftir línunúmeri úr vafra án lás | Olafur | Todo | Hver aðgerð skráð á netfang notanda; skrift staðfestir umsækjanda (ekki bara línunúmer) og tekur lás |
 | P11-11 | `safePoll_v2`: upsert-villa í Supabase má ekki færa checkpoint áfram | Olafur | Done | Upsert fyrst, kastar við villu áður en sheet (dedupe-geymslan) eða checkpoint er snert; alert + næsta keyrsla reynir aftur (main @207). `auditNewwebSheetVsSupabase_v1` fann 19 greiddar pantanir (feb–júl 2026) í sheet en ekki Supabase; `repairNewwebMissingInSupabase_v1` setti þær inn 2026-10-09, audit staðfestir 12363 = 12363. Mánaðartölur feb–júl hækka lítillega (leiðrétting) |
 | P11-12 | BC-innflutningur: rofin keyrsla sleppir línum; BC-ferskleiki óvaktaður | Olafur | Done | `BC_DROP_LINES_OWED` sett áður en reikningar fara upp, hreinsað þegar línuskrá klárast; á meðan fara línur ósíaðar (ignore-duplicates). Sanity: `bc_freshness` (>35 d = villa) + `bc_lines_owed`. `markBcLinesOwed_v1` til að lækna eldri göt í næsta innflutningi |
-| P11-13 | `importPriorityFlagsFromSheet_v1` er með `replaceAll=true` sjálfgefið | Olafur | Todo | Sjálfgefið `false`, eða fallið fjarlægt/merkt `_` |
+| P11-13 | `importPriorityFlagsFromSheet_v1` er með `replaceAll=true` sjálfgefið | Olafur | Done | Sjálfgefið `false`; þurrkun krefst `{ replaceAll: true }`. Sagan grípur eyddar línur hvort sem er |
 | P11-14 | PIM: enginn lás milli main-endurbyggingar vinnuskjals og vistunar í vöruinnihalds-appi | Olafur | Todo | Endurbygging og vistun geta ekki skarast (sameiginlegur lás eða rebuild-flagg sem admin les) |
 
 ## Current Production Pins

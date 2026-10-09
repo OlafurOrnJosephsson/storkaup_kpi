@@ -3023,7 +3023,13 @@ function importPriorityFlagsFromSheet_v1(options) {
   var opts = options || {};
   var sheetName = String(opts.sheetName || 'PRIORITY_IMPORT');
   var status = String(opts.status || 'priority').trim().toLowerCase();
-  var replaceAll = opts.replaceAll !== false;
+  // Sjálfgefið FALSE síðan 2026-10-09. Var `opts.replaceAll !== false`, svo
+  // Run úr ritlinum — eina leiðin sem fallið er keyrt — þurrkaði allan
+  // forgangslistann (athugasemdir, sölumenn, eftirfylgni) áður en sheet-ið var
+  // lesið inn. Nú bætir það aðeins við / uppfærir; þurrkun krefst
+  // importPriorityFlagsFromSheet_v1({ replaceAll: true }). Sagan í
+  // raw.customer_priority_flags_history grípur samt hverja eydda línu.
+  var replaceAll = opts.replaceAll === true;
   var note = opts.note == null ? null : String(opts.note);
   var chunkSize = Math.max(100, Number(opts.chunkSize || 1000));
 
