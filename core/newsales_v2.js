@@ -221,6 +221,76 @@ function backfillNewwebSheetToSupabase_v2() {
   return { totalRows, processed };
 }
 
+/**
+ * Samanburður NEWWEB-sheets og raw.newweb_orders_raw (2026-10-08). LES AÐEINS.
+ *
+ * Fram til 2026-10-08 gleypti pollMagentoOrders_v2 upsert-villur eftir að
+ * pöntunin var komin í sheet-ið, sem er líka dedupe-geymslan — svo pöntun gat
+ * setið í sheet-inu en aldrei komist í Supabase. Þetta fall finnur slíkar
+ * pantanir. Keyrsluskráin nær aðeins viku aftur, svo þetta er eina leiðin.
+ *
+ * Skilar talningum og pöntunarnúmerum sem eru í sheet en ekki í Supabase.
+ * Hið gagnstæða (í Supabase, ekki í sheet) er aðeins talið: OLDWEB-tímabilið
+ * og handvirkar viðbætur eiga sér eðlilegar skýringar.
+ */
+function auditNewwebSheetVsSupabase_v1() {
+  const sh = ensureNewwebSheetV2_();
+  const headers = ensureNewwebHeaderV2_(sh);
+  const sheetIds = loadExistingOrderIds_(sh, headers);
+
+  const dbIds = new Set();
+  const PAGE = 1000;
+  // Hætt á TÓMRI síðu, ekki styttri: sé max-rows í PostgREST lægra en PAGE
+  // skilar hver síða færri línum og "styttri síða = síðasta" myndi hætta of
+  // snemma og tilkynna falskar vantanir.
+  for (let offset = 0; ; ) {
+    const rows = supabaseRestGetJson_(
+      'newweb_orders_raw?select=order_id&order=order_id&limit=' + PAGE + '&offset=' + offset,
+      'raw'
+    ) || [];
+    if (!rows.length) break;
+    rows.forEach(function (r) { if (r && r.order_id) dbIds.add(String(r.order_id)); });
+    offset += rows.length;
+  }
+
+  const missingInSupabase = [];
+  sheetIds.forEach(function (id) { if (!dbIds.has(id)) missingInSupabase.push(id); });
+  let onlyInSupabase = 0;
+  dbIds.forEach(function (id) { if (!sheetIds.has(id)) onlyInSupabase++; });
+
+  const out = {
+    sheetCount: sheetIds.size,
+    supabaseCount: dbIds.size,
+    missingInSupabaseCount: missingInSupabase.length,
+    missingInSupabase: missingInSupabase.slice(0, 200),
+    onlyInSupabaseCount: onlyInSupabase
+  };
+  logNewwebEvent_(missingInSupabase.length ? 'WARN' : 'INFO', 'NEWWEB sheet vs Supabase audit', out);
+  return out;
+}
+
+/**
+ * Upsertar AÐEINS sheet-línur sem vantar alveg í Supabase (sjá
+ * auditNewwebSheetVsSupabase_v1). Getur því ekki skrifað yfir stöðu eða
+ * upphæðir sem eru þegar í Supabase — ólíkt backfillNewwebSheetToSupabase_v2,
+ * sem upsertar allt sheet-ið. Keyrið auditið fyrst og lesið niðurstöðuna.
+ */
+function repairNewwebMissingInSupabase_v1() {
+  const audit = auditNewwebSheetVsSupabase_v1();
+  if (!audit.missingInSupabaseCount) return { repaired: 0, audit: audit };
+
+  const sh = ensureNewwebSheetV2_();
+  const headers = ensureNewwebHeaderV2_(sh);
+  const idCol = headers.indexOf('ID');
+  const all = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 1), headers.length).getValues();
+  const missing = new Set(audit.missingInSupabase);
+  const rows = all.filter(function (r) { return missing.has(String(r[idCol])); });
+
+  upsertNewwebRowsToSupabase_(headers, rows);
+  logNewwebEvent_('INFO', 'NEWWEB repair: missing rows upserted', { repaired: rows.length });
+  return { repaired: rows.length, remaining: audit.missingInSupabaseCount - rows.length };
+}
+
 function reconcileNewwebMissingData_v2() {
   return reconcileNewwebMissingDataWindow_v2_({
     scanRows: 500,
