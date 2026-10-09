@@ -901,7 +901,9 @@ function onScoreChange(i) {
 
   // Save to sheet
   if (val !== '') {
-    run('webapp_saveCreditScore', [r.rowIndex, val])
+    // Öll umsóknin, ekki línunúmer: þjónninn finnur röðina aftur eftir netfangi
+    // + kennitölu, svo matið lendir ekki á röngum umsækjanda ef listinn hliðrast.
+    run('webapp_saveCreditScore', [r, val])
       .catch(function(e) { showToast('Villa við vistun skors: ' + (e.message || e), true); });
   }
 }

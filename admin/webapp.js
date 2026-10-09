@@ -123,6 +123,51 @@ function webapp_batchBcLookup_(kennitolur) {
   return map;
 }
 
+// ── Aðgerðaskrá + lás (2026-10-09) ────────────────────────────────────────────
+//
+// Fyrir þetta skráði ekkert hvaða starfsmaður gerði hvað: adminGuard_ skráir
+// aðeins höfnun, og appið keyrir sem deployer (USER_DEPLOYING), svo í Sheets og
+// Gmail virtist deployer gera allt. SECURITY_RESPONSE sagði þó „hver aðgerð
+// skráð á netfang notanda". Nú skrifar hver aðgerð línu í flipann
+// „Aðgerðaskrá" í umsóknarskjalinu — varanlegt, ólíkt Executions (7 dagar) —
+// og console-línu.
+//
+// Lásinn: finna-röð → færa → eyða er ekki atómískt. Tveir starfsmenn að
+// afgreiða samtímis gátu hliðrað röðum á milli þess sem annar fann röð og
+// eyddi henni. Öll föll sem færa/eyða/skrifa röð fara því undir sama lás.
+
+var WEBAPP_AUDIT_TAB_ = 'Aðgerðaskrá';
+
+function webapp_audit_(user, action, rowData, details) {
+  var rd = rowData || {};
+  var line = [new Date(), user || '', action, String(rd.email || ''), String(rd.companyKt || ''),
+              String(rd.company || ''), details == null ? '' : String(details)];
+  console.log('[ADMIN][AUDIT] ' + user + ' ' + action + ' ' + rd.email + ' kt=' + rd.companyKt
+              + (details == null ? '' : ' ' + details));
+  try {
+    var ss = SpreadsheetApp.openById(loadConfig_().SHEETS.UMSOKN_VIDSKIPTI.ID);
+    var sh = ss.getSheetByName(WEBAPP_AUDIT_TAB_);
+    if (!sh) {
+      sh = ss.insertSheet(WEBAPP_AUDIT_TAB_);
+      sh.appendRow(['Tími', 'Starfsmaður', 'Aðgerð', 'Netfang umsækjanda', 'Kt. fyrirtækis', 'Fyrirtæki', 'Nánar']);
+      sh.getRange(1, 1, 1, 7).setFontWeight('bold').setBackground('#e8e8e8');
+      sh.setFrozenRows(1);
+    }
+    sh.appendRow(line);
+  } catch (e) {
+    // Skráning má ekki fella aðgerð sem er þegar framkvæmd (póstur farinn).
+    console.error('[ADMIN][AUDIT] Gat ekki skrifað í ' + WEBAPP_AUDIT_TAB_ + ': ' + e);
+  }
+}
+
+function webapp_withLock_(fn) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) {
+    throw new Error('Annar starfsmaður er að afgreiða umsókn akkúrat núna. Reyndu aftur eftir augnablik.');
+  }
+  try { return fn(); } finally { lock.releaseLock(); }
+}
+
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 // Re-find a row's current physical index by matching the email column. rowIndex
@@ -184,7 +229,15 @@ function webapp_findRowIndexByEmail_(sheet, emailHeader, email, companyKtHeader,
 }
 
 function webapp_sendRafraenRedirect(rowData) {
-  adminGuard_('umsokn');
+  var user = adminGuard_('umsokn');
+  return webapp_withLock_(function () {
+    var out = webapp_sendRafraenRedirectLocked_(rowData);
+    webapp_audit_(user, 'rafraen_framsent', rowData, out.removed ? '' : 'röð fannst ekki');
+    return out;
+  });
+}
+
+function webapp_sendRafraenRedirectLocked_(rowData) {
   var cfg     = loadConfig_();
   var src     = APP_SOURCES.find(function(s) { return s.key === 'RAFRAEN_INNSKRANING'; });
   var sheetId = cfg.SHEETS.RAFRAEN_INNSKRANING.ID;
@@ -217,7 +270,15 @@ function webapp_sendRafraenRedirect(rowData) {
 // Applicant entered the company kennitala in both fields — ask them to resubmit
 // with their personal kennitala. Archives to "Vantar kennitölu" (re-found by email).
 function webapp_sendRafraenNeedKt(rowData) {
-  adminGuard_('umsokn');
+  var user = adminGuard_('umsokn');
+  return webapp_withLock_(function () {
+    var out = webapp_sendRafraenNeedKtLocked_(rowData);
+    webapp_audit_(user, 'rafraen_vantar_kt', rowData, out.removed ? '' : 'röð fannst ekki');
+    return out;
+  });
+}
+
+function webapp_sendRafraenNeedKtLocked_(rowData) {
   var cfg     = loadConfig_();
   var src     = APP_SOURCES.find(function(s) { return s.key === 'RAFRAEN_INNSKRANING'; });
   var sheetId = cfg.SHEETS.RAFRAEN_INNSKRANING.ID;
@@ -250,7 +311,15 @@ function webapp_sendRafraenNeedKt(rowData) {
 // municipality's leikskólar/skólar) — ask which workplace they buy for.
 // Archives to "Vantar vinnustað" (re-found by email).
 function webapp_sendRafraenNeedWorkplace(rowData) {
-  adminGuard_('umsokn');
+  var user = adminGuard_('umsokn');
+  return webapp_withLock_(function () {
+    var out = webapp_sendRafraenNeedWorkplaceLocked_(rowData);
+    webapp_audit_(user, 'rafraen_vantar_vinnustad', rowData, out.removed ? '' : 'röð fannst ekki');
+    return out;
+  });
+}
+
+function webapp_sendRafraenNeedWorkplaceLocked_(rowData) {
   var cfg     = loadConfig_();
   var src     = APP_SOURCES.find(function(s) { return s.key === 'RAFRAEN_INNSKRANING'; });
   var sheetId = cfg.SHEETS.RAFRAEN_INNSKRANING.ID;
@@ -279,30 +348,63 @@ function webapp_sendRafraenNeedWorkplace(rowData) {
   return { ok: true, removed: idx > 0 };
 }
 
-function webapp_saveCreditScore(rowIndex, score) {
-  adminGuard_('umsokn');
-  var cfg   = loadConfig_();
-  var src   = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
-  var sheet = SpreadsheetApp.openById(cfg.SHEETS.UMSOKN_VIDSKIPTI.ID).getSheetByName(src.mainTab);
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var colIdx = headers.indexOf('Lánshæfismat');
-  if (colIdx === -1) {
-    colIdx = headers.length;
-    sheet.getRange(1, colIdx + 1).setValue('Lánshæfismat').setFontWeight('bold').setBackground('#e8e8e8');
+/**
+ * Vistar lánshæfismat á RÉTTAN umsækjanda.
+ *
+ * Fram til 2026-10-09 tók fallið línunúmer úr vafranum og skrifaði þangað
+ * blint. Listinn í vafranum er mynd frá því hann var hlaðinn; ef röð var
+ * afgreidd (færð og eytt) á meðan, hliðruðust raðirnar fyrir neðan og matið
+ * lenti á næsta umsækjanda — án villu. Nú tekur það umsóknina sjálfa og finnur
+ * röðina aftur eftir netfangi + kennitölu, eins og hin föllin gera.
+ */
+function webapp_saveCreditScore(rowData, score) {
+  var user = adminGuard_('umsokn');
+  if (!rowData || typeof rowData !== 'object' || !rowData.email) {
+    // Gamall vafraflipi sem sendir enn línunúmer.
+    throw new Error('Appið hefur verið uppfært — endurhlaðið síðuna og skráið skorið aftur.');
   }
-  sheet.getRange(rowIndex, colIdx + 1).setValue(score || '');
-  return { ok: true };
+  var s = String(score == null ? '' : score).trim();
+  if (s !== '' && !/^(10|[1-9])$/.test(s)) throw new Error('Skor verður að vera 1–10.');
+
+  return webapp_withLock_(function () {
+    var cfg   = loadConfig_();
+    var src   = APP_SOURCES.find(function(x) { return x.key === 'UMSOKN_VIDSKIPTI'; });
+    var sheet = SpreadsheetApp.openById(cfg.SHEETS.UMSOKN_VIDSKIPTI.ID).getSheetByName(src.mainTab);
+    var idx   = webapp_findRowIndexByEmail_(sheet, src.emailHeader, rowData.email, src.companyKtHeader, rowData.companyKt);
+    if (idx < 0) {
+      throw new Error('Umsóknin fannst ekki lengur (líklega afgreidd). Endurhlaðið listann.');
+    }
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var colIdx = headers.indexOf('Lánshæfismat');
+    if (colIdx === -1) {
+      colIdx = headers.length;
+      sheet.getRange(1, colIdx + 1).setValue('Lánshæfismat').setFontWeight('bold').setBackground('#e8e8e8');
+    }
+    sheet.getRange(idx, colIdx + 1).setValue(s);
+    webapp_audit_(user, 'lanshaefismat', rowData, s === '' ? 'hreinsað' : s + '/10');
+    return { ok: true };
+  });
 }
 
 function webapp_pruneApplications() {
-  adminGuard_('umsokn');
+  var user = adminGuard_('umsokn');
   // Pruning-vélin (pruneCompletedApplications_ í customers.js) býr í
   // aðal-projectinu — delegerað þangað um key-vörðu API-leiðina.
-  return callCoreApi_('prune_applications');
+  var out = callCoreApi_('prune_applications');
+  webapp_audit_(user, 'hreinsa_afgreiddar', null, JSON.stringify(out || {}).slice(0, 300));
+  return out;
 }
 
 function webapp_markUmsokn_Done(rowData) {
-  adminGuard_('umsokn');
+  var user = adminGuard_('umsokn');
+  return webapp_withLock_(function () {
+    var out = webapp_markUmsokn_DoneLocked_(rowData);
+    webapp_audit_(user, 'umsokn_klarad_bc', rowData, out.removed ? '' : 'röð fannst ekki');
+    return out;
+  });
+}
+
+function webapp_markUmsokn_DoneLocked_(rowData) {
   var cfg     = loadConfig_();
   var src     = APP_SOURCES.find(function(s) { return s.key === 'UMSOKN_VIDSKIPTI'; });
   var ss      = SpreadsheetApp.openById(cfg.SHEETS.UMSOKN_VIDSKIPTI.ID);
@@ -324,7 +426,15 @@ function webapp_markUmsokn_Done(rowData) {
 }
 
 function webapp_sendUmsokn_Email(rowData, templateId) {
-  adminGuard_('umsokn');
+  var user = adminGuard_('umsokn');
+  return webapp_withLock_(function () {
+    var out = webapp_sendUmsokn_EmailLocked_(rowData, templateId);
+    webapp_audit_(user, 'umsokn_svarbref_' + templateId, rowData, out.removed ? '' : 'röð fannst ekki');
+    return out;
+  });
+}
+
+function webapp_sendUmsokn_EmailLocked_(rowData, templateId) {
   var subjects = [
     'Frekari upplýsingar vegna skráningar hjá Stórkaup',
     'Frekari upplýsingar vegna reikningsviðskipta hjá Stórkaup',
