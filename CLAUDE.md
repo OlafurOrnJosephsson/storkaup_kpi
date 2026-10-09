@@ -272,6 +272,15 @@ full-history export that was 217,790 of 484,768 rows re-sent per import —
 harmless (`resolution=ignore-duplicates` drops them server-side) but 4m14s of a
 6-minute execution budget, growing ~6%/month.
 
+**An interrupted import no longer loses lines (2026-10-09).** Lines are
+filtered on the *invoice* key set, so a run that uploaded invoices and died
+before finishing the lines file used to drop those invoices' lines for good.
+Script Property `BC_DROP_LINES_OWED` is set before invoices upload and cleared
+when a lines file completes; while set, lines go up unfiltered (safe —
+`ignore-duplicates`). `markBcLinesOwed_v1()` sets it by hand. The daily sanity
+check now fails on `bc_freshness` (no successful import in 35 days) and on
+`bc_lines_owed`.
+
 Two consequences of the narrow window:
 - Because nothing triggers this, **a skipped month is a real gap** in
   `bc_lines_raw`. Three months of overlap is the margin; don't cut it to one.

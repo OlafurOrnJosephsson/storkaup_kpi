@@ -1616,8 +1616,20 @@ function parseBcXlsxRows_(data, schemaKey) {
 // key set — a line is new iff its invoice is new. Both key sets are fetched
 // once before any upload, so lines uploaded in the same run as their invoice
 // are still seen as new.
-function selectNewBcRows_(rows, schemaKey, force, existingInvoiceKeys, existingCreditKeys) {
+//
+// THE GAP THIS USED TO HAVE (fixed 2026-10-09): the key set says "this invoice
+// exists", not "this invoice's lines exist". A run that uploaded invoices and
+// then died before or during the lines file (6-min limit, quota, closed tab)
+// archived the invoice file; the next run saw those invoices as existing and
+// filtered their lines out — permanently. BC_DROP_LINES_OWED marks that state
+// (see processBcDrop_v1); while it is set, lines go up unfiltered. That is
+// safe because the lines upsert is resolution=ignore-duplicates on a natural
+// key, so resent lines are dropped server-side.
+var BC_DROP_LINES_OWED_KEY = 'BC_DROP_LINES_OWED';
+
+function selectNewBcRows_(rows, schemaKey, force, existingInvoiceKeys, existingCreditKeys, linesOwed) {
   if (schemaKey === 'BC_CUSTOMERS' || force) return rows;
+  if (schemaKey === 'BC_LINES' && linesOwed) return rows;
   var keys = (schemaKey === 'BC_CREDIT_INVOICES') ? existingCreditKeys : existingInvoiceKeys;
   return rows.filter(function(r) {
     return !keys[String(r.DOCUMENT_NO || '').trim()];
@@ -1698,6 +1710,15 @@ function processBcDrop_v1(opts) {
   Logger.log('[BC_DROP] Existing keys — invoices: ' + Object.keys(existingInvoiceKeys).length +
              ', credits: ' + Object.keys(existingCreditKeys).length);
 
+  // Read ONCE, before anything uploads: "a previous run left lines owed".
+  // Lines for invoices uploaded in THIS run are new to the pre-fetched key set
+  // anyway, so only the cross-run case needs the unfiltered path.
+  var props = PropertiesService.getScriptProperties();
+  var linesOwed = props.getProperty(BC_DROP_LINES_OWED_KEY) === '1';
+  if (linesOwed) {
+    Logger.log('[BC_DROP] Lines owed from an earlier interrupted run — BC_LINES goes up unfiltered.');
+  }
+
   var processed = [];
   var errors = [];
 
@@ -1753,6 +1774,13 @@ function processBcDrop_v1(opts) {
         fileOk = true;
       } else {
 
+      // Set BEFORE uploading invoices: from here until a lines file completes,
+      // the lines for these invoices are owed. Set even if this file dies
+      // halfway — a partial invoice upload owes lines just the same.
+      if (item.schemaKey === 'BC_INVOICES' || item.schemaKey === 'BC_CREDIT_INVOICES') {
+        props.setProperty(BC_DROP_LINES_OWED_KEY, '1');
+      }
+
       var headerRow  = sheet0.getRange(1, 1, 1, lastCol).getValues()[0];
       var READ_CHUNK = 20000;
       var totalRows = 0, newCount = 0, uploadedCount = 0;
@@ -1766,7 +1794,7 @@ function processBcDrop_v1(opts) {
         totalRows += chunkRows.length;
 
         var chunkNew = selectNewBcRows_(
-          chunkRows, item.schemaKey, force, existingInvoiceKeys, existingCreditKeys
+          chunkRows, item.schemaKey, force, existingInvoiceKeys, existingCreditKeys, linesOwed
         );
         chunkRows = null;
         newCount += chunkNew.length;
@@ -1786,6 +1814,9 @@ function processBcDrop_v1(opts) {
       });
       Logger.log('[BC_DROP] ✅ ' + item.fileName + ' — uploaded: ' + uploadedCount);
       fileOk = true;
+      // A completed lines file settles the debt. Files run invoices → credits
+      // → lines (sort above), so every invoice uploaded this run is covered.
+      if (item.schemaKey === 'BC_LINES') props.deleteProperty(BC_DROP_LINES_OWED_KEY);
       }
 
     } catch (e) {
@@ -1811,6 +1842,19 @@ function processBcDrop_v1(opts) {
 
 function processBcDropForce_v1() {
   return processBcDrop_v1({ force: true });
+}
+
+/**
+ * Hand-run: make the NEXT processBcDrop_v1 send BC_LINES unfiltered.
+ * Use once to heal lines that an interrupted run may have lost before the
+ * 2026-10-09 fix — nothing can detect those after the fact, because
+ * bc_lines_raw carries no date to compare against. Safe: lines are
+ * ignore-duplicates on a natural key, and invoices/credits are untouched
+ * (unlike processBcDropForce_v1, which force-upserts everything).
+ */
+function markBcLinesOwed_v1() {
+  PropertiesService.getScriptProperties().setProperty(BC_DROP_LINES_OWED_KEY, '1');
+  Logger.log('[BC_DROP] Lines marked owed — next processBcDrop_v1 sends BC_LINES unfiltered.');
 }
 
 /************************************************************
@@ -3378,6 +3422,45 @@ function runDailySanityChecks_v1() {
     }
   }
 
+  /**
+   * BC-ferskleiki (2026-10-09). BC hefur engan trigger — hann hleðst aðeins
+   * þegar einhver keyrir BC Sync — og var hvergi í ferskleikavöktun, svo
+   * gleymdur mánuður var raunverulegt gat (3 mánaða útflutningsgluggi) sem
+   * enginn heyrði af. Keyrslan er skráð undir job_name 'scheduledBcSync_v1'
+   * (sögulegt nafn; fallið sjálft er processBcDrop_v1).
+   *
+   * Tvö skilyrði, bæði 'error' svo pósturinn fari:
+   *   - síðasta vel heppnaða keyrsla eldri en MAX_DAYS;
+   *   - línur í skuld (BC_DROP_LINES_OWED) — reikningar komu inn en línurnar
+   *     ekki, svo velta á línustigi vantar þar til næsti innflutningur.
+   */
+  function checkBcFreshness_() {
+    var MAX_DAYS = 35;
+    try {
+      var rows = supabaseRestGetJson_(
+        'ingestion_runs?select=started_at,status&job_name=eq.scheduledBcSync_v1'
+          + '&status=eq.success&order=started_at.desc&limit=1',
+        'raw'
+      );
+      var last = Array.isArray(rows) && rows.length ? Date.parse(String(rows[0].started_at || '')) : NaN;
+      var ageDays = isFinite(last) ? Math.floor((nowMs - last) / 86400000) : null;
+      var fresh = ageDays !== null && ageDays <= MAX_DAYS;
+      addCheck_('bc_freshness', fresh,
+        ageDays === null
+          ? 'Engin vel heppnuð BC-keyrsla fannst (scheduledBcSync_v1 í ingestion_runs)'
+          : 'Síðasti BC-innflutningur fyrir ' + ageDays + ' dögum (mörk ' + MAX_DAYS + ')'
+            + (fresh ? '' : ' — keyrðu bc_sync.ps1 og BC Sync → processBcDrop_v1'));
+    } catch (e) {
+      addCheck_('bc_freshness', false, String(e && e.message ? e.message : e), 'warning');
+    }
+
+    var owed = PropertiesService.getScriptProperties().getProperty(BC_DROP_LINES_OWED_KEY) === '1';
+    addCheck_('bc_lines_owed', !owed,
+      owed ? 'BC-línur í skuld: reikningar komu inn en línuskráin kláraðist ekki. '
+             + 'Næsti processBcDrop_v1 sendir línurnar ósíaðar.'
+           : 'Engar BC-línur í skuld');
+  }
+
   function checkStuckPendingOrders_() {
     var STUCK_HOURS = 12;
     var LOOKBACK_DAYS = 7;
@@ -3487,6 +3570,7 @@ function runDailySanityChecks_v1() {
     checkDashboardShares_();
     checkIngestionRuns_();
     checkSafePollHeartbeat_();
+    checkBcFreshness_();
     checkKlaviyoAttributionBound_();
     checkGa4PurchaseRatio_();
     checkStuckPendingOrders_();
