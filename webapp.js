@@ -57,7 +57,7 @@ function adminDelegateViaApi_(body, fn) {
 // email in each main tab (matches what the umsokn app lists), no BC lookup.
 function applicationCountsViaApi_(body) {
   var cfg = loadConfig_();
-  if (!isApiKeyValid_(cfg, body.key)) return { error: 'Unauthorized' };
+  if (!webflowCaller_(cfg, body)) return { error: 'Unauthorized' };
 
   var raf = 0, ums = 0;
   var rafSrc = APP_SOURCES.find(function (s) { return s.key === 'RAFRAEN_INNSKRANING'; });
@@ -90,7 +90,7 @@ function webapp_countRowsWithEmail_(sheet, emailHeader) {
 // Templates available to send — from the registry in email.js (single source).
 function listTemplatesViaApi_(body) {
   var cfg = loadConfig_();
-  if (!isApiKeyValid_(cfg, body.key)) return { error: 'Unauthorized' };
+  if (!webflowCaller_(cfg, body)) return { error: 'Unauthorized' };
   return { ok: true, templates: emailTemplateList_() };
 }
 
@@ -98,7 +98,7 @@ function listTemplatesViaApi_(body) {
 // the actual recipient — one kennitala can have several logins. Template-agnostic.
 function listRecipientsViaApi_(body) {
   var cfg = loadConfig_();
-  if (!isApiKeyValid_(cfg, body.key)) return { error: 'Unauthorized' };
+  if (!webflowCaller_(cfg, body)) return { error: 'Unauthorized' };
   var customerId = String(body.customer_id || '').trim();
   if (!customerId) return { error: 'missing_customer_id' };
   return { ok: true, users: listCustomerUsersForCacheEmail_(customerId) };
@@ -106,7 +106,11 @@ function listRecipientsViaApi_(body) {
 
 function sendTemplateEmailViaApi_(body) {
   var cfg = loadConfig_();
-  if (!isApiKeyValid_(cfg, body.key)) return { error: 'Unauthorized' };
+  var caller = webflowCaller_(cfg, body);
+  if (!caller) return { error: 'Unauthorized' };
+  // Hver sendi: netfang starfsmanns þegar kallað er með token, annars 'key'.
+  console.log('[AUDIT] send_template_email by ' + caller + ' template=' + body.template
+              + ' customer=' + body.customer_id);
   if (isRateLimited_('send_template_email', 20)) return { error: 'rate_limited' };
 
   var templates = emailTemplates_();
@@ -441,6 +445,63 @@ function isRateLimited_(action, maxPerHour) {
 // lookup could never be a string — the check was effectively always open).
 // Deploy precondition: that config row exists AND Webflow custom code sends
 // the same value as STORKAUP_CONFIG.gasKey.
+/**
+ * Webflow-aðgerðirnar (list_templates, list_recipients, send_template_email,
+ * application_counts, seo_stats) taka við INNSKRÁÐUM starfsmanni (2026-10-09):
+ * Webflow/auth.js setur `authToken` (Supabase-token notandans) í body-ið, og
+ * hér er hann staðfestur hjá Supabase Auth og netfangið borið við
+ * raw.kpi_staff_access — sama aðgangslista og KPI-síðurnar.
+ *
+ * `key` (Dashboard.KEY) er enn tekinn gildur á meðan gasKey er í page-kóða
+ * (áfangi 2 fjarlægir hann). DELEGATION-aðgerðirnar (prune_applications,
+ * sync, zero-price, pim_draft) taka AÐEINS við lyklinum — þær kallar aðeins
+ * admin-verkefnið, þjónn í þjón. Þegar gasKey hverfur úr síðukóðanum getur
+ * enginn vafri lengur eytt umsóknum eða ræst sync.
+ *
+ * Skilar netfangi starfsmanns, 'key' ef lykillinn dugði, eða null.
+ */
+function webflowCaller_(cfg, body) {
+  if (isApiKeyValid_(cfg, body && body.key)) return 'key';
+  return verifyKpiStaffToken_(cfg, body && body.authToken);
+}
+
+function verifyKpiStaffToken_(cfg, token) {
+  token = String(token || '').trim();
+  if (!token) return null;
+  var cache = CacheService.getScriptCache();
+  var ck = 'kpitok_' + Utilities.base64EncodeWebSafe(
+    Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token)).slice(0, 43);
+  var hit = cache.get(ck);
+  if (hit) return hit === '-' ? null : hit;
+
+  var email = null;
+  try {
+    var rest = String(cfg.ENDPOINTS.SUPABASE.REST_URL || '').replace(/\/+$/, '');
+    var authUrl = rest.replace(/\/rest\/v1$/, '') + '/auth/v1/user';
+    var key = cfg.API.SUPABASE.SERVICE_ROLE_KEY;
+    var res = UrlFetchApp.fetch(authUrl, {
+      method: 'get',
+      headers: { apikey: key, Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    if (res.getResponseCode() === 200) {
+      var user = safeJsonParse_(res.getContentText()) || {};
+      var e = String(user.email || '').trim().toLowerCase();
+      if (e) {
+        var rows = supabaseRestGetJson_(
+          'kpi_staff_access?select=email&email=eq.' + encodeURIComponent(e), 'raw');
+        if (Array.isArray(rows) && rows.length) email = e;
+      }
+    }
+  } catch (err) {
+    console.warn('[SECURITY] verifyKpiStaffToken_: ' + err);
+    return null;          // ekki cache-að: tímabundin villa á ekki að loka á 5 mín
+  }
+  cache.put(ck, email || '-', 300);
+  if (!email) console.warn('[SECURITY] Webflow-kall með ógildan token eða netfang utan lista');
+  return email;
+}
+
 function isApiKeyValid_(cfg, providedKey) {
   var expected = cfg && cfg.API && cfg.API.Dashboard && cfg.API.Dashboard.KEY;
   if (!expected) {

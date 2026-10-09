@@ -347,11 +347,40 @@
   //   window.STORKAUP_BC_MANUAL = {
   //     "2026-06": { webOrdersPct: 0.385, webRevenuePct: 0.419, webAov: 80396, bcAov: 69742 }
   //   };
+  //
+  // 2026-10-09: tölurnar búa nú í raw.bc_manual_monthly og eru lesnar með
+  // public.get_bc_manual_monthly() (aðeins innskráðir — sjá Webflow/auth.js).
+  // window.STORKAUP_BC_MANUAL er aðeins til VARA á meðan hann er enn í
+  // page-kóða; hann verður að hverfa áður en Webflow-lykilorðið fer.
+  var bcManualDb_ = null;
+  var bcManualDbPromise_ = null;
+
+  function loadBcManualDb_() {
+    if (bcManualDbPromise_) return bcManualDbPromise_;
+    var cfg = getCfg();
+    var apiKey = cfg.publishableKey || "";
+    if (!cfg.supabaseUrl || !apiKey) return Promise.resolve(null);
+    bcManualDbPromise_ = fetch(String(cfg.supabaseUrl).replace(/\/+$/, "") + "/rest/v1/rpc/get_bc_manual_monthly", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": apiKey, "Authorization": "Bearer " + apiKey },
+      body: "{}"
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { bcManualDb_ = (j && typeof j === "object" && !Array.isArray(j)) ? j : null; return bcManualDb_; })
+      // Aukakall má ekki fella mælaborðið — fellur þá á síðukóðann.
+      .catch(function () { return null; });
+    return bcManualDbPromise_;
+  }
+
   function getManualBcFigures_(month) {
-    var store = (typeof window !== "undefined") ? window.STORKAUP_BC_MANUAL : null;
-    if (!store || typeof store !== "object") return null;
-    var fig = store[month];
-    return (fig && typeof fig === "object") ? fig : null;
+    var stores = [bcManualDb_, (typeof window !== "undefined") ? window.STORKAUP_BC_MANUAL : null];
+    for (var i = 0; i < stores.length; i++) {
+      var store = stores[i];
+      if (!store || typeof store !== "object") continue;
+      var fig = store[month];
+      if (fig && typeof fig === "object") return fig;
+    }
+    return null;
   }
 
   function applyManualBcFigures_(data, month) {
@@ -1188,8 +1217,10 @@
       },
       body: JSON.stringify({ p_month: targetMonth })
     })
-      .then(function (r) { return r.json(); })
-      .then(function (raw) {
+      // BC-tölurnar sóttar samhliða; applyManualBcFigures_ hér að neðan þarf þær.
+      .then(function (r) { return Promise.all([r.json(), loadBcManualDb_()]); })
+      .then(function (pair) {
+        var raw = pair[0];
         log("Raw RPC response:", raw);
         var data = normalizeRpcPayload(raw);
         log("Normalized response:", data);

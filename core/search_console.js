@@ -264,7 +264,7 @@ function scheduledSearchConsoleSync_v1() {
  */
 function seoStatsViaApi_(body) {
   var cfg = loadConfig_();
-  if (!isApiKeyValid_(cfg, body && body.key)) return { error: 'Unauthorized' };
+  if (!webflowCaller_(cfg, body)) return { error: 'Unauthorized' };   // lykill EÐA innskráður starfsmaður
 
   var cache = CacheService.getScriptCache();
   var cacheKey = 'seo_stats_v1';

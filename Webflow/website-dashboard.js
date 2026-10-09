@@ -332,12 +332,15 @@
 
   function seoFetch() {
     var cfg = getCfg();
-    if (!cfg.gasWebAppUrl || !cfg.gasKey) return Promise.reject(new Error("missing gas config"));
+    // gasKey er ekki lengur skilyrði (2026-10-09): Webflow/auth.js setur token
+    // innskráðs notanda í body-ið og GAS tekur hann gildan. Lykillinn fer
+    // aðeins með á meðan hann er enn í page-kóða.
+    if (!cfg.gasWebAppUrl) return Promise.reject(new Error("missing gas config"));
     return fetch(cfg.gasWebAppUrl, {
       method: "POST",
       cache: "no-store",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: "seo_stats", key: cfg.gasKey })
+      body: JSON.stringify({ action: "seo_stats", key: cfg.gasKey || "" })
     }).then(function (r) {
       if (!r.ok) throw new Error("seo_stats HTTP " + r.status);
       return r.json();

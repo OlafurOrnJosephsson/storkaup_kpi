@@ -165,7 +165,26 @@
   // ── fetch-umbúðir ──────────────────────────────────────────────────────
   // Snerta AÐEINS beiðnir á Supabase-slóðina sem bera anon-lykilinn sem
   // Bearer. GAS-köll (gasWebAppUrl) og allt annað fer óbreytt.
+  // GAS-köll (2026-10-09): `authToken` bætt í JSON-body POST-beiðna á
+  // gasWebAppUrl. Main-verkefnið (webflowCaller_ í webapp.js) staðfestir hann
+  // hjá Supabase og ber netfangið við sama aðgangslista — svo gasKey má hverfa
+  // úr page-kóða án þess að nokkur önnur Webflow-skrá breytist.
+  function gasUrl() { return String(cfg().gasWebAppUrl || ''); }
+  function withGasToken(input, init) {
+    var body;
+    try { body = JSON.parse(init.body); } catch (e) { return origFetch(input, init); }
+    if (!body || typeof body !== 'object') return origFetch(input, init);
+    return getToken().then(function (tok) {
+      if (tok) body.authToken = tok;
+      return origFetch(input, Object.assign({}, init, { body: JSON.stringify(body) }));
+    });
+  }
+
   window.fetch = function (input, init) {
+    if (!disabled() && typeof input === 'string' && gasUrl() && input.indexOf(gasUrl()) === 0
+        && init && typeof init.body === 'string') {
+      return withGasToken(input, init);
+    }
     if (disabled() || typeof input !== 'string' || !base() || input.indexOf(base()) !== 0
         || input.indexOf('/auth/v1/') !== -1) {
       return origFetch(input, init);
