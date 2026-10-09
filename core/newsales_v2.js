@@ -62,19 +62,28 @@ function pollMagentoOrders_v2() {
     return;
   }
 
+  // Supabase FYRST, svo sheet og checkpoint (2026-10-08).
+  //
+  // Áður: sheet → upsert (villa gleypt) → checkpoint. Sheet-ið er líka
+  // dedupe-geymslan (loadExistingOrderIds_ hér að ofan), svo pöntun sem fór í
+  // sheet-ið en féll í upsert var talin "til" í næstu keyrslu og reyndist
+  // aldrei aftur. Hún vantaði í Supabase — og þar með á öll mælaborð — til
+  // frambúðar, með einni ERROR-línu í loggnum sem enginn las.
+  //
+  // Nú kastar upsert-villa áður en sheet eða checkpoint er snert. safePoll_v2
+  // grípur hana og sendir notifyTriggerFailure_, lífsmarkið uppfærist ekki, og
+  // næsta keyrsla sækir sömu pantanir og reynir aftur. Upsert er
+  // on_conflict=order_id + merge-duplicates, svo endurtekning tvíritar ekkert —
+  // líka ef fyrri bútar fóru inn áður en síðari féll.
+  upsertNewwebRowsToSupabase_(headers, rows);
+  logNewwebEvent_('INFO', 'Supabase upsert ok', { rows: rows.length });
+
   const startRow = sh.getLastRow() + 1;
   sh.getRange(startRow, 1, rows.length, headers.length).setValues(rows);
   try {
     sortNewwebByPurchaseDate_v2_(sh, headers);
   } catch (e) {
     logNewwebEvent_('WARN', 'Lightweight sort failed', serializeError_(e));
-  }
-
-  try {
-    upsertNewwebRowsToSupabase_(headers, rows);
-    logNewwebEvent_('INFO', 'Supabase upsert ok', { rows: rows.length });
-  } catch (e) {
-    logNewwebEvent_('ERROR', 'Supabase upsert failed', serializeError_(e));
   }
 
   if (lastWrittenCreatedAt) {
