@@ -38,8 +38,17 @@ function callCoreApi_(action, extra) {
   return out;
 }
 
+// Geranda-skráning (2026-10-09). Les-föllin hér skrá ekkert umfram „opened"
+// í doGet; aðeins föll sem GERA eitthvað (sync, skönnun, AI-drög) skrá hver
+// gerði það. Engar persónuupplýsingar, svo console (Cloud Logging) dugar —
+// umsóknar-appið skrifar sína skrá í sheet, sjá webapp_audit_.
+function delegate_audit_(user, action, details) {
+  console.log('[ADMIN][AUDIT] ' + user + ' ' + action + (details ? ' ' + details : ''));
+}
+
 function syncMagentoCustomers() {
-  adminGuard_('listaverd');
+  var user = adminGuard_('listaverd');
+  delegate_audit_(user, 'sync_magento_customers');
   return callCoreApi_('sync_magento_customers');
 }
 
@@ -66,7 +75,8 @@ function getPendingOrdersForUi() {
 // start skilar strax; appið spyr um stöðu á meðan. Sjá
 // startZeroPriceScanForUi í core/storkaup_pricing.js.
 function startZeroPriceScanForUi() {
-  adminGuard_('listaverd');
+  var user = adminGuard_('listaverd');
+  delegate_audit_(user, 'start_zero_price_scan');
   return callCoreApi_('start_zero_price_scan');
 }
 
@@ -78,7 +88,8 @@ function getZeroPriceScanStatusForUi() {
 // Eldri samstillta leiðin — appið notar hana ekki lengur. Haldið svo gömul
 // opin vafraflipi brotni ekki fyrr en þau eru endurhlaðin.
 function runZeroPriceScanForUi() {
-  adminGuard_('listaverd');
+  var user = adminGuard_('listaverd');
+  delegate_audit_(user, 'run_zero_price_scan (eldri leið)');
 
   var beforeRun = null;
   try {
@@ -109,8 +120,9 @@ function runZeroPriceScanForUi() {
  * Sa sem ma skoda verdvoktun a ekkert erindi i ad eyda tokenum a skrifum.
  */
 function voruinnihald_draft(ctx) {
-  adminGuard_('voruinnihald');
+  var user = adminGuard_('voruinnihald');
   if (!ctx || typeof ctx !== 'object') throw new Error('Ekkert samhengi sent.');
+  delegate_audit_(user, 'pim_draft', 'sku=' + String(ctx.sku || ''));
 
   // GAGNABLADID ER SOTT UR VINNUSHEETINU, ALDREI UR VAFRANUM (2026-10-02).
   // Slodin sem adal-projectid saekir verdur ad koma hedan, ur sheetinu eftir

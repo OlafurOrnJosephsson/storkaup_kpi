@@ -193,7 +193,7 @@ er skráð hér svo það týnist ekki.
 | P11-11 | `safePoll_v2`: upsert-villa í Supabase má ekki færa checkpoint áfram | Olafur | Done | Upsert fyrst, kastar við villu áður en sheet (dedupe-geymslan) eða checkpoint er snert; alert + næsta keyrsla reynir aftur (main @207). `auditNewwebSheetVsSupabase_v1` fann 19 greiddar pantanir (feb–júl 2026) í sheet en ekki Supabase; `repairNewwebMissingInSupabase_v1` setti þær inn 2026-10-09, audit staðfestir 12363 = 12363. Mánaðartölur feb–júl hækka lítillega (leiðrétting) |
 | P11-12 | BC-innflutningur: rofin keyrsla sleppir línum; BC-ferskleiki óvaktaður | Olafur | Done | `BC_DROP_LINES_OWED` sett áður en reikningar fara upp, hreinsað þegar línuskrá klárast; á meðan fara línur ósíaðar (ignore-duplicates). Sanity: `bc_freshness` (>35 d = villa) + `bc_lines_owed`. `markBcLinesOwed_v1` til að lækna eldri göt í næsta innflutningi |
 | P11-13 | `importPriorityFlagsFromSheet_v1` er með `replaceAll=true` sjálfgefið | Olafur | Done | Sjálfgefið `false`; þurrkun krefst `{ replaceAll: true }`. Sagan grípur eyddar línur hvort sem er |
-| P11-14 | PIM: enginn lás milli main-endurbyggingar vinnuskjals og vistunar í vöruinnihalds-appi | Olafur | Todo | Endurbygging og vistun geta ekki skarast (sameiginlegur lás eða rebuild-flagg sem admin les) |
+| P11-14 | PIM: enginn lás milli main-endurbyggingar vinnuskjals og vistunar í vöruinnihalds-appi | Olafur | Done | `buildPimWorksheet_` setur developer metadata `PIM_REBUILD_STARTED_MS` á skjalið, bíður 30 s, byggir, fjarlægir í `finally`; saveRows/claim/release/submit (`vi_open_(true)`, innan lássins) neita á meðan. Merki >15 mín hunsað. Vöruvöktun + AI-drög skrá nú geranda í console (admin @86) |
 
 ## Current Production Pins
 

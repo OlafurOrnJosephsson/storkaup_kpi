@@ -321,7 +321,35 @@ function menu_buildPimWorksheet() {
 // ---------------------------------------------------------------------------
 // Aðalaðgerð
 // ---------------------------------------------------------------------------
+
+// LÁS MILLI VERKEFNA (2026-10-09).
+//
+// Byggingin les sheetið, `sh.clear()`-ar það og skrifar aftur. Vöruinnihalds-
+// appið (admin-verkefnið) vistar í SAMA flipa. ScriptLock nær ekki milli
+// verkefna, svo vistun sem lenti milli lesturs og skriftar hér hvarf þegjandi
+// — byggingin skrifaði gamla gildið til baka. Merki í developer metadata
+// skjalsins er það eina sem bæði verkefnin sjá: hér er það sett, síðan beðið
+// svo vistanir í gangi klárist, og admin (vi_open_(true)) neitar að vista á
+// meðan það stendur. Merki eldra en 15 mín er hunsað þar, því keyrsla sem
+// deyr á 6 mín mörkunum nær aldrei í `finally`.
+const PIM_REBUILD_META_ = 'PIM_REBUILD_STARTED_MS';
+const PIM_REBUILD_DRAIN_MS_ = 30000;   // > VI_LOCK_MS_ (20s) + ein vistun
+
 function buildPimWorksheet_() {
+  const ss = SpreadsheetApp.openById(loadConfig_().SHEETS.PIM.ID);
+  ss.createDeveloperMetadataFinder().withKey(PIM_REBUILD_META_).find()
+    .forEach(function (m) { m.remove(); });
+  ss.addDeveloperMetadata(PIM_REBUILD_META_, String(Date.now()));
+  try {
+    Utilities.sleep(PIM_REBUILD_DRAIN_MS_);
+    return buildPimWorksheetUnlocked_();
+  } finally {
+    ss.createDeveloperMetadataFinder().withKey(PIM_REBUILD_META_).find()
+      .forEach(function (m) { m.remove(); });
+  }
+}
+
+function buildPimWorksheetUnlocked_() {
   const cfg = loadConfig_();
   const products = parsePlytixCsv_(readLatestPlytixCsv_());
   if (!products.length) throw new Error('Enginn nothæfur Plytix-útdráttur fannst.');

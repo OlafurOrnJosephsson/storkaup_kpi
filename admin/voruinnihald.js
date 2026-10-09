@@ -117,14 +117,31 @@ var VI_WORDS_MAX_ = 150;
 // Grunnur
 // ---------------------------------------------------------------------------
 
-/** Opnar VINNUSHEET og kortleggur hausröðina eftir HEITI. */
-function vi_open_() {
+/** Merki sem pim/buildPimWorksheet.js setur á skjalið á meðan það endurbyggir
+ *  Vinnusheet (sjá PIM_REBUILD_META_ þar). Sama nafn í báðum verkefnum. */
+var VI_REBUILD_META_ = 'PIM_REBUILD_STARTED_MS';
+var VI_REBUILD_STALE_MS_ = 15 * 60 * 1000;
+
+/** Opnar VINNUSHEET og kortleggur hausröðina eftir HEITI.
+ *  forWrite=true: neitar ef endurbygging er í gangi — kallað INNAN lássins
+ *  í hverju falli sem skrifar, svo athugun og skrift séu ein heild. */
+function vi_open_(forWrite) {
   var cfg = loadConfig_();
   var id = cfg.SHEETS && cfg.SHEETS.PIM && cfg.SHEETS.PIM.ID;
   if (!id) {
     throw new Error('Vantar SHEET_IDS-röð „PIM“ í STORKAUP_CONFIG.');
   }
   var ss = SpreadsheetApp.openById(id);
+  if (forWrite) {
+    var marks = ss.createDeveloperMetadataFinder().withKey(VI_REBUILD_META_).find();
+    for (var m = 0; m < marks.length; m++) {
+      var startedMs = Number(marks[m].getValue() || 0);
+      if (startedMs && Date.now() - startedMs < VI_REBUILD_STALE_MS_) {
+        throw new Error('Verið er að endurbyggja vinnuskjalið. Bíddu í 2–3 mínútur, '
+          + 'endurhlaðaðu síðuna og vistaðu aftur — ekkert var skrifað.');
+      }
+    }
+  }
   var sh = ss.getSheetByName(VI_SHEET_);
   if (!sh) throw new Error('Flipinn „' + VI_SHEET_ + '“ finnst ekki í VINNUSHEET.');
   if (sh.getLastRow() < 2) throw new Error('VINNUSHEET er tómt — byggðu það fyrst.');
@@ -606,7 +623,7 @@ function voruinnihald_saveRows(rows) {
     throw new Error('Annar er að vista núna. Bíddu í nokkrar sekúndur og reyndu aftur.');
   }
   try {
-    var o = vi_open_(), sh = o.sh, idx = o.idx, vals = o.vals;
+    var o = vi_open_(true), sh = o.sh, idx = o.idx, vals = o.vals;
 
     var rowBySku = {};
     for (var r = 1; r < vals.length; r++) {
@@ -756,7 +773,7 @@ function voruinnihald_claim(sel) {
     throw new Error('Einhver annar er að taka flokk núna. Reyndu aftur.');
   }
   try {
-    var o = vi_open_(), sh = o.sh, idx = o.idx, vals = o.vals;
+    var o = vi_open_(true), sh = o.sh, idx = o.idx, vals = o.vals;
     var rows = vi_rows_(vals, idx, sel);
     if (!rows.length) {
       throw new Error('Flokkurinn finnst ekki: ' +
@@ -799,7 +816,7 @@ function voruinnihald_release(sel) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(VI_LOCK_MS_)) throw new Error('Reyndu aftur eftir smá stund.');
   try {
-    var o = vi_open_(), sh = o.sh, idx = o.idx, vals = o.vals;
+    var o = vi_open_(true), sh = o.sh, idx = o.idx, vals = o.vals;
     var rows = vi_rows_(vals, idx, sel).filter(function (r) {
       return String(vals[r][idx.owner] || '').trim() === user;
     });
@@ -838,7 +855,7 @@ function voruinnihald_submit(sel) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(VI_LOCK_MS_)) throw new Error('Reyndu aftur eftir smá stund.');
   try {
-    var o = vi_open_(), sh = o.sh, idx = o.idx, vals = o.vals;
+    var o = vi_open_(true), sh = o.sh, idx = o.idx, vals = o.vals;
     var mine = vi_rows_(vals, idx, sel).filter(function (r) {
       return String(vals[r][idx.owner] || '').trim() === user;
     });
