@@ -73,6 +73,7 @@ function parseExpected(md) {
     else if (/activation\.js/.test(line)) set('activation', sha);
     else if (/forgangslisti\.js/.test(line)) set('forgangslisti', sha);
     else if (/portal\.js/.test(line)) set('portal', sha);
+    else if (/auth\.js/.test(line)) set('auth', sha);
   });
   return out;
 }
@@ -170,7 +171,12 @@ const EMBED_PINNED = [
   // pinnadur i portal-embed.html fra 2026-09-21 og nefndur NULL sinnum i
   // CLAUDE.md. Tveir oskradir embed-pinnar fundust um leid og hardkodunin
   // a lookup.js var tekin ut. Their voru badir tharna allan timann.
-  { key: 'portal',        js: 'portal.js',        embed: 'portal-embed.html' }
+  { key: 'portal',        js: 'portal.js',        embed: 'portal-embed.html' },
+  // auth.js (2026-10-09) er EKKI embed heldur site-wide head — en sjálfstæður
+  // pinni eins og hinir, svo hann fer hér í gegnum sama ferskleikapróf. Ólíkt
+  // embed-pinnunum SÉST hann á lykilorðasíðunni, svo lifandi gildið er lesið
+  // og borið saman (row() notar live.srcs þegar það finnst).
+  { key: 'auth',          js: 'auth.js',          embed: null }
 ];
 
 function embedPin(spec, expectedFromMd) {
@@ -220,8 +226,9 @@ function row(name, expected, live, note) {
   else if (!expected) state = 'EKKI Í TÖFLU';
   else if (expected === live) state = 'í lagi';
   else state = 'REK';
+  // Skýringin („ekki lesanlegt héðan") á aðeins við þegar gildið fannst EKKI.
   return { name: name, claude: expected || '—', live: live || '—',
-           state: state, note: note || '' };
+           state: state, note: (live === null || live === undefined) ? (note || '') : '' };
 }
 
 async function main() {

@@ -29,6 +29,26 @@ It runs `clasp push --force` then `clasp deploy -i <pinned id>` per project, and
 
 If someone reports "You need access" / a blank umsókn or vöruvöktun screen: they are almost certainly on an account not in `ADMIN_APP_EMAILS` (or not a @storkaup.is account), OR the link is being opened in an iframe instead of a new tab. Check the admin project's Executions for the `access DENIED for <email>` line.
 
+## KPI page sign-in (since 2026-10-09)
+
+KPI pages require a personal Google sign-in on top of the Webflow folder password. `Webflow/auth.js` (site-wide head, pinned) runs the Supabase Auth flow and swaps the anon key for the user's token on every Supabase call; it does nothing on pages without `STORKAUP_CONFIG`. Two gates, both needed:
+
+1. **Google Admin** — the person has a @storkaup.is Google account in the `KPI-notendur` org unit. Staff without Gmail get a **Cloud Identity Free** licence (no cost, 50 seats), never Business Standard (automatic licensing is OFF for that unit). 2-Step Verification is enforced there. Mail for @storkaup.is is in Outlook, so these accounts carry no mailbox.
+2. **Supabase allowlist** — `raw.kpi_staff_access`. A trigger on `auth.users` rejects any account not on it, whatever the sign-in route.
+
+**Onboarding:** add the user in Google Admin (`KPI-notendur`, Cloud Identity Free), then
+`insert into raw.kpi_staff_access (email, note) values ('nafn@storkaup.is', 'hlutverk');`
+
+**Offboarding — all three, or access survives:** suspend/delete in Google Admin; `delete from raw.kpi_staff_access where email = '…';`; delete the user in Supabase → Authentication → Users (an existing session otherwise keeps refreshing).
+
+Shared mailboxes (`vefur@`, `umsokn@`) are never on the allowlist.
+
+**"Netfangið þitt er ekki á aðgangslista"** on the sign-in screen = the Google account chosen is not on the list — often the browser picked a shared account; "Use another account". Supabase → Logs → Auth shows the rejected address.
+
+**Emergency off-switch for one page:** `authDisabled: true` in that page's `STORKAUP_CONFIG`. Works only while anon still has grants (before `kpi_auth_revoke_anon.sql`).
+
+**Google OAuth client** lives in GCP project `storkaup-kpi-auth` (Internal audience), separate from the Apps Script project on purpose. Authorized origin + Supabase redirect URLs must list every domain the KPI pages are served from.
+
 ## Typeform webhook
 
 Both Typeform forms POST to the main project's `doPost` at `…/exec?token=<API.Typeform.WEBHOOK_TOKEN>`. The token is enforced when `SETTINGS.TYPEFORM_TOKEN_ENFORCE=true` — a request with a wrong/absent token is rejected. If applications stop landing in the sheets after a Typeform-side URL edit, confirm the `?token=` is still present and matches the config row; a mismatch logs `[SECURITY] doPost: Typeform token …` in Executions. To disable enforcement in an emergency, set `TYPEFORM_TOKEN_ENFORCE=false` (no deploy needed — takes effect within the 5-min config cache).

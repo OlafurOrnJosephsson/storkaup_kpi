@@ -317,6 +317,7 @@ nothing to the dashboards. Change one, move that one.
 | `Webflow/activation.js` | page custom code — **no embed file in this repo** | `/kpi/activation` |
 | `Webflow/forgangslisti.js` | page head code — mirrored in `forgangslisti-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/forgangslisti` |
 | `Webflow/portal.js` | `<script src>` inside the `portal-embed.html` Embed | `/kpi/voruportal` |
+| `Webflow/auth.js` | **site-wide head**, synchronous (no `defer`) — must run before every other script so its fetch wrapper is in place | all KPI pages; inert where `STORKAUP_CONFIG` is absent |
 
 ⚠️ This list read "The exception is `Webflow/lookup.js`" until 2026-09-21 —
 singular, and wrong. `activation.js` had been pinned in page code on
@@ -359,6 +360,7 @@ page Embed), so each row carries its own date:
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
 | `activation.js`, **in page custom code** (independent) | `84372c6` | 2026-06-15, `/kpi/activation` only — read off the live page 2026-09-21 |
 | `portal.js` script-tag src, **inside the Embed** (independent) | `c037bbd` | 2026-09-22, `/kpi/voruportal` only |
+| `auth.js` script-tag src, **site-wide head** (independent) | `97a6cd6` | 2026-10-09 — sign-in for KPI pages, see RUNBOOK → KPI page sign-in |
 | `forgangslisti.js` script-tag src, **in page head code** (independent) | `72c872c` | 2026-09-21; on `/kpi/forgangslisti` since 2026-10-08 — read off view-source that day |
 
 `2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —
