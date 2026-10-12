@@ -476,3 +476,31 @@ function webapp_sendUmsokn_EmailLocked_(rowData, templateId) {
   }
   return { ok: true, removed: idx > 0 };
 }
+
+// ── Prufupóstar ───────────────────────────────────────────────────────────────
+
+// Sendir öll sex svarbréfin á eigandann með [TEST] í efnislínu. Keyrt úr
+// Apps Script ritlinum á ADMIN-projectinu: valmyndin í aðal-projectinu notar
+// core/email.js, en appið sendir úr admin/email_templates.js — það var afritið
+// hér sem skemmdist 2026-10, og prufa á frumritinu hefði ekki séð það.
+// Ekkert _ svo það sjáist í ritlinum; því þarf adminGuard_ (google.script.run).
+function testUmsoknEmails_v1() {
+  adminGuard_('umsokn');
+  var to   = Session.getEffectiveUser().getEmail();
+  var name = 'Prufa Prófsdóttir';
+  var co   = 'Prufufyrirtæki ehf';
+  var mails = [
+    ['Rafræn — redirect',          buildRafraenRedirectHtml_(name, co),       buildRafraenRedirectPlain_(name, co)],
+    ['Rafræn — vantar kennitölu',  buildRafraenNeedKtHtml_(name),             buildRafraenNeedKtPlain_(name)],
+    ['Rafræn — vantar vinnustað',  buildRafraenNeedWorkplaceHtml_(name, co),  buildRafraenNeedWorkplacePlain_(name, co)],
+    ['Svarbréf 1 — ekkert VSK',    buildUmsokn_NoVskHtml_(name),              buildUmsokn_NoVskPlain_(name)],
+    ['Svarbréf 2 — lánshæfismat',  buildUmsokn_NeedsCreditHtml_(name),        buildUmsokn_NeedsCreditPlain_(name)],
+    ['Svarbréf 3 — staðgreiðsla',  buildUmsokn_CashOnlyHtml_(name),           buildUmsokn_CashOnlyPlain_(name)]
+  ];
+  mails.forEach(function(m) {
+    GmailApp.sendEmail(to, '[TEST] ' + m[0], m[2],
+      { htmlBody: m[1], from: 'vefur@storkaup.is', name: 'Stórkaup ehf' });
+  });
+  Logger.log('Sendi ' + mails.length + ' prufupósta á ' + to);
+  return { ok: true, to: to, sent: mails.length };
+}
