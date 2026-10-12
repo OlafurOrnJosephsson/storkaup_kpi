@@ -189,6 +189,7 @@ functions. Run it before trusting any list of what is scheduled.
 | `scheduledCludoSync_v1` | Every 12h ~:55 | Cludo product coverage |
 | `scheduledCustomerAnalysisSync_v1` | Daily ~05:25 | Customer profiles + profiles MV |
 | `scheduledSearchConsoleSync_v1` | Daily ~05:30 | Search Console |
+| `scheduledKlaviyoProfileSync_v1` | Daily ~06:10 | Our data → Klaviyo profile properties |
 | `scheduledGa4Sync_v1` | Daily ~06:30 | GA4 |
 | `scheduledZeroPriceScan_v1` | Daily ~06:50 | Zero list-price scan |
 | `runDailySanityChecks_v1` | Daily ~07:40 | Cross-source validation |

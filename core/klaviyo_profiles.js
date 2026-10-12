@@ -22,9 +22,10 @@
  * Atburða-syncið (scheduledKlaviyoSync_v1) notar annan lykil — hvor má
  * afturkalla án þess að hinn stöðvist.
  *
- * Fyrsta keyrsla: previewKlaviyoProfileSync_v1() (sendir ekkert), svo
- * runKlaviyoProfileSyncNow_v1(), svo checkKlaviyoProfileImport_v1().
- * Trigger fer inn í requiredTimeTriggers_() þegar það hefur sannað sig.
+ * Fyrsta keyrsla 2026-10-12: 2.535 prófílar í 3 jobbum, eiginleikar staðfestir
+ * á prófíl í Klaviyo. Daglegur trigger ~06:10 er í requiredTimeTriggers_().
+ * Til að athuga: previewKlaviyoProfileSync_v1() (sendir ekkert) og
+ * checkKlaviyoProfileImport_v1() (staða síðustu jobba).
  ************************************************************/
 
 var KLAVIYO_PROFILES_REVISION = '2024-10-15';
