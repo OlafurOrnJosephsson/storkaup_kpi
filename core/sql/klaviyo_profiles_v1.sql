@@ -35,11 +35,15 @@
 -- service role. anon og authenticated fá EKKI aðgang — hér eru netföng.
 --
 -- Apply: keyra í Supabase SQL editor. Svo prófunarfyrirspurnina neðst.
--- Breytist dálkaröðin (dálki bætt inn í miðjuna) neitar `create or replace`;
--- keyrðu þá fyrst `drop view if exists mart.v_klaviyo_profiles_v1;`.
+-- `drop` fyrst, ekki `create or replace`: hið síðarnefnda neitar þegar dálki
+-- er bætt inn í miðja röðina (42P16). Ekkert annað view eða fall byggir á
+-- þessu, svo drop er hættulaust. Aldrei bæta `cascade` við: ef eitthvað fer
+-- að byggja á view-inu á drop að stöðvast, ekki eyða því þegjandi.
 -- ============================================================================
 
-create or replace view mart.v_klaviyo_profiles_v1
+drop view if exists mart.v_klaviyo_profiles_v1;
+
+create view mart.v_klaviyo_profiles_v1
 with (security_invoker = true) as
 with
 web_orders as (
