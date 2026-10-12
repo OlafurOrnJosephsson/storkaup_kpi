@@ -1,6 +1,6 @@
 -- ============================================================================
 -- mart.v_klaviyo_profiles_v1 — ein röð per netfang, með eiginleikum sem
--- daglegt GAS-sync sendir á Klaviyo-prófíla. DRÖG: ekki keyrt enn.
+-- daglegt GAS-sync sendir á Klaviyo-prófíla (core/klaviyo_profiles.js).
 --
 -- ── HEIMILDIR ───────────────────────────────────────────────────────
 -- Allt er lesið LIFANDI úr Supabase. raw.customer_analysis_raw er aðeins notuð
@@ -86,6 +86,17 @@ company_orders as (
   from all_orders
   where company_key <> ''
   group by 1
+),
+company_rhythm as (
+  -- Pöntunarbil = meðalbil milli pöntunardaga síðustu 365 daga, aðeins með 3+
+  -- dögum. Allt sem byggir á bilinu les það héðan, ekki úr endurtekinni formúlu.
+  select
+    o.*,
+    (current_date - o.last_order_date) as days_since,
+    case when o.order_days_365d >= 3
+         then round((o.last_order_date - o.first_order_in_365d)::numeric / (o.order_days_365d - 1))::int
+    end                                 as interval_days
+  from company_orders o
 ),
 company_rep as (
   -- Algengasti sölumaður á pöntunum utan vefs síðustu 365 daga.
@@ -183,28 +194,38 @@ select
   (k.email is not null)                                            as known_to_klaviyo,
 
   coalesce(a.has_account, false)                                   as has_web_account,
+  -- web_state lýsir VEFNUM einum: 'lapsed' = hætt að panta á vef, ekki hætt
+  -- að kaupa. Fyrirtæki sem pantar mánaðarlega í gegnum sölumann getur verið
+  -- 'lapsed' hér. Win-back les customer_state.
   coalesce(a.state, 'no_web_account')                              as web_state,
+  -- customer_state = allar rásir. Virkt: pantaði innan 60 daga EÐA innan
+  -- tvöfalds eigin pöntunarbils (fyrirtæki sem pantar á 90 daga fresti er
+  -- ekki að dofna á degi 61). Að dofna: allt að 30 dögum lengur. Svo dottið út.
+  case
+    when o.last_order_date is null                                         then 'never_ordered'
+    when o.days_since <= greatest(60, coalesce(2 * o.interval_days, 0))      then 'active'
+    when o.days_since <= greatest(60, coalesce(2 * o.interval_days, 0)) + 30 then 'lapsing'
+    else 'lapsed'
+  end                                                              as customer_state,
 
   o.last_order_date,
   o.last_web_order_date,
   o.last_offline_order_date,
-  (current_date - o.last_order_date)                               as days_since_last_order,
+  o.days_since                                                     as days_since_last_order,
   coalesce(o.orders_365d, 0)                                       as orders_365d,
   case when o.orders_365d > 0
        then round(100.0 * o.web_orders_365d / o.orders_365d) end   as web_order_share_pct_365d,
 
-  case when o.order_days_365d >= 3
-       then round((o.last_order_date - o.first_order_in_365d)::numeric / (o.order_days_365d - 1)) end
-                                                                   as order_interval_days,
-  case when o.order_days_365d >= 3
-       then o.last_order_date + round((o.last_order_date - o.first_order_in_365d)::numeric / (o.order_days_365d - 1))::int end
-                                                                   as expected_next_order_date,
-  -- Alltaf true/false, aldrei null: Klaviyo heldur gömlu gildi ef það fær
-  -- ekkert, svo flow sem byggir á dagsetningunni gæti ræst á úreltu bili.
+  o.interval_days                                                  as order_interval_days,
+  o.last_order_date + o.interval_days                              as expected_next_order_date,
+  -- Endurpöntun er tímabær frá einu upp í tvö pöntunarbil eftir síðustu
+  -- pöntun. Eftir tvö bil er fyrirtækið að dofna (customer_state) — þá á
+  -- win-back við, ekki áminning. Alltaf true/false, aldrei null: Klaviyo
+  -- heldur gömlu gildi ef það fær ekkert.
   coalesce(
-    o.order_days_365d >= 3
-    and (current_date - o.last_order_date) < 365
-    and o.last_order_date + round((o.last_order_date - o.first_order_in_365d)::numeric / (o.order_days_365d - 1))::int < current_date,
+    o.interval_days is not null
+    and o.days_since >= o.interval_days
+    and o.days_since <  2 * o.interval_days,
     false)                                                         as reorder_due,
 
   cs.primary_category,
@@ -214,8 +235,8 @@ select
   (a.priority_status is not null)                                  as on_priority_list,
   a.assigned_rep_name_norm                                         as priority_rep
 from contact_pick cp
-left join company_orders      o  on o.company_key  = cp.company_key
-left join company_rep         r  on r.company_key  = cp.company_key
+left join company_rhythm      o  on o.company_key  = cp.company_key
+left join company_rep        r  on r.company_key  = cp.company_key
 left join company_cat_summary cs on cs.company_key = cp.company_key
 left join activation          a  on a.customer_key = cp.company_key
 left join names               n  on n.company_key  = cp.company_key
@@ -238,6 +259,11 @@ grant select on mart.v_klaviyo_profiles_v1 to service_role;
 --   count(*) filter (where order_interval_days is not null)     as med_pontunarbil,
 --   count(*) filter (where known_to_klaviyo)                    as thekkt_i_klaviyo,
 --   count(*) filter (where reorder_due)                         as komid_ad_endurpontun,
+--   count(*) filter (where customer_state = 'active')           as virk,
+--   count(*) filter (where customer_state = 'lapsing')          as ad_dofna,
+--   count(*) filter (where customer_state = 'lapsed')           as dottin_ut,
+--   count(*) filter (where web_state = 'lapsed'
+--                      and customer_state = 'active')           as vef_lapsed_en_virk,
 --   count(*) filter (where primary_category is not null)        as med_flokk,
 --   count(*) filter (where sales_rep_code is not null)          as med_solumann,
 --   count(*) filter (where on_priority_list)                    as a_forgangslista,

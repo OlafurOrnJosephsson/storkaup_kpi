@@ -67,7 +67,8 @@ function fetchKlaviyoProfileRows_() {
 function mapKlaviyoProfile_(row, syncedAt) {
   var props = {
     stk_web_account:   !!row.has_web_account,
-    stk_web_state:     String(row.web_state || 'no_web_account'),
+    stk_web_state:     String(row.web_state || 'no_web_account'),           // vefurinn einn
+    stk_customer_state: String(row.customer_state || 'never_ordered'),     // allar rásir — win-back les þetta
     stk_orders_365d:   toNum_(row.orders_365d),
     stk_reorder_due:   !!row.reorder_due,
     stk_priority_list: !!row.on_priority_list,
@@ -165,12 +166,16 @@ function previewKlaviyoProfileSync_v1() {
     reorderDue: built.profiles.filter(function(p) { return p.attributes.properties.stk_reorder_due; }).length,
     priority: built.profiles.filter(function(p) { return p.attributes.properties.stk_priority_list; }).length
   };
-  var states = {};
-  built.profiles.forEach(function(p) {
-    var s = p.attributes.properties.stk_web_state;
-    states[s] = (states[s] || 0) + 1;
-  });
-  counts.byWebState = states;
+  var tally = function(prop) {
+    var out = {};
+    built.profiles.forEach(function(p) {
+      var s = p.attributes.properties[prop];
+      out[s] = (out[s] || 0) + 1;
+    });
+    return out;
+  };
+  counts.byWebState = tally('stk_web_state');
+  counts.byCustomerState = tally('stk_customer_state');
   Logger.log('[KLAVIYO_PROFILES][PREVIEW] ' + JSON.stringify(counts));
 
   built.profiles.slice(0, 3).forEach(function(p) {
