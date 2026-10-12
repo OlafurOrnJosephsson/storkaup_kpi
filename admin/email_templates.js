@@ -1,7 +1,7 @@
 /************************************************************
- * email_templates.js  Ums�knar-p�stsni�m�t (afrit �r core/email.js)
- * Uppruni: core/email.js � a�al-projectinu. Ef sni�m�ti er breytt �ar
- * �arf a� spegla breytinguna h�r (og �fugt).
+ * email_templates.js — Umsóknar-póstsniðmát (afrit úr core/email.js)
+ * Uppruni: core/email.js í aðal-projectinu. Ef sniðmáti er breytt þar
+ * þarf að spegla breytinguna hér (og öfugt).
  ************************************************************/
 
 function emailEsc_(str) {
@@ -12,7 +12,7 @@ function emailEsc_(str) {
     .replace(/"/g, '&quot;');
 }
 
-// ���� Rafræn Innskráning redirect ����������������������������������������������������������������������������������������������
+// ── Rafræn Innskráning redirect ───────────────────────────────────────────────
 
 function buildRafraenRedirectHtml_(recipientName, companyName) {
   var name    = emailEsc_(recipientName || '');
@@ -64,7 +64,7 @@ function buildRafraenRedirectPlain_(recipientName, companyName) {
     + 'Kveðja,\nStórkaup';
 }
 
-// ���� Rafræn Innskráning � vantar persónulega kennitölu ��������������������������������������������������
+// ── Rafræn Innskráning — vantar persónulega kennitölu ─────────────────────────
 // Applicant entered the company kennitala in BOTH the company field and the
 // personal-kennitala field; we need their own kennitala to link them.
 function buildRafraenNeedKtHtml_(recipientName) {
@@ -165,7 +165,7 @@ function buildRafraenNeedWorkplacePlain_(recipientName, companyName) {
     + 'Kveðja,\nStórkaup | Vefteymi';
 }
 
-// ���� Umsókn um viðskipti � email templates ������������������������������������������������������������������������
+// ── Umsókn um viðskipti — email templates ────────────────────────────────────
 
 function umsokn_CSS_() {
   return '<style>'
@@ -189,7 +189,7 @@ function umsokn_wrap_(bodyHtml) {
     + '</div></body></html>';
 }
 
-// Template 1 � Einstaklingur ekki með VSK-númer
+// Template 1 — Einstaklingur ekki með VSK-númer
 function buildUmsokn_NoVskHtml_(recipientName) {
   var greeting = emailEsc_(recipientName || '') ? 'Kæri/Kæra ' + emailEsc_(recipientName) : 'Kæri móttakandi';
   return umsokn_wrap_(
@@ -210,14 +210,14 @@ function buildUmsokn_NoVskPlain_(recipientName) {
     + 'Bestu kveðjur,\nStórkaup ehf.';
 }
 
-// Template 2 � �~arf lánshæfismat (einstaklingur í rekstri)
+// Template 2 — Þarf lánshæfismat (einstaklingur í rekstri)
 function buildUmsokn_NeedsCreditHtml_(recipientName) {
   var greeting = emailEsc_(recipientName || '') ? 'Kæri/Kæra ' + emailEsc_(recipientName) : 'Kæri móttakandi';
   return umsokn_wrap_(
     '<p style="margin:0 0 12px;font-size:15px;font-weight:600;">' + greeting + '</p>'
-    + '<p style="margin:0 0 12px;line-height:1.6;">Takk fyrir skráninguna hjá Stórkaup. �~ar sem þú ert einstaklingur í rekstri á eigin kennitölu höfum við ekki aðgang að lánshæfismati Creditinfo.</p>'
+    + '<p style="margin:0 0 12px;line-height:1.6;">Takk fyrir skráninguna hjá Stórkaup. Þar sem þú ert einstaklingur í rekstri á eigin kennitölu höfum við ekki aðgang að lánshæfismati Creditinfo.</p>'
     + '<p style="margin:0 0 12px;line-height:1.6;">Til að geta fullunnið umsóknina þarft þú að fara inn á <a href="https://www.creditinfo.is" style="color:#10069f;">creditinfo.is</a>, sækja lánshæfismat þitt og senda á <a href="mailto:bokhald@storkaup.is" style="color:#10069f;">bokhald@storkaup.is</a>. Í framhaldinu er hægt að ljúka við skráninguna.</p>'
-    + '<p style="margin:0 0 0;line-height:1.6;color:#555;font-size:13px;">Mikilvægt: nafn umsækjanda þarf að koma fram á lánshæfismatinu � skjáskot af skori nægir ekki ef nafnið er ekki sýnilegt.</p>'
+    + '<p style="margin:0 0 0;line-height:1.6;color:#555;font-size:13px;">Mikilvægt: nafn umsækjanda þarf að koma fram á lánshæfismatinu — skjáskot af skori nægir ekki ef nafnið er ekki sýnilegt.</p>'
     + '<hr class="sk-divider">'
     + '<p style="margin:0;color:#666;font-size:13px;line-height:1.6;">Bestu kveðjur,<br>Stórkaup ehf.</p>'
   );
@@ -225,13 +225,13 @@ function buildUmsokn_NeedsCreditHtml_(recipientName) {
 function buildUmsokn_NeedsCreditPlain_(recipientName) {
   var greeting = recipientName ? 'Kæri/Kæra ' + recipientName : 'Kæri móttakandi';
   return greeting + '\n\n'
-    + 'Takk fyrir skráninguna hjá Stórkaup. �~ar sem þú ert einstaklingur í rekstri á eigin kennitölu höfum við ekki aðgang að lánshæfismati Creditinfo.\n\n'
+    + 'Takk fyrir skráninguna hjá Stórkaup. Þar sem þú ert einstaklingur í rekstri á eigin kennitölu höfum við ekki aðgang að lánshæfismati Creditinfo.\n\n'
     + 'Til að geta fullunnið umsóknina þarft þú að fara inn á https://www.creditinfo.is og sækja lánshæfismat þitt og senda á bokhald@storkaup.is. Í framhaldinu er hægt að ljúka við skráninguna.\n\n'
-    + 'Mikilvægt: nafn umsækjanda þarf að koma fram á lánshæfismatinu � skjáskot af skori nægir ekki ef nafnið er ekki sýnilegt.\n\n'
+    + 'Mikilvægt: nafn umsækjanda þarf að koma fram á lánshæfismatinu — skjáskot af skori nægir ekki ef nafnið er ekki sýnilegt.\n\n'
     + 'Bestu kveðjur,\nStórkaup ehf.';
 }
 
-// Template 3 � Lánshæfismat uppfyllir ekki skilyrði (staðgreiðsla)
+// Template 3 — Lánshæfismat uppfyllir ekki skilyrði (staðgreiðsla)
 function buildUmsokn_CashOnlyHtml_(recipientName) {
   var greeting = emailEsc_(recipientName || '') ? 'Kæri/Kæra ' + emailEsc_(recipientName) : 'Kæri móttakandi';
   return umsokn_wrap_(
