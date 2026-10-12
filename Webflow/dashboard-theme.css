@@ -1268,13 +1268,16 @@ a.lagersala-top__name:hover { text-decoration: underline; }
 /* ── Kort teiknuð af dashboard.js (.sk-card, 2026-10-12) ─────────────
    Grunnurinn er Webflow-klasinn .webapp-item; hér er aðeins það sem
    Designer-kortin þurfa ekki: lárétt röð inni í breiðu korti. */
+/* Hámarksbreidd: á 1900px skjá dreifði space-around hringnum og listanum
+   út í sitt hvort horn kortsins. Röðin helst nú þétt fyrir miðju. */
 .sk-card__row {
   display: flex;
   align-items: center;
-  justify-content: space-around;
+  justify-content: space-between;
   gap: 2rem;
   width: 100%;
-  margin-top: 1rem;
+  max-width: 68rem;
+  margin: 1rem auto 0;
 }
 .sk-card__stats {
   display: flex;

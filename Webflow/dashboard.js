@@ -2278,12 +2278,13 @@
   // Verður að keyra á undan applyArcFallbacks() í init(), annars fá hringir
   // sem teiknaðir eru hér ekki SVG-varaleiðina (Samsung-sjónvarpið).
   //
-  // Breidd: grindin er 12 dálkar og hvert Designer-kort fær sína úr
-  // #w-node-reglu. Nýr Div Block hefur enga og fengi EINN dálk, svo span
-  // er sett hér. Undir 991px er grindin flex-dálkur og span hunsað.
+  // STAÐSETNING ER WEBFLOW, INNIHALD ER KÓÐI. Breidd og röð í grindinni
+  // (12 dálkar) eru stilltar á Div Blockinu í Designer — Grid Child → span.
+  // Án þess fær hann EINN dálk. Fyrsta útgáfa (3b2ab53) setti span hér sem
+  // inline-stíl, sem vinnur #w-node-reglu Designers: span stillt þar hefði
+  // verið hunsað án nokkurrar villu.
   var STORKAUP_CARDS = {
     lagersala: {
-      span: 12,
       html: function () {
         var stat = function (metric, label) {
           return '<div class="sk-card__stat">'
@@ -2319,7 +2320,6 @@
       var card = STORKAUP_CARDS[host.getAttribute("data-storkaup-card")];
       if (!card || host.getAttribute("data-card-rendered")) return;
       host.classList.add("webapp-item", "sk-card");
-      if (card.span) host.style.gridColumn = "span " + card.span;
       host.innerHTML = card.html();
       host.setAttribute("data-card-rendered", "1");
     });
