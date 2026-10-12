@@ -59,7 +59,10 @@ function webapp_getApplications() {
 
 function webapp_readRows_(sheet, src) {
   if (!sheet || sheet.getLastRow() < 2) return [];
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  // Typeform skilar sumum heitum með bili aftast ("Staður fyrirtækis ") —
+  // án trim fannst dálkurinn ekki og staðurinn datt þegjandi út af kortinu.
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
+    .map(function(h) { return String(h).trim(); });
   var data    = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
 
   var nameIdx        = headers.indexOf(src.nameHeader);
