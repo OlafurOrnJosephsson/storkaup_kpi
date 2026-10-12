@@ -112,14 +112,14 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Empty state ── */
-.empty {
-  text-align: center;
-  padding: 48px 0;
-  color: var(--sk-muted);
-}
-.empty-icon { font-size: 32px; margin-bottom: 8px; }
-.empty p { font-size: 13px; }
+/* ── Tómt ástand (2026-10-12) ──
+   Sama kort og umsókn — haus, meginmál, aðgerðareitur — svo flipinn er
+   aldrei auður og les sem „allt afgreitt", ekki „ekkert hlóðst". Grænt eins
+   og „✓ Engar …" í vöruvöktuninni. */
+.card.st-clear { border-top: 3px solid var(--sk-ready); }
+.uc-act.st-clear { background: var(--sk-ready-act); }
+.clear-chip  { background: var(--sk-ready-bg); color: var(--sk-ready); border-color: var(--sk-ready-edge); }
+.uc-co.is-clear { color: var(--sk-ready); }
 
 /* ── Cards ── rows render as cards at ALL widths (no visual table).
    Label comes from td[data-label]; desktop = "label | value" grid, mobile stacks. */
@@ -225,7 +225,7 @@ body {
 
 /* ── Merki (BC-staða, greiðsla, einstaklingur) ──
    Sama form á öllum svo hausinn lesist sem ein lína af stöðu. */
-.bc-found, .bc-notfound, .pay-badge, .badge-person {
+.bc-found, .bc-notfound, .pay-badge, .badge-person, .clear-chip {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: .72rem; font-weight: 700; letter-spacing: .03em;
   padding: 3px 9px; border-radius: 7px;
@@ -626,13 +626,51 @@ function loadData(silent) {
   });
 }
 
+// ── Tómt kort ──────────────────────────────────────────────────────────────
+
+var EMPTY_COPY = {
+  rafraen: {
+    what: 'Beiðnir um rafræna innskráningu sem bíða aðgerðar.',
+    from: 'Typeform-formið <strong>Rafræn innskráning</strong>.'
+  },
+  umsokn: {
+    what: 'Umsóknir um viðskipti sem bíða svarbréfs eða stofnunar í BC.',
+    from: 'Typeform-formið <strong>Umsókn um viðskipti</strong>.'
+  }
+};
+
+function emptyCardHtml(tab) {
+  var c = EMPTY_COPY[tab];
+  return '<div class="card-list"><div class="card st-clear">'
+    + '<div class="uc-head">'
+      + '<div class="uc-id"><div class="uc-co is-clear">Engar umsóknir bíða</div></div>'
+      + '<div class="uc-chips"><span class="clear-chip">✓ Allt afgreitt</span></div>'
+    + '</div>'
+    + '<div class="uc-body">'
+      + '<div class="uc-f"><div class="uc-k">Hvað birtist hér</div><div class="uc-v">' + c.what + '</div></div>'
+      + '<div class="uc-f"><div class="uc-k">Hvaðan</div><div class="uc-v">' + c.from + '</div></div>'
+    + '</div>'
+    + '<div class="uc-act st-clear">'
+      + '<div class="uc-hint">Nýjar umsóknir birtast hér sjálfkrafa. <strong>Samstilla</strong> færir umsóknir sem komnar eru með aðgang í Magento í LOKID.</div>'
+    + '</div>'
+  + '</div></div>';
+}
+
+// Eftir afgreiðslu er kortið fjarlægt í vafranum án endurhleðslu. Áður varð
+// flipinn þá alauður þegar síðasta kortið fór — tóma ástandið kom aðeins með
+// fullri hleðslu.
+function showEmptyIfNone(tab) {
+  var el = document.getElementById('tab-' + tab);
+  if (el && !el.querySelector('.card:not(.done)')) el.innerHTML = emptyCardHtml(tab);
+}
+
 // ── Render Rafræn ──────────────────────────────────────────────────────────
 
 function renderRafraen(rows) {
   document.getElementById('badge-rafraen').textContent = rows.length;
   var el = document.getElementById('tab-rafraen');
   if (!rows.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">✓</div><p>Engar ómeðhöndlaðar umsóknir í Rafræn Innskráningu.</p></div>';
+    el.innerHTML = emptyCardHtml('rafraen');
     return;
   }
   var html = '<div class="card-list">';
@@ -724,6 +762,7 @@ function confirmRafraen(i) {
             if (el) el.remove();
             var left = document.querySelectorAll('#tab-rafraen .card:not(.done)').length;
             document.getElementById('badge-rafraen').textContent = left;
+            showEmptyIfNone('rafraen');
             notifyParentPending();
           }, 600);
           showToast('Póstur sendur til ' + r.email);
@@ -739,7 +778,7 @@ function renderUmsokn(rows) {
   document.getElementById('badge-umsokn').textContent = rows.length;
   var el = document.getElementById('tab-umsokn');
   if (!rows.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">✓</div><p>Engar ómeðhöndlaðar umsóknir í Umsókn um viðskipti.</p></div>';
+    el.innerHTML = emptyCardHtml('umsokn');
     return;
   }
   var html = '<div class="card-list">';
@@ -830,6 +869,7 @@ function confirmDone(i) {
             appData.umsokn[i]._done = true;
             var left = appData.umsokn.filter(function(x) { return x && !x._done; }).length;
             document.getElementById('badge-umsokn').textContent = left;
+            showEmptyIfNone('umsokn');
             notifyParentPending();
           }, 600);
           showToast(esc(r.company || r.email) + ' fært í "BC til - stofnað"');
@@ -860,6 +900,7 @@ function confirmUmsokn(i) {
             appData.umsokn[i]._done = true;
             var left = appData.umsokn.filter(function(x) { return x && !x._done; }).length;
             document.getElementById('badge-umsokn').textContent = left;
+            showEmptyIfNone('umsokn');
             notifyParentPending();
             }, 600);
           appData.umsokn.forEach(function(x) { if (x && x.rowIndex > r.rowIndex) x.rowIndex--; });
