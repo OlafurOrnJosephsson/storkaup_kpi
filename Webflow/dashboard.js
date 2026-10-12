@@ -2340,8 +2340,12 @@
   }
 
   function renderLagersalaTop(rows) {
-    var host = document.querySelector("[data-lagersala-top]");
-    if (!host) return;
+    document.querySelectorAll("[data-lagersala-top]").forEach(function (host) {
+      renderLagersalaTopInto(host, rows);
+    });
+  }
+
+  function renderLagersalaTopInto(host, rows) {
     var list = Array.isArray(rows) ? rows : [];
     var limit = Number(host.getAttribute("data-limit"));
     if (Number.isFinite(limit) && limit > 0) list = list.slice(0, limit);
