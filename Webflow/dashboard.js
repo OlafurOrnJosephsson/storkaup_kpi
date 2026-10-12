@@ -9,6 +9,7 @@
   var bcSyncCacheTs = 0;
   var webBookingCacheTs = 0;
   var klaviyoCacheTs = 0;
+  var lagersalaCacheTs = 0;
   var STABLE_RPC_TTL_MS = 10 * 60 * 1000; // 10 minutes — these RPCs update infrequently
   var dayApiUnavailable = false;
   var DEBUG = false;
@@ -2252,6 +2253,103 @@
       });
   }
 
+  // ── Lagersala (2026-10-12) ──────────────────────────────────────────────
+  // public.lagersala_summary_v1 — aðeins innskráðir. Daglegt birgðaskot af
+  // vörunum á storkaup.is/lagersala (core/lagersala.js), svo talan hreyfist
+  // einu sinni á dag; vefpantanirnar strax. Reitir á kortinu:
+  //   data-metric="lagersala-cleared-pct"   meðalhlutfall farið, vara fyrir vöru
+  //   data-fill-from="lagersala-cleared-pct" á .arc-meter / .meter-fill
+  //   data-metric="lagersala-items" | -items-moved | -sold-out
+  //   data-metric="lagersala-web-orders" | -web-customers
+  //   data-metric="lagersala-since" | -updated
+  //   data-lagersala-top                     topp 5, teiknað hér
+  // Kortið er aukaatriði: villa hér má aldrei fella mælaborðið.
+  function hasLagersalaTargets() {
+    return !!document.querySelector('[data-metric^="lagersala-"], [data-lagersala-top]');
+  }
+
+  function fmtShortDate(iso) {
+    var s = String(iso || "");
+    return s.length >= 10 ? (s.substring(8, 10) + "." + s.substring(5, 7) + ".") : "-";
+  }
+
+  function escHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function renderLagersalaTop(rows) {
+    var host = document.querySelector("[data-lagersala-top]");
+    if (!host) return;
+    var list = Array.isArray(rows) ? rows : [];
+    if (!list.length) {
+      host.innerHTML = '<div class="lagersala-top__empty">Ekkert farið enn — fyrsta birgðaskot er upphafsstaðan.</div>';
+      return;
+    }
+    host.innerHTML = list.map(function (r) {
+      var href = r.slug ? "https://www.storkaup.is/vara/" + encodeURIComponent(r.slug) : "";
+      var name = escHtml(r.name || r.sku || "");
+      return '<div class="lagersala-top__row">'
+        + (href ? '<a class="lagersala-top__name" href="' + href + '" target="_blank" rel="noopener">' + name + "</a>"
+                : '<span class="lagersala-top__name">' + name + "</span>")
+        + '<span class="lagersala-top__pct">' + pct(r.cleared) + "</span>"
+        + "</div>";
+    }).join("");
+  }
+
+  // Aðeins mælar lagersölukortsins. updateMeters() fyllir ALLA mæla úr einu
+  // korti af gildum, og hér eru hin gildin ekki endilega komin — það kall
+  // myndi núllstilla mæla annarra korta þar til næsta fetchMonth.
+  function fillLagersalaMeters(pct100) {
+    var v = Math.max(0, Math.min(100, pct100));
+    document.querySelectorAll('[data-fill-from="lagersala-cleared-pct"]').forEach(function (el) {
+      if (el.classList.contains("meter-fill")) { el.style.width = v + "%"; return; }
+      if (el.getAttribute("data-svg-arc")) {
+        var f = el.querySelector(".arc-svg-fill");
+        if (f) f.setAttribute("stroke-dasharray", v + "," + (100 - v));
+      } else {
+        el.style.setProperty("--fill-pct", v);
+      }
+    });
+  }
+
+  function fetchLagersalaSummary() {
+    if (!hasLagersalaTargets()) return Promise.resolve();
+    if (lagersalaCacheTs && (Date.now() - lagersalaCacheTs) < STABLE_RPC_TTL_MS) return Promise.resolve();
+
+    var cfg = getCfg();
+    var apiKey = cfg.publishableKey || "";
+    if (!cfg.supabaseUrl || !apiKey) return Promise.resolve();
+
+    return fetch(String(cfg.supabaseUrl).replace(/\/+$/, "") + "/rest/v1/rpc/lagersala_summary_v1", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", "apikey": apiKey, "Authorization": "Bearer " + apiKey },
+      body: "{}"
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("lagersala_summary_v1 RPC HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (j) {
+        if (!j || typeof j !== "object" || Array.isArray(j)) return;
+        lagersalaCacheTs = Date.now();
+        setText("lagersala-cleared-pct", pct(j.cleared_pct));
+        setText("lagersala-items", formatNumber(j.items));
+        setText("lagersala-items-moved", formatNumber(j.items_moved));
+        setText("lagersala-sold-out", formatNumber(j.sold_out));
+        setText("lagersala-web-orders", formatNumber(j.web_orders));
+        setText("lagersala-web-customers", formatNumber(j.web_customers));
+        setText("lagersala-since", fmtShortDate(j.launch_date));
+        setText("lagersala-updated", fmtShortDate(j.latest_date));
+        renderLagersalaTop(j.top);
+        fillLagersalaMeters(Math.round(toNumberSafe(j.cleared_pct) * 1000) / 10);
+      })
+      .catch(function (err) {
+        log("Lagersala summary fetch failed:", err);
+      });
+  }
+
   function applyMeterUpgrades() {
     document.querySelectorAll(".meter[data-upgrade]").forEach(function (meter) {
       var upgrade = meter.getAttribute("data-upgrade");
@@ -2418,7 +2516,8 @@
       fetchWeekdayComparisonGrid(true),
       fetchKlaviyoAttributionSummary(),
       fetchBcSyncStatus(),
-      fetchWebBookingReconciliationSummary()
+      fetchWebBookingReconciliationSummary(),
+      fetchLagersalaSummary()
     ]).then(function () {
       emitPageReady();
     });
@@ -2434,6 +2533,7 @@
       fetchKlaviyoAttributionSummary();
       fetchBcSyncStatus();
       fetchWebBookingReconciliationSummary();
+      fetchLagersalaSummary();
     }, 120000);
   }
 

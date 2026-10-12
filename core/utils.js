@@ -4858,6 +4858,7 @@ function requiredTimeTriggers_() {
     scheduledSearchConsoleSync_v1:    { cadence: 'daily ~05:30',                         install: installScheduledSearchConsoleSyncTrigger_v1 },
     scheduledKlaviyoProfileSync_v1:   { cadence: 'daily ~06:10',                         install: installScheduledKlaviyoProfileSyncTrigger_v1 },
     scheduledGa4Sync_v1:              { cadence: 'daily ~06:30',                         install: installScheduledGa4SyncTrigger_v1 },
+    scheduledLagersalaSync_v1:        { cadence: 'daily ~06:40',                         install: installLagersalaSyncTrigger_v1 },
     scheduledZeroPriceScan_v1:        { cadence: 'daily ~06:50',                         install: installZeroPriceScanTrigger_v1 },
     runDailySanityChecks_v1:          { cadence: 'daily ~07:40',                         install: installDailySanityChecksTrigger_v1 },
     scheduledNewwebStatusSync_v2:     { cadence: 'daily ~11:30 & ~17:30 (2 triggers)',  install: installNewwebStatusSyncTrigger_v2 },
