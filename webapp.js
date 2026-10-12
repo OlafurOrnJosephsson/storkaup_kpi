@@ -30,7 +30,7 @@ function handleApiAction_(body) {
   // Delegation frá admin-apps projectinu (admin/) — þungar aðgerðir og
   // Script-Properties niðurstöður sem búa hér, kallaðar með Dashboard-lyklinum.
   if (action === 'sync_magento_customers') return jsonResponse_(adminDelegateViaApi_(body, function () { return { ok: true, result: syncMagentoCustomers() }; }));
-  if (action === 'prune_applications')     return jsonResponse_(adminDelegateViaApi_(body, function () { pruneCompletedApplications_(); return { ok: true }; }));
+  if (action === 'prune_applications')     return jsonResponse_(adminDelegateViaApi_(body, function () { return Object.assign({ ok: true }, pruneCompletedApplications_()); }));
   if (action === 'zero_price_result')      return jsonResponse_(adminDelegateViaApi_(body, function () { return getZeroPriceResultForUi(); }));
   if (action === 'coming_soon_list')       return jsonResponse_(adminDelegateViaApi_(body, function () { return getComingSoonListForUi(); }));
   if (action === 'pending_orders')        return jsonResponse_(adminDelegateViaApi_(body, function () { return getPendingOrdersForUi(); }));

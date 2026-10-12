@@ -244,6 +244,12 @@ function syncMagentoCustomers() {
     return syncMagentoCustomersFull_();
   }
 
+  // Næsti gluggi byrjar þegar ÞESSI sækir hefst (mínus mínúta fyrir klukkumun),
+  // ekki þegar hann endar. Áður var stimpillinn settur eftir á, svo aðgangur sem
+  // breyttist á meðan síðurnar voru sóttar lenti á milli glugga og sást aldrei.
+  // Skörunin er hættulaus — raðir eru uppfærðar eftir ID.
+  const nextSyncIso = new Date(Date.now() - 60 * 1000).toISOString();
+
   // Build ID → row index map
   const rowById = {};
   values.slice(1).forEach((row,i) => {
@@ -255,7 +261,7 @@ function syncMagentoCustomers() {
   const changed = fetchMagentoCustomers_(lastSync);
   if (!changed.length) {
     Logger.log('ℹ️ No customer changes since last sync');
-    props.setProperty(MAGENTO_CUSTOMERS_LAST_SYNC_KEY,new Date().toISOString());
+    props.setProperty(MAGENTO_CUSTOMERS_LAST_SYNC_KEY, nextSyncIso);
     return;
   }
 
@@ -286,7 +292,7 @@ function syncMagentoCustomers() {
     zebra: false
   });
 
-  props.setProperty(MAGENTO_CUSTOMERS_LAST_SYNC_KEY,new Date().toISOString());
+  props.setProperty(MAGENTO_CUSTOMERS_LAST_SYNC_KEY, nextSyncIso);
 
   Logger.log(`✅ Customers synced. New: ${newCount}, Updated: ${updatedCount}`);
 }
@@ -299,6 +305,7 @@ function syncMagentoCustomersFull_() {
   const sh     = getMagentoCustomersSheet_();
   const header = ensureMagentoCustomersHeader_();
   const props  = PropertiesService.getScriptProperties();
+  const nextSyncIso = new Date(Date.now() - 60 * 1000).toISOString(); // sjá syncMagentoCustomers
 
   // Clear all rows except header
   if (sh.getLastRow() > 1) {
@@ -320,7 +327,7 @@ function syncMagentoCustomersFull_() {
   zebra: true
 });
 
-  props.setProperty(MAGENTO_CUSTOMERS_LAST_SYNC_KEY,new Date().toISOString());
+  props.setProperty(MAGENTO_CUSTOMERS_LAST_SYNC_KEY, nextSyncIso);
 
   Logger.log(`✅ Full Magento customer export complete: ${customers.length} rows`);
 }
@@ -560,34 +567,108 @@ function menu_sendTemplateEmail() {
 
 /************************************************************
  * Move completed applications from MAIN → LOKID
- * Runs after syncMagentoCustomers — moves rows where email
- * or kennitala exists in MAGENTO_CUSTOMERS.
+ * Moves rows whose email or kennitala belongs to a Magento account.
+ *
+ * Fyrst er borið saman við MAGENTO_CUSTOMERS-afritið, svo er Magento
+ * spurt BEINT um þær umsóknir sem eftir standa. Afritið eitt dugði
+ * ekki: umsóknir sátu fastar þótt aðgangurinn væri kominn í Magento.
+ * Tvær ástæður fundust, og fleiri geta verið til:
+ *   - Sheets geymir "0811902089" sem töluna 811902089, svo kennitala
+ *     sem byrjar á 0 passaði aldrei (umsóknarblaðið geymir texta).
+ *   - Afritið fær aðeins aðganga með updated_at eftir síðustu keyrslu;
+ *     aðgangur sem það missir af sést aldrei aftur.
+ * Beina spurningin kostar 1–4 köll og aðeins ef eitthvað stendur eftir.
  ************************************************************/
-function pruneCompletedApplications() { pruneCompletedApplications_(); }
+function pruneCompletedApplications() { return pruneCompletedApplications_(); }
+
+// Kennitala í samanburðarhæft form: aðeins tölustafir, 10 stafir. Níu stafir =
+// fremsta 0 týnd í Sheets (dagur 01–09). Annað er ekki kennitala.
+function normKt_(v) {
+  const d = String(v == null ? '' : v).replace(/\D/g, '');
+  if (d.length !== 9 && d.length !== 10) return '';
+  const kt = d.padStart(10, '0');
+  return kt === '0000000000' ? '' : kt;
+}
+
+function normEmail_(v) {
+  return String(v || '').toLowerCase().trim();
+}
+
+function addMagentoKeys_(keys, c) {
+  [c.email, c.real_email].map(normEmail_).filter(Boolean).forEach(e => keys.emails.add(e));
+  const nat = normKt_(c.national_id);
+  const co  = normKt_(c.company_id);
+  if (nat) keys.kts.add(nat);
+  if (co)  keys.companyIds.add(co);
+}
+
+function magentoKeysFromSheet_() {
+  const keys = { emails: new Set(), kts: new Set(), companyIds: new Set() };
+  const sh = getMagentoCustomersSheet_();
+  if (sh.getLastRow() < 2) return keys;
+  sh.getRange(2, 1, sh.getLastRow() - 1, 17).getValues().forEach(r => addMagentoKeys_(keys, {
+    email: r[2], real_email: r[12], company_id: r[11], national_id: r[16]
+  }));
+  return keys;
+}
+
+// Spyr Magento beint: eitt kall á hvern reit, hvert í sinni try svo að reitur
+// sem Magento neitar að sía á (t.d. sérsniðinn attribute) felli ekki hina.
+// Svarið er aðeins notað í gegnum sama samanburð og afritið, svo þó Magento
+// hunsaði síuna og skilaði öðrum aðgöngum myndi ekkert færast að ósekju.
+function fetchMagentoKeysLive_(emails, kts) {
+  const keys = { emails: new Set(), kts: new Set(), companyIds: new Set() };
+  const base = String(loadConfig_().ENDPOINTS.Magento.BASE_URL || '').replace(/\/$/, '');
+  if (!base) return keys;
+
+  // Magento geymir kennitölu sem streng og stundum með bandstriki.
+  const ktValues = [];
+  kts.forEach(kt => ktValues.push(kt, kt.slice(0, 6) + '-' + kt.slice(6)));
+
+  const queries = [
+    ['email', emails], ['real_email', emails],
+    ['company_id', ktValues], ['national_id', ktValues]
+  ];
+  queries.forEach(([field, values]) => {
+    if (!values.length) return;
+    const url = `${base}/customers/search?` +
+      `searchCriteria[filter_groups][0][filters][0][field]=${field}` +
+      `&searchCriteria[filter_groups][0][filters][0][value]=${encodeURIComponent(values.join(','))}` +
+      `&searchCriteria[filter_groups][0][filters][0][condition_type]=in` +
+      `&searchCriteria[pageSize]=100&searchCriteria[currentPage]=1`;
+    try {
+      const res = fetchMagentoWithRetry_(url, {
+        method: 'get', headers: magentoHeaders_(), contentType: 'application/json',
+        followRedirects: false, muteHttpExceptions: true
+      });
+      const items = (JSON.parse(res.getContentText()) || {}).items || [];
+      items.map(mapMagentoCustomer_).forEach(c => addMagentoKeys_(keys, c));
+    } catch (e) {
+      Logger.log(`⚠️ fetchMagentoKeysLive_ (${field}): ${e && e.message || e}`);
+    }
+  });
+  return keys;
+}
+
+function applicationMatchesMagento_(app, keys) {
+  return (app.email     && keys.emails.has(app.email)) ||
+         (app.kt        && keys.kts.has(app.kt)) ||
+         (app.companyKt && keys.companyIds.has(app.companyKt));
+}
 
 function pruneCompletedApplications_() {
   const CONFIG = loadConfig_();
-
-  const custSh = getMagentoCustomersSheet_();
-  if (custSh.getLastRow() < 2) return;
-
-  const custData = custSh.getRange(2, 1, custSh.getLastRow() - 1, 17).getValues();
-  const magentoEmails = new Set([
-    ...custData.map(r => String(r[2]  || '').toLowerCase().trim()).filter(Boolean),
-    ...custData.map(r => String(r[12] || '').toLowerCase().trim()).filter(Boolean)
-  ]);
-  const magentoKt = new Set(
-    custData.map(r => String(r[16] || '').trim()).filter(v => v && v !== '0000000000')
-  );
-  const magentoCompanyIds = new Set(
-    custData.map(r => String(r[11] || '').trim()).filter(v => v && v !== '0000000000')
-  );
+  const summary = { moved: [], pending: 0, liveChecked: 0 };
 
   const sources = typeof APP_SOURCES !== 'undefined' ? APP_SOURCES : [];
-  if (!sources.length) { Logger.log('⚠️ pruneCompletedApplications_: APP_SOURCES not found'); return; }
+  if (!sources.length) { Logger.log('⚠️ pruneCompletedApplications_: APP_SOURCES not found'); return summary; }
 
-  let totalMoved = 0;
+  const findCol = (headers, name) => name
+    ? headers.findIndex(h => h.toString().toLowerCase().trim() === name.toLowerCase().trim())
+    : -1;
 
+  // 1) Lesa allar biðraðir
+  const work = [];
   sources.forEach(src => {
     const ssId = CONFIG.SHEET_IDS[src.key];
     if (!ssId) { Logger.log(`⚠️ pruneCompletedApplications_: vantar SHEET_IDS.${src.key}`); return; }
@@ -596,45 +677,74 @@ function pruneCompletedApplications_() {
     const mainSh = ss.getSheetByName(src.mainTab || 'MAIN');
     if (!mainSh || mainSh.getLastRow() < 2) return;
 
-    // Ensure LOKID tab exists with same headers as main tab
-    let doneSh = ss.getSheetByName('LOKID');
-    if (!doneSh) doneSh = ss.insertSheet('LOKID');
+    const lastCol = mainSh.getLastColumn();
+    const headers = mainSh.getRange(1, 1, 1, lastCol).getValues()[0];
+    const emailIdx     = findCol(headers, src.emailHeader);
+    const ktIdx        = findCol(headers, src.ktHeader);
+    const companyKtIdx = findCol(headers, src.companyKtHeader);
+    const companyIdx   = findCol(headers, src.companyHeader);
 
-    const numRows = mainSh.getLastRow() - 1;
-    const headers = mainSh.getRange(1, 1, 1, mainSh.getLastColumn()).getValues()[0];
+    const apps = mainSh.getRange(2, 1, mainSh.getLastRow() - 1, lastCol).getValues().map((row, i) => ({
+      rowNum:    i + 2,
+      data:      row,
+      email:     emailIdx     > -1 ? normEmail_(row[emailIdx])  : '',
+      kt:        ktIdx        > -1 ? normKt_(row[ktIdx])        : '',
+      companyKt: companyKtIdx > -1 ? normKt_(row[companyKtIdx]) : '',
+      company:   companyIdx   > -1 ? String(row[companyIdx] || '').trim() : ''
+    })).filter(a => a.email || a.kt || a.companyKt);
 
+    work.push({ src, ss, mainSh, headers, lastCol, emailIdx, apps });
+  });
+
+  // 2) Afritið fyrst, svo Magento beint fyrir það sem eftir stendur
+  const sheetKeys = magentoKeysFromSheet_();
+  const all = [].concat(...work.map(w => w.apps));
+  all.forEach(a => { a.done = applicationMatchesMagento_(a, sheetKeys); });
+
+  const left = all.filter(a => !a.done);
+  if (left.length) {
+    const emails = [...new Set(left.map(a => a.email).filter(Boolean))];
+    const kts    = [...new Set([].concat(...left.map(a => [a.kt, a.companyKt])).filter(Boolean))];
+    const liveKeys = fetchMagentoKeysLive_(emails, kts);
+    summary.liveChecked = left.length;
+    left.forEach(a => {
+      a.done = applicationMatchesMagento_(a, liveKeys);
+      if (a.done) Logger.log(`ℹ️ ${a.company || a.email}: fannst í Magento en ekki í MAGENTO_CUSTOMERS-afritinu`);
+    });
+  }
+
+  // 3) Færa í LOKID. Neðst upp, og hver röð lesin aftur rétt áður en henni er
+  //    eytt: admin-appið er sér project og ScriptLock nær ekki yfir það, svo
+  //    röðin gæti hafa færst síðan í skrefi 1.
+  work.forEach(w => {
+    const toMove = w.apps.filter(a => a.done).sort((a, b) => b.rowNum - a.rowNum);
+    summary.pending += w.apps.length - toMove.length;
+    if (!toMove.length) return;
+
+    let doneSh = w.ss.getSheetByName('LOKID');
+    if (!doneSh) doneSh = w.ss.insertSheet('LOKID');
     if (doneSh.getLastRow() === 0) {
-      doneSh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+      doneSh.getRange(1, 1, 1, w.headers.length).setValues([w.headers]).setFontWeight('bold');
       doneSh.setFrozenRows(1);
     }
 
-    const emailIdx     = headers.findIndex(h => h.toString().toLowerCase().trim() === src.emailHeader.toLowerCase().trim());
-    const ktIdx        = headers.findIndex(h => h.toString().toLowerCase().trim() === src.ktHeader.toLowerCase().trim());
-    const companyKtIdx = src.companyKtHeader
-      ? headers.findIndex(h => h.toString().toLowerCase().trim() === src.companyKtHeader.toLowerCase().trim())
-      : -1;
-    const data = mainSh.getRange(2, 1, numRows, mainSh.getLastColumn()).getValues();
-
-    const toMove = [];
-    data.forEach((row, i) => {
-      const email     = emailIdx     > -1 ? String(row[emailIdx]     || '').toLowerCase().trim() : '';
-      const kt        = ktIdx        > -1 ? String(row[ktIdx]        || '').trim()               : '';
-      const companyKt = companyKtIdx > -1 ? String(row[companyKtIdx] || '').trim()               : '';
-      if (
-        (email     && magentoEmails.has(email))     ||
-        (kt        && magentoKt.has(kt))            ||
-        (companyKt && magentoCompanyIds.has(companyKt))
-      ) {
-        toMove.push({ rowNum: i + 2, data: row });
+    let moved = 0;
+    toMove.forEach(a => {
+      const now = w.mainSh.getRange(a.rowNum, 1, 1, w.lastCol).getValues()[0];
+      if (w.emailIdx > -1 && normEmail_(now[w.emailIdx]) !== a.email) {
+        Logger.log(`⚠️ ${w.src.label}: röð ${a.rowNum} breyttist á meðan — sleppt, næsta keyrsla tekur hana`);
+        summary.pending++;
+        return;
       }
+      doneSh.appendRow(a.data);
+      w.mainSh.deleteRow(a.rowNum);
+      summary.moved.push(a.company || a.email);
+      moved++;
     });
 
-    // Append to LOKID (after header), delete from MAIN bottom-up
-    toMove.forEach(item => doneSh.appendRow(item.data));
-    toMove.reverse().forEach(item => { mainSh.deleteRow(item.rowNum); totalMoved++; });
-
-    if (toMove.length) Logger.log(`✅ ${src.label}: ${toMove.length} rows moved to LOKID`);
+    Logger.log(`✅ ${w.src.label}: ${moved} rows moved to LOKID`);
   });
 
-  Logger.log(`✅ pruneCompletedApplications_: ${totalMoved} total rows moved`);
+  Logger.log(`✅ pruneCompletedApplications_: ${JSON.stringify(summary)}`);
+  return summary;
 }

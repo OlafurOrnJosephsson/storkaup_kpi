@@ -995,11 +995,16 @@ function syncMagento() {
   run('syncMagentoCustomers')
     .catch(function(e) { syncErr = e; })
     .then(function() { return run('webapp_pruneApplications'); })
-    .then(function() {
+    .then(function(out) {
+      // Segja HVAÐ gerðist — „lokið" eitt og sér sagði ekki hvort nokkuð færðist.
+      var moved = (out && out.moved) || [];
+      var what  = moved.length
+        ? 'Færði ' + moved.length + ' í LOKID: ' + moved.join(', ')
+        : 'Engin umsókn fannst sem aðgangur í Magento';
       if (syncErr) {
-        showToast('Magento-samstilling mistókst (' + (syncErr.message || syncErr) + ') — hreinsaði samt afgreiddar umsóknir', true);
+        showToast('Magento-samstilling mistókst (' + (syncErr.message || syncErr) + ') — ' + what, true);
       } else {
-        showToast('Samstilling lokið — hleð gögn að nýju');
+        showToast(what);
       }
       reset();
       loadData();
