@@ -945,6 +945,17 @@ document.getElementById('modal').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
 });
 
+// Tvísmellur í Windows velur orðið MEÐ bilinu á eftir (t.d. "8625014 " á
+// undan " · kt"), svo símanúmer, netföng og kennitölur fóru í klemmuspjaldið
+// með aukabili. Snyrtum allt sem er afritað úr appinu.
+document.addEventListener('copy', function(e) {
+  var sel = String(window.getSelection() || '');
+  var trimmed = sel.trim();
+  if (!trimmed || trimmed === sel || !e.clipboardData) return;
+  e.clipboardData.setData('text/plain', trimmed);
+  e.preventDefault();
+});
+
 // ── Util ───────────────────────────────────────────────────────────────────
 
 function esc(s) {
