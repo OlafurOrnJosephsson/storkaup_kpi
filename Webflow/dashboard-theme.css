@@ -1264,3 +1264,48 @@ a.lagersala-top__name:hover { text-decoration: underline; }
   font-size: 0.8rem;
   color: var(--black-700, #5b5b5b);
 }
+
+/* ── Kort teiknuð af dashboard.js (.sk-card, 2026-10-12) ─────────────
+   Grunnurinn er Webflow-klasinn .webapp-item; hér er aðeins það sem
+   Designer-kortin þurfa ekki: lárétt röð inni í breiðu korti. */
+.sk-card__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 2rem;
+  width: 100%;
+  margin-top: 1rem;
+}
+.sk-card__stats {
+  display: flex;
+  gap: 2.5rem;
+}
+.sk-card__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 9rem;
+}
+/* Sama og Webflow .webapp-data, án klasans: buildMetricMap() les
+   .webapp-data [data-metric] sem prósentur fyrir mælana. */
+.sk-card__num {
+  color: var(--_colors---blue600, #3f35d4);
+  font-size: var(--_sizes---2rem, 2rem);
+  line-height: var(--_sizes---2rem, 2rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.sk-card__side {
+  flex: 0 1 20rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: left;
+}
+@media screen and (max-width: 991px) {
+  .sk-card__row { flex-direction: column; gap: 1.5rem; }
+  .sk-card__stats { gap: 1.5rem; flex-wrap: wrap; justify-content: center; }
+  .sk-card__side { flex-basis: auto; width: 100%; }
+}

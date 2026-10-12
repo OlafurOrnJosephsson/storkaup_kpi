@@ -2264,6 +2264,67 @@
   //   data-metric="lagersala-since" | -updated
   //   data-lagersala-top                     topp 5, teiknað hér
   // Kortið er aukaatriði: villa hér má aldrei fella mælaborðið.
+  // ── Kort sem dashboard.js teiknar sjálft (2026-10-12) ───────────────────
+  // Fyrsta skrefið í að færa mælaborðið úr Designer yfir í kóða. Í Webflow
+  // er aðeins tómur Div Block í .dashboard-grid með eiginleikanum
+  //   data-storkaup-card="lagersala"
+  // og allt innihaldið kemur héðan. Kortið notar SÖMU Webflow-klasa og hin
+  // kortin (webapp-item, text-size-small, arc-meter-wrap--blue …), svo það
+  // fær útlitið þaðan án þess að CSS-ið sé afritað.
+  //
+  // Div Block, EKKI Embed: Embed vefur innihaldið í .w-embed, og þá yrði
+  // umbúðin grind-hluturinn en kortið sjálft barn hennar.
+  //
+  // Verður að keyra á undan applyArcFallbacks() í init(), annars fá hringir
+  // sem teiknaðir eru hér ekki SVG-varaleiðina (Samsung-sjónvarpið).
+  //
+  // Breidd: grindin er 12 dálkar og hvert Designer-kort fær sína úr
+  // #w-node-reglu. Nýr Div Block hefur enga og fengi EINN dálk, svo span
+  // er sett hér. Undir 991px er grindin flex-dálkur og span hunsað.
+  var STORKAUP_CARDS = {
+    lagersala: {
+      span: 12,
+      html: function () {
+        var stat = function (metric, label) {
+          return '<div class="sk-card__stat">'
+            + '<div class="sk-card__num" data-metric="' + metric + '">-</div>'
+            + '<div class="text-size-tiny">' + label + '</div>'
+            + '</div>';
+        };
+        return '<div class="flexvertical align-center gap--5rem">'
+          +   '<div class="text-size-small"><strong>Lagersala</strong></div>'
+          +   '<div class="text-size-tiny">farið af lager frá <span data-metric="lagersala-since">-</span>, vara fyrir vöru</div>'
+          + '</div>'
+          + '<div class="sk-card__row">'
+          +   '<div class="arc-meter-wrap arc-meter-wrap--blue">'
+          +     '<div data-fill-from="lagersala-cleared-pct" class="arc-meter arc-meter--blue"></div>'
+          +     '<div data-metric="lagersala-cleared-pct" class="arc-meter-label">-</div>'
+          +   '</div>'
+          +   '<div class="sk-card__stats">'
+          +     stat("lagersala-items-moved", 'af <span data-metric="lagersala-items">-</span> vörum hafa hreyfst')
+          +     stat("lagersala-sold-out", "uppseldar")
+          +     stat("lagersala-web-orders", 'vefpantanir · <span data-metric="lagersala-web-customers">-</span> kaupendur')
+          +   '</div>'
+          +   '<div class="sk-card__side">'
+          +     '<div class="text-size-tiny"><strong>Mest farið</strong></div>'
+          +     '<div data-lagersala-top data-limit="3"></div>'
+          +   '</div>'
+          + '</div>';
+      }
+    }
+  };
+
+  function renderStorkaupCards() {
+    document.querySelectorAll("[data-storkaup-card]").forEach(function (host) {
+      var card = STORKAUP_CARDS[host.getAttribute("data-storkaup-card")];
+      if (!card || host.getAttribute("data-card-rendered")) return;
+      host.classList.add("webapp-item", "sk-card");
+      if (card.span) host.style.gridColumn = "span " + card.span;
+      host.innerHTML = card.html();
+      host.setAttribute("data-card-rendered", "1");
+    });
+  }
+
   function hasLagersalaTargets() {
     return !!document.querySelector('[data-metric^="lagersala-"], [data-lagersala-top]');
   }
@@ -2282,6 +2343,8 @@
     var host = document.querySelector("[data-lagersala-top]");
     if (!host) return;
     var list = Array.isArray(rows) ? rows : [];
+    var limit = Number(host.getAttribute("data-limit"));
+    if (Number.isFinite(limit) && limit > 0) list = list.slice(0, limit);
     if (!list.length) {
       host.innerHTML = '<div class="lagersala-top__empty">Ekkert farið enn — fyrsta birgðaskot er upphafsstaðan.</div>';
       return;
@@ -2444,6 +2507,7 @@
   }
 
   function init() {
+    renderStorkaupCards();
     populateMonthDropdown();
     applyArcFallbacks();
     applyMeterUpgrades();
