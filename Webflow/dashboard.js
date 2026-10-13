@@ -2295,6 +2295,7 @@
         return '<div class="flexvertical align-center gap--5rem">'
           +   '<div class="text-size-small"><strong>Lagersala</strong></div>'
           +   '<div class="text-size-tiny">farið af lager frá <span data-metric="lagersala-since">-</span>, vara fyrir vöru</div>'
+          +   '<div class="text-size-tiny">birgðir lesnar <span data-metric="lagersala-captured">-</span></div>'
           + '</div>'
           + '<div class="sk-card__row">'
           +   '<div class="arc-meter-wrap arc-meter-wrap--blue">'
@@ -2332,6 +2333,19 @@
   function fmtShortDate(iso) {
     var s = String(iso || "");
     return s.length >= 10 ? (s.substring(8, 10) + "." + s.substring(5, 7) + ".") : "-";
+  }
+
+  // „kl. 14:15" ef í dag, annars „12.10. kl. 21:45" — dagsetningin sem
+  // stendur í stað er merkið um að keyrslan hafi stoppað. Ísland er á UTC
+  // allt árið, svo UTC-tíminn er staðartími (og Intl-tímabelti óþarft á
+  // gamla sjónvarpsvafranum).
+  function fmtCapturedAt(iso) {
+    var d = new Date(iso);
+    if (!iso || isNaN(d.getTime())) return "-";
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    var clock = "kl. " + pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes());
+    var day = d.toISOString().substring(0, 10);
+    return day === getTodayIso() ? clock : fmtShortDate(day) + " " + clock;
   }
 
   function escHtml(s) {
@@ -2382,7 +2396,9 @@
 
   function fetchLagersalaSummary() {
     if (!hasLagersalaTargets()) return Promise.resolve();
-    if (lagersalaCacheTs && (Date.now() - lagersalaCacheTs) < STABLE_RPC_TTL_MS) return Promise.resolve();
+    // 2 mín, ekki STABLE_RPC_TTL_MS (10): vefpantanirnar eiga að fylgja
+    // „Vefpantanir í dag", og birgðirnar uppfærast á 15 mín fresti.
+    if (lagersalaCacheTs && (Date.now() - lagersalaCacheTs) < 110000) return Promise.resolve();
 
     var cfg = getCfg();
     var apiKey = cfg.publishableKey || "";
@@ -2409,6 +2425,7 @@
         setText("lagersala-web-customers", formatNumber(j.web_customers));
         setText("lagersala-since", fmtShortDate(j.launch_date));
         setText("lagersala-updated", fmtShortDate(j.latest_date));
+        setText("lagersala-captured", fmtCapturedAt(j.captured_at));
         renderLagersalaTop(j.top);
         fillLagersalaMeters(Math.round(toNumberSafe(j.cleared_pct) * 1000) / 10);
       })

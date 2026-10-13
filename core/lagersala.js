@@ -6,13 +6,18 @@
  * um hvað er á henni er síðan sjálf. Hún er birt á þjóninum og hver
  * vara er <a href="/vara/<slug>">.
  *
- * Daglega (~06:40, opnunarstaða dagsins):
+ * Á 15 mín fresti 07:00–21:59 (frá 2026-10-13; áður daglega ~06:40):
  *   1. lesa slóðirnar af /lagersala
  *   2. fletta hverri upp í vörulistanum (getProductsV2, OPINBERT)
  *      eftir slug og lesa birgðir með storkaupBaseQty_
  *   3. skrifa eina línu á vöru í raw.lagersala_snapshot
  * public.lagersala_summary_v1() reiknar kortið á /kpi/dashboard.
  * Sjá core/sql/lagersala_v1.sql um af hverju birgðir en ekki sala.
+ *
+ * Lykillinn er (snap_date, web_sku), svo keyrsla innan dags YFIRSKRIFAR
+ * línu dagsins: hún er alltaf nýjasta staðan, og lokastaða dagsins
+ * verður sögulína hans. Upphafsstaðan (fyrsta skot vörunnar) haggast
+ * ekki. Tíðari keyrsla þurfti því enga breytingu á töflu né RPC.
  *
  * Flett er eftir SLUG, ekki vörunúmeri: slóðin er ekki á föstu
  * formi (`/vara/124724stk`, `/vara/bakki-1000ml-4x-75stk-123996`)
@@ -159,26 +164,45 @@ function syncLagersala_v1() {
   return out;
 }
 
+// Sami gluggi og safePoll_v2 (07:00–21:59): á nóttunni selst ekkert og
+// birgðir breytast ekki, svo 32 keyrslur skila engu. Handkeyrsla á
+// syncLagersala_v1 virðir ekki gluggann.
 function scheduledLagersalaSync_v1() {
+  const hour = Number(Utilities.formatDate(new Date(), 'Atlantic/Reykjavik', 'H'));
+  if (hour < 7 || hour > 21) {
+    Logger.log('[LAGERSALA][INFO] Utan glugga (07–21), sleppi keyrslu.');
+    return { skipped: true, hour: hour };
+  }
   try {
     return syncLagersala_v1();
   } catch (e) {
     Logger.log('[LAGERSALA][ERROR] ' + (e && e.message || e));
-    notifyTriggerFailure_('scheduledLagersalaSync_v1', e, {});
+    // notifyTriggerFailure_ takmarkar við 15 mín, sem er tíðni þessa
+    // triggers: brotin síða sendi þá allt að 60 pósta á dag. 3 klst eins og
+    // safePoll-vaktin. Script Property ALERT_MIN_INTERVAL_MINUTES__
+    // scheduledLagersalaSync_v1 trompar þetta ekki — hér er það fast.
+    sendOpsAlert_(
+      '[KPI ALERT] Trigger failure: scheduledLagersalaSync_v1',
+      'Lagersölukeyrslan mistókst.\n\nMessage: ' + (e && e.message || e) + '\n\nStack:\n' + (e && e.stack || ''),
+      'scheduledLagersalaSync_v1',
+      180
+    );
     throw e;
   }
 }
 
+// ATH: öfugt við hin install-föllin SKIPTIR þetta út trigger sem fyrir er í
+// stað þess að skila {created:false}. Apps Script gefur ekki upp tíðni
+// triggers, svo „er til" segir ekki hvort það er gamli daglegi triggerinn
+// (2026-10-12) eða sá nýi. Útkoman er alltaf nákvæmlega einn, á 15 mín.
 function installLagersalaSyncTrigger_v1() {
   var fn = 'scheduledLagersalaSync_v1';
-  var existing = ScriptApp.getProjectTriggers().filter(function (t) {
-    return t.getHandlerFunction() === fn;
+  var removed = 0;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === fn) { ScriptApp.deleteTrigger(t); removed++; }
   });
-  if (existing.length) {
-    Logger.log('[LAGERSALA][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
-    return { created: false, existing: existing.length };
-  }
-  ScriptApp.newTrigger(fn).timeBased().everyDays(1).atHour(6).nearMinute(40).create();
-  Logger.log('[LAGERSALA][INFO] Created trigger for ' + fn + ' (every 1 day at ~06:40)');
-  return { created: true, schedule: 'everyDays(1).atHour(6).nearMinute(40)' };
+  ScriptApp.newTrigger(fn).timeBased().everyMinutes(15).create();
+  Logger.log('[LAGERSALA][INFO] Trigger for ' + fn + ': every 15 min (07–21 gated in handler)' +
+             (removed ? ', replaced ' + removed : ''));
+  return { created: true, replaced: removed, schedule: 'everyMinutes(15)' };
 }

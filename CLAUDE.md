@@ -191,6 +191,7 @@ functions. Run it before trusting any list of what is scheduled.
 | `scheduledSearchConsoleSync_v1` | Daily ~05:30 | Search Console |
 | `scheduledKlaviyoProfileSync_v1` | Daily ~06:10 | Our data → Klaviyo profile properties |
 | `scheduledGa4Sync_v1` | Daily ~06:30 | GA4 |
+| `scheduledLagersalaSync_v1` | Every 15 min, runs 07:00–21:59 | Stock snapshot of storkaup.is/lagersala (`core/lagersala.js`) — remove when the sale ends |
 | `scheduledZeroPriceScan_v1` | Daily ~06:50 | Zero list-price scan |
 | `runDailySanityChecks_v1` | Daily ~07:40 | Cross-source validation |
 | `scheduledNewwebStatusSync_v2` | Daily ~11:30 & ~17:30 | Magento order status |
