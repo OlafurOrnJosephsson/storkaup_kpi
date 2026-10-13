@@ -356,9 +356,9 @@ page Embed), so each row carries its own date:
 
 | What | Value | Set |
 |---|---|---|
-| `data-storkaup-rev` — governs all bootstrap child files | `3b2ab53` | 2026-10-12 — lagersala card on `/kpi/dashboard`, the first card `dashboard.js` renders itself (`data-storkaup-card`) |
-| `dashboard-bootstrap.js` script-tag src | `3b2ab53` | 2026-10-12 (pin only — file unchanged since `30f0908`) |
-| `website-dashboard-bootstrap.js` script-tag src | `3b2ab53` | 2026-10-12 (pin only — file unchanged since `30f0908`) |
+| `data-storkaup-rev` — governs all bootstrap child files | `f7e006a` | 2026-10-12 — lagersala card on `/kpi/dashboard`, the first card `dashboard.js` renders itself (`data-storkaup-card`); its grid span is set in Designer, its layout follows its own width |
+| `dashboard-bootstrap.js` script-tag src | `f7e006a` | 2026-10-12 (pin only — file unchanged since `30f0908`) |
+| `website-dashboard-bootstrap.js` script-tag src | `f7e006a` | 2026-10-12 (pin only — file unchanged since `30f0908`) |
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
 | `activation.js`, **in page custom code** (independent) | `84372c6` | 2026-06-15, `/kpi/activation` only — read off the live page 2026-09-21 |
 | `portal.js` script-tag src, **inside the Embed** (independent) | `c037bbd` | 2026-09-22, `/kpi/voruportal` only |
