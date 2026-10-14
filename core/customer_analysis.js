@@ -22,9 +22,6 @@ function buildCustomerAnalysis() {
   const ss = SpreadsheetApp.openById(cfg.SHEETS.SALES_SUMMARIES.ID);
   const sh = getOrCreateCustomerAnalysisSheet_(ss);
 
-  // 1) Product category map (SKU → Level 1)
-  const productCategoryMap = loadProductCategoryMap_();
-
   // Product lookup for SKU names in Top Products
   const productLookup = typeof loadProductsLookup_ === 'function'
     ? (loadProductsLookup_(cfg) || {})
@@ -32,8 +29,14 @@ function buildCustomerAnalysis() {
 
   // 2) Gagnalög
   const bcCustomers    = loadBCCustomers_();                      // master BC viðskiptamenn
-  const bcInvoices     = loadBCInvoices_();                       // BC sölureikningar (samantekt)
-  const bcInvoiceLines = loadBCInvoiceLines_(productCategoryMap); // BC línur (SKU + flokkar)
+  // BC-reikningar og -línur eru EKKI lesnar hér (2026-10-14). Blöðin frusu
+  // 2026-05-25 og lásust aldrei rétt (loadSheetObjects_ staðlar ekki haus,
+  // schema.js notar ASCII-heiti). BC-reitir prófílanna eru reiknaðir lifandi í
+  // mart.v_customer_profile_enriched — core/sql/customer_profiles_live_bc_v1.sql.
+  // BC-dálkarnir hér fara því út sem 0; enginn les þá nema
+  // api.v_customer_segments (sjá RUNBOOK).
+  const bcInvoices     = {};
+  const bcInvoiceLines = {};
   const webMap         = loadNEWWEBLines_();                      // NEWWEB (Magento) sölulínur
   const magentoNames   = loadMagentoCompanyNameMap_();            // fallback nafn (vef-kúnnar án BC-master)
 
@@ -263,30 +266,6 @@ function buildCustomerAnalysisRow_(id, bcCust, bcInv, bcLines, web, productLooku
  * 📦 LOADER LAYER — byggt á STORKAUP_SCHEMA + CONFIG v2
  ************************************************************/
 
-/********* PRODUCTS → SKU → Level1 category *********/
-function loadProductCategoryMap_() {
-  const cfg = loadConfig_();
-  const svc = cfg.SHEETS.PRODUCTS;
-  const rows = loadSheetObjects_(svc.ID, svc.NAME);
-  if (!rows || !rows.length) return {};
-
-  const S = STORKAUP_SCHEMA.PRODUCTS;
-  const map = {};
-
-  rows.forEach(r => {
-    const rawSku = r[S.SKU];
-    if (!rawSku) return;
-
-    const sku = normalizeSkuGlobal_(rawSku);
-    const cat = r[S.LEVEL1] || '';
-    if (sku && cat) {
-      map[sku] = String(cat).trim();
-    }
-  });
-
-  return map;
-}
-
 /********* BC_CUSTOMERS (“Viðskiptamenn”) *********/
 function loadBCCustomers_() {
   const cfg = loadConfig_();
@@ -311,98 +290,6 @@ function loadBCCustomers_() {
       bcSalesSmoothed:toNum_(r[C.SALES]),
       modifiedDate:   parseDateSafe_(r[C.MODIFIED_DATE])
     };
-  });
-
-  return out;
-}
-
-/********* BC_INVOICES (“Bókaðir sölureikningar”) *********/
-function loadBCInvoices_() {
-  const cfg = loadConfig_();
-  const svc = cfg.SHEETS.BC_INVOICES;
-  const rows = loadSheetObjects_(svc.ID, svc.NAME);
-  if (!rows || !rows.length) return {};
-
-  const C = STORKAUP_SCHEMA.BC_INVOICES.COLUMNS;
-  const now = new Date();
-  const out = {};
-
-  rows.forEach(r => {
-    const id = String(r[C.COMPANY_ID] || '').trim();
-    if (!id) return;
-
-    if (!out[id]) {
-      out[id] = {
-        totalValueExcl: 0,
-        totalValueIncl: 0,
-        invoiceCount:   0,
-        lastOrderDate:  null,
-        orders90d:      0,
-        orders365d:     0
-      };
-    }
-
-    const c    = out[id];
-    const date = parseDateSafe_(r[C.BOOKING_DATE]) || parseDateSafe_(r[C.ORDER_DATE]);
-    const excl = toNum_(r[C.AMOUNT_EXCL]);
-    const incl = toNum_(r[C.AMOUNT_INCL]);
-
-    c.totalValueExcl += excl;
-    c.totalValueIncl += incl;
-    c.invoiceCount++;
-
-    if (date && (!c.lastOrderDate || date > c.lastOrderDate)) {
-      c.lastOrderDate = date;
-    }
-
-    if (date) {
-      const diff = (now - date) / 86400000;
-      if (diff <=  90) c.orders90d++;
-      if (diff <= 365) c.orders365d++;
-    }
-  });
-
-  return out;
-}
-
-/********* BC_LINES (“Bókaðar sölureikningslínur”) *********/
-function loadBCInvoiceLines_(PRODUCT_CATEGORY_MAP) {
-  const cfg = loadConfig_();
-  const svc = cfg.SHEETS.BC_LINES;
-  const rows = loadSheetObjects_(svc.ID, svc.NAME);
-  if (!rows || !rows.length) return {};
-
-  const C = STORKAUP_SCHEMA.BC_LINES.COLUMNS;
-  const out = {};
-
-  rows.forEach(r => {
-    const id = String(r[C.COMPANY_ID] || '').trim();
-    if (!id) return;
-
-    if (!out[id]) {
-      out[id] = {
-        totalQty:        0,
-        skuTotals:       {},
-        skuAmounts:      {},
-        categoryAmounts: {}
-      };
-    }
-
-    const c      = out[id];
-    const sku    = String(r[C.SKU] || '').trim();
-    const qty    = toNum_(r[C.QTY]);
-    const amount = toNum_(r[C.AMOUNT_EXCL]);
-
-    c.totalQty += qty;
-
-    if (sku) {
-      c.skuTotals[sku]  = (c.skuTotals[sku]  || 0) + qty;
-      c.skuAmounts[sku] = (c.skuAmounts[sku] || 0) + amount;
-
-      const baseSku = normalizeSkuGlobal_(sku);
-      const cat = PRODUCT_CATEGORY_MAP[baseSku] || 'UNKNOWN';
-      c.categoryAmounts[cat] = (c.categoryAmounts[cat] || 0) + amount;
-    }
   });
 
   return out;

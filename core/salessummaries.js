@@ -20,7 +20,7 @@ function buildAll_v6() {
   buildTopProducts_30d_(cfg, ctx);
   buildTopProducts_90d_(cfg, ctx);
   buildCategorySummary_v6_(cfg, ctx);
-  buildUomAnalysis_v6_(cfg, ctx);
+  buildUomAnalysis_v7_(cfg, ctx);
   buildSalesRepOnboarding_v1_(cfg);
 
   Logger.log('buildAll_v6() completed');
@@ -478,31 +478,6 @@ function buildOrderContext_(cfg) {
 /************************************************************
  * BC monthly totals: sum "UpphÃ¦Ã° meÃ° VSK" by "PÃ¶ntunardags."
  ************************************************************/
-function normalizeHeaderKey_(s) {
-  const str = String(s || '').trim().toLowerCase()
-    // Icelandic chars need explicit transliteration before stripping non-ascii.
-    .replace(/ð/g, 'd')
-    .replace(/þ/g, 'th')
-    .replace(/æ/g, 'ae')
-    .replace(/ö/g, 'o')
-    .replace(/Ã°/g, 'd')
-    .replace(/Ã¾/g, 'th')
-    .replace(/Ã¦/g, 'ae')
-    .replace(/Ã¶/g, 'o');
-
-  return str
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '');
-}
-
-
-function parseBcInvoiceDateFromRowByIndex_(row, iBookingDate, iOrderDate) {
-  const bookingVal = iBookingDate >= 0 ? row[iBookingDate] : null;
-  const orderVal = iOrderDate >= 0 ? row[iOrderDate] : null;
-  return parseOldwebDate_(bookingVal) || new Date(bookingVal) || parseOldwebDate_(orderVal) || new Date(orderVal);
-}
-
 function parseBcInvoiceDateFromObjectBySchema_(row) {
   return parseOldwebDate_(row.BOOKING_DATE) || new Date(row.BOOKING_DATE) ||
     parseOldwebDate_(row.ORDER_DATE) || new Date(row.ORDER_DATE) ||
@@ -604,12 +579,6 @@ function loadBCMonthlyWebStatsBySchema_(schemaKey, logTag) {
   }
 }
 
-function loadBCMonthlyTotals_() {
-  const invoices = loadBCMonthlyAmountBySchema_('BC_INVOICES', 'AMOUNT_INCL', 'BCMT');
-  const credits = loadBCMonthlyAmountBySchema_('BC_CREDIT_INVOICES', 'AMOUNT_INCL', 'BCMT-CR');
-  return mergeMonthlyMap_(mergeMonthlyMap_({}, invoices, 1), credits, -1);
-}
-
 function loadBCMonthlyTotalsComponents_() {
   const invoices = loadBCMonthlyAmountBySchema_('BC_INVOICES', 'AMOUNT_INCL', 'BCMT');
   const credits = loadBCMonthlyAmountBySchema_('BC_CREDIT_INVOICES', 'AMOUNT_INCL', 'BCMT-CR');
@@ -655,12 +624,6 @@ function loadBCMonthlyWebStatsComponents_() {
   const net = mergeMonthlyWebStats_(mergeMonthlyWebStats_({ orders: {}, revenueExcl: {} }, invoices, 1), credits, -1);
   return { invoices, credits, net };
 }
-function isWebFlagTruthy_(v) {
-  const s = String(v || '').trim().toLowerCase();
-  if (!s) return false;
-  return s === '1' || s === 'y' || s === 'yes' || s === 'true' || s === 't';
-}
-
 /************************************************************
  * DAILY (v6)
  ************************************************************/
@@ -711,7 +674,7 @@ function buildDaily_v6_(cfg, ctx) {
  ************************************************************/
 function buildWeekly_v6_(cfg, ctx) {
   const ss = SpreadsheetApp.openById(cfg.SHEETS.SALES_SUMMARIES.ID);
-  const sh = getOrCreateSheet_(ss, 'Sales - Weekly', ['Sales Æ’?" Weekly', 'Sales Æ’?" Weekly']);
+  const sh = getOrCreateSheet_(ss, 'Sales - Weekly', ['Sales â€” Weekly', 'Sales â€“ Weekly']);
   sh.clear();
 
   const products = loadProductsLookup_(cfg) || {};
@@ -1525,10 +1488,6 @@ function buildUomAnalysis_v7_(cfg, ctx) {
   sh.getRange(1, 1, Math.max(2, sh.getLastRow()), header.length).createFilter();
 
   Logger.log(`UOM Analysis built (${rows.length} rows).`);
-}
-
-function buildUomAnalysis_v6_(cfg, ctx) {
-  return buildUomAnalysis_v7_(cfg, ctx);
 }
 
 function extractBaseSku_(raw) {
