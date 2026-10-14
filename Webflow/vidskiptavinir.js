@@ -22,6 +22,7 @@
  *   get_customer_card_v1          lykiltölur, fjölskyldan saman, utan vefs/vefur aðskilið
  *   get_customer_products_v1      vörulisti með virku tímabili (í stað shopping_list_v2)
  *   get_customer_touch_history_v1 snertisaga úr flaggasögunni
+ *   get_my_staff_v1               innskráð netfang → sölumannsnafn (core/sql/kpi_staff_rep_v1.sql)
  * Fyrir (óbreytt):
  *   get_customer_last_orders, get_customer_priority_flags, get_active_sales_reps,
  *   set_customer_priority_flag, assign_customer_priority_rep,
@@ -834,15 +835,37 @@
     }).catch(function () { return ''; });
   }
 
+  // „Hver er ég?“ — api.get_my_staff_v1 (core/sql/kpi_staff_rep_v1.sql) les
+  // netfangið úr JWT-inu í gagnagrunninum og flettir upp tengdu sölumannsnafni
+  // í raw.kpi_staff_access. Falli kallið (SQL-ið ekki keyrt) er netfangið
+  // borið við email_norm sölumanna eins og áður.
+  function whoAmI() {
+    return rpc('get_my_staff_v1', {}).then(function (me) {
+      return { email: (me && me.email) || '', rep: (me && me.rep_name_norm) || '', name: (me && me.display_name) || '' };
+    }).catch(function () {
+      return authEmail().then(function (e) { return { email: e, rep: '', name: '', fallback: true }; });
+    });
+  }
+
   function loadReps() {
-    Promise.all([rpc('get_active_sales_reps', {}), authEmail()]).then(function (r) {
+    Promise.all([rpc('get_active_sales_reps', {}), whoAmI()]).then(function (r) {
       state.reps = dedupeReps(r[0]);
-      state.authEmail = r[1];
+      var me = r[1];
+      state.authEmail = me.email;
       // Sölumaður sem er skráður inn sem hann sjálfur er valinn sjálfkrafa,
       // og það vinnur vistað val (sem gæti verið frá öðrum á sömu tölvu).
       // Sameiginleg innskráning (t.d. umsokn@) finnur engan og handvalið gildir.
-      var me = r[1] && state.reps.filter(function (x) { return x.emails.indexOf(r[1]) !== -1; })[0];
-      if (me) { state.actor = me.name_norm; state.actorAuto = true; }
+      var rep = me.rep;
+      if (!rep && me.fallback && me.email) {
+        var hit = state.reps.filter(function (x) { return x.emails.indexOf(me.email) !== -1; })[0];
+        if (hit) rep = hit.name_norm;
+      }
+      if (rep) {
+        // Kanónískt form: tengt nafn getur verið storkaup*-afbrigðið.
+        var canon = state.reps.filter(function (x) { return repCanonicalKey(x.name_norm) === repCanonicalKey(rep); })[0];
+        state.actor = canon ? canon.name_norm : rep;
+        state.actorAuto = true;
+      }
       render();
     }).catch(function (e) { console.error('[vidskiptavinir] reps', e); });
   }
