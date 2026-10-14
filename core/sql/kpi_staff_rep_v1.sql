@@ -53,25 +53,50 @@ grant execute on function api.get_my_staff_v1() to authenticated, service_role;
 notify pgrst, 'reload schema';
 
 
--- ── 3. Tillaga að pörum (les aðeins) ────────────────────────────────
--- Ber fyrri hluta netfangs saman við sölumannsnafn án forskeyta
--- (solumadur/storkaup). Gisk, ekki sannleikur: „haddy“ ≠ „haraldur“.
--- Farðu yfir og leiðréttu í skrefi 4.
+-- ── 3. Gamli sölumannalistinn + tillaga að pörum (les aðeins) ───────
+-- raw.sales_reps_ref er endurbyggð úr Magento-notendum „Sölumaður - X“
+-- (CUSTOMERS-blaðið) og vefpöntunum. Hún hleypir aðeins @storkaup.is og
+-- @example.com netföngum í gegn (isAllowedRepEmailForRef_), svo @storkaup.is
+-- netfang þar er sterkasta vísbendingin. Nafnagisk er varaleið:
+-- „haddy“ ≠ „haraldur“.
+--
+-- 3a. Hver sölumaður, með netfangi ef það er raunverulegt, og hvort hann er
+--     þegar á aðgangslistanum (getur skráð sig inn) og tengdur:
+select r.name_norm,
+       nullif(r.email_norm, '')                               as netfang_i_magento,
+       a.email                                                as a_adgangslista,
+       a.rep_name_norm                                        as tengdur_vid,
+       r.notes
+from raw.sales_reps_ref r
+left join raw.kpi_staff_access a
+       on a.email = lower(r.email_norm) and r.email_norm like '%@storkaup.is'
+where coalesce(r.active, true)
+order by regexp_replace(regexp_replace(lower(r.name_norm), 'solumadur|storkaup', '', 'g'), '[^a-z0-9]', '', 'g'),
+         r.name_norm;
+
+-- 3b. Hver á aðgangslistanum, með tillögu: fyrst netfang sem stendur á
+--     sölumanni, annars nafnagisk.
 select a.email,
        a.note,
        a.rep_name_norm                                  as nuverandi,
-       (select r.name_norm
-        from raw.sales_reps_ref r
-        where coalesce(r.active, true)
-          and regexp_replace(regexp_replace(lower(r.name_norm), 'solumadur|storkaup', '', 'g'), '[^a-z0-9]', '', 'g')
-              = regexp_replace(lower(split_part(a.email, '@', 1)), '[^a-z0-9]', '', 'g')
-        order by (r.name_norm like 'solumadur%') desc
-        limit 1)                                        as tillaga
+       coalesce(
+         (select r.name_norm from raw.sales_reps_ref r
+          where coalesce(r.active, true) and lower(r.email_norm) = a.email
+          order by (r.name_norm like 'solumadur%') desc limit 1),
+         (select r.name_norm from raw.sales_reps_ref r
+          where coalesce(r.active, true)
+            and regexp_replace(regexp_replace(lower(r.name_norm), 'solumadur|storkaup', '', 'g'), '[^a-z0-9]', '', 'g')
+                = regexp_replace(lower(split_part(a.email, '@', 1)), '[^a-z0-9]', '', 'g')
+          order by (r.name_norm like 'solumadur%') desc limit 1)
+       )                                                as tillaga
 from raw.kpi_staff_access a
 order by a.email;
 
--- Allir virkir sölumenn, til að sjá hvaða nöfn eru í boði:
--- select name_norm, email_norm from api.get_active_sales_reps();
+-- ATH: sölumaður sem er EKKI á raw.kpi_staff_access getur ekki skráð sig
+-- inn á KPI-síðurnar yfirhöfuð. Bættu honum við með rep_name_norm í einu:
+--   insert into raw.kpi_staff_access (email, note, rep_name_norm)
+--   values ('nafn@storkaup.is', 'sölumaður', 'solumadurnafn')
+--   on conflict (email) do update set rep_name_norm = excluded.rep_name_norm;
 
 
 -- ── 4. Tengja (fylla út) ────────────────────────────────────────────
