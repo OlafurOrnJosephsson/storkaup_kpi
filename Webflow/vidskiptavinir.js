@@ -63,10 +63,17 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  // Handsmíðað: toLocaleString('is-IS') skilaði „316,529“ í Chrome á
+  // Windows (vantar íslensk staðargögn) — þúsundir með punkti, aukastafir
+  // með kommu, alltaf.
   function num(v, dec) {
     var n = Number(v);
     if (v == null || v === '' || isNaN(n)) return '–';
-    return n.toLocaleString('is-IS', { maximumFractionDigits: dec || 0, minimumFractionDigits: 0 });
+    var f = Math.pow(10, dec || 0);
+    n = Math.round(n * f) / f;
+    var parts = Math.abs(n).toString().split('.');
+    var int = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return (n < 0 ? '−' : '') + int + (parts[1] ? ',' + parts[1] : '');
   }
 
   function kt(v) {
@@ -159,7 +166,12 @@
       var key = repCanonicalKey(name);
       if (!key) return;
       var cur = byKey[key];
-      if (!cur || repChoiceScore(name) < repChoiceScore(cur.name_norm)) byKey[key] = { name_norm: name };
+      var email = String(r.email_norm || '').trim().toLowerCase();
+      if (!cur || repChoiceScore(name) < repChoiceScore(cur.name_norm)) {
+        byKey[key] = { name_norm: name, emails: (cur ? cur.emails : []).concat(email ? [email] : []) };
+      } else if (email) {
+        cur.emails.push(email);
+      }
     });
     return Object.keys(byKey).map(function (k) { return byKey[k]; })
       .sort(function (a, b) { return repLabel(a.name_norm).localeCompare(repLabel(b.name_norm), 'is'); });
@@ -222,6 +234,8 @@
     flagsOk: null,
     reps: [],
     actor: loadJson(ACTOR_KEY, ''),
+    actorAuto: false,       // true = fundið út frá innskráðu netfangi
+    authEmail: '',
     workChip: 'due',        // due | mine | all
     oppChip: 'lhfs',        // lhfs | never_ordered | lapsing | lapsed
     oppRows: {},            // chip -> röð | 'loading' | Error
@@ -359,7 +373,9 @@
       '<label class="skv-search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5550" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>' +
         '<span class="skv-sr">Leita að viðskiptavini</span>' +
         '<input id="skv-q" type="search" autocomplete="off" placeholder="Nafn, kennitala eða vörunúmer…" value="' + esc(state.query) + '"></label>' +
-      '<label class="skv-actor">Ég er <select class="skv-sel" data-act="actor">' + opts + '</select></label>' +
+      (state.actorAuto
+        ? '<span class="skv-actor" title="Fundið út frá innskráningu (' + esc(state.authEmail) + ')">Ég er <b style="color:var(--ink)">' + esc(repLabel(state.actor)) + '</b></span>'
+        : '<label class="skv-actor">Ég er <select class="skv-sel" data-act="actor">' + opts + '</select></label>') +
       '</div>';
   }
 
@@ -800,9 +816,34 @@
     }).catch(function (e) { console.error('[vidskiptavinir] flags', e); state.flagsOk = false; render(); });
   }
 
+  // Innskráð netfang úr JWT-inu sem auth.js geymir. Engin breyting á auth.js
+  // þarf: Supabase setur `email` í payload-ið.
+  function authEmail() {
+    var a = window.STORKAUP_AUTH;
+    if (!a || typeof a.getToken !== 'function') return Promise.resolve('');
+    return Promise.resolve(a.getToken()).then(function (tok) {
+      if (!tok) return '';
+      try {
+        var b = tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        while (b.length % 4) b += '=';
+        var json = decodeURIComponent(atob(b).split('').map(function (c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        return String(JSON.parse(json).email || '').toLowerCase();
+      } catch (e) { return ''; }
+    }).catch(function () { return ''; });
+  }
+
   function loadReps() {
-    rpc('get_active_sales_reps', {}).then(function (rows) {
-      state.reps = dedupeReps(rows); render();
+    Promise.all([rpc('get_active_sales_reps', {}), authEmail()]).then(function (r) {
+      state.reps = dedupeReps(r[0]);
+      state.authEmail = r[1];
+      // Sölumaður sem er skráður inn sem hann sjálfur er valinn sjálfkrafa,
+      // og það vinnur vistað val (sem gæti verið frá öðrum á sömu tölvu).
+      // Sameiginleg innskráning (t.d. umsokn@) finnur engan og handvalið gildir.
+      var me = r[1] && state.reps.filter(function (x) { return x.emails.indexOf(r[1]) !== -1; })[0];
+      if (me) { state.actor = me.name_norm; state.actorAuto = true; }
+      render();
     }).catch(function (e) { console.error('[vidskiptavinir] reps', e); });
   }
 
