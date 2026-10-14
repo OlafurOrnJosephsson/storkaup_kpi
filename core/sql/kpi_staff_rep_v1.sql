@@ -30,7 +30,15 @@ alter table raw.kpi_staff_access
 
 -- ── 2. „Hver er ég?“ ────────────────────────────────────────────────
 -- Netfangið kemur úr JWT-inu sem gagnagrunnurinn hefur sjálfur sannreynt,
--- ekki úr vafranum. Skilar null-reitum fyrir þá sem eru ekki á listanum.
+-- ekki úr vafranum.
+--
+-- LOGÍK, EKKI HANDAVINNA (2026-10-15). Sölumenn búa stundum til eigin
+-- Magento-reikninga og nefna þá á mismunandi vegu (bjossisolumadur,
+-- solumadurbjossi, storkauphaddy …). Svo:
+--   1. raw.kpi_staff_access.rep_name_norm ef það er handstillt — undantekningin;
+--   2. annars sölumannsreikningur í raw.sales_reps_ref með SAMA netfangi;
+--   3. svo kanónískt form: öll nöfn sem eru eins án solumadur/storkaup eru
+--      sama manneskja, og solumadur*-formið vinnur (það bera úthlutanirnar).
 create or replace function api.get_my_staff_v1()
 returns jsonb
 language sql
@@ -38,13 +46,39 @@ stable
 security definer
 set search_path to 'api', 'raw', 'public'
 as $function$
-  select jsonb_build_object(
-    'email',         x.email,
-    'rep_name_norm', nullif(btrim(s.rep_name_norm), ''),
-    'display_name',  nullif(btrim(s.display_name), '')
+  with me as (
+    select lower(btrim(coalesce(auth.jwt() ->> 'email', ''))) as email
+  ),
+  reps as (
+    select r.name_norm,
+           lower(btrim(r.email_norm)) as email_norm,
+           regexp_replace(regexp_replace(lower(r.name_norm), 'solumadur|storkaup', '', 'g'), '[^a-z0-9]', '', 'g') as person_key
+    from raw.sales_reps_ref r
+    where coalesce(r.active, true) and btrim(coalesce(r.name_norm, '')) <> ''
+  ),
+  picked as (
+    select coalesce(
+             nullif(btrim(s.rep_name_norm), ''),
+             -- 'vefur' er vefrásin, ekki manneskja (oj@ stendur á storkaupvefur).
+             (select r.name_norm from reps r
+              where r.email_norm = me.email and me.email <> '' and r.person_key not in ('', 'vefur')
+              order by (r.name_norm like 'solumadur%') desc, r.name_norm limit 1)
+           ) as rep,
+           nullif(btrim(s.display_name), '') as display_name,
+           me.email
+    from me
+    left join raw.kpi_staff_access s on s.email = me.email
   )
-  from (select lower(btrim(coalesce(auth.jwt() ->> 'email', ''))) as email) x
-  left join raw.kpi_staff_access s on s.email = x.email;
+  select jsonb_build_object(
+    'email',         p.email,
+    'rep_name_norm', coalesce(
+                       (select r2.name_norm from reps r1 join reps r2 on r2.person_key = r1.person_key
+                        where r1.name_norm = p.rep and r1.person_key <> ''
+                        order by (r2.name_norm like 'solumadur%') desc, r2.name_norm limit 1),
+                       p.rep),
+    'display_name',  p.display_name
+  )
+  from picked p;
 $function$;
 
 revoke all on function api.get_my_staff_v1() from public, anon;
@@ -99,9 +133,11 @@ order by a.email;
 --   on conflict (email) do update set rep_name_norm = excluded.rep_name_norm;
 
 
--- ── 4. Tengja (fylla út) ────────────────────────────────────────────
--- Notið solumadur*-formið þegar manneskja á tvö nöfn — það er formið sem
--- úthlutanir á forgangslistanum bera.
+-- ── 4. Handstilling (AÐEINS undantekningar) ─────────────────────────
+-- Skref 2 finnur sölumann sjálft út frá netfanginu. Handstillið aðeins þá
+-- sem logíkin nær ekki: netfang sem stendur ekki á neinum sölumannsreikningi,
+-- eða reikning sem bendir á rangan mann (oj@ stendur á `storkaupvefur`,
+-- vefrásinni). Notið solumadur*-formið.
 --
 -- update raw.kpi_staff_access set rep_name_norm = 'solumadurhaddy' where email = 'haddy@storkaup.is';
 -- update raw.kpi_staff_access set rep_name_norm = 'solumadurbjossi' where email = '...@storkaup.is';

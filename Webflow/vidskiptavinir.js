@@ -160,22 +160,49 @@
     var stripped = compact.replace(/solumadur/g, '').replace(/storkaup/g, '');
     return !!stripped && stripped !== 'vefur';
   }
+  // Sölumenn búa stundum til eigin Magento-reikninga og nefna þá á mismunandi
+  // vegu, svo LOGÍK ræður hver er sama manneskjan (2026-10-15):
+  //   * sömu nöfn án solumadur/storkaup → sama manneskja (bjossisolumadur =
+  //     solumadurbjossi), og sama @storkaup.is netfang → sama manneskja;
+  //   * manneskja er hópur með AÐ MINNSTA KOSTI EITT @storkaup.is netfang.
+  //     Sjálfsmíðuð afbrigði með example.com-innskráningu eingöngu
+  //     (solumadurbirgir, solumadurvefur) birtast ekki í völunum;
+  //   * vefrásin („vefur“) er ekki manneskja;
+  //   * solumadur*-formið vinnur — það bera úthlutanirnar á forgangslistanum.
+  // Gildi sem þegar er skráð en dettur út hér sýnir „(óvirkur)“ í valinu og
+  // glatast ekki.
   function dedupeReps(rows) {
-    var byKey = {};
+    var groups = {};          // person key -> { names: [], emails: [] }
+    var keyByEmail = {};
     (rows || []).forEach(function (r) {
       var name = String(r && r.name_norm || '').trim().toLowerCase();
       var key = repCanonicalKey(name);
-      if (!key) return;
-      var cur = byKey[key];
+      if (!key || key === 'vefur') return;
       var email = String(r.email_norm || '').trim().toLowerCase();
-      if (!cur || repChoiceScore(name) < repChoiceScore(cur.name_norm)) {
-        byKey[key] = { name_norm: name, emails: (cur ? cur.emails : []).concat(email ? [email] : []) };
-      } else if (email) {
-        cur.emails.push(email);
+      var staff = /@storkaup\.is$/.test(email) ? email : '';
+      if (staff && keyByEmail[staff] && keyByEmail[staff] !== key) {
+        // Sama netfang á tveimur lyklum: sameina í þann fyrri.
+        key = keyByEmail[staff];
       }
+      var g = groups[key] || (groups[key] = { names: [], emails: [] });
+      if (g.names.indexOf(name) === -1) g.names.push(name);
+      if (staff) { keyByEmail[staff] = key; if (g.emails.indexOf(staff) === -1) g.emails.push(staff); }
     });
-    return Object.keys(byKey).map(function (k) { return byKey[k]; })
+    return Object.keys(groups).map(function (k) {
+      var g = groups[k];
+      var best = g.names.slice().sort(function (a, b) {
+        return (repChoiceScore(a) - repChoiceScore(b)) || (a < b ? -1 : 1);
+      })[0];
+      return { name_norm: best, names: g.names, emails: g.emails };
+    }).filter(function (p) { return p.emails.length > 0; })
       .sort(function (a, b) { return repLabel(a.name_norm).localeCompare(repLabel(b.name_norm), 'is'); });
+  }
+
+  // Sama manneskja? Úthlutun getur borið annað afbrigði en það sem valið er.
+  function samePerson(a, b) {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return repCanonicalKey(a) === repCanonicalKey(b);
   }
 
   function loadJson(k, dflt) {
@@ -382,7 +409,7 @@
 
   function dueRows() {
     return Object.keys(state.flags).map(function (k) { return state.flags[k]; })
-      .filter(function (r) { return isDue(r) && (!state.actor || r.assigned_rep_name_norm === state.actor); });
+      .filter(function (r) { return isDue(r) && (!state.actor || samePerson(r.assigned_rep_name_norm, state.actor)); });
   }
 
   function renderTabs() {
@@ -449,7 +476,7 @@
     }
     var all = Object.keys(state.flags).map(function (k) { return state.flags[k]; })
       .filter(function (r) { return r.status === 'priority'; });
-    var mine = all.filter(function (r) { return !state.actor || r.assigned_rep_name_norm === state.actor; });
+    var mine = all.filter(function (r) { return !state.actor || samePerson(r.assigned_rep_name_norm, state.actor); });
     var rows = state.workChip === 'due' ? mine.filter(isDue) : state.workChip === 'mine' ? mine : all;
     rows = rows.slice().sort(function (a, b) {
       var fa = a.next_followup_at || '9999', fb = b.next_followup_at || '9999';
@@ -537,9 +564,9 @@
     var isPri = f && f.status === 'priority';
 
     var repOpts = '<option value="">Enginn sölumaður</option>' + state.reps.map(function (r) {
-      return '<option value="' + esc(r.name_norm) + '"' + (f && f.assigned_rep_name_norm === r.name_norm ? ' selected' : '') + '>' + esc(repLabel(r.name_norm)) + '</option>';
+      return '<option value="' + esc(r.name_norm) + '"' + (f && samePerson(f.assigned_rep_name_norm, r.name_norm) ? ' selected' : '') + '>' + esc(repLabel(r.name_norm)) + '</option>';
     }).join('');
-    if (f && f.assigned_rep_name_norm && !state.reps.some(function (r) { return r.name_norm === f.assigned_rep_name_norm; })) {
+    if (f && f.assigned_rep_name_norm && !state.reps.some(function (r) { return samePerson(r.name_norm, f.assigned_rep_name_norm); })) {
       repOpts += '<option value="' + esc(f.assigned_rep_name_norm) + '" selected>' + esc(repLabel(f.assigned_rep_name_norm)) + ' (óvirkur)</option>';
     }
 
