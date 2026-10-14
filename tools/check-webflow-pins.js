@@ -85,6 +85,7 @@ function parseExpected(md) {
     else if (/forgangslisti\.js/.test(line)) set('forgangslisti', sha);
     else if (/portal\.js/.test(line)) set('portal', sha);
     else if (/auth\.js/.test(line)) set('auth', sha);
+    else if (/vidskiptavinir\.js/.test(line)) set('vidskiptavinir', sha);
   });
   return out;
 }
@@ -187,7 +188,10 @@ const EMBED_PINNED = [
   // pinni eins og hinir, svo hann fer hér í gegnum sama ferskleikapróf. Ólíkt
   // embed-pinnunum SÉST hann á lykilorðasíðunni, svo lifandi gildið er lesið
   // og borið saman (row() notar live.srcs þegar það finnst).
-  { key: 'auth',          js: 'auth.js',          embed: null }
+  { key: 'auth',          js: 'auth.js',          embed: null },
+  // vidskiptavinir.js (2026-10-15): sameinud vidskiptavinasida, pinni i page
+  // head code eins og forgangslisti.js.
+  { key: 'vidskiptavinir', js: 'vidskiptavinir.js', embed: 'vidskiptavinir-embed.html' }
 ];
 
 function embedPin(spec, expectedFromMd) {

@@ -321,6 +321,7 @@ nothing to the dashboards. Change one, move that one.
 | `Webflow/forgangslisti.js` | page head code — mirrored in `forgangslisti-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/forgangslisti` |
 | `Webflow/portal.js` | `<script src>` inside the `portal-embed.html` Embed | `/kpi/voruportal` |
 | `Webflow/auth.js` | **site-wide head**, synchronous (no `defer`) — must run before every other script so its fetch wrapper is in place | all KPI pages; inert where `STORKAUP_CONFIG` is absent |
+| `Webflow/vidskiptavinir.js` | page head code — mirrored in `vidskiptavinir-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/vidskiptavinir-nyr` (staging, 2026-10-15); replaces `/kpi/vidskiptavinur`, then forgangslisti + activation |
 
 ⚠️ This list read "The exception is `Webflow/lookup.js`" until 2026-09-21 —
 singular, and wrong. `activation.js` had been pinned in page code on
@@ -365,6 +366,7 @@ page Embed), so each row carries its own date:
 | `portal.js` script-tag src, **inside the Embed** (independent) | `c037bbd` | 2026-09-22, `/kpi/voruportal` only |
 | `auth.js` script-tag src, **site-wide head** (independent) | `af0191a` | 2026-10-09 — sign-in for KPI pages + token on GAS calls, see RUNBOOK → KPI page sign-in |
 | `forgangslisti.js` script-tag src, **in page head code** (independent) | `72c872c` | 2026-09-21; on `/kpi/forgangslisti` since 2026-10-08 — read off view-source that day |
+| `vidskiptavinir.js` script-tag src, **in page head code** (independent) | `f248105` | 2026-10-15 — **not yet on the site**: staging page `/kpi/vidskiptavinir-nyr` to be created. Needs `core/sql/vidskiptavinir_v1.sql` applied |
 
 `2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —
 gained `?customer=` deep-link support, so the new forgangslisti's row link has
