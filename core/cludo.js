@@ -1281,6 +1281,7 @@ function cludoPurgeOrphanVaraDocs_v1(opts) {
  *
  *   cludoPurgeStaleVaraDocs_v1()      -> þurrkeyrsla + flipinn CLUDO_AFRIT
  *   cludoPurgeStaleVaraDocsEYDA_v1()  -> eyðir GAMALT_SLUG
+ *   cludoHreinsaVaraDocs_v1()         -> allt í einu, endurtekið (sjá neðar)
  ************************************************************/
 
 var CLUDO_STALE_SHEET_ = 'CLUDO_AFRIT';
@@ -1395,10 +1396,44 @@ function cludoPurgeGoneVaraDocsEYDA_v1() {
   return cludoPurgeStaleVaraDocs_v1({ confirm: true, includeGone: true });
 }
 
+/************************************************************
+ * 🧹 cludoHreinsaVaraDocs_v1 — ALLT Í EINNI AÐGERÐ
+ *
+ * Þurrkeyrsla + GAMALT_SLUG + HORFIN í einu falli, fyrir reglulega
+ * hreinsun á meðan vefurinn svarar 200 á gömul slug (~30 afrit á tveimur
+ * vikum, mælt 2026-10-14). Upptalning vísisins er óstöðug — hver umferð
+ * sér ~4.550 af ~4.830 — svo fallið telur upp aftur þar til umferð finnur
+ * ekkert til að eyða, mest CLUDO_CLEAN_PASSES_ sinnum.
+ *
+ * Öryggisnetin eru þau sömu og í EYDA-föllunum (sitemap-lágmark,
+ * VEF_EKKI_SITEMAP-vörn), en hámarkið er þrengra: við væntum tuga, ekki
+ * hundraða. Fari það yfir CLUDO_CLEAN_MAX_ er stoppað og CLUDO_AFRIT sýnir
+ * listann — þá á að skoða hann og keyra EYDA-föllin handvirkt.
+ * CLUDO_AFRIT geymir lista fyrstu umferðar.
+ ************************************************************/
+var CLUDO_CLEAN_MAX_ = 300;
+var CLUDO_CLEAN_PASSES_ = 3;
+
+function cludoHreinsaVaraDocs_v1() {
+  var total = 0, passes = 0;
+  for (var i = 1; i <= CLUDO_CLEAN_PASSES_; i++) {
+    Logger.log('════ Umferð ' + i + ' af ' + CLUDO_CLEAN_PASSES_ + ' ════');
+    var r = cludoPurgeStaleVaraDocs_v1({ confirm: true, includeGone: true,
+                                         max: CLUDO_CLEAN_MAX_, writeSheet: i === 1 });
+    passes = i;
+    total += r.deleted || 0;
+    if (!r.deleted) break;
+    Utilities.sleep(5000);  // gefa vísinum tíma til að sleppa eyddu skjölunum
+  }
+  Logger.log('✅ Samtals eytt: ' + total + ' í ' + passes + ' umferð(um).');
+  return { deleted: total, passes: passes };
+}
+
 function cludoPurgeStaleVaraDocs_v1(opts) {
   var o = opts || {};
   var confirm = o.confirm === true;
   var includeGone = o.includeGone === true;
+  var max = o.max || CLUDO_STALE_MAX_;
 
   var sitemap = fetchStorkaupSitemapUrls_();
   if (sitemap.length < CLUDO_SITEMAP_MIN_) {
@@ -1455,11 +1490,11 @@ function cludoPurgeStaleVaraDocs_v1(opts) {
   Logger.log('Dæmi                              : ' + old.slice(0, 3).join(', '));
   Logger.log('──────────────────────────────────────────────');
 
-  cludoWriteStaleSheet_(rows, idx);
+  if (o.writeSheet !== false) cludoWriteStaleSheet_(rows, idx);
 
-  if (targets.length > CLUDO_STALE_MAX_) {
+  if (targets.length > max) {
     throw new Error('❌ ÖRYGGISSTOPP — ' + targets.length + ' til eyðingar (hámark ' +
-      CLUDO_STALE_MAX_ + '). Væntum ~650; svona tala bendir á villu í samanburðinum. ' +
+      max + '). Svona tala bendir á villu í samanburðinum eða sitemap. ' +
       'Skoðaðu flipann ' + CLUDO_STALE_SHEET_ + '. Ekkert var eytt.');
   }
 
