@@ -126,42 +126,6 @@ function collectAllSkusFromSystems_() {
 }
 
 /************************************************************
- * ✔ Unified normalization wrapper
- ************************************************************/
-function normalizeSkuKey_(value) {
-  return normalizeSkuGlobal_(value);
-}
-
-
-/************************************************************
- * 🧩 LOGGING: PRODUCTS_MISSING
- *  - SKU sem Cludo finnur ekki / vantar category o.fl.
- ************************************************************/
-function logMissingProduct_(sku, reason, source) {
-  const cfg = loadConfig_();
-  const ss = SpreadsheetApp.openById(cfg.SHEETS.PRODUCTS.ID);
-
-  const missingName = 'PRODUCTS_MISSING';
-  let sh = ss.getSheetByName(missingName);
-
-  if (!sh) {
-    sh = ss.insertSheet(missingName);
-    sh.appendRow(['SKU', 'Reason', 'Last Checked', 'Source', 'Notes']);
-  }
-
-  const row = [
-    String(sku),
-    String(reason),
-    new Date(),
-    source || '',
-    ''
-  ];
-
-  sh.appendRow(row);
-}
-
-
-/************************************************************
  * 🧹 removeDuplicateSkusFromCludo — CONFIG v5
  * - Notar CONFIG.SHEETS.PRODUCTS
  * - Leading-zero safe
@@ -749,96 +713,6 @@ function menu_exportAfengirDrykkir() {
 
 
 /************************************************************
- * 🔬 Manual test function
- ************************************************************/
-
-function testSingleSku() {
-  const raw = '107228';
-  const sku = normalizeSkuGlobal_(raw);
-  Logger.log(`🔎 raw='${raw}' → normalized='${sku}'`);
-
-  const env = getCludoEnv_();
-  const res = fetchCludoResult_(sku, env);
-  Logger.log(JSON.stringify(res, null, 2));
-
-  // Debug: skoðum öll Fields sem Cludo skilar
-  const payload = {
-    query: sku, take: 1, skip: 0,
-    searchType: "phrase",
-    filters: { StorkaupSKU: [sku] }
-  };
-  const rawRes = UrlFetchApp.fetch(env.SEARCH_URL, {
-    method: "post",
-    contentType: "application/json",
-    headers: { Authorization: `SiteKey ${env.SITE_KEY}`, Accept: "application/json" },
-    muteHttpExceptions: true,
-    payload: JSON.stringify(payload)
-  });
-  const data = JSON.parse(rawRes.getContentText());
-  const fields = data?.TypedDocuments?.[0]?.Fields || {};
-  Logger.log('ALL FIELD KEYS: ' + JSON.stringify(Object.keys(fields)));
-  Logger.log('ALL FIELDS: ' + JSON.stringify(fields, null, 2));
-}
-
-
-
-function debugMissingBcSkus() {
-  // 1) Safna ALLA SKU úr NEWWEB + OLDWEB + BC_LINES
-  let all = collectAllSkusFromSystems_();
-
-  // Force → array
-  if (!Array.isArray(all)) {
-    all = Object.values(all);
-  }
-
-  Logger.log("Total SKUs from collector: " + all.length);
-
-  // 2) Sækja BC SKU
-  let bc = loadTableBySchema_('BC_LINES')
-    .map(r => normalizeSkuGlobal_(r.SKU))
-    .filter(Boolean);
-
-  if (!Array.isArray(bc)) {
-    bc = Object.values(bc);
-  }
-
-  const bcSet = new Set(bc);
-
-  // 3) Finna hvaða SKU vantar
-  const missing = all.filter(sku => !bcSet.has(sku));
-
-  Logger.log("Missing SKU count: " + missing.length);
-  Logger.log(JSON.stringify(missing.slice(0,150), null, 2));  // preview
-}
-function testCollectorType() {
-  const res = collectAllSkusFromSystems_();
-  Logger.log("TYPE: " + typeof res);
-  Logger.log("IS ARRAY: " + Array.isArray(res));
-  Logger.log(JSON.stringify(res, null, 2).slice(0,500));
-}
-
-function testCollectorSteps() {
-
-  const newweb = loadTableBySchema_('NEWWEB');
-  Logger.log("NEWWEB type = " + typeof newweb + " | array? " + Array.isArray(newweb));
-  Logger.log("NEWWEB length = " + (Array.isArray(newweb) ? newweb.length : Object.keys(newweb).length));
-
-  const oldweb = loadTableBySchema_('OLDWEB');
-  Logger.log("OLDWEB type = " + typeof oldweb + " | array? " + Array.isArray(oldweb));
-  Logger.log("OLDWEB length = " + (Array.isArray(oldweb) ? oldweb.length : Object.keys(oldweb).length));
-
-  const bc = loadTableBySchema_('BC_LINES');
-  Logger.log("BC_LINES type = " + typeof bc + " | array? " + Array.isArray(bc));
-  Logger.log("BC_LINES length = " + (Array.isArray(bc) ? bc.length : Object.keys(bc).length));
-}
-function debugCollectorRaw() {
-  const result = collectAllSkusFromSystems_();
-  Logger.log("Collector returned type = " + typeof result + " | Array? " + Array.isArray(result));
-  Logger.log("Length = " + (Array.isArray(result) ? result.length : JSON.stringify(result).length));
-}
-
-
-/************************************************************
  * 🧹 CLUDO INDEX CLEANUP — foreldralausar /vara/ slóðir
  *
  * Vandinn (mælt 2026-09-16): storkaup.is skilar HTTP 200 fyrir hvaða
@@ -854,20 +728,17 @@ function debugCollectorRaw() {
  * Útilokunarregla í Cludo (URL regex) stöðvar FRAMTÍÐARSKRIÐ en eyðir
  * ekki skjölunum sem eru þegar inni. Test search á 104886 skilaði enn
  * tveim niðurstöðum eftir skrið, og afritið raðaðist HÆRRA (19.00 á
- * móti 6.72). Þess vegna þarf þetta fall.
- *
- * Listinn er reiknaður úr sitemap-inu í hvert skipti, ekki harðkóðaður,
- * svo hann eldist ekki þegar vörur bætast við.
+ * móti 6.72). Einingarafritunum (709) var eytt 2026-09-16 með falli sem
+ * reiknaði þau úr sitemap-inu; það og greiningarföllin sem fundu
+ * eyðingarleiðina voru fjarlægð 2026-10-14 — sjá git-sögu. Hreinsunin
+ * sem gildir núna er cludoHreinsaVaraDocs_v1 hér að neðan, og hún nær
+ * einingarafritum líka (cludoUrlSku_ les vörunúmerið óháð endingu).
  *
  * Rétta lagfæringin er á vefnum (301 á kanóníska slóð + alvöru 404).
  * Þetta er þrif á afleiðingunni, ekki orsökinni.
  ************************************************************/
 
 var STORKAUP_SITEMAP_URL_ = 'https://www.storkaup.is/sitemap.xml';
-
-// Söluendingar sem vefurinn hengir aftan á SKU-slóð. Bæta við hér ef
-// nýjar einingar birtast — sjá storkaupParentSku_ í storkaup_pricing.js.
-var STORKAUP_UNIT_SUFFIXES_ = ['kassi', 'stk', 'bretti'];
 
 
 /************************************************************
@@ -954,41 +825,6 @@ function fetchStorkaupSitemapUrls_() {
 
 
 /************************************************************
- * 🧮 cludoBuildOrphanUrls_ — afritaslóðirnar sem eiga að hverfa
- *
- * Aðeins vörur þar sem sitemap-slóðin endar á HREINU vörunúmeri eiga
- * afrit. Fyrir hinar (3.687 af 4.477) er einingarslóðin sjálf rétta
- * slóðin og má alls ekki snerta — það var gildran sem gerði blanket
- * regexið `kassi$` óhæft.
- *
- * Öryggisnetið neðst er ekki skraut: það staðfestir að enginn
- * reiknaður listi skarist við sitemap-ið áður en nokkru er eytt.
- ************************************************************/
-function cludoBuildOrphanUrls_(sitemapUrls) {
-  const canonical = {};
-  sitemapUrls.forEach(function (u) { canonical[u] = true; });
-
-  const orphans = [];
-  sitemapUrls.forEach(function (u) {
-    if (!/-\d+$/.test(u)) return;              // endar á einingu -> engin afrit
-    STORKAUP_UNIT_SUFFIXES_.forEach(function (sfx) { orphans.push(u + sfx); });
-  });
-
-  const collision = orphans.filter(function (u) { return canonical[u]; });
-  if (collision.length) {
-    throw new Error(
-      '❌ ÖRYGGISSTOPP — ' + collision.length + ' reiknaðar afritaslóðir eru ' +
-      'í sitemap-inu og eru því RÉTTAR slóðir. Ekkert var eytt.\n' +
-      collision.slice(0, 5).join('\n')
-    );
-  }
-
-  Logger.log('🧮 ' + orphans.length + ' afritaslóðir reiknaðar (0 árekstrar við sitemap)');
-  return orphans;
-}
-
-
-/************************************************************
  * 🗑️ cludoBulkDeleteUrls_ — POST .../documents/bulk-delete
  *
  * Síar á Url með Eq og mörgum gildum (Cludo hefur engan In-virkja;
@@ -1051,206 +887,9 @@ function cludoBulkDeleteUrls_(urls, env) {
 
 
 /************************************************************
- * ✅ cludoPurgeOrphanVaraDocs_v1 — AÐALFALLIÐ, keyrt handvirkt
- *
- * Sjálfgefið ÞURRKEYRSLA. Ekkert er eytt fyrr en confirm:true er sent.
- *
- *   cludoPurgeOrphanVaraDocs_v1()                  -> skýrsla, engin eyðing
- *   cludoPurgeOrphanVaraDocs_v1({confirm:true})    -> eyðir
- *
- * Ekkert _ í endann viljandi: fallið á að sjást í fallavalmyndinni.
- ************************************************************/
-/************************************************************
- * 🔬 cludoDebugDeleteOne_v1 — hvers vegna hitti sían ekkert?
- *
- * Fyrsta raunkeyrslan skilaði 200 á öllum 43 lotum en
- * "No documents matching the given filters" og Eytt: 0. Sían keyrði
- * sem sagt en `Url`-gildið í vísinum er ekki nákvæmlega strengurinn
- * sem við sendum.
- *
- * Þetta fall giskar ekki: það les skjalið gegnum leitar-API-ið (SiteKey,
- * sama leið og fetchCludoResult_ notar) og prentar Id og Url EINS OG ÞAU
- * ERU GEYMD. Svo prófar það báðar eyðingarleiðirnar á þeirri einu slóð:
- *
- *   1) bulk-delete með Url-síu
- *   2) DELETE .../documents?documentId=<Id>
- *
- * Skotmarkið er alltaf AFRIT (slóð sem endar á einingu og er ekki í
- * sitemap) — aldrei kanóníska síðan.
- ************************************************************/
-function cludoDebugDeleteOne_v1() {
-  const TARGET = 'https://www.storkaup.is/vara/glerhreinsir-clear-2x-5l-104886kassi';
-  const SKU = '104886';
-
-  if (!/(kassi|stk|bretti)$/.test(TARGET)) {
-    throw new Error('❌ Skotmarkið lítur ekki út fyrir að vera afrit — hætt við.');
-  }
-
-  // --- 1) Lesa skjalið eins og það er geymt ---
-  const env = getCludoEnv_();
-  const res = UrlFetchApp.fetch(env.SEARCH_URL, {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { Authorization: 'SiteKey ' + env.SITE_KEY, Accept: 'application/json' },
-    muteHttpExceptions: true,
-    payload: JSON.stringify({ query: SKU, take: 10, skip: 0 })
-  });
-
-  const data = safeJsonParse_(res.getContentText()) || {};
-  const docs = data.TypedDocuments || [];
-  Logger.log('🔎 leit á ' + SKU + ' → ' + docs.length + ' skjöl (HTTP ' + res.getResponseCode() + ')');
-
-  let targetId = '';
-  docs.forEach(function (d, i) {
-    const f = d.Fields || {};
-    const u = (f.Url && f.Url.Value) || '';
-    // Id getur legið á skjalinu sjálfu EÐA sem reitur — prenta bæði.
-    const idTop = d.Id || d.id || '';
-    const idFld = (f.Id && f.Id.Value) || '';
-    Logger.log('  [' + i + '] Url = ' + JSON.stringify(u));
-    Logger.log('       Id(doc) = ' + JSON.stringify(idTop) + ' | Id(field) = ' + JSON.stringify(idFld));
-    if (i === 0) Logger.log('       REITIR: ' + JSON.stringify(Object.keys(f)));
-    if (u === TARGET) targetId = idTop || idFld || u;
-  });
-
-  if (!targetId) {
-    Logger.log('⚠️ Fann ekki ' + TARGET + ' í leitarniðurstöðum — kannski þegar eytt.');
-    return { found: false };
-  }
-
-  const adm = getCludoAdminEnv_();
-
-  // --- 2) bulk-delete með Url-síu, EIN slóð ---
-  const bulk = UrlFetchApp.fetch(adm.BASE + '/documents/bulk-delete', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { Authorization: adm.AUTH, Accept: 'application/json' },
-    muteHttpExceptions: true,
-    payload: JSON.stringify({ Url: { operator: 'Eq', values: [TARGET] } })
-  });
-  Logger.log('🧪 bulk-delete → HTTP ' + bulk.getResponseCode() + ' – ' + bulk.getContentText());
-
-  // --- 3) single delete á documentId ---
-  const single = UrlFetchApp.fetch(
-    adm.BASE + '/documents?documentId=' + encodeURIComponent(targetId), {
-      method: 'delete',
-      headers: { Authorization: adm.AUTH, Accept: 'application/json' },
-      muteHttpExceptions: true
-    });
-  Logger.log('🧪 single delete (' + targetId + ') → HTTP ' + single.getResponseCode() +
-             ' – ' + single.getContentText());
-
-  return { found: true, targetId: targetId };
-}
-
-
-/************************************************************
- * 🔬 cludoDebugEnumerate_v1 — ræður leitar-API-ið við upptalningu?
- *
- * Eftir fyrstu hreinsun fór Page Inventory úr 5.858 í 5.149 — 709
- * fjarlægð en ~650 enn umfram 4.475 kanónískar vörur. Afgangurinn er
- * flokkur 2 (gömul slug eftir endurnefningu), sem er EKKI reiknanlegur
- * úr sitemap-inu: gömlu slugin eru aðeins til í vísinum.
- *
- * Til að ná þeim þarf að telja upp allt sem er indexað og bera saman
- * við sitemap-ið. Spurningin er hvort API-ið leyfi djúpt skip — margar
- * leitarvélar loka á skip yfir ~1.000. Þetta fall eyðir ENGU; það
- * mælir bara hvað er hægt.
- ************************************************************/
-function cludoDebugEnumerate_v1() {
-  const env = getCludoEnv_();
-
-  function probe_(skip, take) {
-    const res = UrlFetchApp.fetch(env.SEARCH_URL, {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { Authorization: 'SiteKey ' + env.SITE_KEY, Accept: 'application/json' },
-      muteHttpExceptions: true,
-      payload: JSON.stringify({ query: '', take: take, skip: skip })
-    });
-    const code = res.getResponseCode();
-    const body = res.getContentText();
-    const data = safeJsonParse_(body) || {};
-    const docs = data.TypedDocuments || [];
-    return {
-      code: code,
-      count: docs.length,
-      total: data.TotalDocument || data.TotalDocuments || data.Total || null,
-      first: docs.length ? ((docs[0].Fields && docs[0].Fields.Url && docs[0].Fields.Url.Value) || '') : '',
-      keys: Object.keys(data),
-      raw: body.slice(0, 200)
-    };
-  }
-
-  const p0 = probe_(0, 100);
-  Logger.log('skip=0    take=100 → HTTP ' + p0.code + ' | skjöl: ' + p0.count +
-             ' | heild: ' + p0.total);
-  Logger.log('  svarlyklar: ' + JSON.stringify(p0.keys));
-  if (!p0.count) Logger.log('  hrátt: ' + p0.raw);
-  else Logger.log('  fyrsta: ' + p0.first);
-
-  [100, 1000, 3000, 5000].forEach(function (s) {
-    const p = probe_(s, 100);
-    Logger.log('skip=' + s + ' take=100 → HTTP ' + p.code + ' | skjöl: ' + p.count +
-               (p.first ? ' | fyrsta: ' + p.first : ''));
-    Utilities.sleep(300);
-  });
-
-  return { total: p0.total };
-}
-
-
-/************************************************************
- * ⚠️ cludoPurgeOrphanVaraDocsEYDA_v1 — RAUNKEYRSLAN
- *
- * Fallavalmyndin í Apps Script ritlinum getur ekki sent breytur, svo
- * confirm:true þarf sitt eigið fall til að sjást þar. Nafnið er með
- * EYDA í miðjunni svo það sé ekki hægt að ruglast á því og þurrkeyrslunni
- * í valmyndinni.
- ************************************************************/
-function cludoPurgeOrphanVaraDocsEYDA_v1() {
-  return cludoPurgeOrphanVaraDocs_v1({ confirm: true });
-}
-
-
-function cludoPurgeOrphanVaraDocs_v1(opts) {
-  const o = opts || {};
-  const confirm = o.confirm === true;
-
-  const sitemap = fetchStorkaupSitemapUrls_();
-  const orphans = cludoBuildOrphanUrls_(sitemap);
-
-  Logger.log('──────────────────────────────────────────────');
-  Logger.log('Kanónískar vöruslóðir (mega vera)  : ' + sitemap.length);
-  Logger.log('Afritaslóðir til eyðingar          : ' + orphans.length);
-  Logger.log('Dæmi                               : ' + orphans.slice(0, 3).join(', '));
-  Logger.log('──────────────────────────────────────────────');
-
-  if (!confirm) {
-    Logger.log('🧪 ÞURRKEYRSLA — engu eytt.');
-    Logger.log('   Keyrðu cludoPurgeOrphanVaraDocs_v1({confirm:true}) til að eyða.');
-    return { dryRun: true, canonical: sitemap.length, candidates: orphans.length };
-  }
-
-  const env = getCludoAdminEnv_();
-  const r = cludoBulkDeleteUrls_(orphans, env);
-
-  Logger.log('🗑️ Eytt: ' + r.deleted + ' | mistókst/fannst ekki: ' + r.failed);
-  Logger.log('   Staðfestu í Page Inventory: /vara skal fara úr ~5.858 í ~4.480.');
-  return {
-    dryRun: false,
-    canonical: sitemap.length,
-    candidates: orphans.length,
-    deleted: r.deleted,
-    failed: r.failed
-  };
-}
-
-
-/************************************************************
  * 🧹 SEINNI UMFERÐ — gömul slug eftir endurnefningu
  *
- * Fyrsta hreinsunin (cludoPurgeOrphanVaraDocs_v1) náði einingarafritunum,
+ * Fyrsta hreinsunin (2026-09-16) náði einingarafritunum,
  * sem eru reiknanleg úr sitemap-inu. Page Inventory fór úr 5.858 í 5.149
  * og ~650 stóðu eftir. Það eru slóðir sem vefurinn gaf vörunni ÁÐUR en
  * hún var endurnefnd — routerinn les aðeins vörunúmerið aftast, svo
@@ -1280,8 +919,11 @@ function cludoPurgeOrphanVaraDocs_v1(opts) {
  * sem var sendur var ekki sá sem var geymdur.
  *
  *   cludoPurgeStaleVaraDocs_v1()      -> þurrkeyrsla + flipinn CLUDO_AFRIT
- *   cludoPurgeStaleVaraDocsEYDA_v1()  -> eyðir GAMALT_SLUG
- *   cludoHreinsaVaraDocs_v1()         -> allt í einu, endurtekið (sjá neðar)
+ *   cludoHreinsaVaraDocs_v1()         -> eyðir GAMALT_SLUG + HORFIN, endurtekið
+ *   cludoPurgeGoneVaraDocsEYDA_v1()   -> sama, ein umferð, hámark 1.500
+ *
+ * Þurrkeyrslan og cludoHreinsaVaraDocs_v1 eru í valmyndinni:
+ * Stórkaup KPI → Cludo.
  ************************************************************/
 
 var CLUDO_STALE_SHEET_ = 'CLUDO_AFRIT';
@@ -1295,7 +937,7 @@ function cludoNormUrl_(u) {
 /** Vörunúmerið aftast í /vara/-slóð, án einingarendingar.
  *  .../glerhreinsir-clear-2x-5l-104886kassi -> 104886 */
 function cludoUrlSku_(u) {
-  // HVAÐA stafir sem er aftan við númerið, ekki bara STORKAUP_UNIT_SUFFIXES_:
+  // HVAÐA stafir sem er aftan við númerið, ekki bara kassi/stk/bretti:
   // 9003652 er í sitemap sem `...-9003652kg` (mælt 2026-09-28). Með
   // listanum einum fékk sú slóð ekkert vörunúmer, og gamla slóðin hennar
   // lenti í HORFIN í stað GAMALT_SLUG.
@@ -1383,10 +1025,6 @@ function cludoEnumerateVaraUrls_() {
   return { urls: vara, seen: n, total: total, complete: complete };
 }
 
-function cludoPurgeStaleVaraDocsEYDA_v1() {
-  return cludoPurgeStaleVaraDocs_v1({ confirm: true });
-}
-
 /** Eyðir LÍKA HORFIN. Sannreynt 2026-09-28 á átta sýnum: öll átta utan
  *  vörulistans (getProductsV2), fjögur Archived í Plytix og fjögur
  *  Completed — síðurnar svara samt 200 af því routerinn les bara
@@ -1408,7 +1046,8 @@ function cludoPurgeGoneVaraDocsEYDA_v1() {
  * Öryggisnetin eru þau sömu og í EYDA-föllunum (sitemap-lágmark,
  * VEF_EKKI_SITEMAP-vörn), en hámarkið er þrengra: við væntum tuga, ekki
  * hundraða. Fari það yfir CLUDO_CLEAN_MAX_ er stoppað og CLUDO_AFRIT sýnir
- * listann — þá á að skoða hann og keyra EYDA-föllin handvirkt.
+ * listann — þá á að skoða hann og keyra cludoPurgeGoneVaraDocsEYDA_v1
+ * handvirkt úr ritlinum.
  * CLUDO_AFRIT geymir lista fyrstu umferðar.
  ************************************************************/
 var CLUDO_CLEAN_MAX_ = 300;
@@ -1500,7 +1139,7 @@ function cludoPurgeStaleVaraDocs_v1(opts) {
 
   if (!confirm) {
     Logger.log('🧪 ÞURRKEYRSLA — engu eytt. Skoðaðu flipann ' + CLUDO_STALE_SHEET_ +
-               ' og keyrðu svo cludoPurgeStaleVaraDocsEYDA_v1().');
+               ' og keyrðu svo cludoHreinsaVaraDocs_v1().');
     return { dryRun: true, indexed: idx.urls.length, complete: idx.complete,
              oldSlug: old.length, gone: gone.length };
   }

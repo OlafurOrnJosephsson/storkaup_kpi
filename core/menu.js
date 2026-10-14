@@ -82,6 +82,13 @@ function onOpen() {
         .addItem('Merkja síðasta útflutning sem Flutt inn', 'menu_markPimExportImported')
     )
     .addSubMenu(
+      ui.createMenu('Cludo')
+        .addItem('Hreinsa leitarvísi (gömul slug + horfnar vörur)', 'menu_cludoHreinsaVaraDocs')
+        .addItem('Hreinsun — þurrkeyrsla (skrifar CLUDO_AFRIT, eyðir engu)', 'menu_cludoHreinsaThurrkeyrsla')
+        .addSeparator()
+        .addItem('Keyra Cludo/vörulista sync núna', 'menu_runCludoSync')
+    )
+    .addSubMenu(
       ui.createMenu('Tools')
         .addItem('Test Config', 'menu_testConfig')
         .addItem('Clear Magento Token Cache', 'menu_clearMagentoTokenCache')
@@ -684,6 +691,26 @@ function menu_runKlaviyoSync() {
   }
   var out = scheduledKlaviyoSync_v1();
   toast_('Klaviyo sync complete. Uploaded: ' + (out && out.uploaded || 0), 'KPI CORE');
+}
+
+function menu_cludoHreinsaVaraDocs() {
+  toast_('🧹 Hreinsa Cludo-vísinn (tekur 1–3 mín)...', 'KPI CORE');
+  var out = cludoHreinsaVaraDocs_v1();
+  toast_('Cludo: ' + out.deleted + ' skjölum eytt í ' + out.passes + ' umferð(um).', 'KPI CORE');
+}
+
+function menu_cludoHreinsaThurrkeyrsla() {
+  toast_('🧪 Ber Cludo-vísinn saman við sitemap...', 'KPI CORE');
+  var out = cludoPurgeStaleVaraDocs_v1();
+  toast_('Gömul slug: ' + out.oldSlug + ' · horfnar: ' + out.gone +
+         ' — sjá flipann CLUDO_AFRIT. Engu eytt.', 'KPI CORE');
+}
+
+function menu_runCludoSync() {
+  toast_('Keyri Cludo/vörulista sync...', 'KPI CORE');
+  var out = scheduledCludoSync_v1();
+  toast_('Cludo sync: ' + (out && (out.skipped ? 'sleppt (' + out.reason + ')' : out.cludoSync) || 'lokið'),
+         'KPI CORE');
 }
 
 function menu_diagnoseBcDropHeaders() {
