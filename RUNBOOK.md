@@ -278,6 +278,32 @@ order by 1,3;
   `core/salessummaries.js` at `raw.bc_invoices_raw` via service_role. Do NOT
   reinstate the manual paste — that is assessment item 10 (brittle manual step).
 
+### Fixed 2026-10-14: customer-profile BC fields were empty — now computed live
+- Symptom (before): on `/kpi/vidskiptavinur` every customer was LHFS `Very High`,
+  primary category `Rekstrarvörur`, BC order count 0. Measured: 0 of 6,387 rows
+  had LHFS > 0 or `total_bc_orders` > 0.
+- Cause: the BC part of `raw.customer_analysis_raw` never loaded. The GAS build
+  (`core/customer_analysis.js`) reads BC from Google Sheets via
+  `loadSheetObjects_`, which does not normalize headers. `core/schema.js` has
+  used ASCII header names since 2026-02-26, and the sheets carry Icelandic ones,
+  so every lookup missed. The sheets also froze on 2026-05-25. With every score
+  at 0, `cume_dist` ranked them all at 1.0, which is the "Very High" band.
+- Fix: [core/sql/customer_profiles_live_bc_v1.sql](core/sql/customer_profiles_live_bc_v1.sql).
+  `mart.v_customer_profile_enriched` now computes the BC fields, LHFS,
+  recommended action, potential score and primary category from `raw.bc_*_raw`.
+  Columns are unchanged, so the views above it and Webflow need no change.
+  - LHFS is BC sales **outside the web** over the last 365 d, in m.kr. incl.
+    VAT, ×1.5 if the customer has never ordered on the web.
+  - `api.v_customer_profiles_labeled` ranks LHFS among positive scores only.
+  - Internal accounts are excluded (`internal_accounts` CTE).
+  - After the fix: 6,666 rows, 2,097 with LHFS > 0, 210 `Very High`.
+- **Freshness follows the BC import** (`processBcDrop_v1`, manual). A skipped
+  month shows up as falling scores, not as an error.
+- Still on the frozen path: `api.v_customer_segments` (solution pages) reads
+  `primary_category` and LHFS straight from `customer_analysis_raw`.
+- The view definitions above `enriched` were not in the repo before this. See
+  [core/sql/customer_profiles_views_live.sql](core/sql/customer_profiles_views_live.sql).
+
 ### Issue: OLDWEB `revenue_excl` is not VAT-exclusive revenue — never use it
 - Symptom: any web trend spanning the July 2025 headless cutover shows a ~30%
   collapse in revenue and AOV in Sept 2025 that never happened. On
