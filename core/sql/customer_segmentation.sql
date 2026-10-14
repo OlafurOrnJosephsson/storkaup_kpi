@@ -16,6 +16,9 @@
 create schema if not exists api;
 
 -- 1) Behavior-first customer segments (no ISAT dependency)
+-- To apply only this view (no column change, so no drop needed):
+--   run this `create or replace view api.v_customer_segments … ;` statement,
+--   then `select public.refresh_solution_page_marts();`
 -- Recency + BC order counts are computed live from raw.bc_invoices_raw:
 -- the rollup columns in raw.customer_analysis_raw are unreliable
 -- (last_bc_order_date null and orders_bc_365d zero for all rows — same
@@ -67,7 +70,14 @@ base as (
       when bc.last_bc_order_date is null then 999
       else greatest(0, (current_date - bc.last_bc_order_date))
     end as recency_days
-  from raw.customer_analysis_raw ca
+  -- 2026-10-14: was raw.customer_analysis_raw. Its primary_category was
+  -- 'Rekstrarvörur' and LHFS/potential 0 on EVERY row (the BC sheets never
+  -- loaded), so all segment rules keyed on category matched office_core_buyers.
+  -- mart.v_customer_profile_enriched computes those live from bc_*_raw
+  -- (customer_profiles_live_bc_v1.sql), adds BC-only customers and drops
+  -- internal accounts. Same column names, so nothing below changes.
+  -- primary_category is null when there are no BC lines in 365 d -> 'Unknown'.
+  from mart.v_customer_profile_enriched ca
   left join bc_rollup bc on bc.customer_id = trim(both from ca.customer_id)
 ),
 seg as (

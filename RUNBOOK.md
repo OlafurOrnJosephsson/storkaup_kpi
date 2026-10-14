@@ -299,8 +299,13 @@ order by 1,3;
   - After the fix: 6,666 rows, 2,097 with LHFS > 0, 210 `Very High`.
 - **Freshness follows the BC import** (`processBcDrop_v1`, manual). A skipped
   month shows up as falling scores, not as an error.
-- Still on the frozen path: `api.v_customer_segments` (solution pages) reads
-  `primary_category` and LHFS straight from `customer_analysis_raw`.
+- `api.v_customer_segments` (solution pages) reads the same live view, done the
+  same day ([core/sql/customer_segmentation.sql](core/sql/customer_segmentation.sql)).
+  Category segments split for the first time: office 538, hygiene 438,
+  coffee room 286. Before, everything that reached the category rules was
+  `office_core_buyers`. `at_risk_declining` takes 4,773 of 6,662 rows because
+  it is any customer with no BC invoice in 120 d, long-dormant accounts
+  included. That rule did not change, but it is wide.
 - The view definitions above `enriched` were not in the repo before this. See
   [core/sql/customer_profiles_views_live.sql](core/sql/customer_profiles_views_live.sql).
 
