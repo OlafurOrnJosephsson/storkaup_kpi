@@ -25,6 +25,7 @@ function handleApiAction_(body) {
   if (action === 'list_templates')      return jsonResponse_(listTemplatesViaApi_(body));
   if (action === 'list_recipients')     return jsonResponse_(listRecipientsViaApi_(body));
   if (action === 'send_template_email') return jsonResponse_(sendTemplateEmailViaApi_(body));
+  if (action === 'send_template_bulk')  return jsonResponse_(sendTemplateBulkViaApi_(body));
   if (action === 'application_counts')  return jsonResponse_(applicationCountsViaApi_(body));
   if (action === 'seo_stats')           return jsonResponse_(seoStatsViaApi_(body));
   // Delegation frá admin-apps projectinu (admin/) — þungar aðgerðir og
@@ -142,7 +143,197 @@ function sendTemplateEmailViaApi_(body) {
     from: 'vefur@storkaup.is',
     name: 'Stórkaup ehf'
   });
+  logTemplateEmails_([{
+    customer_id: customerId, template: String(body.template), lang: lang,
+    to_email: match.email, sent_by: caller
+  }]);
   return { ok: true, sentTo: match.email };
+}
+
+// ── MAGNSENDING SNIÐMÁTS (2026-10-15) ──────────────────────────────────
+// „Senda vefkynningu“ á /kpi/vidskiptavinur: valdir viðskiptavinir fá
+// sniðmátið á ALLA vefnotendur fyrirtækisins (yfirleitt 1–3; enginn veit
+// hver þeirra pantar). Ólíkt stakri sendingu velur enginn tengiliðinn, svo
+// þjónninn síar sjálfur:
+//   * „Sölumaður - X“-reikningar undir viðskiptavini og @storkaup.is-netföng
+//     eru starfsmenn, ekki viðskiptavinurinn;
+//   * @example.com er innskráningarauðkenni Magento, ekki pósthólf;
+//   * viðskiptavinur sem fékk SAMA sniðmát síðustu BULK_DEDUPE_DAYS_ daga er
+//     sleppt (raw.customer_email_log), svo endurval sendir ekki tvisvar.
+// Eigið dagshámark (Script Property eftir dagsetningu): stakra hámarkið er 20
+// á klst sameiginlegt, og Gmail-kvótinn á vefur@ er ~2.000 á dag.
+var BULK_MAX_CUSTOMERS_  = 50;
+var BULK_DAILY_EMAIL_CAP_ = 300;
+var BULK_DEDUPE_DAYS_    = 30;
+
+function sendTemplateBulkViaApi_(body) {
+  var cfg = loadConfig_();
+  var caller = webflowCaller_(cfg, body);
+  if (!caller) return { error: 'Unauthorized' };
+
+  var templateId = String(body.template || '');
+  var tmpl = emailTemplates_()[templateId];
+  if (!tmpl) return { error: 'unknown_template' };
+  var lang = String(body.lang || tmpl.langs[0]).toLowerCase();
+  if (tmpl.langs.indexOf(lang) === -1) lang = tmpl.langs[0];
+
+  var ids = [];
+  var seenId = {};
+  (Array.isArray(body.customer_ids) ? body.customer_ids : []).forEach(function (x) {
+    var id = String(x || '').trim();
+    if (id && !seenId[id]) { seenId[id] = true; ids.push(id); }
+  });
+  if (!ids.length) return { error: 'missing_customer_ids' };
+  if (ids.length > BULK_MAX_CUSTOMERS_) return { error: 'too_many', max: BULK_MAX_CUSTOMERS_ };
+
+  console.log('[AUDIT] send_template_bulk by ' + caller + ' template=' + templateId + ' customers=' + ids.length);
+
+  var props = PropertiesService.getScriptProperties();
+  var dayKey = 'BULK_EMAIL_SENT_' + Utilities.formatDate(new Date(), 'Atlantic/Reykjavik', 'yyyy-MM-dd');
+  var sentToday = Number(props.getProperty(dayKey) || 0);
+
+  var usersBy = listCustomerUsersBulk_(ids);
+  var recent = recentTemplateSends_(ids, templateId, BULK_DEDUPE_DAYS_);
+  var senderName = (tmpl.sender && tmpl.sender[lang]) || '';
+  var batchId = Utilities.getUuid();
+
+  var out = { ok: true, customers_sent: 0, emails_sent: 0,
+              skipped_recent: [], skipped_no_contact: [], skipped_cap: [], failed: [] };
+  var logRows = [];
+
+  ids.forEach(function (id) {
+    var fam = String(id).replace(/\D/g, '');
+    if (recent[fam]) { out.skipped_recent.push(id); return; }
+    var users = (usersBy[id] || []).filter(isBulkRecipient_);
+    if (!users.length) { out.skipped_no_contact.push(id); return; }
+    if (sentToday + users.length > BULK_DAILY_EMAIL_CAP_) { out.skipped_cap.push(id); return; }
+
+    var sentHere = 0;
+    users.forEach(function (u) {
+      try {
+        var greet = (u.name ? u.name.split(/\s+/)[0] : '') || '';
+        var built = tmpl.build(lang, { name: greet, sender: senderName });
+        GmailApp.sendEmail(u.email, built.subject, built.plain, {
+          htmlBody: built.html, from: 'vefur@storkaup.is', name: 'Stórkaup ehf'
+        });
+        sentHere++; sentToday++;
+        logRows.push({ customer_id: id, template: templateId, lang: lang,
+                       to_email: u.email, sent_by: caller, batch_id: batchId });
+      } catch (e) {
+        out.failed.push({ customer_id: id, email: u.email, error: String(e && e.message || e) });
+      }
+    });
+    if (sentHere) { out.customers_sent++; out.emails_sent += sentHere; }
+  });
+
+  props.setProperty(dayKey, String(sentToday));
+  logTemplateEmails_(logRows);
+  return out;
+}
+
+function isBulkRecipient_(u) {
+  var email = String(u && u.email || '').trim().toLowerCase();
+  if (!email || email.indexOf('@') === -1) return false;
+  if (/@(storkaup\.is|example\.com)$/.test(email)) return false;
+  var name = String(u.name || '').toLowerCase();
+  if (/s[oö]luma[ðd]ur/.test(name)) return false;
+  return true;
+}
+
+// Sama samsvörun og listCustomerUsersForCacheEmail_ (core/customers.js):
+// kennitala nákvæmlega EÐA sama fjölskylda (fyrstu 10 stafir), á Company ID
+// eða National ID. Les blaðið EINU SINNI fyrir allan hópinn.
+function listCustomerUsersBulk_(customerIds) {
+  var want = {};
+  var addWant = function (key, id) { if (!key) return; (want[key] = want[key] || []).push(id); };
+  customerIds.forEach(function (id) {
+    var n = String(id).replace(/\D/g, '');
+    if (!n) return;
+    addWant(n, id);
+    addWant(n.length > 10 ? n.slice(0, 10) : n, id);
+  });
+
+  var CONFIG = loadConfig_();
+  var sh = SpreadsheetApp.openById(CONFIG.SHEET_IDS.CUSTOMERS).getSheetByName(MAGENTO_CUSTOMERS_SHEET_NAME);
+  var out = {};
+  if (!sh) return out;
+  var data = sh.getDataRange().getValues();
+  if (data.length < 2) return out;
+  var idx = {};
+  data[0].forEach(function (h, i) { idx[h] = i; });
+  var seen = {};
+
+  for (var r = 1; r < data.length; r++) {
+    var row = data[r];
+    var login = String(row[idx['Email']] || '').trim();
+    var real  = String(row[idx['Real Email']] || '').trim();
+    var email = real || login;
+    if (!email) continue;
+    var name = String(row[idx['Name']] || '').trim();
+    [row[idx['Company ID']], row[idx['National ID']]].forEach(function (raw) {
+      var v = String(raw || '').replace(/\D/g, '');
+      if (!v) return;
+      var k = v.length > 10 ? v.slice(0, 10) : v;
+      (want[v] || []).concat(want[k] || []).forEach(function (id) {
+        var sk = id + '|' + email.toLowerCase();
+        if (seen[sk]) return;
+        seen[sk] = true;
+        (out[id] = out[id] || []).push({ name: name, email: email });
+      });
+    });
+  }
+  return out;
+}
+
+// customer_family_id-lyklar sem fengu sniðmátið síðustu `days` daga. Falli
+// fyrirspurnin (t.d. taflan ekki til) er ENGINN talinn nýlegur — en þá er
+// heldur ekki hægt að skrá, svo magnsendingin á ekki að keyra fyrr en SQL-ið
+// er komið (customer_email_log_v1.sql).
+function recentTemplateSends_(ids, templateId, days) {
+  var keys = ids.map(function (id) { return String(id).replace(/\D/g, ''); }).filter(Boolean);
+  var out = {};
+  if (!keys.length) return out;
+  var since = new Date(Date.now() - days * 86400000).toISOString();
+  var rows = supabaseRestGetJson_(
+    'customer_email_log?select=customer_family_id' +
+    '&template=eq.' + encodeURIComponent(templateId) +
+    '&sent_at=gte.' + encodeURIComponent(since) +
+    '&customer_family_id=in.(' + keys.map(encodeURIComponent).join(',') + ')', 'raw');
+  (rows || []).forEach(function (r) { out[r.customer_family_id] = true; });
+  return out;
+}
+
+// Skrá sendingar í raw.customer_email_log (snertisagan les hana). Bregðist
+// skráningin er pósturinn samt farinn: ekki kasta, aðeins skrá í log.
+function logTemplateEmails_(rows) {
+  if (!rows || !rows.length) return;
+  try {
+    var conf = getSupabaseRestConfig_();
+    var payload = rows.map(function (r) {
+      return {
+        customer_id: r.customer_id,
+        customer_family_id: String(r.customer_id).replace(/\D/g, '') || String(r.customer_id).toLowerCase(),
+        template: r.template, lang: r.lang || null, to_email: r.to_email,
+        sent_by: r.sent_by || null, batch_id: r.batch_id || null
+      };
+    });
+    var res = UrlFetchApp.fetch(conf.baseUrl + '/customer_email_log', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole, Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw', Prefer: 'return=minimal'
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      console.warn('[EMAIL_LOG] skráning mistókst: ' + code + ' ' + res.getContentText());
+    }
+  } catch (e) {
+    console.warn('[EMAIL_LOG] skráning mistókst: ' + e);
+  }
 }
 
 function getDashboardMetrics_(e) {

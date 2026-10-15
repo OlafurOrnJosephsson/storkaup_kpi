@@ -34,7 +34,8 @@
  *   log_customer_priority_touch, get_web_activation,
  *   mv_customer_profiles_labeled_trends (REST)
  * GAS doPost (valfrjálst, aðeins ef gasWebAppUrl er stillt):
- *   list_templates, list_recipients, send_template_email
+ *   list_templates, list_recipients, send_template_email,
+ *   send_template_bulk („Senda vefkynningu“ í magnstikunni; webapp.js)
  *
  * Húsreglan: hvert kall fellur fyrir sig. Falli vörulistinn standa
  * lykiltölurnar; falli flöggin virkar leitin og prófíllinn samt.
@@ -518,6 +519,7 @@
       '<label class="skv-sr" for="skv-bulkrep">Sölumaður</label><select id="skv-bulkrep" class="skv-sel">' + opts + '</select>' +
       '<button class="skv-btn" data-act="bulk-assign"' + dis + (state.bulkRep ? '' : ' disabled') + '>Úthluta</button>' +
       '<button class="skv-btn" data-act="bulk-nonpriority"' + dis + '>Taka úr forgangi</button>' +
+      (GAS_URL ? '<button class="skv-btn" data-act="bulk-email"' + dis + ' title="Sendir sniðmátið „Vef-onboarding“ á alla vefnotendur hvers valins fyrirtækis">Senda vefkynningu</button>' : '') +
       '<button class="skv-link" data-act="bulk-clear">Hreinsa val</button></div>';
   }
 
@@ -1241,6 +1243,55 @@
     });
   }
 
+  // „Senda vefkynningu“: sniðmátið web_onboarding á alla vefnotendur hvers
+  // valins fyrirtækis (send_template_bulk í webapp.js). Þjónninn síar út
+  // sölumannsreikninga og starfsmannanetföng, sleppir þeim sem fengu sama
+  // póst síðustu 30 daga og skráir hverja sendingu í snertisöguna. Sent í
+  // 50-viðskiptavina lotum, því GAS keyrir í mest 6 mínútur á kall.
+  var BULK_EMAIL_CHUNK = 50;
+
+  function bulkEmail() {
+    var ids = selIds();
+    if (!ids.length || state.bulkBusy) return;
+    if (!window.confirm('Senda vefkynningu („Vef-onboarding“) á ' + ids.length + ' viðskiptavini?\n\n' +
+        'Pósturinn fer á alla vefnotendur hvers fyrirtækis. Þeim sem fengu hann síðustu 30 daga er sleppt, ' +
+        'og sendingin skráist í snertisögu hvers og eins.')) return;
+    state.bulkBusy = true; render();
+    var chunks = [];
+    for (var i = 0; i < ids.length; i += BULK_EMAIL_CHUNK) chunks.push(ids.slice(i, i + BULK_EMAIL_CHUNK));
+    var tot = { customers: 0, emails: 0, recent: 0, noContact: 0, cap: 0, failed: 0 };
+    var run = chunks.reduce(function (pr, chunk, n) {
+      return pr.then(function () {
+        if (chunks.length > 1) toast('Sendi lotu ' + (n + 1) + ' af ' + chunks.length + '…');
+        return gas({ action: 'send_template_bulk', template: 'web_onboarding', lang: 'is', customer_ids: chunk })
+          .then(function (out) {
+            if (!out || out.error) throw new Error(out && out.error ? out.error : 'ekkert svar');
+            tot.customers += out.customers_sent || 0;
+            tot.emails += out.emails_sent || 0;
+            tot.recent += (out.skipped_recent || []).length;
+            tot.noContact += (out.skipped_no_contact || []).length;
+            tot.cap += (out.skipped_cap || []).length;
+            tot.failed += (out.failed || []).length;
+          });
+      });
+    }, Promise.resolve());
+    run.then(function () {
+      var parts = ['Vefkynning send á ' + tot.customers + ' viðskiptavini (' + tot.emails + ' netföng).'];
+      if (tot.recent) parts.push(tot.recent + ' fengu hana nýlega.');
+      if (tot.noContact) parts.push(tot.noContact + ' án vefnotanda.');
+      if (tot.cap) parts.push(tot.cap + ' biðu: dagshámarki náð.');
+      if (tot.failed) parts.push(tot.failed + ' netföng mistókust.');
+      state.sel = {}; state.bulkBusy = false;
+      toast(parts.join(' '), tot.failed > 0);
+      if (state.selectedId) loadTouches();
+    }).catch(function (e) {
+      state.bulkBusy = false; render();
+      var msg = e.message === 'too_many' ? 'Of margir í einu.' : e.message === 'Unauthorized' ? 'Óheimilt.' : e.message;
+      toast('Sending stöðvaðist: ' + msg + (tot.customers ? ' (' + tot.customers + ' þegar sendir)' : ''), true);
+      if (state.selectedId) loadTouches();
+    });
+  }
+
   function setNotWeb(reason) {
     var id = state.selectedId;
     var name = (state.card && state.card.customer_name) || state.selectedName;
@@ -1332,7 +1383,7 @@
     if (!window.confirm('Senda „' + label + '“ (' + lang.toUpperCase() + ') á ' + (uname ? uname + ' ' : '') + '<' + email + '>?')) return;
     gas({ action: 'send_template_email', template: template, customer_id: state.selectedId, to: email, lang: lang })
       .then(function (out) {
-        if (out && out.ok) toast('Sent á ' + (out.sentTo || email));
+        if (out && out.ok) { toast('Sent á ' + (out.sentTo || email)); loadTouches(); }
         else if (out && out.error === 'recipient_not_in_customer') toast('Netfangið tilheyrir ekki þessum viðskiptavin.', true);
         else if (out && out.error === 'rate_limited') toast('Of margar sendingar í bili. Reyndu aftur síðar.', true);
         else toast('Sending mistókst' + (out && out.error ? ': ' + out.error : '.'), true);
@@ -1398,6 +1449,8 @@
       bulkAssign();
     } else if (act === 'bulk-nonpriority') {
       bulkNonPriority();
+    } else if (act === 'bulk-email') {
+      bulkEmail();
     } else if (act === 'bulk-clear') {
       state.sel = {}; render();
     } else if (act === 'ptab') {

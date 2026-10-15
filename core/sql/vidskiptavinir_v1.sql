@@ -286,7 +286,7 @@ $function$;
 create or replace function api.get_customer_touch_history_v1(p_customer_id text)
 returns table (
   event_at  timestamptz,
-  kind      text,     -- 'touch' | 'status' | 'rep' | 'removed' | 'created'
+  kind      text,     -- 'touch' | 'status' | 'rep' | 'notweb' | 'graduated' | 'email' | 'removed' | 'created'
   note_text text,
   by_name   text,
   followup  date
@@ -374,6 +374,25 @@ ev as (
   union all
   select changed_at, 'removed', 'Fjarlægður af lista', actor_name, null
   from h where op = 'DELETE'
+  union all
+  -- Sniðmátspóstar (customer_email_log_v1.sql, skrifað af GAS við hverja
+  -- sendingu). Sendandi birtist sem sölumannsnafn/birtingarnafn ef netfangið
+  -- þekkist (raw.kpi_whoami_), annars netfangið sjálft.
+  select e.sent_at, 'email',
+         'Póstur sendur: ' ||
+         case e.template
+           when 'web_onboarding' then 'vefkynning'
+           when 'cache_help'     then 'cache-hjálp'
+           when 'locked_account' then 'reikningur lokaður'
+           else e.template end ||
+         ' → ' || e.to_email || case when e.batch_id is not null then ' (magnsending)' else '' end,
+         case when e.sent_by is null or e.sent_by = 'key' then null
+              else coalesce(raw.kpi_whoami_(e.sent_by) ->> 'rep_name_norm',
+                            raw.kpi_whoami_(e.sent_by) ->> 'display_name',
+                            e.sent_by) end,
+         null
+  from raw.customer_email_log e, k
+  where e.customer_family_id = k.key
   union all
   -- Núverandi röð: hvenær flaggað, og síðasta snerting ef hún er eldri en
   -- sagan (snertingar fyrir 2026-10-08 eru aðeins til hér). Röð sem varð til
