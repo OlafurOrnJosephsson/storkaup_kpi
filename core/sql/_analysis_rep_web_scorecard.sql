@@ -135,7 +135,7 @@ flags as (
   from raw.customer_priority_flags_raw f
   join pkey p on p.v = f.assigned_rep_name_norm
   group by 1
-)
+),
 teams as (
   -- Teymi og stjórnandi á manneskju (bc_salesperson_map.team / is_lead).
   select person, max(team) as team, bool_or(is_lead) as is_lead
