@@ -561,6 +561,99 @@ $function$;
 --     display_name = excluded.display_name, note = excluded.note, updated_at = now();
 
 
+-- ── 6. PANTA Í AFGREIÐSLU (Tækifæri-sía, 2026-10-15) ────────────────
+-- Fyrirtæki sem panta sjálf í síma/pósti/við borð og afgreiðslan slær inn
+-- (bc_salesperson_map.role = 'afgreidsla'). Þau panta ÞEGAR sjálf, bara ekki
+-- á vefnum — markvissasti vefkynningarlistinn sem gögnin bjóða upp á.
+-- Raðað eftir fjölda afgreiðslupantana síðustu 365 d, með sölumanninum sem
+-- á samtalið (algengasti sölumaður utan vefs) og vefpöntunum til samanburðar.
+create or replace function api.get_desk_customers_v1(
+  p_min_orders integer default 3,
+  p_limit      integer default 300
+)
+returns table (
+  customer_id     text,
+  customer_name   text,
+  desk_orders     bigint,
+  offline_orders  bigint,
+  web_orders      bigint,
+  last_desk_order date,
+  rep_code        text,
+  rep_name        text
+)
+language sql
+stable
+security definer
+set search_path to 'api', 'raw', 'public'
+as $function$
+with roles as (
+  select m.code,
+         coalesce(m.role, case when nullif(btrim(m.rep_name_norm), '') is not null then 'solumadur' else 'annad' end) as role,
+         coalesce(nullif(btrim(m.rep_name_norm), ''), nullif(btrim(m.display_name), '')) as name
+  from raw.bc_salesperson_map m
+),
+inv as (
+  select btrim(i.company_id) as cid,
+         upper(btrim(i.salesperson_code)) as code,
+         i.document_no,
+         coalesce(i.order_date, i.booking_date)::date as d
+  from raw.bc_invoices_raw i
+  where coalesce(i.order_date, i.booking_date) >= current_date - 365
+    and nullif(btrim(i.company_id), '') is not null
+    and upper(btrim(coalesce(i.salesperson_code, ''))) not in ('', 'VEFUR')
+),
+agg as (
+  select inv.cid,
+         count(distinct inv.document_no) filter (where r.role = 'afgreidsla') as desk_n,
+         count(distinct inv.document_no) as offline_n,
+         max(inv.d) filter (where r.role = 'afgreidsla') as last_desk
+  from inv
+  left join roles r on r.code = inv.code
+  group by 1
+  having count(distinct inv.document_no) filter (where r.role = 'afgreidsla')
+         >= greatest(coalesce(p_min_orders, 3), 1)
+),
+rep as (
+  -- Óþekktur kóði telst sölumaður (sama regla og get_customer_reps_v1).
+  select distinct on (inv.cid) inv.cid, inv.code, r.name, count(distinct inv.document_no) as n
+  from inv
+  left join roles r on r.code = inv.code
+  where coalesce(r.role, 'solumadur') = 'solumadur'
+    and inv.cid in (select cid from agg)
+  group by inv.cid, inv.code, r.name
+  order by inv.cid, n desc
+),
+web as (
+  select regexp_replace(coalesce(n.company_id, ''), '\D', '', 'g') as norm,
+         count(distinct n.order_id) as n
+  from raw.newweb_orders_raw n
+  where n.purchase_date >= current_date - 365
+  group by 1
+)
+select a.cid,
+       coalesce(
+         (select p.customer_name from api.mv_customer_profiles_labeled_trends p where p.customer_id = a.cid limit 1),
+         (select nullif(btrim(c.company_name), '') from raw.bc_customers_raw c where btrim(c.company_id) = a.cid limit 1),
+         (select nullif(btrim(i.company_name), '') from raw.bc_invoices_raw i where btrim(i.company_id) = a.cid
+          order by coalesce(i.order_date, i.booking_date) desc nulls last limit 1),
+         a.cid),
+       a.desk_n,
+       a.offline_n,
+       coalesce(w.n, 0)::bigint,
+       a.last_desk,
+       r.code,
+       r.name
+from agg a
+left join rep r on r.cid = a.cid
+left join web w on w.norm = regexp_replace(a.cid, '\D', '', 'g') and w.norm <> ''
+order by a.desk_n desc, a.cid
+limit least(greatest(coalesce(p_limit, 300), 1), 1000);
+$function$;
+
+revoke all on function api.get_desk_customers_v1(integer, integer) from public, anon;
+grant execute on function api.get_desk_customers_v1(integer, integer) to authenticated, service_role;
+
+
 -- ── RÉTTINDI ────────────────────────────────────────────────────────
 revoke all on function api.get_customer_reps_v1(text[])                   from public, anon;
 grant execute on function api.get_customer_reps_v1(text[])                   to authenticated, service_role;
@@ -583,3 +676,4 @@ notify pgrst, 'reload schema';
 -- select * from api.get_customer_products_v1('7108902269', 365, 20);
 -- select * from api.get_customer_products_v1('7108902269', null, 20);  -- öll saga
 -- select * from api.get_customer_touch_history_v1('<kt á flaggaðan viðskiptavin>');
+-- select * from api.get_desk_customers_v1(3, 30);          -- panta í afgreiðslu

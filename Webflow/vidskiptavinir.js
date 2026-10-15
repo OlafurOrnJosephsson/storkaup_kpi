@@ -563,6 +563,7 @@
 
   var OPP = {
     lhfs: { label: 'Kaupa mikið utan vefs', help: 'Mest BC-sala utan vefs síðustu 365 daga, ×1,5 ef aldrei pantað á vef.' },
+    desk: { label: 'Panta í afgreiðslu', help: 'Panta sjálf í síma, pósti eða við borð og afgreiðslan slær inn. Þau panta þegar sjálf — vefurinn er næsta skref. Flestar afgreiðslupantanir efst, síðustu 365 daga.' },
     never_ordered: { label: 'Aldrei pantað á vef', help: 'Með vefaðgang en engin vefpöntun.' },
     lapsing: { label: 'Að dofna á vef', help: 'Pöntuðu á vef en hafa hægt á sér.' },
     lapsed: { label: 'Hættir á vef', help: 'Pöntuðu á vef en ekki lengur.' }
@@ -997,6 +998,21 @@
             sub: '<span class="skv-mono">' + esc(kt(r.customer_id)) + '</span>' + (r.primary_category ? ' · ' + esc(r.primary_category) : ''),
             badge: '<span class="skv-b ' + (r.lhfs_label === 'Very High' ? 'skv-hot' : 'skv-mute') + '">' + esc(lhfsIs(r.lhfs_label)) + '</span>',
             meta: num(r.orders_bc_365d) + ' reikningar · ' + (r.webshop_active ? 'á vef' : 'aldrei á vef')
+          };
+        });
+      });
+    } else if (chip === 'desk') {
+      p = rpc('get_desk_customers_v1', { p_min_orders: 3, p_limit: 300 }).then(function (rows) {
+        return (rows || []).map(function (r) {
+          var share = r.offline_orders ? Math.round(r.desk_orders / r.offline_orders * 100) : 0;
+          var rep = r.rep_name ? personLabel(r.rep_name) : (r.rep_code || '');
+          return {
+            id: r.customer_id, name: r.customer_name,
+            sub: '<span class="skv-mono">' + esc(kt(r.customer_id)) + '</span>' + (rep ? ' · sölumaður ' + esc(rep) : ' · enginn sölumaður'),
+            badge: Number(r.web_orders) > 0
+              ? '<span class="skv-b skv-warn" title="Vefpantanir síðustu 365 daga">' + num(r.web_orders) + ' á vef</span>'
+              : '<span class="skv-b skv-bad">Aldrei á vef</span>',
+            meta: num(r.desk_orders) + ' í afgreiðslu (' + share + '%) · síðast ' + esc(fmtAgo(r.last_desk_order))
           };
         });
       });
