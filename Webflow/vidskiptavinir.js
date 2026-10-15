@@ -533,6 +533,7 @@
       var sub = '<span class="skv-mono">' + esc(kt(id)) + '</span>';
       var by = offlineRepLabel(info);
       if (by) sub += ' · pantar hjá ' + esc(by);
+      else if (Number(info.desk_orders) > 0) sub += ' · pantar í afgreiðslu';
       if (r.assigned_rep_name_norm && !samePerson(r.assigned_rep_name_norm, info.offline_rep)) {
         sub += ' · úthlutað ' + esc(personLabel(r.assigned_rep_name_norm));
       } else if (!r.assigned_rep_name_norm) {
@@ -660,7 +661,14 @@
     if (!info) return '';
     var parts = [];
     var by = offlineRepLabel(info);
-    if (by) parts.push('Pantar hjá <b>' + esc(by) + '</b> (' + num(info.offline_rep_orders) + ' pantanir utan vefs · 365 d)');
+    if (by) parts.push('Pantar hjá <b>' + esc(by) + '</b> (' + num(info.offline_rep_orders) + ' pantanir · 365 d)');
+    // Afgreiðslan slær inn það sem viðskiptavinurinn pantar sjálfur í síma,
+    // pósti eða við borð — hann pantar þegar sjálfur, bara ekki á vefnum.
+    var desk = Number(info.desk_orders) || 0;
+    if (desk > 0) {
+      var share = info.offline_orders ? Math.round(desk / info.offline_orders * 100) : 0;
+      parts.push('<b>' + num(desk) + '</b> pantanir slegnar inn í afgreiðslu (' + share + '% utan vefs)');
+    }
     if (info.web_rep) parts.push('<b>' + esc(personLabel(info.web_rep)) + '</b> slær inn ' + num(info.web_rep_orders) + ' vefpantanir fyrir þá');
     return parts.length ? '<span class="skv-sub">' + parts.join(' · ') + '</span>' : '';
   }

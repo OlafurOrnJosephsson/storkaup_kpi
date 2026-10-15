@@ -394,17 +394,38 @@ create table if not exists raw.bc_salesperson_map (
   note          text null,
   updated_at    timestamptz not null default now()
 );
+-- HLUTVERK (2026-10-15). Afgreiðslan (EJ, HH) slær inn pantanir sem
+-- viðskiptavinurinn leggur SJÁLFUR fram í síma/pósti/við borð. Hún „á“ því
+-- ekki viðskiptavininn og má ekki teljast sölumaður hans — og slíkur
+-- viðskiptavinur er einmitt besti vefframbjóðandinn: hann pantar þegar sjálfur.
+--   solumadur   tengdur sölumaður (sjálfgefið ef rep_name_norm er sett)
+--   afgreidsla  slær inn pantanir viðskiptavina
+--   verkstaedi  verkstæðið
+--   annad       annað starfsfólk / hætt
+alter table raw.bc_salesperson_map
+  add column if not exists role text null
+    check (role is null or role in ('solumadur', 'afgreidsla', 'verkstaedi', 'annad'));
+update raw.bc_salesperson_map set role = 'solumadur'  where role is null and nullif(btrim(rep_name_norm), '') is not null;
+update raw.bc_salesperson_map set role = 'afgreidsla' where code in ('EJ', 'HH');
+update raw.bc_salesperson_map set role = 'verkstaedi' where code in ('HÖL', 'HÖG');
+update raw.bc_salesperson_map set role = 'annad'      where role is null;
+
 alter table raw.bc_salesperson_map enable row level security;
 revoke all on table raw.bc_salesperson_map from public, anon, authenticated;
 grant all privileges on table raw.bc_salesperson_map to service_role;
 
-create or replace function api.get_customer_reps_v1(p_customer_ids text[])
+-- Skilagerðin breyttist (desk_orders, offline_orders): drop fyrst. Aðeins
+-- Webflow/vidskiptavinir.js kallar á fallið, svo það er hættulaust.
+drop function if exists api.get_customer_reps_v1(text[]);
+create function api.get_customer_reps_v1(p_customer_ids text[])
 returns table (
   customer_id        text,
   customer_name      text,
-  offline_rep_code   text,
+  offline_rep_code   text,     -- algengasti SÖLUMAÐUR utan vefs (ekki afgreiðsla)
   offline_rep        text,
   offline_rep_orders bigint,
+  desk_orders        bigint,   -- pantanir slegnar inn í afgreiðslu, 365 d
+  offline_orders     bigint,   -- allar pantanir utan vefs, 365 d
   web_rep            text,
   web_rep_orders     bigint
 )
@@ -428,9 +449,11 @@ reps as (
   where coalesce(r.active, true) and btrim(coalesce(r.name_norm, '')) <> ''
 ),
 code_map as (
-  select distinct on (code) code, name_norm
+  select distinct on (code) code, name_norm, role
   from (
-    select m.code, coalesce(nullif(btrim(m.rep_name_norm), ''), nullif(btrim(m.display_name), '')) as name_norm, -1 as pri
+    select m.code, coalesce(nullif(btrim(m.rep_name_norm), ''), nullif(btrim(m.display_name), '')) as name_norm,
+           coalesce(m.role, case when nullif(btrim(m.rep_name_norm), '') is not null then 'solumadur' else 'annad' end) as role,
+           -1 as pri
     from raw.bc_salesperson_map m
     union all
     select upper(split_part(s.email, '@', 1)) as code,
@@ -438,10 +461,10 @@ code_map as (
                     (select r.name_norm from reps r
                      where r.email_norm = s.email and r.person_key not in ('', 'vefur')
                      order by (r.name_norm like 'solumadur%') desc limit 1)) as name_norm,
-           0 as pri
+           'solumadur', 0 as pri
     from raw.kpi_staff_access s
     union all
-    select upper(split_part(r.email_norm, '@', 1)), r.name_norm, 1
+    select upper(split_part(r.email_norm, '@', 1)), r.name_norm, 'solumadur', 1
     from reps r
     where r.email_norm like '%@storkaup.is' and r.person_key not in ('', 'vefur')
   ) z
@@ -461,10 +484,24 @@ off as (
     and upper(btrim(coalesce(i.salesperson_code, ''))) not in ('', 'VEFUR')
   group by 1, 2
 ),
+-- Óþekktur kóði (ekki í neinni vörpun) telst sölumaður: betra að sýna
+-- kóðann en að fela hann.
+off_role as (
+  select o.*, coalesce(cm.role, 'solumadur') as role
+  from off o left join code_map cm on cm.code = o.code
+),
 off_top as (
   select distinct on (customer_id) customer_id, code, n
-  from off
+  from off_role
+  where role = 'solumadur'
   order by customer_id, n desc, last_d desc
+),
+off_sum as (
+  select customer_id,
+         sum(n) filter (where role = 'afgreidsla') as desk_n,
+         sum(n) as all_n
+  from off_role
+  group by 1
 ),
 web as (
   select ids.customer_id, r.name_norm, count(*) as n
@@ -497,12 +534,15 @@ select ids.customer_id,
        o.code,
        cm.name_norm,
        o.n,
+       coalesce(os.desk_n, 0)::bigint,
+       coalesce(os.all_n, 0)::bigint,
        w.name_norm,
        w.n
 from ids
-left join off_top o  on o.customer_id = ids.customer_id
+left join off_top o   on o.customer_id = ids.customer_id
 left join code_map cm on cm.code = o.code
-left join web_top w  on w.customer_id = ids.customer_id;
+left join off_sum os  on os.customer_id = ids.customer_id
+left join web_top w   on w.customer_id = ids.customer_id;
 $function$;
 
 -- Hvaða BC-kóðar eru til og hverjir tengjast manneskju? (les aðeins)
