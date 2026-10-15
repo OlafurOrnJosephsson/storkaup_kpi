@@ -1495,8 +1495,16 @@
     loadFlags();
     loadReps();
 
-    var deep = '';
-    try { deep = new URL(location.href).searchParams.get('customer') || ''; } catch (e) {}
+    var deep = '', tabParam = '';
+    try {
+      var qs = new URL(location.href).searchParams;
+      deep = qs.get('customer') || '';
+      tabParam = (qs.get('tab') || '').toLowerCase();
+    } catch (e) {}
+    // ?tab=vinnulisti / ?tab=taekifaeri — fyrir velkomupóstinn og gömul
+    // bókamerki á /kpi/forgangslisti og /kpi/activation (eytt 2026-10-15).
+    if (tabParam === 'vinnulisti' || tabParam === 'forgangslisti' || tabParam === 'work') state.tab = 'work';
+    else if (tabParam === 'taekifaeri' || tabParam === 'opp') { state.tab = 'opp'; loadOpp(state.oppChip); }
     if (deep) openCustomer(deep, '');
     else if (state.recent.length) openCustomer(state.recent[0].id, state.recent[0].name);
   }
