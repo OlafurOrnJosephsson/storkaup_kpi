@@ -178,7 +178,7 @@ All schema changes are in `core/sql/`. Apply manually in Supabase SQL editor —
 
 ## 3. Webflow — Frontend layer
 
-Dashboards are read-only; all data comes from Supabase RPCs via `fetch`. **The customer pages write.** `forgangslisti.js`, `customer-profiles.js` and `activation.js` call priority-flag RPCs — `set_customer_priority_flag`, `bulk_set_customer_priority_flags`, `assign_customer_priority_rep`, `bulk_assign_customer_priority_rep`, `log_customer_priority_touch` — and `customer-profiles.js` also calls `create_sales_task` / `complete_sales_task`. Every update or delete of a flag row is copied to `raw.customer_priority_flags_history` by a trigger. For the security posture of these writes, see the security review (kept outside git).
+Dashboards are read-only; all data comes from Supabase RPCs via `fetch`. **The customer page writes.** `vidskiptavinir.js` calls priority-flag RPCs — `set_customer_priority_flag`, `bulk_set_customer_priority_flags`, `assign_customer_priority_rep`, `bulk_assign_customer_priority_rep`, `log_customer_priority_touch`, `set_customer_not_web_v1`. The server records who acted (`raw.kpi_actor_name_`, from the signed-in JWT). Until 2026-10-15 three pages did this (`customer-profiles.js`, `forgangslisti.js`, `activation.js`, now deleted); sales tasks went with them. Every update or delete of a flag row is copied to `raw.customer_priority_flags_history` by a trigger. For the security posture of these writes, see the security review (kept outside git).
 
 Webflow site-wide custom code is also served on the unauthenticated password-gate page, so secrets stay in page-scoped code only. `tools/check-webflow-pins.js` (run at the end of `gas_deploy.ps1`) checks this.
 
@@ -190,9 +190,7 @@ The internal umsókn/vöruvöktun/vöruinnihald apps are **not** Webflow pages �
 |---|---|---|
 | `/kpi/dashboard` | `dashboard.js` + `dashboard-bootstrap.js` | Main sales KPIs, BC web share |
 | `/kpi/solutolur` | `dashboard.js` | Sales figures |
-| `/kpi/vidskiptavinur` | `customer-profiles.js` | Customer profiles, family totals |
-| `/kpi/forgangslisti` | `forgangslisti.js` (via `forgangslisti-embed.html` Embed — **not** a bootstrap child; own pin) | Priority list; writes flags, reps, touches |
-| `/kpi/activation` | `activation.js` (page custom code — own pin) | Web-activation segments; writes flags and reps. Working but unfinished and not linked in the nav (NEXT_TASKS P11-8) |
+| `/kpi/vidskiptavinur` | `vidskiptavinir.js` (page head code — **not** a bootstrap child; own pin; mount in `vidskiptavinir-embed.html`) | Look up a customer (name, kt or SKU): product list, orders, touch history. Tabs: worklist (`?tab=vinnulisti`) and opportunities (`?tab=taekifaeri`), bulk actions. Replaced the profile, forgangslisti and activation pages 2026-10-15 |
 | `/kpi/klaviyo` | `dashboard.js` | Klaviyo attribution KPIs |
 | `/kpi/top-products` | `top-products.js` | Top products and categories |
 | `/kpi/vefur-kpi` | `website-dashboard.js` + `website-dashboard-bootstrap.js` | GA4 website metrics |
@@ -214,7 +212,7 @@ truth; update it whenever a Webflow file changes. (This used to point at
 `NEXT_TASKS.md`, which now only forwards here — one hop too many.)
 
 Note that `data-storkaup-rev` governs the bootstrap's child files only.
-Four files (`lookup.js`, `activation.js`, `forgangslisti.js`, `portal.js`) are
+Four files (`lookup.js`, `portal.js`, `auth.js`, `vidskiptavinir.js`) are
 pinned independently in page-level code — `CLAUDE.md` lists where each pin lives.
 
 ---

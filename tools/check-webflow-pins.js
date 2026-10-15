@@ -82,8 +82,6 @@ function parseExpected(md) {
     else if (/website-dashboard-bootstrap\.js/.test(line)) set('websiteBootstrap', sha);
     else if (/dashboard-bootstrap\.js/.test(line)) set('dashboardBootstrap', sha);
     else if (/lookup\.js/.test(line)) set('lookup', sha);
-    else if (/activation\.js/.test(line)) set('activation', sha);
-    else if (/forgangslisti\.js/.test(line)) set('forgangslisti', sha);
     else if (/portal\.js/.test(line)) set('portal', sha);
     else if (/auth\.js/.test(line)) set('auth', sha);
     else if (/vidskiptavinir\.js/.test(line)) set('vidskiptavinir', sha);
@@ -174,12 +172,8 @@ function freshness(liveRev) {
  */
 const EMBED_PINNED = [
   { key: 'lookup',        js: 'lookup.js',        embed: 'lookup-embed.html' },
-  // activation.js a sér ENGA embed-skra i repo-inu: pinninn situr i
-  // page custom code a /kpi/activation og hvergi annars stadar. Tha er
-  // CLAUDE.md eina heimildin sem til er, og ferskleikaprofid keyrir a
-  // henni. Veikara, en ekki thogn.
-  { key: 'activation',    js: 'activation.js',    embed: null },
-  { key: 'forgangslisti', js: 'forgangslisti.js', embed: 'forgangslisti-embed.html' },
+  // activation.js og forgangslisti.js voru hér til 2026-10-15; síðunum var
+  // eytt og vidskiptavinir.js tók við (neðst).
   // portal.js fannst i FYRSTU keyrslu eftir ad thessi listi var buinn til:
   // pinnadur i portal-embed.html fra 2026-09-21 og nefndur NULL sinnum i
   // CLAUDE.md. Tveir oskradir embed-pinnar fundust um leid og hardkodunin

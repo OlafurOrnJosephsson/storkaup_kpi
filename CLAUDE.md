@@ -305,23 +305,21 @@ fails now records `partial`, not `success`, and sends an ops alert.
 **One pin governs the bootstrap's child files — and one file sits outside it.**
 The bootstrap scripts read `data-storkaup-rev` off their own `<script>` tag and
 load every child file from that revision (`getRevision()` in both bootstraps).
-Changing it moves `dashboard.js`, `customer-profiles.js`, `order-search.js`,
+Changing it moves `dashboard.js`, `order-search.js`,
 `top-products.js`, `website-dashboard.js` and `dashboard-theme.css` together.
 This list used to give a separate commit per file, which implied a per-file
 control that does not exist for those.
 
-**Four files sit outside it**, each pinned to its own commit in page-level
+**These files sit outside it**, each pinned to its own commit in page-level
 code. Bumping `data-storkaup-rev` does nothing to them, and bumping them does
 nothing to the dashboards. Change one, move that one.
 
 | File | Where its pin lives | Page |
 |---|---|---|
 | `Webflow/lookup.js` | `<script src>` inside the `lookup-embed.html` Embed | `/kpi/voruuppfletting` |
-| `Webflow/activation.js` | page custom code — **no embed file in this repo** | `/kpi/activation` |
-| `Webflow/forgangslisti.js` | page head code — mirrored in `forgangslisti-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/forgangslisti` |
 | `Webflow/portal.js` | `<script src>` inside the `portal-embed.html` Embed | `/kpi/voruportal` |
 | `Webflow/auth.js` | **site-wide head**, synchronous (no `defer`) — must run before every other script so its fetch wrapper is in place | all KPI pages; inert where `STORKAUP_CONFIG` is absent |
-| `Webflow/vidskiptavinir.js` | page head code — mirrored in `vidskiptavinir-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/vidskiptavinur-nyr` (staging, 2026-10-15); replaces `/kpi/vidskiptavinur`, then forgangslisti + activation |
+| `Webflow/vidskiptavinir.js` | page head code — mirrored in `vidskiptavinir-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/vidskiptavinur` (since 2026-10-15; `-nyr` 301s there) |
 
 ⚠️ This list read "The exception is `Webflow/lookup.js`" until 2026-09-21 —
 singular, and wrong. `activation.js` had been pinned in page code on
@@ -337,16 +335,15 @@ unregistered embed pin, found the moment the `lookup.js` hard-coding came out.
 Both had been there all along; the tool simply could not see past the one file
 it was written for.
 
-`/kpi/activation` is **unfinished, not dead.** Built 2026-06-15..16 and never
-linked; it also rendered **blank** until 2026-10-08, because its page code
-loaded `activation.js` without a `STORKAUP_CONFIG` block (the script bails on
-load without one, and site-wide code deliberately carries none). That day the
-config block was added above the script tag and the page came up: 714
-companies with a web account have never ordered, 71 lapsing, 470 lapsed. It
-still carries the June nine-link nav, is reachable only by URL, and writes the
-same priority flags as `/kpi/forgangslisti` (flag + rep, no touch log).
-Decide whether to finish it as a "find targets" view or fold it into the
-forgangslisti before linking it.
+**One customer page since 2026-10-15.** `vidskiptavinir.js` on
+`/kpi/vidskiptavinur` replaced three scripts: `customer-profiles.js` (a
+bootstrap child that loaded on *every* KPI page, 117 KB), `forgangslisti.js`
+and `activation.js`. `/kpi/forgangslisti`, `/kpi/activation` and `/kpi/emails` were deleted 2026-10-15; their files are gone
+from the repo. The worklist and the activation segments are tabs
+(`?tab=vinnulisti`, `?tab=taekifaeri`), with bulk actions. Its data layer is
+`core/sql/vidskiptavinir_v1.sql`, `customer_not_web_v1.sql` and
+`kpi_staff_rep_v1.sql`. Its `<script src>` sits in **page head code** only;
+it guards against double boot (`data-booted`), but one tag is still the rule.
 
 **Live**, per the deployer. All three bootstrap pins live in **one place** —
 Webflow *site-wide* custom code, two `<script>` tags that carry both the
@@ -362,10 +359,8 @@ page Embed), so each row carries its own date:
 | `dashboard-bootstrap.js` script-tag src | `5681b62` | 2026-10-13 (pin only — file unchanged since `30f0908`) |
 | `website-dashboard-bootstrap.js` script-tag src | `5681b62` | 2026-10-13 (pin only — file unchanged since `30f0908`) |
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
-| `activation.js`, **in page custom code** (independent) | `84372c6` | 2026-06-15, `/kpi/activation` only — read off the live page 2026-09-21 |
 | `portal.js` script-tag src, **inside the Embed** (independent) | `c037bbd` | 2026-09-22, `/kpi/voruportal` only |
 | `auth.js` script-tag src, **site-wide head** (independent) | `af0191a` | 2026-10-09 — sign-in for KPI pages + token on GAS calls, see RUNBOOK → KPI page sign-in |
-| `forgangslisti.js` script-tag src, **in page head code** (independent) | `f03b69f` | 2026-10-15 (pin only — file unchanged since `72c872c`; read off the live page that day) |
 | `vidskiptavinir.js` script-tag src, **in page head code** (independent) | `c801d8d` | 2026-10-15 — staging `/kpi/vidskiptavinur-nyr` (first live on `f248105`); signed-in user → rep by logic (same email in `sales_reps_ref`, canonical name; `kpi_staff_access.rep_name_norm` overrides — `core/sql/kpi_staff_rep_v1.sql`) |
 
 `2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —
@@ -384,14 +379,9 @@ datasheet / safety-sheet / brochure links, and a copy-and-open button for
 supplier portals. The check caught this row stale on the same deploy that
 shipped it — the table was updated from the tool's output, not from memory.
 
-**The forgangslisti swap is done (2026-10-08).** The staging page got the
-`/kpi/forgangslisti` slug, the old `data-module="customer-profiles"` list page
-was deleted, and `/kpi/forgangslisti-nyr` 301s to it. Its `<script src>` sits
-in **page head code**, not in the body Embed, which holds only the mount
-`<div>`. Never both: `forgangslisti.js` has no double-boot guard, so two
-script tags mean every click writes twice. Check with view-source → exactly
-one `forgangslisti.js`. [Webflow/forgangslisti-embed.html](Webflow/forgangslisti-embed.html)
-documents both parts and still carries the pin the check tool reads.
+The forgangslisti swap of 2026-10-08 (staging page took the slug) was the
+template for the 2026-10-15 customer-page swap; both pages it involved are
+now gone.
 
 ⚠️ **This table describes the site; it does not govern it.** On 2026-09-21 it
 still read `4131408` while the site was already serving `5368032`. A warning

@@ -8,10 +8,10 @@ Goals below are unchanged; this note records what the repo actually covers now a
 
 - **Scope is wider than BI.** Three parts:
   1. BI dashboards (Webflow `/kpi/*` reading Supabase).
-  2. A sales worklist: the new `forgangslisti.js` runs on `/kpi/forgangslisti` (swap done 2026-10-08, P11-7), with `customer-profiles.js` `?customer=` deep links. This is the North Star line about Forgangslisti and Customer Profiles.
+  2. One customer page, `/kpi/vidskiptavinur` (`vidskiptavinir.js`, 2026-10-15): look-up, worklist and opportunities in one place. It replaced the customer profiles, forgangslisti and activation pages. This is the North Star line about Forgangslisti and Customer Profiles.
   3. PIM / vöruinnihald: `pim/*.js` (pushed with the main project), the admin vöruinnihald app, Plytix export/import, and `raw.web_catalog` (synced every 12h).
-- **The frontend writes data.** `forgangslisti.js`, `customer-profiles.js` and `activation.js` call the priority-flag RPCs (set flag, assign rep, log touch, bulk ops). Since 2026-10-08 every update/delete of a flag row is kept in `raw.customer_priority_flags_history` (P11-4). Access posture: see the security review (kept outside git).
-- **`/kpi/activation`** works since 2026-10-08 but is unfinished and unlinked (P11-8): June-era nav, not in the sidebar, and it writes priority flags without a touch log; direction (targeting view vs. fold into the forgangslisti) is open. Relates to the self-service goal — 714 customers with web access have never ordered.
+- **The frontend writes data.** `vidskiptavinir.js` calls the priority-flag RPCs (set flag, assign rep, log touch, bulk ops, not-web marking); the server records who acted. Since 2026-10-08 every update/delete of a flag row is kept in `raw.customer_priority_flags_history` (P11-4). Access posture: see the security review (kept outside git).
+- **`/kpi/activation`** was folded into the customer page's opportunities tab and deleted 2026-10-15 (P11-8).
 - **Security item #9 (anon read RPCs):** digest RPCs `weekly/monthly_digest_stats` are service_role only (P11-5). Three other anon-readable RPCs stay blocked on the auth migration (P11-6).
 - **BC freshness:** BC has no trigger; it loads only when someone runs the BC Sync menu, from a rolling ~3-month export. A skipped month is a real gap in `bc_lines_raw`, which affects the BC web-share goal.
 - **Triggers:** 13 required handlers, defined once in `requiredTimeTriggers_()` (`core/utils.js`) and shared by `auditTriggers_v1` and the reset. Optional and not installed: `collectInvoicesToDrive_v1`, `runScheduledSeoAutomation_v1`.

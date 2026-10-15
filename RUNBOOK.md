@@ -389,8 +389,8 @@ order by 1,3;
   the old row of every update and delete on `raw.customer_priority_flags_raw`:
   `op`, `via_role` (`anon` = a Webflow page, `service_role` = GAS), `old_row` /
   `new_row` jsonb.
-- Writers: Webflow `forgangslisti.js`, `customer-profiles.js`, `activation.js`
-  via anon RPCs, and `importPriorityFlagsFromSheet_v1` (default `replaceAll`
+- Writers: Webflow `vidskiptavinir.js` via RPCs (signed-in user; since
+  2026-10-15 `actor_email`/`actor_name` record who), and `importPriorityFlagsFromSheet_v1` (default `replaceAll`
   deletes all rows first).
 - Restore: use the snippet under "ENDURHEIMT" in
   [core/sql/customer_priority_flags_history.sql](core/sql/customer_priority_flags_history.sql)

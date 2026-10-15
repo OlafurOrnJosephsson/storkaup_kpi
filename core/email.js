@@ -337,8 +337,8 @@ function buildWelcomeEmailHtml_() {
     + card('Sölutölur', 'Söluþróun, BC velta og vefpantanir', '/kpi/solutolur')
     + '<hr class="sk-divider">'
     + '<p class="sk-lbl">Viðskiptavinir</p>'
-    + card('Viðskiptavinakort', 'Fletttu upp viðskiptavinum – pantanasaga, veltuþróun, innkaupalisti', '/kpi/vidskiptavinur')
-    + card('Forgangslisti', 'Viðskiptavinir sem eru í onboarding á vef', '/kpi/forgangslisti')
+    + card('Viðskiptavinir', 'Flettu upp viðskiptavini eftir nafni, kennitölu eða vörunúmeri – vörulisti, pantanir, snertisaga', '/kpi/vidskiptavinur')
+    + card('Vinnulistinn minn', 'Viðskiptavinir í forgangi hjá þér og hverjir eru komnir á tíma', '/kpi/vidskiptavinur?tab=vinnulisti')
     + '<hr class="sk-divider">'
     + '<p class="sk-lbl">Markaðssetning og vörur</p>'
     + card('Markaðsherferðir', 'Tölvupóstar, pantanir og tekjur frá markaðsherferðum', '/kpi/klaviyo')

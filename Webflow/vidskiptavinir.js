@@ -1,7 +1,8 @@
 /**
  * Webflow/vidskiptavinir.js — sameinuð viðskiptavinasíða (áfangi 1, 2026-10-15)
  *
- * Á að leysa af hólmi þrjár síður sem gerðu að hluta það sama:
+ * Leysti af hólmi 2026-10-15 þrjár síður sem gerðu að hluta það sama (öllum
+ * þremur eytt, skrárnar farnar úr repoinu — sjá git-sögu):
  *   /kpi/vidskiptavinur  (customer-profiles.js, 2.585 línur, markup í Designer)
  *   /kpi/forgangslisti   (forgangslisti.js)
  *   /kpi/activation      (activation.js, ókláruð)
@@ -11,7 +12,7 @@
  * vörulistinn fyrsti flipi prófílsins. Vinnulistinn og tækifærin eru
  * aukaflipar. Skissan: https://claude.ai/artifact/QFBBvhaREqpY8GyABy42Qq
  *
- * Eins og forgangslisti.js smíðar skráin ALLT sitt markup og alla stíla
+ * Eins og forgangslisti.js gerði smíðar skráin ALLT sitt markup og alla stíla
  * sjálf. Webflow-Embed ber aðeins festinguna <div id="sk-vidskiptavinir">.
  * Þá er viðmótið í repoinu, ekki í Designer, og Embed-ið getur ekki farið
  * yfir 10.000 stafa mörkin.
@@ -141,7 +142,7 @@
     return '–';
   }
 
-  // Sölumannanöfn: sama hreinsun og forgangslisti.js (sjá skýringar þar).
+  // Sölumannanöfn: sama hreinsun og forgangslisti.js hafði (skýringar í git-sögu).
   function repCanonicalKey(nameNorm) {
     var compact = String(nameNorm || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!compact) return '';
