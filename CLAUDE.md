@@ -356,12 +356,12 @@ page Embed), so each row carries its own date:
 | What | Value | Set |
 |---|---|---|
 | `data-storkaup-rev` — governs all bootstrap child files | `5681b62` | 2026-10-13 — lagersala card shows when stock was read (`birgðir lesnar kl. HH:MM`) and refreshes every 2 min. The card (since `3b2ab53`) is the first one `dashboard.js` renders itself (`data-storkaup-card`); its grid span is set in Designer, its layout follows its own width |
-| `dashboard-bootstrap.js` script-tag src | `5681b62` | 2026-10-13 (pin only — file unchanged since `30f0908`) |
+| `dashboard-bootstrap.js` script-tag src | `bbd567b` | 2026-10-15 — no longer loads `customer-profiles.js` (deleted). **Set in site-wide code by the deployer after this commit; until then live reads `5681b62`.** the rev attribute stays at `5681b62` because no child file changed |
 | `website-dashboard-bootstrap.js` script-tag src | `5681b62` | 2026-10-13 (pin only — file unchanged since `30f0908`) |
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
 | `portal.js` script-tag src, **inside the Embed** (independent) | `c037bbd` | 2026-09-22, `/kpi/voruportal` only |
 | `auth.js` script-tag src, **site-wide head** (independent) | `af0191a` | 2026-10-09 — sign-in for KPI pages + token on GAS calls, see RUNBOOK → KPI page sign-in |
-| `vidskiptavinir.js` script-tag src, **in page head code** (independent) | `c801d8d` | 2026-10-15 — staging `/kpi/vidskiptavinur-nyr` (first live on `f248105`); signed-in user → rep by logic (same email in `sales_reps_ref`, canonical name; `kpi_staff_access.rep_name_norm` overrides — `core/sql/kpi_staff_rep_v1.sql`) |
+| `vidskiptavinir.js` script-tag src, **in page head code** (independent) | `bbd567b` | 2026-10-15 — `/kpi/vidskiptavinur` (staging `-nyr` until that day, first live on `f248105`): bulk actions, `?tab=` deep links. Signed-in user → rep by logic (`core/sql/kpi_staff_rep_v1.sql`) |
 
 `2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —
 gained `?customer=` deep-link support, so the new forgangslisti's row link has
