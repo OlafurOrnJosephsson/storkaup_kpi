@@ -4250,6 +4250,24 @@ function scheduledCustomerAnalysisSync_v1() {
       Logger.log('[CASYNC][WARN] mv_customer_profiles_labeled_trends refresh failed: ' + mvErr);
     }
 
+    // Útskrift af forgangslistanum (core/sql/priority_graduation_v1.sql):
+    // 2+ vefpantanir sem viðskiptavinurinn lagði sjálfur inn eftir að hann var
+    // settur í forgang. Aukaskref: falli það (t.d. SQL-ið ekki keyrt) stendur
+    // keyrslan samt, og staðan verður ekki 'partial' — vinnulistinn er
+    // óbreyttur, ekkert hefur farið úrskeiðis í gögnunum.
+    try {
+      var grad = safeJsonParse_(callSupabaseRpc_('graduate_priority_customers_v1',
+        { p_min_self_orders: 2, p_dry_run: false })) || [];
+      result.priorityGraduated = grad.length;
+      Logger.log('[CASYNC][INFO] Útskrifaðir af forgangslista: ' + grad.length +
+        (grad.length ? ' — ' + grad.map(function (g) {
+          return (g.out_customer_name || g.out_family_id) + ' (' + g.out_self_orders + ')';
+        }).join(', ') : ''));
+    } catch (gradErr) {
+      result.priorityGraduated = 'error';
+      Logger.log('[CASYNC][WARN] graduate_priority_customers_v1 failed: ' + gradErr);
+    }
+
     result.finishedAt = new Date().toISOString();
 
     // The MV refresh is the step that makes the work visible. If it fails the

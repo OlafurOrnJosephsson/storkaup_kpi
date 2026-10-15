@@ -27,6 +27,7 @@
  *   get_customer_reps_v1          nöfn + hver pantar fyrir þá (BC-sölumaður, sölumaður á vef)
  *   get_desk_customers_v1         Tækifæri: panta í afgreiðslu
  *   set_customer_not_web_v1 / get_not_web_customers_v1   „Ekki vefkúnni“ (core/sql/customer_not_web_v1.sql)
+ *   get_graduated_customers_v1 / ungraduate_customer_v1  útskrift af vinnulista (core/sql/priority_graduation_v1.sql)
  * Fyrir (óbreytt):
  *   get_customer_last_orders, get_customer_priority_flags, get_active_sales_reps,
  *   set_customer_priority_flag, assign_customer_priority_rep,
@@ -276,6 +277,7 @@
     flags: {},              // flagKey -> röð úr get_customer_priority_flags
     repInfo: {},            // flagKey -> röð úr get_customer_reps_v1 (nafn, hver pantar)
     notWeb: {},             // flagKey -> { not_web_reason, not_web_note } — „Ekki vefkúnni“
+    graduated: {},          // flagKey -> { graduated_at, graduated_self_orders } — komnir á vef
     notWebOpen: false, notWebReason: 'eigid_kerfi', notWebNote: '',
     // Magnaðgerðir (áfangi 2) í „Vinnulistinn minn“ og „Tækifæri“.
     // id -> nafn. Hreinsast þegar skipt er um flipa eða síu, svo valið nái
@@ -480,6 +482,7 @@
 
   function isDue(r) {
     if (!r || r.status !== 'priority') return false;
+    if (gradOf(r.customer_id || r.customer_family_id)) return false;
     if (r.next_followup_at) return String(r.next_followup_at) <= todayIso();
     if (r.onboarded_status === 'onboarded_selfserve') return false;
     var d = daysSince(r.last_contacted_at || r.created_at);
@@ -560,11 +563,15 @@
     function chip(id, label, n) {
       return '<button class="skv-chip" data-act="workchip" data-v="' + id + '" aria-pressed="' + (state.workChip === id) + '">' + label + ' · ' + n + '</button>';
     }
-    var all = Object.keys(state.flags).map(function (k) { return state.flags[k]; })
+    var pri = Object.keys(state.flags).map(function (k) { return state.flags[k]; })
       .filter(function (r) { return r.status === 'priority'; });
+    var isGrad = function (r) { return !!gradOf(r.customer_id || r.customer_family_id); };
+    var all = pri.filter(function (r) { return !isGrad(r); });
     var mine = all.filter(isMine);
     var due = mine.filter(isDue);
-    var rows = state.workChip === 'due' ? due : state.workChip === 'mine' ? mine : all;
+    var done = pri.filter(function (r) { return isGrad(r) && isMine(r); });
+    var rows = state.workChip === 'due' ? due : state.workChip === 'mine' ? mine
+      : state.workChip === 'done' ? done : all;
     rows = rows.slice().sort(function (a, b) {
       var fa = a.next_followup_at || '9999', fb = b.next_followup_at || '9999';
       if (isDue(a) !== isDue(b)) return isDue(a) ? -1 : 1;
@@ -572,7 +579,7 @@
     });
     var head = '<div class="skv-listhead"><h2>' + (state.actor ? 'Mínir í forgangi' : 'Í forgangi') + ' <span>' + rows.length + '</span></h2>' +
       (state.actor ? '' : '<div class="skv-sub">Veldu „Ég er“ efst til að sjá aðeins þína.</div>') +
-      '<div class="skv-chips">' + chip('due', 'Þarf eftirfylgni', due.length) + chip('mine', state.actor ? 'Allir mínir' : 'Allir í forgangi', mine.length) + chip('all', 'Allt fyrirtækið', all.length) + '</div>' +
+      '<div class="skv-chips">' + chip('due', 'Þarf eftirfylgni', due.length) + chip('mine', state.actor ? 'Allir mínir' : 'Allir í forgangi', mine.length) + chip('all', 'Allt fyrirtækið', all.length) + chip('done', 'Komnir á vef', done.length) + '</div>' +
       (state.actor ? '<div class="skv-sub">Þínir = úthlutaðir þér, eða án úthlutunar og þú pantar fyrir þá.</div>' : '') +
       (rows.length ? selAllHtml(rows.map(function (r) { return { id: r.customer_id || r.customer_family_id }; })) : '') + '</div>';
     state.visibleIds = rows.map(function (r) { return { id: r.customer_id || r.customer_family_id, name: r.customer_name || '' }; });
@@ -581,12 +588,15 @@
     if (!rows.length) {
       var msg = state.workChip === 'due'
         ? (mine.length ? 'Ekkert komið á tíma. ' + mine.length + ' í forgangi eru á þér — sjá „Allir mínir“.' : 'Enginn í forgangi á þér enn.')
+        : state.workChip === 'done' ? 'Enginn útskrifaður enn. Viðskiptavinur útskrifast þegar hann hefur pantað sjálfur á vef tvisvar eftir að hann fór í forgang.'
         : 'Enginn á listanum.';
       return head + '<div class="skv-empty">' + esc(msg) + '</div>';
     }
     return head + '<div class="skv-rows">' + rows.map(function (r) {
       var due = isDue(r);
-      var meta = r.next_followup_at ? 'Eftirfylgni ' + esc(fmtDate(r.next_followup_at)) :
+      var g = gradOf(r.customer_id || r.customer_family_id);
+      var meta = g ? 'Kominn á vef ' + esc(fmtDate(g.graduated_at)) + ' · ' + num(g.graduated_self_orders) + ' pantanir'
+        : r.next_followup_at ? 'Eftirfylgni ' + esc(fmtDate(r.next_followup_at)) :
         (r.last_contacted_at ? 'Snert ' + esc(fmtAgo(r.last_contacted_at)) : 'Aldrei snert');
       var id = r.customer_id || r.customer_family_id;
       var info = state.repInfo[flagKey(id)] || {};
@@ -622,6 +632,10 @@
     return 'Annað';
   }
   function notWebOf(id) { return state.notWeb[flagKey(id)] || null; }
+  // Útskrifaður = pantaði sjálfur á vef nógu oft eftir að hann fór í forgang
+  // (dagleg keyrsla, priority_graduation_v1.sql). Er áfram í forgangi en
+  // tekur ekki pláss á vinnulistanum.
+  function gradOf(id) { return state.graduated[flagKey(id)] || null; }
   function notWebBadge(id) {
     var nw = notWebOf(id);
     return nw ? '<span class="skv-b skv-mute" title="' + esc(notWebLabel(nw.not_web_reason) + (nw.not_web_note ? ' — ' + nw.not_web_note : '')) + '">Ekki vefkúnni</span>' : '';
@@ -712,13 +726,15 @@
     var html = '<div class="skv-card">' +
       '<div class="skv-ph"><div style="display:flex;flex-direction:column;gap:6px;min-width:0">' +
         '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><h2>' + esc(name) + '</h2>' + webStatus(c) +
-          (isPri ? '<span class="skv-b skv-hot">Í forgangi</span>' : '') + notWebBadge(state.selectedId) + '</div>' +
+          (isPri ? '<span class="skv-b skv-hot">Í forgangi</span>' : '') + notWebBadge(state.selectedId) +
+          (gradOf(state.selectedId) ? '<span class="skv-b skv-good" title="Pantaði sjálfur á vef eftir að hann fór í forgang">Kominn á vef ✓</span>' : '') + '</div>' +
         '<span class="skv-sub"><span class="skv-mono">' + esc(kt(state.selectedId)) + '</span>' +
           (c && c.primary_category ? ' · ' + esc(c.primary_category) : '') + fam + '</span>' +
           repLine(state.repInfo[flagKey(state.selectedId)]) +
       '</div><div class="skv-btns">' +
         '<label class="skv-sr" for="skv-rep">Sölumaður</label><select id="skv-rep" class="skv-sel" data-act="rep">' + repOpts + '</select>' +
         (GAS_URL ? '<button class="skv-btn" data-act="email">Senda póst</button>' : '') +
+        (gradOf(state.selectedId) ? '<button class="skv-btn" data-act="ungraduate" title="Setja aftur á vinnulistann; talning byrjar upp á nýtt">Aftur á vinnulista</button>' : '') +
         (notWebOf(state.selectedId)
           ? '<button class="skv-btn" data-act="notweb-clear" title="Afturkalla „ekki vefkúnni“">Er vefkúnni</button>'
           : '<button class="skv-btn" data-act="notweb-open" aria-expanded="' + state.notWebOpen + '">Ekki vefkúnni</button>') +
@@ -1024,7 +1040,17 @@
       state.flags = m; state.flagsOk = true; render();
       loadRepInfo(Object.keys(m).map(function (k) { return m[k].customer_id || m[k].customer_family_id; }));
       loadNotWeb();
+      loadGraduated();
     }).catch(function (e) { console.error('[vidskiptavinir] flags', e); state.flagsOk = false; render(); });
+  }
+
+  // Má falla (SQL ekki keyrt): þá er enginn útskrifaður og vinnulistinn eins og áður.
+  function loadGraduated() {
+    return rpc('get_graduated_customers_v1', {}).then(function (rows) {
+      var m = {};
+      (rows || []).forEach(function (r) { m[r.customer_family_id || flagKey(r.customer_id)] = r; });
+      state.graduated = m; render();
+    }).catch(function (e) { console.error('[vidskiptavinir] graduated', e); });
   }
 
   // Má falla (SQL ekki keyrt): þá er enginn merktur og ekkert falið.
@@ -1388,6 +1414,11 @@
       state.fuDraft = plusDaysIso(Number(v)); render();
     } else if (act === 'email') {
       openEmail();
+    } else if (act === 'ungraduate') {
+      rpc('ungraduate_customer_v1', { p_customer_id: state.selectedId })
+        .then(function () { return loadGraduated(); })
+        .then(function () { toast('Kominn aftur á vinnulistann.'); loadTouches(); })
+        .catch(function (e2) { toast('Mistókst: ' + e2.message, true); });
     } else if (act === 'notweb-open') {
       state.notWebOpen = !state.notWebOpen; render();
     } else if (act === 'notweb-save') {

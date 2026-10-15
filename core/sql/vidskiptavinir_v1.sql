@@ -360,6 +360,18 @@ ev as (
   where op = 'UPDATE'
     and (new_row ->> 'not_web_reason') is distinct from (old_row ->> 'not_web_reason')
   union all
+  -- Útskrift (priority_graduation_v1.sql): daglega keyrslan merkir þá sem
+  -- hafa pantað sjálfir á vef. Lesið úr jsonb eins og hér að ofan.
+  select changed_at, 'graduated',
+         case when (new_row ->> 'graduated_at') is not null
+              then 'Útskrifaður af vinnulista: pantaði sjálfur á vef '
+                   || coalesce(new_row ->> 'graduated_self_orders', '?') || ' sinnum'
+              else 'Settur aftur á vinnulista' end,
+         actor_name, null
+  from h
+  where op = 'UPDATE'
+    and (new_row ->> 'graduated_at') is distinct from (old_row ->> 'graduated_at')
+  union all
   select changed_at, 'removed', 'Fjarlægður af lista', actor_name, null
   from h where op = 'DELETE'
   union all
