@@ -4251,13 +4251,14 @@ function scheduledCustomerAnalysisSync_v1() {
     }
 
     // Útskrift af forgangslistanum (core/sql/priority_graduation_v1.sql):
-    // 2+ vefpantanir sem viðskiptavinurinn lagði sjálfur inn eftir að hann var
-    // settur í forgang. Aukaskref: falli það (t.d. SQL-ið ekki keyrt) stendur
+    // fyrsta vefpöntun sem viðskiptavinurinn leggur sjálfur inn eftir að hann
+    // var settur í forgang (mörk 1, ákveðið 2026-10-15 — sama og staðan
+    // „Pantar sjálf/ur“ hefur alltaf notað). Aukaskref: falli það (t.d. SQL-ið ekki keyrt) stendur
     // keyrslan samt, og staðan verður ekki 'partial' — vinnulistinn er
     // óbreyttur, ekkert hefur farið úrskeiðis í gögnunum.
     try {
       var grad = safeJsonParse_(callSupabaseRpc_('graduate_priority_customers_v1',
-        { p_min_self_orders: 2, p_dry_run: false })) || [];
+        { p_min_self_orders: 1, p_dry_run: false })) || [];
       result.priorityGraduated = grad.length;
       Logger.log('[CASYNC][INFO] Útskrifaðir af forgangslista: ' + grad.length +
         (grad.length ? ' — ' + grad.map(function (g) {

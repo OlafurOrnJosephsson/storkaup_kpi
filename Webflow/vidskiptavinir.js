@@ -588,7 +588,7 @@
     if (!rows.length) {
       var msg = state.workChip === 'due'
         ? (mine.length ? 'Ekkert komið á tíma. ' + mine.length + ' í forgangi eru á þér — sjá „Allir mínir“.' : 'Enginn í forgangi á þér enn.')
-        : state.workChip === 'done' ? 'Enginn útskrifaður enn. Viðskiptavinur útskrifast þegar hann hefur pantað sjálfur á vef tvisvar eftir að hann fór í forgang.'
+        : state.workChip === 'done' ? 'Enginn útskrifaður enn. Viðskiptavinur útskrifast þegar hann pantar sjálfur á vef eftir að hann fór í forgang.'
         : 'Enginn á listanum.';
       return head + '<div class="skv-empty">' + esc(msg) + '</div>';
     }

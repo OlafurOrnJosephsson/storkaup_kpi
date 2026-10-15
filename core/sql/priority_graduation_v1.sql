@@ -9,8 +9,10 @@
 -- graduated_at + graduated_self_orders. Vinnulistinn felur útskrifaða og
 -- sýnir þá í sér síu („Komnir á vef“), svo árangurinn sést og telst.
 --
--- REGLAN: p_min_self_orders (sjálfgefið 2) vefpantanir sem viðskiptavinurinn
--- lagði SJÁLFUR inn eftir að hann var settur í forgang (created_at).
+-- REGLAN: p_min_self_orders (sjálfgefið 1) vefpantanir sem viðskiptavinurinn
+-- lagði SJÁLFUR inn eftir að hann var settur í forgang (created_at). Fyrsta
+-- keyrsla 2026-10-15 notaði 2 (28 útskrifaðir); mörkin lækkuð í 1 sama dag,
+-- í samræmi við stöðuna „Pantar sjálf/ur“ (onboarded_selfserve).
 -- Sölumannspantanir á vef teljast ekki: nafn EÐA netfang pöntunar =
 -- sölumannsreikningur (sama regla og is_rep_order / get_customer_reps_v1).
 --
@@ -34,7 +36,7 @@ alter table raw.customer_priority_flags_raw
 
 -- ── 2. Útskrift (service_role, daglega) ─────────────────────────────
 create or replace function public.graduate_priority_customers_v1(
-  p_min_self_orders integer default 2,
+  p_min_self_orders integer default 1,
   p_dry_run         boolean default true
 )
 returns table (
@@ -49,7 +51,7 @@ security definer
 set search_path to 'raw', 'public', 'pg_temp'
 as $function$
 declare
-  v_min integer := greatest(coalesce(p_min_self_orders, 2), 1);
+  v_min integer := greatest(coalesce(p_min_self_orders, 1), 1);
 begin
   create temp table if not exists _grad_cand (
     family_id text, customer_name text, self_orders bigint, flagged_at timestamptz
@@ -151,6 +153,6 @@ notify pgrst, 'reload schema';
 
 -- ── PRÓFUN ──────────────────────────────────────────────────────────
 -- Þurrkeyrsla — hverjir myndu útskrifast (breytir engu):
---   select * from public.graduate_priority_customers_v1(2, true);
+--   select * from public.graduate_priority_customers_v1(1, true);
 -- Raunkeyrsla (GAS gerir þetta daglega; óþarfi að keyra hér nema til að byrja):
---   select * from public.graduate_priority_customers_v1(2, false);
+--   select * from public.graduate_priority_customers_v1(1, false);
