@@ -420,9 +420,24 @@
       '</div>';
   }
 
+  // Hver „á“ viðskiptavininn? Úthlutaður sölumaður ef einhver er; annars sá
+  // sem pantar fyrir hann utan vefs (get_customer_reps_v1). Mælt 2026-10-15:
+  // 38 af 85 í forgangi höfðu ENGA úthlutun og birtust því á engum
+  // persónulegum lista — líka 16 sem Biggi pantar fyrir. Úthlutun vinnur
+  // alltaf; sá sem pantar fyllir aðeins í eyðuna.
+  function ownerOf(r) {
+    if (r.assigned_rep_name_norm) return r.assigned_rep_name_norm;
+    var info = state.repInfo[flagKey(r.customer_id || r.customer_family_id)];
+    return (info && info.offline_rep) || '';
+  }
+
+  function isMine(r) {
+    return !state.actor || samePerson(ownerOf(r), state.actor);
+  }
+
   function dueRows() {
     return Object.keys(state.flags).map(function (k) { return state.flags[k]; })
-      .filter(function (r) { return isDue(r) && (!state.actor || samePerson(r.assigned_rep_name_norm, state.actor)); });
+      .filter(function (r) { return isDue(r) && isMine(r); });
   }
 
   function renderTabs() {
@@ -484,13 +499,14 @@
   }
 
   function renderWork() {
-    function chip(id, label) {
-      return '<button class="skv-chip" data-act="workchip" data-v="' + id + '" aria-pressed="' + (state.workChip === id) + '">' + label + '</button>';
+    function chip(id, label, n) {
+      return '<button class="skv-chip" data-act="workchip" data-v="' + id + '" aria-pressed="' + (state.workChip === id) + '">' + label + ' · ' + n + '</button>';
     }
     var all = Object.keys(state.flags).map(function (k) { return state.flags[k]; })
       .filter(function (r) { return r.status === 'priority'; });
-    var mine = all.filter(function (r) { return !state.actor || samePerson(r.assigned_rep_name_norm, state.actor); });
-    var rows = state.workChip === 'due' ? mine.filter(isDue) : state.workChip === 'mine' ? mine : all;
+    var mine = all.filter(isMine);
+    var due = mine.filter(isDue);
+    var rows = state.workChip === 'due' ? due : state.workChip === 'mine' ? mine : all;
     rows = rows.slice().sort(function (a, b) {
       var fa = a.next_followup_at || '9999', fb = b.next_followup_at || '9999';
       if (isDue(a) !== isDue(b)) return isDue(a) ? -1 : 1;
@@ -498,10 +514,16 @@
     });
     var head = '<div class="skv-listhead"><h2>' + (state.actor ? 'Mínir í forgangi' : 'Í forgangi') + ' <span>' + rows.length + '</span></h2>' +
       (state.actor ? '' : '<div class="skv-sub">Veldu „Ég er“ efst til að sjá aðeins þína.</div>') +
-      '<div class="skv-chips">' + chip('due', 'Þarf eftirfylgni') + chip('mine', state.actor ? 'Allir mínir' : 'Allir í forgangi') + chip('all', 'Allt fyrirtækið') + '</div></div>';
+      '<div class="skv-chips">' + chip('due', 'Þarf eftirfylgni', due.length) + chip('mine', state.actor ? 'Allir mínir' : 'Allir í forgangi', mine.length) + chip('all', 'Allt fyrirtækið', all.length) + '</div>' +
+      (state.actor ? '<div class="skv-sub">Þínir = úthlutaðir þér, eða án úthlutunar og þú pantar fyrir þá.</div>' : '') + '</div>';
     if (state.flagsOk === null) return head + '<div class="skv-empty">Sæki forgangslistann…</div>';
     if (state.flagsOk === false) return head + '<div class="skv-err">Náði ekki í forgangslistann.</div>';
-    if (!rows.length) return head + '<div class="skv-empty">' + (state.workChip === 'due' ? 'Ekkert komið á tíma. Vel gert.' : 'Enginn á listanum.') + '</div>';
+    if (!rows.length) {
+      var msg = state.workChip === 'due'
+        ? (mine.length ? 'Ekkert komið á tíma. ' + mine.length + ' í forgangi eru á þér — sjá „Allir mínir“.' : 'Enginn í forgangi á þér enn.')
+        : 'Enginn á listanum.';
+      return head + '<div class="skv-empty">' + esc(msg) + '</div>';
+    }
     return head + '<div class="skv-rows">' + rows.map(function (r) {
       var due = isDue(r);
       var meta = r.next_followup_at ? 'Eftirfylgni ' + esc(fmtDate(r.next_followup_at)) :
@@ -513,6 +535,8 @@
       if (by) sub += ' · pantar hjá ' + esc(by);
       if (r.assigned_rep_name_norm && !samePerson(r.assigned_rep_name_norm, info.offline_rep)) {
         sub += ' · úthlutað ' + esc(personLabel(r.assigned_rep_name_norm));
+      } else if (!r.assigned_rep_name_norm) {
+        sub += ' · <span title="Engum úthlutað">án úthlutunar</span>';
       }
       return rowHtml(id, r.customer_name || info.customer_name || '', sub,
         onboardBadge(r.onboarded_status, info), due ? '<span class="skv-due">' + meta + '</span>' : meta);
