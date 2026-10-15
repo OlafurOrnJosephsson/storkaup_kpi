@@ -55,8 +55,9 @@ const NEVER_PUBLIC = ['gasKey', 'STORKAUP_BC_MANUAL', 'EXEC_URL'];
 // slug eða síða horfin) en fellir ekki athugunina.
 // Grunnlistinn; við hann bætast allar /kpi/-slóðir í nav-i forsíðunnar
 // (main), svo ný síða í nav-inu er skoðuð án þess að nokkur muni eftir
-// að skrá hana hér. /kpi/emails og /kpi/umsoknir eru ekki í nav-inu.
-const KPI_PAGES = ['/', '/kpi/emails', '/kpi/umsoknir'];
+// að skrá hana hér. /kpi/umsoknir er ekki í nav-inu. /kpi/emails var eytt
+// 2026-10-15: hnapparnir þar báru data-action sem ekkert hlustaði á.
+const KPI_PAGES = ['/', '/kpi/umsoknir'];
 
 function parseExpected(md) {
   // Pinnatöflurnar eru í kaflanum "Current production pins". Leitað er að
