@@ -366,7 +366,7 @@ page Embed), so each row carries its own date:
 | `portal.js` script-tag src, **inside the Embed** (independent) | `c037bbd` | 2026-09-22, `/kpi/voruportal` only |
 | `auth.js` script-tag src, **site-wide head** (independent) | `af0191a` | 2026-10-09 — sign-in for KPI pages + token on GAS calls, see RUNBOOK → KPI page sign-in |
 | `forgangslisti.js` script-tag src, **in page head code** (independent) | `f03b69f` | 2026-10-15 (pin only — file unchanged since `72c872c`; read off the live page that day) |
-| `vidskiptavinir.js` script-tag src, **in page head code** (independent) | `f03b69f` | 2026-10-15 — staging `/kpi/vidskiptavinur-nyr` (first live on `f248105`); signed-in user → rep by logic (same email in `sales_reps_ref`, canonical name; `kpi_staff_access.rep_name_norm` overrides — `core/sql/kpi_staff_rep_v1.sql`) |
+| `vidskiptavinir.js` script-tag src, **in page head code** (independent) | `960e436` | 2026-10-15 — staging `/kpi/vidskiptavinur-nyr` (first live on `f248105`); signed-in user → rep by logic (same email in `sales_reps_ref`, canonical name; `kpi_staff_access.rep_name_norm` overrides — `core/sql/kpi_staff_rep_v1.sql`) |
 
 `2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —
 gained `?customer=` deep-link support, so the new forgangslisti's row link has
