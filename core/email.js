@@ -1618,7 +1618,7 @@ var WEB_ONBOARDING_CONTENT_ = {
     paragraphs: [
       'Þú átt nú þegar aðgang að vefverslun Stórkaups — en hefur ekki enn nýtt hann. Við viljum gera þér eins auðvelt og hægt er að panta þegar þér hentar.',
       'Í vefversluninni sérðu þitt verð og fyrri pantanir, og getur endurpantað á örfáum sekúndum — allan sólarhringinn, án þess að bíða eftir símtali eða tölvupósti.',
-      'Ef þú manst ekki aðgangsorðið eða þarft aðstoð, svaraðu þessum pósti eða hringdu í 515-1500 og við hjálpum þér af stað.',
+      'Ef þú átt í erfiðleikum með innskráninguna eða þarft aðstoð, svaraðu þessum pósti eða hringdu í 515-1500 og við hjálpum þér af stað.',
       'Svona byrjarðu í þremur skrefum:'
     ],
     bullets: [
@@ -1636,7 +1636,7 @@ var WEB_ONBOARDING_CONTENT_ = {
     paragraphs: [
       'You already have access to the Stórkaup web shop — but you have not used it yet. We want to make ordering as easy as possible, whenever it suits you.',
       'Online you can see your prices and previous orders, and reorder in seconds — around the clock, with no waiting for a phone call or email.',
-      'If you have forgotten your password or need a hand, just reply to this email or call 515-1500 and we will get you started.',
+      'If you have trouble signing in or need a hand, just reply to this email or call 515-1500 and we will get you started.',
       'Here is how to start, in three steps:'
     ],
     bullets: [
