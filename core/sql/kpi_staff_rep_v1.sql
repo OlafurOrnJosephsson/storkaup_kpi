@@ -67,7 +67,8 @@ security definer
 set search_path to 'raw', 'public', 'pg_temp'
 as $function$
   with me as (
-    select lower(btrim(coalesce(p_email, ''))) as email
+    select lower(btrim(coalesce(p_email, ''))) as email,
+           split_part(lower(btrim(coalesce(p_email, ''))), '@', 1) as local
   ),
   reps as (
     select r.name_norm,
@@ -76,15 +77,38 @@ as $function$
     from raw.sales_reps_ref r
     where coalesce(r.active, true) and btrim(coalesce(r.name_norm, '')) <> ''
   ),
+  -- Fólk á oft fleiri en eitt netfang (thorbjorn@/torbjorn@, hb@/haddy@).
+  -- Google skráir alltaf inn með AÐALNETFANGI, svo ef Magento ber alias
+  -- finnur beina samsvörunin engan. Fyrri hluti netfangsins ber þá oftast
+  -- vísbendinguna — upphafsstafir (= BC-kóði) eða gælunafn (= nafnalykill):
+  bcmap as (
+    -- raw.bc_salesperson_map er búin til í vidskiptavinir_v1.sql, sem verður
+    -- því að keyra Á UNDAN þessari skrá (SQL-fall er sannreynt við stofnun).
+    select m.code, nullif(btrim(m.rep_name_norm), '') as rep_name_norm,
+           nullif(btrim(m.display_name), '') as display_name
+    from raw.bc_salesperson_map m
+  ),
   picked as (
     select coalesce(
+             -- 1. handstilling
              nullif(btrim(s.rep_name_norm), ''),
-             -- 'vefur' er vefrásin, ekki manneskja (oj@ stendur á storkaupvefur).
+             -- 2. sama netfang á sölumannsreikningi. 'vefur' er vefrásin,
+             --    ekki manneskja (oj@ stendur á storkaupvefur).
              (select r.name_norm from reps r
               where r.email_norm = me.email and me.email <> '' and r.person_key not in ('', 'vefur')
+              order by (r.name_norm like 'solumadur%') desc, r.name_norm limit 1),
+             -- 3. fyrri hluti netfangs = BC-kóði (hb@ → HB → solumadurhaddy)
+             (select b.rep_name_norm from bcmap b where b.code = upper(me.local) and me.local <> ''),
+             -- 4. fyrri hluti netfangs = nafnalykill (haddy@ → solumadurhaddy)
+             (select r.name_norm from reps r
+              where r.person_key = regexp_replace(me.local, '[^a-z0-9]', '', 'g')
+                and r.person_key not in ('', 'vefur')
               order by (r.name_norm like 'solumadur%') desc, r.name_norm limit 1)
            ) as rep,
-           nullif(btrim(s.display_name), '') as display_name,
+           coalesce(nullif(btrim(s.display_name), ''),
+                    -- Ekki sölumaður en slær inn pantanir (ej@ → EJ → Elísabet)
+                    (select b.display_name from bcmap b where b.code = upper(me.local) and me.local <> '')
+           ) as display_name,
            me.email
     from me
     left join raw.kpi_staff_access s on s.email = me.email
