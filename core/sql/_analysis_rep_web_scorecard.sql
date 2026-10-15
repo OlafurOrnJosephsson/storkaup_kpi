@@ -36,6 +36,7 @@ with roles as (
 ),
 rep_accounts as (
   select r.name_norm,
+         lower(btrim(coalesce(r.email_norm, ''))) as email_norm,
          regexp_replace(regexp_replace(lower(r.name_norm), 'solumadur|storkaup', '', 'g'), '[^a-z0-9]', '', 'g') as person
   from raw.sales_reps_ref r
   where coalesce(r.active, true) and btrim(coalesce(r.name_norm, '')) <> ''
@@ -85,10 +86,14 @@ keyed as (
 web as (
   select regexp_replace(coalesce(n.company_id, ''), '\D', '', 'g') as ckey,
          n.order_id,
+         -- Nafn EÐA netfang (sama regla og is_rep_order). Fyrsta keyrsla
+         -- 2026-10-15 notaði nafnið eitt og fann 0,0% hjá öllum.
          exists (select 1 from rep_accounts r
                  where r.person not in ('', 'vefur')
-                   and r.name_norm = regexp_replace(lower(translate(coalesce(n.customer_name, ''),
-                         'áðþæöéíóúýÁÐÞÆÖÉÍÓÚÝ', 'adthaeoeiouyadthaeoeiouy')), '[^a-z0-9]+', '', 'g')) as by_rep
+                   and (r.name_norm = regexp_replace(lower(translate(coalesce(n.customer_name, ''),
+                          'áðþæöéíóúýÁÐÞÆÖÉÍÓÚÝ', 'adthaeoeiouyadthaeoeiouy')), '[^a-z0-9]+', '', 'g')
+                        or (r.email_norm <> ''
+                            and r.email_norm = lower(btrim(coalesce(to_jsonb(n) ->> 'real_email', '')))))) as by_rep
   from raw.newweb_orders_raw n
   where n.purchase_date >= current_date - 365
 ),

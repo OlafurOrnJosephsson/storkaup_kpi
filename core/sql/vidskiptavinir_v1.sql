@@ -429,7 +429,9 @@ alter table raw.bc_salesperson_map
   add column if not exists role text null
     check (role is null or role in ('solumadur', 'afgreidsla', 'verkstaedi', 'annad'));
 update raw.bc_salesperson_map set role = 'solumadur'  where role is null and nullif(btrim(rep_name_norm), '') is not null;
-update raw.bc_salesperson_map set role = 'afgreidsla' where code in ('EJ', 'HH');
+-- OH (Ólöf) stýrir afgreiðslunni (staðfest 2026-10-15): hún „á“ ekki þá
+-- viðskiptavini sem afgreiðslan sinnir, þótt hún sé sölumannsreikningur.
+update raw.bc_salesperson_map set role = 'afgreidsla' where code in ('EJ', 'HH', 'OH');
 update raw.bc_salesperson_map set role = 'verkstaedi' where code in ('HÖL', 'HÖG');
 update raw.bc_salesperson_map set role = 'annad'      where role is null;
 
@@ -526,14 +528,22 @@ off_sum as (
   from off_role
   group by 1
 ),
+-- Sölumannspöntun á vef: nafn pöntunar = sölumannsreikningur EÐA netfang
+-- pöntunar = netfang sölumannsreiknings (sama regla og is_rep_order í
+-- customer_priority_flags.sql). Netfangshlutinn var sleppt fyrst af ótta við
+-- viðskiptavinanetföng (_measure_rep_email_misclass.sql), en sales_reps_ref
+-- hleypir nú aðeins @storkaup.is / @example.com í gegn
+-- (isAllowedRepEmailForRef_), svo hann er öruggur. Án hans taldist ENGIN
+-- vefpöntun sölumannspöntun (greining 2026-10-15: 0,0% hjá öllum).
 web as (
-  select ids.customer_id, r.name_norm, count(*) as n
+  select ids.customer_id, r.name_norm, count(distinct o.order_id) as n
   from ids
   join raw.newweb_orders_raw o
     on regexp_replace(coalesce(o.company_id, ''), '\D', '', 'g') = ids.norm
   join reps r
     on r.name_norm = regexp_replace(lower(translate(coalesce(o.customer_name, ''),
                        'áðþæöéíóúýÁÐÞÆÖÉÍÓÚÝ', 'adthaeoeiouyadthaeoeiouy')), '[^a-z0-9]+', '', 'g')
+    or (r.email_norm <> '' and r.email_norm = lower(btrim(coalesce(to_jsonb(o) ->> 'real_email', ''))))
   where ids.norm <> ''
     and o.purchase_date >= current_date - 365
     and r.person_key not in ('', 'vefur')
