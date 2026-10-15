@@ -432,6 +432,18 @@ update raw.bc_salesperson_map set role = 'solumadur'  where role is null and nul
 -- OH (Ólöf) stýrir afgreiðslunni (staðfest 2026-10-15): hún „á“ ekki þá
 -- viðskiptavini sem afgreiðslan sinnir, þótt hún sé sölumannsreikningur.
 update raw.bc_salesperson_map set role = 'afgreidsla' where code in ('EJ', 'HH', 'OH');
+-- GES og MUO eru sölumenn í heilbrigðisvörum, ekki „annað“ — án þessa lentu
+-- þeirra viðskiptavinir á afgreiðslunni. AS er markaðsstjóri og á enga
+-- viðskiptavini (staðfest 2026-10-15).
+update raw.bc_salesperson_map set role = 'solumadur' where code in ('GES', 'MUO');
+update raw.bc_salesperson_map set role = 'annad'     where code in ('AS');
+
+-- TEYMI (2026-10-15): söluteymin eftir vöruflokkum, og teymisstjóri. Gildin
+-- sjálf eru sett í SQL-ritlinum, ekki hér (repoið er opinbert).
+alter table raw.bc_salesperson_map
+  add column if not exists team    text null
+    check (team is null or team in ('matvorur', 'rekstrarvorur', 'heilbrigdisvorur')),
+  add column if not exists is_lead boolean not null default false;
 update raw.bc_salesperson_map set role = 'verkstaedi' where code in ('HÖL', 'HÖG');
 update raw.bc_salesperson_map set role = 'annad'      where role is null;
 

@@ -29,9 +29,14 @@
 -- ============================================================================
 
 with roles as (
-  select m.code,
+  select m.code, m.team, coalesce(m.is_lead, false) as is_lead,
          coalesce(m.role, case when nullif(btrim(m.rep_name_norm), '') is not null then 'solumadur' else 'annad' end) as role,
-         nullif(regexp_replace(regexp_replace(lower(coalesce(m.rep_name_norm, '')), 'solumadur|storkaup', '', 'g'), '[^a-z0-9]', '', 'g'), '') as person
+         -- Sölumannsnafn ef til; annars birtingarnafn (GES/MUO hafa ekkert
+         -- sölumannsnafn), annars kóðinn — svo teymið tengist alltaf.
+         coalesce(
+           nullif(regexp_replace(regexp_replace(lower(coalesce(m.rep_name_norm, '')), 'solumadur|storkaup', '', 'g'), '[^a-z0-9]', '', 'g'), ''),
+           nullif(regexp_replace(lower(translate(coalesce(m.display_name, ''), 'áðþæöéíóúýÁÐÞÆÖÉÍÓÚÝ', 'adthaeoeiouyadthaeoeiouy')), '[^a-z0-9]', '', 'g'), ''),
+           lower(m.code)) as person
   from raw.bc_salesperson_map m
 ),
 rep_accounts as (
@@ -131,7 +136,13 @@ flags as (
   join pkey p on p.v = f.assigned_rep_name_norm
   group by 1
 )
-select c.person                                                         as solumadur,
+teams as (
+  -- Teymi og stjórnandi á manneskju (bc_salesperson_map.team / is_lead).
+  select person, max(team) as team, bool_or(is_lead) as is_lead
+  from roles where person is not null group by 1
+)
+select coalesce(t.team, '—')                                            as teymi,
+       c.person || case when t.is_lead then ' (stjóri)' else '' end     as solumadur,
        count(*)                                                         as vidskiptavinir,
        sum(c.total_n)                                                   as pantanir,
        round(100.0 * sum(c.self_n)   / nullif(sum(c.total_n), 0), 1)    as sjalfsafgr_pct,
@@ -145,6 +156,7 @@ select c.person                                                         as solum
        coalesce(max(f.snert_90d), 0)                                    as snert_forgang_90d
 from cust c
 left join flags f on f.person = c.person
-group by c.person
+left join teams t on t.person = c.person
+group by t.team, c.person, t.is_lead
 having count(*) >= 3
-order by sum(c.total_n) desc;
+order by coalesce(t.team, 'zzz'), sum(c.total_n) desc;
