@@ -382,6 +382,22 @@ $function$;
 --                   is_rep_order í customer_priority_flags.sql, nafnhlutinn
 --                   eingöngu — netfangshlutinn ruglar viðskiptavinum saman,
 --                   sjá _measure_rep_email_misclass.sql).
+-- BC-sölumannskóðar sem tengjast ENGU netfangi (mælt 2026-10-15: EJ 4.592
+-- reikningar/365 d, HH 3.964, BTI 2.073, BB 1.264 …). Kóði = upphafsstafir,
+-- netfang = oft önnur stytting, svo regla nær þeim ekki. Handvörpun hér
+-- gengur fyrir öllu. rep_name_norm fyrir sölumenn (solumadur*-form),
+-- display_name fyrir aðra (t.d. þjónustuver).
+create table if not exists raw.bc_salesperson_map (
+  code          text primary key check (code = upper(btrim(code))),
+  rep_name_norm text null,
+  display_name  text null,
+  note          text null,
+  updated_at    timestamptz not null default now()
+);
+alter table raw.bc_salesperson_map enable row level security;
+revoke all on table raw.bc_salesperson_map from public, anon, authenticated;
+grant all privileges on table raw.bc_salesperson_map to service_role;
+
 create or replace function api.get_customer_reps_v1(p_customer_ids text[])
 returns table (
   customer_id        text,
@@ -414,6 +430,9 @@ reps as (
 code_map as (
   select distinct on (code) code, name_norm
   from (
+    select m.code, coalesce(nullif(btrim(m.rep_name_norm), ''), nullif(btrim(m.display_name), '')) as name_norm, -1 as pri
+    from raw.bc_salesperson_map m
+    union all
     select upper(split_part(s.email, '@', 1)) as code,
            coalesce(nullif(btrim(s.rep_name_norm), ''),
                     (select r.name_norm from reps r
@@ -491,6 +510,15 @@ $function$;
 --   from raw.bc_invoices_raw
 --   where coalesce(order_date, booking_date) >= current_date - 365
 --   group by 1 order by 2 desc;
+--
+-- Handvörpun (fyllið út þá sem þið þekkið; óþekktir sýna kóðann sjálfan):
+--   insert into raw.bc_salesperson_map (code, rep_name_norm, display_name, note) values
+--     ('EJ',  null, '<Nafn>', ''),
+--     ('HH',  null, '<Nafn>', ''),
+--     ('BTI', 'solumadurbjossi', null, 'Þorbjörn?'),
+--     ('BB',  null, '<Nafn>', '')
+--   on conflict (code) do update set rep_name_norm = excluded.rep_name_norm,
+--     display_name = excluded.display_name, note = excluded.note, updated_at = now();
 
 
 -- ── RÉTTINDI ────────────────────────────────────────────────────────
