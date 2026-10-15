@@ -24,6 +24,8 @@
  *   get_customer_touch_history_v1 snertisaga úr flaggasögunni
  *   get_my_staff_v1               innskráð netfang → sölumannsnafn (core/sql/kpi_staff_rep_v1.sql)
  *   get_customer_reps_v1          nöfn + hver pantar fyrir þá (BC-sölumaður, sölumaður á vef)
+ *   get_desk_customers_v1         Tækifæri: panta í afgreiðslu
+ *   set_customer_not_web_v1 / get_not_web_customers_v1   „Ekki vefkúnni“ (core/sql/customer_not_web_v1.sql)
  * Fyrir (óbreytt):
  *   get_customer_last_orders, get_customer_priority_flags, get_active_sales_reps,
  *   set_customer_priority_flag, assign_customer_priority_rep,
@@ -272,6 +274,8 @@
     recent: loadJson(RECENT_KEY, []),
     flags: {},              // flagKey -> röð úr get_customer_priority_flags
     repInfo: {},            // flagKey -> röð úr get_customer_reps_v1 (nafn, hver pantar)
+    notWeb: {},             // flagKey -> { not_web_reason, not_web_note } — „Ekki vefkúnni“
+    notWebOpen: false, notWebReason: 'eigid_kerfi', notWebNote: '',
     flagsOk: null,
     reps: [],
     actor: loadJson(ACTOR_KEY, ''),
@@ -483,7 +487,7 @@
       if (!state.results.length) return head + '<div class="skv-empty">Ekkert fannst. Prófaðu hluta af nafni, kennitölu eða vörunúmer.</div>';
       return head + '<div class="skv-rows">' + state.results.map(function (r) {
         var sub = '<span class="skv-mono">' + esc(kt(r.customer_id)) + '</span>' + (r.match_note ? ' · ' + esc(r.match_note) : '');
-        return rowHtml(r.customer_id, r.customer_name, sub, webBadge(r.webshop_active),
+        return rowHtml(r.customer_id, r.customer_name, sub, notWebBadge(r.customer_id) || webBadge(r.webshop_active),
           r.lhfs_label && r.lhfs_label !== 'Low' ? 'Tækifæri: ' + esc(lhfsIs(r.lhfs_label)) : '');
       }).join('') + '</div>';
     }
@@ -551,6 +555,22 @@
     return info.offline_rep ? personLabel(info.offline_rep) : info.offline_rep_code;
   }
 
+  var NOT_WEB_REASONS = [
+    ['eigid_kerfi', 'Eigið innkaupakerfi / EDI'],
+    ['utbod', 'Útboð eða rammasamningur'],
+    ['vill_ekki', 'Vill ekki panta á vef'],
+    ['annad', 'Annað']
+  ];
+  function notWebLabel(code) {
+    for (var i = 0; i < NOT_WEB_REASONS.length; i++) if (NOT_WEB_REASONS[i][0] === code) return NOT_WEB_REASONS[i][1];
+    return 'Annað';
+  }
+  function notWebOf(id) { return state.notWeb[flagKey(id)] || null; }
+  function notWebBadge(id) {
+    var nw = notWebOf(id);
+    return nw ? '<span class="skv-b skv-mute" title="' + esc(notWebLabel(nw.not_web_reason) + (nw.not_web_note ? ' — ' + nw.not_web_note : '')) + '">Ekki vefkúnni</span>' : '';
+  }
+
   function onboardBadge(s, info) {
     if (s === 'onboarded_rep_only' && info && info.web_rep) {
       return '<span class="skv-b skv-warn" title="Vefpantanir síðustu 365 daga eru slegnar inn af sölumanni">' + esc(personLabel(info.web_rep)) + ' pantar á vef</span>';
@@ -578,6 +598,10 @@
       '<div class="skv-chips">' + chips + '</div><div class="skv-sub">' + esc(OPP[state.oppChip].help) + '</div></div>';
     if (!data || data === 'loading') return head + '<div class="skv-empty">Sæki…</div>';
     if (data instanceof Error) return head + '<div class="skv-err">Náði ekki í listann: ' + esc(data.message) + '</div>';
+    // „Ekki vefkúnni“ er ekki tækifæri, hvaða sía sem er.
+    var hidden = data.filter(function (r) { return notWebOf(r.id); }).length;
+    data = data.filter(function (r) { return !notWebOf(r.id); });
+    if (hidden) head += '<div class="skv-sub" style="padding:6px 14px">' + hidden + ' merktir „ekki vefkúnni“ eru faldir.</div>';
     if (!data.length) return head + '<div class="skv-empty">Enginn í þessum hópi.</div>';
     return head + '<div class="skv-rows">' + data.map(function (r) {
       var f = state.flags[flagKey(r.id)];
@@ -630,13 +654,16 @@
     var html = '<div class="skv-card">' +
       '<div class="skv-ph"><div style="display:flex;flex-direction:column;gap:6px;min-width:0">' +
         '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><h2>' + esc(name) + '</h2>' + webStatus(c) +
-          (isPri ? '<span class="skv-b skv-hot">Í forgangi</span>' : '') + '</div>' +
+          (isPri ? '<span class="skv-b skv-hot">Í forgangi</span>' : '') + notWebBadge(state.selectedId) + '</div>' +
         '<span class="skv-sub"><span class="skv-mono">' + esc(kt(state.selectedId)) + '</span>' +
           (c && c.primary_category ? ' · ' + esc(c.primary_category) : '') + fam + '</span>' +
           repLine(state.repInfo[flagKey(state.selectedId)]) +
       '</div><div class="skv-btns">' +
         '<label class="skv-sr" for="skv-rep">Sölumaður</label><select id="skv-rep" class="skv-sel" data-act="rep">' + repOpts + '</select>' +
         (GAS_URL ? '<button class="skv-btn" data-act="email">Senda póst</button>' : '') +
+        (notWebOf(state.selectedId)
+          ? '<button class="skv-btn" data-act="notweb-clear" title="Afturkalla „ekki vefkúnni“">Er vefkúnni</button>'
+          : '<button class="skv-btn" data-act="notweb-open" aria-expanded="' + state.notWebOpen + '">Ekki vefkúnni</button>') +
         '<button class="skv-btn skv-pri" data-act="priority">' + (isPri ? 'Taka úr forgangi' : 'Setja í forgang') + '</button>' +
       '</div></div>';
 
@@ -654,6 +681,13 @@
         '<div class="skv-opp"><div style="display:flex;flex-direction:column;gap:1px"><span class="skv-sub">Tækifæri</span><strong>' + esc(lhfsIs(c.lhfs_label)) + '</strong></div>' +
         '<div style="display:flex;flex-direction:column;gap:3px;flex:1 1 280px;min-width:0"><b>' + esc(c.recommended_action || 'Standard eftirfylgni') + '</b><span style="font-size:14px;color:var(--ink2)">' + esc(oppWhy(c)) + '</span></div></div>';
     }
+    var nw = notWebOf(state.selectedId);
+    if (nw) {
+      html += '<div class="skv-sub" style="background:#F3F4F1;border-radius:8px;padding:8px 12px"><b>Ekki vefkúnni:</b> ' +
+        esc(notWebLabel(nw.not_web_reason)) + (nw.not_web_note ? ' — ' + esc(nw.not_web_note) : '') +
+        '. Birtist ekki á tækifæralistum.</div>';
+    }
+    if (state.notWebOpen && !nw) html += renderNotWebForm();
     if (state.emailOpen) html += renderEmail();
     return html + '</div>';
   }
@@ -682,6 +716,17 @@
 
   function kpi(label, value, sub) {
     return '<div class="skv-kpi"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong>' + (sub ? '<em>' + esc(sub) + '</em>' : '') + '</div>';
+  }
+
+  function renderNotWebForm() {
+    var opts = NOT_WEB_REASONS.map(function (r) {
+      return '<option value="' + r[0] + '"' + (state.notWebReason === r[0] ? ' selected' : '') + '>' + esc(r[1]) + '</option>';
+    }).join('');
+    return '<div class="skv-email"><b>Merkja „ekki vefkúnni“</b>' +
+      '<span class="skv-sub">Fyrir viðskiptavini sem panta ekki á vef af ástæðum sem samtal breytir ekki. Þeir hverfa af tækifæralistum og teljast „ekki forgangur“. Hægt er að afturkalla.</span>' +
+      '<div class="skv-btns"><label class="skv-sub">Ástæða <select class="skv-sel" id="skv-nwr">' + opts + '</select></label>' +
+      '<label class="skv-sub" style="flex:1 1 240px">Athugasemd <input id="skv-nwn" class="skv-sel" style="width:100%" placeholder="t.d. panta gegnum eigið innkaupakerfi" value="' + esc(state.notWebNote) + '"></label></div>' +
+      '<div class="skv-btns"><button class="skv-btn skv-pri" data-act="notweb-save">Vista</button><button class="skv-btn" data-act="notweb-open">Hætta við</button></div></div>';
   }
 
   function renderEmail() {
@@ -866,6 +911,7 @@
     state.emailOpen = false; state.emailData = null; state.emailErr = '';
     state.pFilter = '';
     state.noteDraft = ''; state.fuDraft = null;
+    state.notWebOpen = false; state.notWebNote = '';
     remember(id, name);
     try {
       var u = new URL(location.href); u.searchParams.set('customer', id);
@@ -919,7 +965,17 @@
       (rows || []).forEach(function (r) { m[r.customer_family_id || flagKey(r.customer_id)] = r; });
       state.flags = m; state.flagsOk = true; render();
       loadRepInfo(Object.keys(m).map(function (k) { return m[k].customer_id || m[k].customer_family_id; }));
+      loadNotWeb();
     }).catch(function (e) { console.error('[vidskiptavinir] flags', e); state.flagsOk = false; render(); });
+  }
+
+  // Má falla (SQL ekki keyrt): þá er enginn merktur og ekkert falið.
+  function loadNotWeb() {
+    return rpc('get_not_web_customers_v1', {}).then(function (rows) {
+      var m = {};
+      (rows || []).forEach(function (r) { m[r.customer_family_id || flagKey(r.customer_id)] = r; });
+      state.notWeb = m; render();
+    }).catch(function (e) { console.error('[vidskiptavinir] not-web', e); });
   }
 
   // Má falla: vinnulistinn stendur með kennitölum og án „pantar hjá“.
@@ -1039,6 +1095,19 @@
     return loadFlags();
   }
 
+  function setNotWeb(reason) {
+    var id = state.selectedId;
+    var name = (state.card && state.card.customer_name) || state.selectedName;
+    return rpc('set_customer_not_web_v1', {
+      p_customer_id: id, p_reason: reason, p_note: reason ? (state.notWebNote.trim() || null) : null, p_customer_name: name
+    }).then(function () { return Promise.all([loadFlags(), loadNotWeb()]); })
+      .then(function () {
+        state.notWebOpen = false; state.notWebNote = '';
+        toast(reason ? 'Merkt „ekki vefkúnni“.' : 'Merking afturkölluð.');
+        loadTouches();
+      }).catch(function (e) { toast('Mistókst: ' + e.message, true); });
+  }
+
   function togglePriority() {
     var id = state.selectedId;
     var f = flagFor(id);
@@ -1049,6 +1118,11 @@
       if (reason == null) return;
       if (!reason.trim()) { toast('Ástæða er nauðsynleg.', true); return; }
       p = rpc('set_customer_priority_flag', { p_customer_id: id, p_status: 'nonpriority', p_customer_name: name, p_note: reason.trim() });
+    } else if (notWebOf(id)) {
+      // Að setja í forgang er að segja „hann ER vefkúnni“: afturkalla fyrst.
+      p = rpc('set_customer_not_web_v1', { p_customer_id: id, p_reason: null }).then(function () {
+        return rpc('set_customer_priority_flag', { p_customer_id: id, p_status: 'priority', p_customer_name: name, p_note: null });
+      }).then(function (out) { loadNotWeb(); return out; });
     } else {
       p = rpc('set_customer_priority_flag', { p_customer_id: id, p_status: 'priority', p_customer_name: name, p_note: null });
     }
@@ -1186,6 +1260,12 @@
       state.fuDraft = plusDaysIso(Number(v)); render();
     } else if (act === 'email') {
       openEmail();
+    } else if (act === 'notweb-open') {
+      state.notWebOpen = !state.notWebOpen; render();
+    } else if (act === 'notweb-save') {
+      setNotWeb(state.notWebReason);
+    } else if (act === 'notweb-clear') {
+      if (window.confirm('Afturkalla „ekki vefkúnni“? Viðskiptavinurinn birtist þá aftur á tækifæralistum.')) setNotWeb(null);
     } else if (act === 'send') {
       sendEmail(el.getAttribute('data-email'), el.getAttribute('data-uname'));
     } else if (act === 'csv') {
@@ -1210,6 +1290,8 @@
       state.lang = el.value;
     } else if (el.id === 'skv-fu') {
       state.fuDraft = el.value;
+    } else if (el.id === 'skv-nwr') {
+      state.notWebReason = el.value;
     }
   }
 
@@ -1224,6 +1306,8 @@
       searchTimer = setTimeout(runSearch, 250);
     } else if (el.id === 'skv-note') {
       state.noteDraft = el.value;
+    } else if (el.id === 'skv-nwn') {
+      state.notWebNote = el.value;
     } else if (el.id === 'skv-pf') {
       state.pFilter = el.value;
       clearTimeout(pfTimer);

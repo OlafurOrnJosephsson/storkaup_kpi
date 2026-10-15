@@ -342,13 +342,36 @@ ev as (
   where op = 'UPDATE'
     and (new_row ->> 'assigned_rep_name_norm') is distinct from (old_row ->> 'assigned_rep_name_norm')
   union all
+  -- „Ekki vefkúnni“ (customer_not_web_v1.sql). Lesið úr jsonb, svo þetta
+  -- fall er óháð því hvort dálkurinn er kominn.
+  select changed_at, 'notweb',
+         case when nullif(new_row ->> 'not_web_reason', '') is null
+              then 'Merkingin „ekki vefkúnni“ afturkölluð'
+              else 'Ekki vefkúnni: ' ||
+                   case new_row ->> 'not_web_reason'
+                     when 'eigid_kerfi' then 'eigið innkaupakerfi'
+                     when 'utbod'       then 'útboð / rammasamningur'
+                     when 'vill_ekki'   then 'vill ekki panta á vef'
+                     else 'annað' end ||
+                   coalesce(' — ' || nullif(new_row ->> 'not_web_note', ''), '')
+         end,
+         actor_name, null
+  from h
+  where op = 'UPDATE'
+    and (new_row ->> 'not_web_reason') is distinct from (old_row ->> 'not_web_reason')
+  union all
   select changed_at, 'removed', 'Fjarlægður af lista', actor_name, null
   from h where op = 'DELETE'
   union all
   -- Núverandi röð: hvenær flaggað, og síðasta snerting ef hún er eldri en
-  -- sagan (snertingar fyrir 2026-10-08 eru aðeins til hér).
+  -- sagan (snertingar fyrir 2026-10-08 eru aðeins til hér). Röð sem varð til
+  -- við „ekki vefkúnni“ (INSERT, sem sagan grípur ekki) segir það.
   select f.created_at, 'created',
-         case when f.status = 'priority' then 'Sett í forgang' else 'Merkt: ekki forgangur' end,
+         case when f.status = 'priority' then 'Sett í forgang'
+              when (to_jsonb(f) ->> 'not_web_reason') is not null
+               and not exists (select 1 from h where (h.new_row ->> 'not_web_reason') is not null)
+              then 'Merkt: ekki vefkúnni'
+              else 'Merkt: ekki forgangur' end,
          null, null
   from raw.customer_priority_flags_raw f, k
   where f.customer_family_id = k.key
@@ -601,6 +624,13 @@ inv as (
   where coalesce(i.order_date, i.booking_date) >= current_date - 365
     and nullif(btrim(i.company_id), '') is not null
     and upper(btrim(coalesce(i.salesperson_code, ''))) not in ('', 'VEFUR')
+    -- Innri reikningar (sami listi og internal_accounts í
+    -- customer_profiles_live_bc_v1.sql): „99“ staðgreiðsla/posi var efst.
+    and btrim(i.company_id) not in ('99', '6001222820', '01', '1')
+    -- Merktir „ekki vefkúnni“ (customer_not_web_v1.sql) eru ekki tækifæri.
+    and not exists (select 1 from raw.customer_priority_flags_raw f
+                    where f.customer_family_id = regexp_replace(btrim(i.company_id), '\D', '', 'g')
+                      and (to_jsonb(f) ->> 'not_web_reason') is not null)
 ),
 agg as (
   select inv.cid,
