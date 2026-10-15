@@ -276,6 +276,11 @@
     repInfo: {},            // flagKey -> röð úr get_customer_reps_v1 (nafn, hver pantar)
     notWeb: {},             // flagKey -> { not_web_reason, not_web_note } — „Ekki vefkúnni“
     notWebOpen: false, notWebReason: 'eigid_kerfi', notWebNote: '',
+    // Magnaðgerðir (áfangi 2) í „Vinnulistinn minn“ og „Tækifæri“.
+    // id -> nafn. Hreinsast þegar skipt er um flipa eða síu, svo valið nái
+    // aldrei til raða sem sjást ekki.
+    sel: {}, bulkRep: '', bulkBusy: false,
+    visibleIds: [],
     flagsOk: null,
     reps: [],
     actor: loadJson(ACTOR_KEY, ''),
@@ -336,6 +341,17 @@
     '.skv-rows{max-height:calc(100vh - 230px);overflow:auto}',
     '.skv-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px 14px;border:0;border-bottom:1px solid #E6E9E5;background:#fff;width:100%;text-align:left;font:inherit;cursor:pointer;color:inherit}',
     '.skv-row:hover{background:#F7F8F5}',
+    '.skv-rowwrap{display:flex;align-items:stretch;border-bottom:1px solid #E6E9E5;background:#fff}',
+    '.skv-rowwrap .skv-row{border-bottom:0;flex:1;min-width:0;padding-left:4px}',
+    '.skv-check{display:flex;align-items:center;padding:0 4px 0 12px;cursor:pointer}',
+    '.skv-check input{width:18px;height:18px;accent-color:var(--acc);cursor:pointer}',
+    '.skv-selall{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mute);cursor:pointer}',
+    '.skv-selall input{width:16px;height:16px;accent-color:var(--acc)}',
+    '.skv-bulk{position:sticky;bottom:0;z-index:2;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;background:var(--ink);color:#fff}',
+    '.skv-bulk b{font-weight:600;margin-right:4px}',
+    '.skv-bulk .skv-btn{min-height:36px;padding:6px 11px;font-size:13px}',
+    '.skv-bulk .skv-sel{min-height:36px;font-size:13px}',
+    '.skv-bulk .skv-link{background:transparent;border:0;color:#fff;text-decoration:underline;font:inherit;font-size:13px;cursor:pointer;padding:6px}',
     '.skv-row[aria-current="true"]{background:var(--acc-bg)}',
     '.skv-row b{font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.skv-row small{font-size:13px;color:var(--mute);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
@@ -394,6 +410,9 @@
     var keepId = active && root.contains(active) && active.id ? active.id : '';
     var caret = null;
     try { caret = keepId ? [active.selectionStart, active.selectionEnd] : null; } catch (e) {}
+    // Listinn heldur skrunstöðu sinni: annars hoppaði hann efst við hvert hak.
+    var rowsEl = root.querySelector('.skv-rows');
+    var rowsTop = rowsEl ? rowsEl.scrollTop : 0;
 
     root.innerHTML =
       '<div class="skv-head"><div class="skv-wrap">' + renderTop() + renderTabs() + '</div></div>' +
@@ -402,6 +421,8 @@
         '<section class="skv-prof" aria-label="Viðskiptavinur">' + renderProfile() + '</section>' +
       '</div>' + renderToast();
 
+    var rowsEl2 = root.querySelector('.skv-rows');
+    if (rowsEl2 && rowsTop) rowsEl2.scrollTop = rowsTop;
     if (keepId) {
       var el = document.getElementById(keepId);
       if (el) { el.focus(); if (caret) { try { el.setSelectionRange(caret[0], caret[1]); } catch (e) {} } }
@@ -464,6 +485,38 @@
     return d == null || d >= STALE_DAYS;
   }
 
+  // Í vinnulista og tækifærum fær röðin hak til hliðar við sig (ekki inni í
+  // hnappnum: gagnvirkt inni í gagnvirku er ógilt og lyklaborð ræður ekki við það).
+  function selRowHtml(id, name, sub, badgeHtml, metaHtml) {
+    var on = !!state.sel[id];
+    return '<div class="skv-rowwrap"><label class="skv-check" title="Velja"><span class="skv-sr">Velja ' + esc(name || id) + '</span>' +
+      '<input type="checkbox" id="skv-sel-' + esc(String(id).replace(/[^A-Za-z0-9_-]/g, '')) + '" data-sel="' + esc(id) + '" data-name="' + esc(name) + '"' + (on ? ' checked' : '') + '></label>' +
+      rowHtml(id, name, sub, badgeHtml, metaHtml) + '</div>';
+  }
+
+  function selCount() { return Object.keys(state.sel).length; }
+
+  function selAllHtml(ids) {
+    var n = ids.length;
+    var all = n > 0 && ids.every(function (x) { return state.sel[x.id]; });
+    return '<label class="skv-selall"><input type="checkbox" id="skv-selall"' + (all ? ' checked' : '') + '> Velja alla ' + n + '</label>';
+  }
+
+  function renderBulkBar() {
+    var n = selCount();
+    if (!n) return '';
+    var opts = '<option value="">Veldu sölumann…</option>' + state.reps.map(function (r) {
+      return '<option value="' + esc(r.name_norm) + '"' + (state.bulkRep === r.name_norm ? ' selected' : '') + '>' + esc(repLabel(r.name_norm)) + '</option>';
+    }).join('');
+    var dis = state.bulkBusy ? ' disabled' : '';
+    return '<div class="skv-bulk" role="region" aria-label="Aðgerðir á valda"><b>' + n + ' valdir</b>' +
+      '<button class="skv-btn skv-pri" data-act="bulk-priority"' + dis + '>Setja í forgang</button>' +
+      '<label class="skv-sr" for="skv-bulkrep">Sölumaður</label><select id="skv-bulkrep" class="skv-sel">' + opts + '</select>' +
+      '<button class="skv-btn" data-act="bulk-assign"' + dis + (state.bulkRep ? '' : ' disabled') + '>Úthluta</button>' +
+      '<button class="skv-btn" data-act="bulk-nonpriority"' + dis + '>Taka úr forgangi</button>' +
+      '<button class="skv-link" data-act="bulk-clear">Hreinsa val</button></div>';
+  }
+
   function rowHtml(id, name, sub, badgeHtml, metaHtml) {
     return '<button class="skv-row" data-act="open" data-id="' + esc(id) + '" data-name="' + esc(name) + '"' +
       (flagKey(id) === flagKey(state.selectedId) ? ' aria-current="true"' : '') + '>' +
@@ -519,7 +572,9 @@
     var head = '<div class="skv-listhead"><h2>' + (state.actor ? 'Mínir í forgangi' : 'Í forgangi') + ' <span>' + rows.length + '</span></h2>' +
       (state.actor ? '' : '<div class="skv-sub">Veldu „Ég er“ efst til að sjá aðeins þína.</div>') +
       '<div class="skv-chips">' + chip('due', 'Þarf eftirfylgni', due.length) + chip('mine', state.actor ? 'Allir mínir' : 'Allir í forgangi', mine.length) + chip('all', 'Allt fyrirtækið', all.length) + '</div>' +
-      (state.actor ? '<div class="skv-sub">Þínir = úthlutaðir þér, eða án úthlutunar og þú pantar fyrir þá.</div>' : '') + '</div>';
+      (state.actor ? '<div class="skv-sub">Þínir = úthlutaðir þér, eða án úthlutunar og þú pantar fyrir þá.</div>' : '') +
+      (rows.length ? selAllHtml(rows.map(function (r) { return { id: r.customer_id || r.customer_family_id }; })) : '') + '</div>';
+    state.visibleIds = rows.map(function (r) { return { id: r.customer_id || r.customer_family_id, name: r.customer_name || '' }; });
     if (state.flagsOk === null) return head + '<div class="skv-empty">Sæki forgangslistann…</div>';
     if (state.flagsOk === false) return head + '<div class="skv-err">Náði ekki í forgangslistann.</div>';
     if (!rows.length) {
@@ -543,9 +598,9 @@
       } else if (!r.assigned_rep_name_norm) {
         sub += ' · <span title="Engum úthlutað">án úthlutunar</span>';
       }
-      return rowHtml(id, r.customer_name || info.customer_name || '', sub,
+      return selRowHtml(id, r.customer_name || info.customer_name || '', sub,
         onboardBadge(r.onboarded_status, info), due ? '<span class="skv-due">' + meta + '</span>' : meta);
-    }).join('') + '</div>';
+    }).join('') + '</div>' + renderBulkBar();
   }
 
   // „Pantar hjá Haddy“: BC-sölumaður á pöntunum utan vefs. Kóði sem tengdist
@@ -602,12 +657,14 @@
     var hidden = data.filter(function (r) { return notWebOf(r.id); }).length;
     data = data.filter(function (r) { return !notWebOf(r.id); });
     if (hidden) head += '<div class="skv-sub" style="padding:6px 14px">' + hidden + ' merktir „ekki vefkúnni“ eru faldir.</div>';
+    state.visibleIds = data.map(function (r) { return { id: r.id, name: r.name || '' }; });
     if (!data.length) return head + '<div class="skv-empty">Enginn í þessum hópi.</div>';
+    head += '<div style="padding:8px 14px;border-bottom:1px solid #E6E9E5">' + selAllHtml(data) + '</div>';
     return head + '<div class="skv-rows">' + data.map(function (r) {
       var f = state.flags[flagKey(r.id)];
       var badge = f && f.status === 'priority' ? '<span class="skv-b skv-hot">Í forgangi</span>' : r.badge;
-      return rowHtml(r.id, r.name, r.sub, badge, r.meta);
-    }).join('') + '</div>';
+      return selRowHtml(r.id, r.name, r.sub, badge, r.meta);
+    }).join('') + '</div>' + renderBulkBar();
   }
 
   // ── prófíll ──────────────────────────────────────────────────────────
@@ -1095,6 +1152,68 @@
     return loadFlags();
   }
 
+  // ── magnaðgerðir ───────────────────────────────────────────────────
+  // Sömu RPC og forgangslistinn notaði (customer_priority_flags.sql):
+  // bulk_set_customer_priority_flags og bulk_assign_customer_priority_rep.
+  // Úthlutun sleppir röðum sem eru ekki í forgangi (þær eiga enga flaggröð),
+  // svo þær eru settar í forgang fyrst — sama regla og ein-og-ein úthlutun.
+  // Sögutriggerinn skráir hver gerði hverja breytingu.
+  function selIds() { return Object.keys(state.sel); }
+
+  function bulkRun(label, work) {
+    var ids = selIds();
+    if (!ids.length || state.bulkBusy) return;
+    if (ids.length > 10 && !window.confirm(label + ' á ' + ids.length + ' viðskiptavini?')) return;
+    state.bulkBusy = true; render();
+    work(ids).then(function (msg) {
+      state.sel = {}; state.bulkBusy = false;
+      return Promise.all([loadFlags(), loadNotWeb()]).then(function () { toast(msg); });
+    }).catch(function (e) {
+      state.bulkBusy = false; render();
+      toast('Mistókst: ' + e.message, true);
+    });
+  }
+
+  function bulkPriority() {
+    bulkRun('Setja í forgang', function (ids) {
+      // Merktir „ekki vefkúnni“ eru afturkallaðir fyrst, eins og í prófílnum.
+      var nw = ids.filter(function (id) { return notWebOf(id); });
+      return Promise.all(nw.map(function (id) { return rpc('set_customer_not_web_v1', { p_customer_id: id, p_reason: null }); }))
+        .then(function () { return rpc('bulk_set_customer_priority_flags', { p_customer_ids: ids, p_status: 'priority', p_note: null }); })
+        .then(function (out) { return (out && out.upserted != null ? out.upserted : ids.length) + ' sett í forgang.'; });
+    });
+  }
+
+  function bulkAssign() {
+    var rep = state.bulkRep;
+    if (!rep) return;
+    bulkRun('Úthluta ' + repLabel(rep), function (ids) {
+      var missing = ids.filter(function (id) { var f = flagFor(id); return !f || f.status !== 'priority'; });
+      var first = missing.length
+        ? rpc('bulk_set_customer_priority_flags', { p_customer_ids: missing, p_status: 'priority', p_note: null })
+        : Promise.resolve();
+      return first.then(function () {
+        return rpc('bulk_assign_customer_priority_rep', { p_customer_ids: ids, p_assigned_rep_name_norm: rep });
+      }).then(function (out) {
+        var n = out && out.updated != null ? out.updated : ids.length;
+        return n + ' úthlutað á ' + repLabel(rep) + (missing.length ? ' (' + missing.length + ' settir í forgang fyrst)' : '') + '.';
+      });
+    });
+  }
+
+  function bulkNonPriority() {
+    var ids = selIds();
+    if (!ids.length) return;
+    // Sama krafa og ein-og-ein: ástæða fylgir. Hún vistast sem athugasemd.
+    var reason = window.prompt('Af hverju á að taka ' + ids.length + ' úr forgangi? (vistast sem athugasemd)');
+    if (reason == null) return;
+    if (!reason.trim()) { toast('Ástæða er nauðsynleg.', true); return; }
+    bulkRun('Taka úr forgangi', function (ids2) {
+      return rpc('bulk_set_customer_priority_flags', { p_customer_ids: ids2, p_status: 'nonpriority', p_note: reason.trim() })
+        .then(function () { return ids2.length + ' teknir úr forgangi.'; });
+    });
+  }
+
   function setNotWeb(reason) {
     var id = state.selectedId;
     var name = (state.card && state.card.customer_name) || state.selectedName;
@@ -1237,15 +1356,23 @@
     var act = el.getAttribute('data-act'), v = el.getAttribute('data-v');
     if (el.tagName === 'SELECT' || el.tagName === 'INPUT') return;
     if (act === 'tab') {
-      state.tab = v;
+      state.tab = v; state.sel = {};
       if (v === 'opp') loadOpp(state.oppChip);
       render();
     } else if (act === 'open') {
       openCustomer(el.getAttribute('data-id'), el.getAttribute('data-name'));
     } else if (act === 'workchip') {
-      state.workChip = v; render();
+      state.workChip = v; state.sel = {}; render();
     } else if (act === 'oppchip') {
-      state.oppChip = v; loadOpp(v); render();
+      state.oppChip = v; state.sel = {}; loadOpp(v); render();
+    } else if (act === 'bulk-priority') {
+      bulkPriority();
+    } else if (act === 'bulk-assign') {
+      bulkAssign();
+    } else if (act === 'bulk-nonpriority') {
+      bulkNonPriority();
+    } else if (act === 'bulk-clear') {
+      state.sel = {}; render();
     } else if (act === 'ptab') {
       state.ptab = v; render();
     } else if (act === 'psort') {
@@ -1278,6 +1405,18 @@
   function onChange(e) {
     var el = e.target;
     var act = el.getAttribute('data-act');
+    var selId = el.getAttribute('data-sel');
+    if (selId) {
+      if (el.checked) state.sel[selId] = el.getAttribute('data-name') || selId;
+      else delete state.sel[selId];
+      render(); return;
+    }
+    if (el.id === 'skv-selall') {
+      if (el.checked) state.visibleIds.forEach(function (x) { state.sel[x.id] = x.name || x.id; });
+      else state.visibleIds.forEach(function (x) { delete state.sel[x.id]; });
+      render(); return;
+    }
+    if (el.id === 'skv-bulkrep') { state.bulkRep = el.value; render(); return; }
     if (act === 'actor') {
       state.actor = el.value; saveJson(ACTOR_KEY, state.actor); render();
     } else if (act === 'rep') {
