@@ -1589,7 +1589,9 @@ function buildGenericEmail_(lang, content, vars) {
 var LOCKED_ACCOUNT_CONTENT_ = {
   is: {
     subject: 'Pöntun móttekin – reikningur lokaður',
-    greeting: function (name) { return name ? 'Kæri/Kæra ' + name + ',' : 'Kæri viðskiptavinur,'; },
+    // „Kæri/Kæra“ las eins og óútfyllt eyðublað (prófað 2026-10-15). „Góðan
+    // daginn“ er hlutlaust um kyn og gengur með og án nafns.
+    greeting: function (name) { return name ? 'Góðan daginn ' + name + ',' : 'Góðan daginn,'; },
     paragraphs: [
       'Við höfum móttekið pöntun ykkar og þökkum fyrir traust ykkar.',
       'Þar sem viðskiptareikningur ykkar er að svo stöddu lokaður verður pöntunin ekki send í afgreiðsluferli að svo stöddu.',
@@ -1610,7 +1612,9 @@ var LOCKED_ACCOUNT_CONTENT_ = {
 var WEB_ONBOARDING_CONTENT_ = {
   is: {
     subject: 'Þú átt aðgang að vefverslun Stórkaups — byrjaðu að panta',
-    greeting: function (name) { return name ? 'Kæri/Kæra ' + name + ',' : 'Kæri viðskiptavinur,'; },
+    // „Kæri/Kæra“ las eins og óútfyllt eyðublað (prófað 2026-10-15). „Góðan
+    // daginn“ er hlutlaust um kyn og gengur með og án nafns.
+    greeting: function (name) { return name ? 'Góðan daginn ' + name + ',' : 'Góðan daginn,'; },
     paragraphs: [
       'Þú átt nú þegar aðgang að vefverslun Stórkaups — en hefur ekki enn nýtt hann. Við viljum gera þér eins auðvelt og hægt er að panta þegar þér hentar.',
       'Í vefversluninni sérðu þitt verð og fyrri pantanir, og getur endurpantað á örfáum sekúndum — allan sólarhringinn, án þess að bíða eftir símtali eða tölvupósti.',

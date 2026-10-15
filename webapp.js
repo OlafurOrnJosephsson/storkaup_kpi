@@ -134,7 +134,7 @@ function sendTemplateEmailViaApi_(body) {
   }
   if (!match) return { error: 'recipient_not_in_customer' };
 
-  var greetName = (match.name ? match.name.split(/\s+/)[0] : '') || '';
+  var greetName = greetFirstName_(match.name);
   var senderName = (tmpl.sender && tmpl.sender[lang]) || '';
   var built = tmpl.build(lang, { name: greetName, sender: senderName });
 
@@ -211,7 +211,7 @@ function sendTemplateBulkViaApi_(body) {
     var sentHere = 0;
     users.forEach(function (u) {
       try {
-        var greet = (u.name ? u.name.split(/\s+/)[0] : '') || '';
+        var greet = greetFirstName_(u.name);
         var built = tmpl.build(lang, { name: greet, sender: senderName });
         GmailApp.sendEmail(u.email, built.subject, built.plain, {
           htmlBody: built.html, from: 'vefur@storkaup.is', name: 'Stórkaup ehf'
@@ -229,6 +229,18 @@ function sendTemplateBulkViaApi_(body) {
   props.setProperty(dayKey, String(sentToday));
   logTemplateEmails_(logRows);
   return out;
+}
+
+// Fornafn í kveðju — en aðeins ef nafnið er manneskja. Vefnotandi getur heitið
+// „Stórkaup …“, „Sölumaður - X“ eða „Efnalaugin Vík ehf“; prufusending
+// 2026-10-15 kom út sem „Kæri/Kæra Stórkaup,“. Þá er betra að heilsa án nafns.
+function greetFirstName_(fullName) {
+  var name = String(fullName || '').trim();
+  if (!name) return '';
+  if (/st[óo]rkaup|s[öo]luma[ðd]ur|\b(ehf|hf|slf|sf|ses|bs)\b\.?|\d/i.test(name)) return '';
+  var first = name.split(/\s+/)[0];
+  if (first.length < 2 || first === first.toUpperCase()) return '';
+  return first;
 }
 
 function isBulkRecipient_(u) {
