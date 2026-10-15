@@ -368,7 +368,134 @@ limit 100;
 $function$;
 
 
+-- ── 5. NÖFN + HVER PANTAR FYRIR ÞÁ (bætt við 2026-10-15) ────────────
+-- Fyrir lista af viðskiptavinum (vinnulistinn: ~80) og prófílinn (einn):
+--   customer_name   flaggröðin ber oft ekkert nafn; MV → BC-viðskiptamenn →
+--                   nýjasti BC-reikningur
+--   offline_rep     algengasti sölumaður á pöntunum UTAN VEFS síðustu 365 d.
+--                   BC ber kóða (salesperson_code). Hann er tengdur manneskju
+--                   þar sem kóðinn = fyrri hluti netfangs (HB ↔ hb@storkaup.is),
+--                   fyrst úr kpi_staff_access, svo sales_reps_ref. Annars
+--                   stendur kóðinn sjálfur — betra en ekkert, og satt.
+--   web_rep         sölumaður sem slær inn VEFPANTANIR fyrir þá: nafn
+--                   pöntunarinnar = sölumannsreikningur (sama regla og
+--                   is_rep_order í customer_priority_flags.sql, nafnhlutinn
+--                   eingöngu — netfangshlutinn ruglar viðskiptavinum saman,
+--                   sjá _measure_rep_email_misclass.sql).
+create or replace function api.get_customer_reps_v1(p_customer_ids text[])
+returns table (
+  customer_id        text,
+  customer_name      text,
+  offline_rep_code   text,
+  offline_rep        text,
+  offline_rep_orders bigint,
+  web_rep            text,
+  web_rep_orders     bigint
+)
+language sql
+stable
+security definer
+set search_path to 'api', 'raw', 'public'
+as $function$
+with ids as (
+  select distinct trim(x) as customer_id,
+         regexp_replace(trim(x), '\D', '', 'g') as norm
+  from unnest(coalesce(p_customer_ids, '{}'::text[])) x
+  where btrim(coalesce(x, '')) <> ''
+  limit 2000
+),
+reps as (
+  select r.name_norm,
+         lower(btrim(r.email_norm)) as email_norm,
+         regexp_replace(regexp_replace(lower(r.name_norm), 'solumadur|storkaup', '', 'g'), '[^a-z0-9]', '', 'g') as person_key
+  from raw.sales_reps_ref r
+  where coalesce(r.active, true) and btrim(coalesce(r.name_norm, '')) <> ''
+),
+code_map as (
+  select distinct on (code) code, name_norm
+  from (
+    select upper(split_part(s.email, '@', 1)) as code,
+           coalesce(nullif(btrim(s.rep_name_norm), ''),
+                    (select r.name_norm from reps r
+                     where r.email_norm = s.email and r.person_key not in ('', 'vefur')
+                     order by (r.name_norm like 'solumadur%') desc limit 1)) as name_norm,
+           0 as pri
+    from raw.kpi_staff_access s
+    union all
+    select upper(split_part(r.email_norm, '@', 1)), r.name_norm, 1
+    from reps r
+    where r.email_norm like '%@storkaup.is' and r.person_key not in ('', 'vefur')
+  ) z
+  where name_norm is not null and code <> ''
+  order by code, pri, (name_norm like 'solumadur%') desc
+),
+off as (
+  select ids.customer_id,
+         upper(btrim(i.salesperson_code)) as code,
+         count(distinct i.document_no) as n,
+         max(coalesce(i.order_date, i.booking_date)) as last_d
+  from ids
+  join raw.bc_invoices_raw i
+    on regexp_replace(btrim(coalesce(i.company_id, '')), '\D', '', 'g') = ids.norm
+  where ids.norm <> ''
+    and coalesce(i.order_date, i.booking_date) >= current_date - 365
+    and upper(btrim(coalesce(i.salesperson_code, ''))) not in ('', 'VEFUR')
+  group by 1, 2
+),
+off_top as (
+  select distinct on (customer_id) customer_id, code, n
+  from off
+  order by customer_id, n desc, last_d desc
+),
+web as (
+  select ids.customer_id, r.name_norm, count(*) as n
+  from ids
+  join raw.newweb_orders_raw o
+    on regexp_replace(coalesce(o.company_id, ''), '\D', '', 'g') = ids.norm
+  join reps r
+    on r.name_norm = regexp_replace(lower(translate(coalesce(o.customer_name, ''),
+                       'áðþæöéíóúýÁÐÞÆÖÉÍÓÚÝ', 'adthaeoeiouyadthaeoeiouy')), '[^a-z0-9]+', '', 'g')
+  where ids.norm <> ''
+    and o.purchase_date >= current_date - 365
+    and r.person_key not in ('', 'vefur')
+  group by 1, 2
+),
+web_top as (
+  select distinct on (customer_id) customer_id, name_norm, n
+  from web
+  order by customer_id, n desc
+)
+select ids.customer_id,
+       coalesce(
+         (select p.customer_name from api.mv_customer_profiles_labeled_trends p
+          where p.customer_id = ids.customer_id limit 1),
+         (select nullif(btrim(c.company_name), '') from raw.bc_customers_raw c
+          where btrim(c.company_id) = ids.customer_id limit 1),
+         (select nullif(btrim(i.company_name), '') from raw.bc_invoices_raw i
+          where btrim(i.company_id) = ids.customer_id
+          order by coalesce(i.order_date, i.booking_date) desc nulls last limit 1)
+       ),
+       o.code,
+       cm.name_norm,
+       o.n,
+       w.name_norm,
+       w.n
+from ids
+left join off_top o  on o.customer_id = ids.customer_id
+left join code_map cm on cm.code = o.code
+left join web_top w  on w.customer_id = ids.customer_id;
+$function$;
+
+-- Hvaða BC-kóðar eru til og hverjir tengjast manneskju? (les aðeins)
+--   select upper(btrim(salesperson_code)) as code, count(*) as reikningar_365d
+--   from raw.bc_invoices_raw
+--   where coalesce(order_date, booking_date) >= current_date - 365
+--   group by 1 order by 2 desc;
+
+
 -- ── RÉTTINDI ────────────────────────────────────────────────────────
+revoke all on function api.get_customer_reps_v1(text[])                   from public, anon;
+grant execute on function api.get_customer_reps_v1(text[])                   to authenticated, service_role;
 revoke all on function api.search_customers_v1(text, integer)            from public, anon;
 revoke all on function api.get_customer_card_v1(text)                     from public, anon;
 revoke all on function api.get_customer_products_v1(text, integer, integer) from public, anon;

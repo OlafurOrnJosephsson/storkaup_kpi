@@ -23,6 +23,7 @@
  *   get_customer_products_v1      vörulisti með virku tímabili (í stað shopping_list_v2)
  *   get_customer_touch_history_v1 snertisaga úr flaggasögunni
  *   get_my_staff_v1               innskráð netfang → sölumannsnafn (core/sql/kpi_staff_rep_v1.sql)
+ *   get_customer_reps_v1          nöfn + hver pantar fyrir þá (BC-sölumaður, sölumaður á vef)
  * Fyrir (óbreytt):
  *   get_customer_last_orders, get_customer_priority_flags, get_active_sales_reps,
  *   set_customer_priority_flag, assign_customer_priority_rep,
@@ -270,6 +271,7 @@
     searchError: '',
     recent: loadJson(RECENT_KEY, []),
     flags: {},              // flagKey -> röð úr get_customer_priority_flags
+    repInfo: {},            // flagKey -> röð úr get_customer_reps_v1 (nafn, hver pantar)
     flagsOk: null,
     reps: [],
     actor: loadJson(ACTOR_KEY, ''),
@@ -504,13 +506,30 @@
       var due = isDue(r);
       var meta = r.next_followup_at ? 'Eftirfylgni ' + esc(fmtDate(r.next_followup_at)) :
         (r.last_contacted_at ? 'Snert ' + esc(fmtAgo(r.last_contacted_at)) : 'Aldrei snert');
-      return rowHtml(r.customer_id || r.customer_family_id, r.customer_name,
-        '<span class="skv-mono">' + esc(kt(r.customer_id || r.customer_family_id)) + '</span>' + (r.assigned_rep_name_norm ? ' · ' + esc(repLabel(r.assigned_rep_name_norm)) : ''),
-        onboardBadge(r.onboarded_status), due ? '<span class="skv-due">' + meta + '</span>' : meta);
+      var id = r.customer_id || r.customer_family_id;
+      var info = state.repInfo[flagKey(id)] || {};
+      var sub = '<span class="skv-mono">' + esc(kt(id)) + '</span>';
+      var by = offlineRepLabel(info);
+      if (by) sub += ' · pantar hjá ' + esc(by);
+      if (r.assigned_rep_name_norm && !samePerson(r.assigned_rep_name_norm, info.offline_rep)) {
+        sub += ' · úthlutað ' + esc(personLabel(r.assigned_rep_name_norm));
+      }
+      return rowHtml(id, r.customer_name || info.customer_name || '', sub,
+        onboardBadge(r.onboarded_status, info), due ? '<span class="skv-due">' + meta + '</span>' : meta);
     }).join('') + '</div>';
   }
 
-  function onboardBadge(s) {
+  // „Pantar hjá Haddy“: BC-sölumaður á pöntunum utan vefs. Kóði sem tengdist
+  // engri manneskju stendur sjálfur (t.d. „HB“).
+  function offlineRepLabel(info) {
+    if (!info || !info.offline_rep_code) return '';
+    return info.offline_rep ? personLabel(info.offline_rep) : info.offline_rep_code;
+  }
+
+  function onboardBadge(s, info) {
+    if (s === 'onboarded_rep_only' && info && info.web_rep) {
+      return '<span class="skv-b skv-warn" title="Vefpantanir síðustu 365 daga eru slegnar inn af sölumanni">' + esc(personLabel(info.web_rep)) + ' pantar á vef</span>';
+    }
     if (s === 'onboarded_selfserve') return '<span class="skv-b skv-good">Pantar sjálf/ur</span>';
     if (s === 'onboarded_rep_only') return '<span class="skv-b skv-warn">Sölumaður pantar á vef</span>';
     if (s === 'priority_pending') return '<span class="skv-b skv-bad">Ekki byrjað á vef</span>';
@@ -588,6 +607,7 @@
           (isPri ? '<span class="skv-b skv-hot">Í forgangi</span>' : '') + '</div>' +
         '<span class="skv-sub"><span class="skv-mono">' + esc(kt(state.selectedId)) + '</span>' +
           (c && c.primary_category ? ' · ' + esc(c.primary_category) : '') + fam + '</span>' +
+          repLine(state.repInfo[flagKey(state.selectedId)]) +
       '</div><div class="skv-btns">' +
         '<label class="skv-sr" for="skv-rep">Sölumaður</label><select id="skv-rep" class="skv-sel" data-act="rep">' + repOpts + '</select>' +
         (GAS_URL ? '<button class="skv-btn" data-act="email">Senda póst</button>' : '') +
@@ -610,6 +630,15 @@
     }
     if (state.emailOpen) html += renderEmail();
     return html + '</div>';
+  }
+
+  function repLine(info) {
+    if (!info) return '';
+    var parts = [];
+    var by = offlineRepLabel(info);
+    if (by) parts.push('Pantar hjá <b>' + esc(by) + '</b> (' + num(info.offline_rep_orders) + ' pantanir utan vefs · 365 d)');
+    if (info.web_rep) parts.push('<b>' + esc(personLabel(info.web_rep)) + '</b> slær inn ' + num(info.web_rep_orders) + ' vefpantanir fyrir þá');
+    return parts.length ? '<span class="skv-sub">' + parts.join(' · ') + '</span>' : '';
   }
 
   function maxDate(a, b) {
@@ -819,6 +848,7 @@
     }).catch(function (e) { if (seq === profileSeq) { state.cardErr = e.message; render(); } });
 
     loadProducts(seq);
+    if (!state.repInfo[flagKey(id)]) loadRepInfo([id]);
 
     rpc('get_customer_last_orders', { p_customer_id: id, p_limit: 20 }).then(function (rows) {
       if (seq !== profileSeq) return;
@@ -855,7 +885,17 @@
       var m = {};
       (rows || []).forEach(function (r) { m[r.customer_family_id || flagKey(r.customer_id)] = r; });
       state.flags = m; state.flagsOk = true; render();
+      loadRepInfo(Object.keys(m).map(function (k) { return m[k].customer_id || m[k].customer_family_id; }));
     }).catch(function (e) { console.error('[vidskiptavinir] flags', e); state.flagsOk = false; render(); });
+  }
+
+  // Má falla: vinnulistinn stendur með kennitölum og án „pantar hjá“.
+  function loadRepInfo(ids) {
+    if (!ids.length) return Promise.resolve();
+    return rpc('get_customer_reps_v1', { p_customer_ids: ids }).then(function (rows) {
+      (rows || []).forEach(function (r) { state.repInfo[flagKey(r.customer_id)] = r; });
+      render();
+    }).catch(function (e) { console.error('[vidskiptavinir] reps info', e); });
   }
 
   // Innskráð netfang úr JWT-inu sem auth.js geymir. Engin breyting á auth.js
