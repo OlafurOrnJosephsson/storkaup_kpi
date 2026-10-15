@@ -355,9 +355,9 @@ page Embed), so each row carries its own date:
 
 | What | Value | Set |
 |---|---|---|
-| `data-storkaup-rev` — governs all bootstrap child files | `5681b62` | 2026-10-13 — lagersala card shows when stock was read (`birgðir lesnar kl. HH:MM`) and refreshes every 2 min. The card (since `3b2ab53`) is the first one `dashboard.js` renders itself (`data-storkaup-card`); its grid span is set in Designer, its layout follows its own width |
-| `dashboard-bootstrap.js` script-tag src | `bbd567b` | 2026-10-15 — no longer loads `customer-profiles.js` (deleted). **Set in site-wide code by the deployer after this commit; until then live reads `5681b62`.** the rev attribute stays at `5681b62` because no child file changed |
-| `website-dashboard-bootstrap.js` script-tag src | `5681b62` | 2026-10-13 (pin only — file unchanged since `30f0908`) |
+| `data-storkaup-rev` — governs all bootstrap child files | `bbd567b` | 2026-10-15 (pin only — child files unchanged since `5681b62`, the lagersala card that shows when stock was read; moved together with the bootstrap tags, read off the live site that day) |
+| `dashboard-bootstrap.js` script-tag src | `bbd567b` | 2026-10-15 — no longer loads `customer-profiles.js` (deleted with the old customer pages) |
+| `website-dashboard-bootstrap.js` script-tag src | `bbd567b` | 2026-10-15 (pin only — file unchanged since `30f0908`) |
 | `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
 | `portal.js` script-tag src, **inside the Embed** (independent) | `c037bbd` | 2026-09-22, `/kpi/voruportal` only |
 | `auth.js` script-tag src, **site-wide head** (independent) | `af0191a` | 2026-10-09 — sign-in for KPI pages + token on GAS calls, see RUNBOOK → KPI page sign-in |
