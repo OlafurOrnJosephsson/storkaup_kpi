@@ -31,6 +31,15 @@ create table if not exists raw.customer_priority_flags_history (
   new_row            jsonb null
 );
 
+-- HVER, ekki bara HVAÐAN (2026-10-15). Síðan 2026-10-09 eru KPI-síðurnar
+-- keyrðar sem innskráður starfsmaður, svo JWT-ið ber netfangið. via_role
+-- segir aðeins 'authenticated' um alla. actor_name er sama nafn og viðmótið
+-- sýnir (raw.kpi_actor_name_, core/sql/kpi_staff_rep_v1.sql — keyrist á
+-- undan þessari skrá). Báðir null fyrir línur eldri en þetta og fyrir GAS.
+alter table raw.customer_priority_flags_history
+  add column if not exists actor_email text null,
+  add column if not exists actor_name  text null;
+
 create index if not exists idx_customer_priority_flags_history_customer
   on raw.customer_priority_flags_history (customer_family_id, changed_at desc);
 
@@ -48,7 +57,9 @@ security definer
 set search_path to 'raw', 'public', 'pg_temp'
 as $function$
 declare
-  v_role text;
+  v_role  text;
+  v_email text;
+  v_name  text;
 begin
   -- PostgREST setur request.jwt.claims; í SQL-ritlinum er hún ekki til.
   -- Gölluð stilling má aldrei fella skriftina sem kveikti á triggernum.
@@ -59,6 +70,13 @@ begin
   end;
   v_role := coalesce(v_role, session_user::text);
 
+  begin
+    v_email := nullif(raw.kpi_actor_email_(), '');
+    v_name  := raw.kpi_actor_name_();
+  exception when others then
+    v_email := null; v_name := null;
+  end;
+
   if tg_op = 'UPDATE' then
     -- Skrift sem breytir engu nema updated_at (t.d. sama staða send aftur)
     -- er ekki saga. Án þessarar síu fylltist taflan af tvíteknum línum.
@@ -66,16 +84,16 @@ begin
       return new;
     end if;
     insert into raw.customer_priority_flags_history
-      (op, via_role, customer_family_id, old_row, new_row)
+      (op, via_role, customer_family_id, old_row, new_row, actor_email, actor_name)
     values
-      ('UPDATE', v_role, old.customer_family_id, to_jsonb(old), to_jsonb(new));
+      ('UPDATE', v_role, old.customer_family_id, to_jsonb(old), to_jsonb(new), v_email, v_name);
     return new;
   end if;
 
   insert into raw.customer_priority_flags_history
-    (op, via_role, customer_family_id, old_row, new_row)
+    (op, via_role, customer_family_id, old_row, new_row, actor_email, actor_name)
   values
-    ('DELETE', v_role, old.customer_family_id, to_jsonb(old), null);
+    ('DELETE', v_role, old.customer_family_id, to_jsonb(old), null, v_email, v_name);
   return old;
 end;
 $function$;

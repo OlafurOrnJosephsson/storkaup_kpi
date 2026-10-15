@@ -39,15 +39,35 @@ alter table raw.kpi_staff_access
 --   2. annars sölumannsreikningur í raw.sales_reps_ref með SAMA netfangi;
 --   3. svo kanónískt form: öll nöfn sem eru eins án solumadur/storkaup eru
 --      sama manneskja, og solumadur*-formið vinnur (það bera úthlutanirnar).
-create or replace function api.get_my_staff_v1()
+-- Logíkin býr í raw.kpi_whoami_(netfang) svo að skriftir á þjóninum
+-- (log_customer_priority_touch, saga forgangsflagga) noti NÁKVÆMLEGA sömu
+-- reglu og viðmótið. api.get_my_staff_v1() er þunn umbúð utan um hana.
+
+-- Innskráð netfang úr JWT-inu. Tómt í SQL-ritlinum og í GAS (service_role
+-- ber ekkert netfang). Gölluð stilling má aldrei fella skriftina sem kallar.
+create or replace function raw.kpi_actor_email_()
+returns text
+language plpgsql
+stable
+set search_path to 'raw', 'public', 'pg_temp'
+as $function$
+begin
+  return lower(btrim(coalesce(
+    nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'email', '')));
+exception when others then
+  return '';
+end;
+$function$;
+
+create or replace function raw.kpi_whoami_(p_email text)
 returns jsonb
 language sql
 stable
 security definer
-set search_path to 'api', 'raw', 'public'
+set search_path to 'raw', 'public', 'pg_temp'
 as $function$
   with me as (
-    select lower(btrim(coalesce(auth.jwt() ->> 'email', ''))) as email
+    select lower(btrim(coalesce(p_email, ''))) as email
   ),
   reps as (
     select r.name_norm,
@@ -79,6 +99,36 @@ as $function$
     'display_name',  p.display_name
   )
   from picked p;
+$function$;
+
+-- Nafnið sem skriftir á þjóninum merkja breytingu með: sölumannsnafn,
+-- annars birtingarnafn, annars netfangið sjálft. NULL ef enginn er
+-- innskráður (GAS, SQL-ritill) — þá gilda gömlu reglurnar (p_by).
+create or replace function raw.kpi_actor_name_()
+returns text
+language sql
+stable
+security definer
+set search_path to 'raw', 'public', 'pg_temp'
+as $function$
+  select case when e = '' then null else
+           coalesce(w ->> 'rep_name_norm', w ->> 'display_name', e) end
+  from (select raw.kpi_actor_email_() as e) x,
+       lateral (select raw.kpi_whoami_(x.e) as w) y;
+$function$;
+
+revoke all on function raw.kpi_actor_email_()   from public, anon, authenticated;
+revoke all on function raw.kpi_whoami_(text)    from public, anon, authenticated;
+revoke all on function raw.kpi_actor_name_()    from public, anon, authenticated;
+
+create or replace function api.get_my_staff_v1()
+returns jsonb
+language sql
+stable
+security definer
+set search_path to 'api', 'raw', 'public'
+as $function$
+  select raw.kpi_whoami_(raw.kpi_actor_email_());
 $function$;
 
 revoke all on function api.get_my_staff_v1() from public, anon;

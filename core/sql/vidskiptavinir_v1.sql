@@ -303,7 +303,12 @@ with k as (
               else lower(trim(coalesce(p_customer_id, ''))) end as key
 ),
 h as (
-  select hh.changed_at, hh.op, hh.old_row, hh.new_row
+  -- actor_name (síðan 2026-10-15) er innskráður starfsmaður sem gerði
+  -- breytinguna. updated_by er „síðast snert af“ og hreyfist aðeins við
+  -- snertingu, svo það má ALDREI eigna forgangs- eða sölumannabreytingu:
+  -- þá stæði síðasti snertir við annarra manna verk. Eldri línur án
+  -- actor_name sýna þar engan, sem er satt.
+  select hh.changed_at, hh.op, hh.old_row, hh.new_row, hh.actor_name
   from raw.customer_priority_flags_history hh, k
   where hh.customer_family_id = k.key
 ),
@@ -313,7 +318,7 @@ ev as (
   select (new_row ->> 'last_contacted_at')::timestamptz as ev_at, 'touch'::text as ev_kind,
          case when (new_row ->> 'note') is distinct from (old_row ->> 'note')
               then new_row ->> 'note' end as ev_text,
-         new_row ->> 'updated_by' as ev_by,
+         coalesce(actor_name, new_row ->> 'updated_by') as ev_by,
          (new_row ->> 'next_followup_at')::date as ev_followup
   from h
   where op = 'UPDATE'
@@ -325,19 +330,19 @@ ev as (
               else 'Tekinn úr forgangi' end
          || coalesce(': ' || case when (new_row ->> 'note') is distinct from (old_row ->> 'note')
                                   then new_row ->> 'note' end, ''),
-         new_row ->> 'updated_by', null
+         actor_name, null
   from h
   where op = 'UPDATE' and (new_row ->> 'status') is distinct from (old_row ->> 'status')
   union all
   select changed_at, 'rep',
          case when nullif(new_row ->> 'assigned_rep_name_norm', '') is null then 'Sölumaður fjarlægður'
               else 'Sölumaður: ' || (new_row ->> 'assigned_rep_name_norm') end,
-         new_row ->> 'updated_by', null
+         actor_name, null
   from h
   where op = 'UPDATE'
     and (new_row ->> 'assigned_rep_name_norm') is distinct from (old_row ->> 'assigned_rep_name_norm')
   union all
-  select changed_at, 'removed', 'Fjarlægður af lista', null, null
+  select changed_at, 'removed', 'Fjarlægður af lista', actor_name, null
   from h where op = 'DELETE'
   union all
   -- Núverandi röð: hvenær flaggað, og síðasta snerting ef hún er eldri en

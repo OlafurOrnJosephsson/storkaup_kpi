@@ -149,6 +149,17 @@
     var k = repCanonicalKey(nameNorm);
     return k ? k.charAt(0).toUpperCase() + k.slice(1) : '';
   }
+  // „Hver“ í sögunni getur verið þrennt síðan þjónninn skráir það sjálfur
+  // (raw.kpi_actor_name_): sölumannsnafn (solumadurhaddy → Haddy),
+  // birtingarnafn (Ólafur — óbreytt) eða netfang (fyrri hlutinn).
+  function personLabel(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (!s) return '';
+    if (s.indexOf('@') !== -1) return s.split('@')[0];
+    if (/^[a-z0-9]+$/.test(s)) return repLabel(s) || s;
+    return s;
+  }
+
   function repChoiceScore(n) {
     n = String(n || '').toLowerCase();
     if (n.indexOf('solumadur') === 0) return 0;
@@ -724,7 +735,9 @@
         '<label>Næsta eftirfylgni<input id="skv-fu" type="date" value="' + esc(state.fuDraft != null ? state.fuDraft : (f.next_followup_at || '')) + '"></label>' +
         '<button class="skv-btn" data-act="fu" data-v="7">+7 d</button><button class="skv-btn" data-act="fu" data-v="30">+30 d</button>' +
         '<button class="skv-btn skv-pri" data-act="touch">Skrá snertingu</button>' +
-        (state.actor ? '' : '<span class="skv-sub" style="flex-basis:100%">Veldu „Ég er“ efst svo snertingin sé merkt þér.</span>') +
+        // Þjónninn merkir snertinguna innskráðum notanda sjálfur; valið skiptir
+        // aðeins máli ef innskráningin er sameiginleg og engum tengd.
+        (state.actor || state.authEmail ? '' : '<span class="skv-sub" style="flex-basis:100%">Veldu „Ég er“ efst svo snertingin sé merkt þér.</span>') +
         '</div>';
     }
     var list;
@@ -732,8 +745,9 @@
     else if (!state.touches) list = '<div class="skv-empty">Sæki snertisögu…</div>';
     else if (!state.touches.length) list = '<div class="skv-empty">Engin saga enn.</div>';
     else list = state.touches.map(function (t) {
-      var who = t.by_name ? repLabel(t.by_name) || t.by_name : '';
+      var who = personLabel(t.by_name);
       var txt = t.note_text || (t.kind === 'touch' ? 'Snerting skráð' : '');
+      if (t.kind === 'rep') txt = txt.replace(/^Sölumaður: (.+)$/, function (m, n) { return 'Sölumaður: ' + personLabel(n); });
       var fu = t.followup ? ' · eftirfylgni ' + fmtDate(t.followup) : '';
       return '<div class="skv-ev"><time datetime="' + esc(t.event_at) + '">' + esc(fmtDate(t.event_at)) + '</time><span style="display:flex;flex-direction:column;gap:2px"><span>' + esc(txt) + '</span>' +
         '<span class="skv-sub" style="font-size:12px">' + esc(who) + esc(fu) + '</span></span></div>';

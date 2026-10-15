@@ -454,6 +454,10 @@ declare
   v_norm text := regexp_replace(v_raw, '\D', '', 'g');
   v_key  text;
   v_row  raw.customer_priority_flags_raw%rowtype;
+  -- Innskráður starfsmaður (2026-10-15, core/sql/kpi_staff_rep_v1.sql).
+  -- Þegar hann er þekktur VINNUR hann p_by: vafrinn ræður ekki lengur hver
+  -- er skráður fyrir snertingunni. Null í GAS og SQL-ritlinum → p_by gildir.
+  v_actor text := raw.kpi_actor_name_();
 begin
   if v_raw = '' then
     raise exception 'p_customer_id is required';
@@ -488,6 +492,7 @@ begin
     -- við hinn manninn. Auður reitur er verri en enginn ef hann bendir á
     -- rangan mann, svo hann hreinsar nú.
     updated_by = case
+                   when v_actor is not null then v_actor
                    when p_by is null then f.updated_by
                    when btrim(p_by) = '' then null
                    else btrim(p_by)
