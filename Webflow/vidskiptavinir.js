@@ -519,7 +519,11 @@
       '<label class="skv-sr" for="skv-bulkrep">Sölumaður</label><select id="skv-bulkrep" class="skv-sel">' + opts + '</select>' +
       '<button class="skv-btn" data-act="bulk-assign"' + dis + (state.bulkRep ? '' : ' disabled') + '>Úthluta</button>' +
       '<button class="skv-btn" data-act="bulk-nonpriority"' + dis + '>Taka úr forgangi</button>' +
-      (GAS_URL ? '<button class="skv-btn" data-act="bulk-email"' + dis + ' title="Sendir sniðmátið „Vef-onboarding“ á alla vefnotendur hvers valins fyrirtækis">Senda vefkynningu</button>' : '') +
+      // Aðeins í „Aldrei pantað á vef“: sniðmátið segir „þú átt aðgang … en
+      // hefur ekki enn nýtt hann“, sem er ósatt um þá sem hafa pantað áður
+      // (að dofna / hættir) og þá sem eiga engan aðgang (afgreiðsluhópurinn).
+      (GAS_URL && state.tab === 'opp' && state.oppChip === 'never_ordered'
+        ? '<button class="skv-btn" data-act="bulk-email"' + dis + ' title="Sendir sniðmátið „Vef-onboarding“ á alla vefnotendur hvers valins fyrirtækis">Senda vefkynningu</button>' : '') +
       '<button class="skv-link" data-act="bulk-clear">Hreinsa val</button></div>';
   }
 
