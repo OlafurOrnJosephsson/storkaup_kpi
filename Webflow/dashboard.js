@@ -1385,6 +1385,33 @@
     return Math.round((b - a) / 86400000);
   }
 
+  /* Status strip thresholds. The sync runs every 15 min, so 2 h is eight
+     missed runs. 30 days is the attribution window: a send older than that
+     can no longer produce a newly attributed order. */
+  var KL_SYNC_STALE_HOURS = 2;
+  var KL_ATTRIBUTION_DAYS = 30;
+  var KL_DAY_MONTHS = ["janúar", "febrúar", "mars", "apríl", "maí", "júní", "júlí",
+    "ágúst", "september", "október", "nóvember", "desember"];
+
+  function klHoursSince(iso) {
+    var t = Date.parse(String(iso || ""));
+    return isFinite(t) ? Math.max(0, (Date.now() - t) / 3600000) : null;
+  }
+
+  function klAgo(hours) {
+    if (hours === null) return "aldrei";
+    if (hours < 1) return "fyrir " + Math.max(1, Math.round(hours * 60)) + " mín";
+    if (hours < 48) return "fyrir " + Math.round(hours) + " klst";
+    return "fyrir " + Math.round(hours / 24) + " dögum";
+  }
+
+  function klDayLabel(iso) {
+    var m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return String(iso || "");
+    var label = Number(m[3]) + ". " + KL_DAY_MONTHS[Number(m[2]) - 1];
+    return m[1] === String(new Date().getFullYear()) ? label : label + " " + m[1];
+  }
+
   function klMkr(value) {
     var v = toNumberSafe(value) / 1000000;
     return (Math.round(v * 100) / 100).toFixed(2).replace(".", ",");
@@ -1684,13 +1711,75 @@
     var wrap = klEl("div", "kl-insights");
     wrap.setAttribute("data-kl-insights", "1");
 
-    /* ── Freshness strip: the real last data day, not today's date ──────── */
+    /* ── Status strip ───────────────────────────────────────────────────
+       Three questions, not one: did the sync run, did an email go out, and
+       when was the last attributed order. Until 2026-10-16 the strip only
+       knew the third and called it "Gögn ekki fersk" — 74 days old while
+       the sync ran every 15 min without error. No campaign had gone out
+       since July, so there was nothing to attribute; the red pill read as a
+       broken job and sent people looking for a missing run.
+       agg.syncStatus comes from api.klaviyo_sync_status_v1
+       (core/sql/klaviyo_sync_status_v1.sql). If that call fails it is null
+       and the strip falls back to the old attribution-age rule. */
     var lastDay = agg.lastDataDay;
     var age = lastDay ? klDaysBetween(lastDay, agg.today) : null;
-    var level = "crit";
-    var pillText = "Gögn ekki fersk";
-    if (age !== null && age <= 2) { level = "ok"; pillText = "Gögn fersk"; }
-    else if (age !== null && age <= 7) { level = "warn"; pillText = "Gögn dagsett"; }
+    var st = agg.syncStatus || null;
+    var level, pillText;
+    var msg = klEl("span", "kl-strip-msg");
+
+    function lastAttributedText() {
+      if (!lastDay) return "Engin eignuð pöntun í gögnunum.";
+      return "Síðasta eignaða pöntun: " + klDayLabel(lastDay) +
+        (age === 0 ? " (í dag)." : age === 1 ? " (í gær)." : " (" + age + " dagar).");
+    }
+
+    if (st) {
+      var syncH = klHoursSince(st.last_sync_ok_at);
+      var sendDay = st.last_send_at ? String(st.last_send_at).slice(0, 10) : "";
+      var sendAge = sendDay ? klDaysBetween(sendDay, agg.today) : null;
+
+      if (syncH === null || syncH > KL_SYNC_STALE_HOURS) {
+        /* The only case that is a fault on our side. */
+        level = "crit"; pillText = "Samstilling stopp";
+        msg.appendChild(document.createTextNode(
+          st.last_sync_ok_at
+            ? "Síðasta Klaviyo-samstilling sem tókst var " + klAgo(syncH) + ". "
+            : "Engin Klaviyo-samstilling hefur tekist. "));
+        msg.appendChild(klEl("strong", null, "Stórkaup KPI → Tools → Run Klaviyo Sync"));
+        msg.appendChild(document.createTextNode(" og skoðaðu keyrsluskrána."));
+      } else if (sendAge === null || sendAge > KL_ATTRIBUTION_DAYS) {
+        /* Sync fine, nothing sent inside the attribution window, so no new
+           attributed order can appear. Not a fault — say so. */
+        level = "idle"; pillText = "Engin herferð í gangi";
+        msg.appendChild(document.createTextNode("Samstillt " + klAgo(syncH) + ". "));
+        if (sendDay) {
+          msg.appendChild(document.createTextNode("Enginn póstur hefur farið út síðan "));
+          msg.appendChild(klEl("strong", null, klDayLabel(sendDay)));
+          msg.appendChild(document.createTextNode(" — eignun birtist þegar næsta herferð fer út. "));
+        } else {
+          msg.appendChild(document.createTextNode("Enginn útsendur póstur í gögnunum. "));
+        }
+        msg.appendChild(document.createTextNode(lastAttributedText()));
+      } else {
+        level = "ok"; pillText = "Gögn fersk";
+        msg.appendChild(document.createTextNode("Samstillt " + klAgo(syncH) + ". Síðasti póstur fór út "));
+        msg.appendChild(klEl("strong", null, klDayLabel(sendDay)));
+        msg.appendChild(document.createTextNode(". " + lastAttributedText()));
+      }
+    } else {
+      level = "crit"; pillText = "Gögn ekki fersk";
+      if (age !== null && age <= 2) { level = "ok"; pillText = "Gögn fersk"; }
+      else if (age !== null && age <= 7) { level = "warn"; pillText = "Gögn dagsett"; }
+      if (lastDay) {
+        msg.appendChild(document.createTextNode("Nýjustu eignuðu gögnin eru frá "));
+        msg.appendChild(klEl("strong", null, lastDay));
+        msg.appendChild(document.createTextNode(
+          age === 0 ? " — í dag." : age === 1 ? " — í gær." : " — " + age + " dagar síðan."
+        ));
+      } else {
+        msg.textContent = "Engin eignuð gögn fundust.";
+      }
+    }
 
     var strip = klEl("div", "kl-strip kl-strip--" + level);
     strip.setAttribute("role", "status");
@@ -1698,17 +1787,6 @@
     pill.appendChild(klEl("span", "kl-pill-dot"));
     pill.appendChild(document.createTextNode(pillText));
     strip.appendChild(pill);
-
-    var msg = klEl("span", "kl-strip-msg");
-    if (lastDay) {
-      msg.appendChild(document.createTextNode("Nýjustu eignuðu gögnin eru frá "));
-      msg.appendChild(klEl("strong", null, lastDay));
-      msg.appendChild(document.createTextNode(
-        age === 0 ? " — í dag." : age === 1 ? " — í gær." : " — " + age + " dagar síðan."
-      ));
-    } else {
-      msg.textContent = "Engin eignuð gögn fundust.";
-    }
     strip.appendChild(msg);
     strip.appendChild(klEl("span", "kl-strip-sub", "last click, 30 d" + (agg.botExcluded ? ", án bot-klikka" : "")));
     wrap.appendChild(strip);
@@ -1824,6 +1902,25 @@
     }
     var attributionMvName = includeBotClicks ? "mv_klaviyo_attribution_daily" : "mv_klaviyo_attribution_daily_nobot";
     var campaignCardsViewName = includeBotClicks ? "v_klaviyo_campaign_cards_30d" : "v_klaviyo_campaign_cards_30d_nobot";
+
+    /* Runs alongside the MV fetch. Resolves to null on any failure so the
+       strip falls back to its old rule — a secondary call must never take
+       the page down. */
+    var syncStatusP = fetch((cfg.supabaseUrl || "") + "/rest/v1/rpc/klaviyo_sync_status_v1", {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "apikey": apiKey,
+        "Authorization": "Bearer " + apiKey,
+        "Content-Type": "application/json",
+        "Content-Profile": "api",
+        "Accept-Profile": "api"
+      },
+      body: "{}"
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (rows) { return Array.isArray(rows) && rows[0] ? rows[0] : null; })
+      .catch(function (e) { log("Klaviyo sync status fetch failed:", e); return null; });
 
     var endpoint = (cfg.supabaseUrl || "") + "/rest/v1/" + attributionMvName;
     var query =
@@ -2062,22 +2159,24 @@
 
         /* Additive insights block. Wrapped so a failure here cannot take the
            existing rows or the campaign cards down with it. */
-        try {
-          klRenderInsights({
-            today: today,
-            lastDataDay: totals.lastDataDay,
-            monthly: totals.monthly,
-            tracedOrders: totals.tracedOrders,
-            untracedOrders: totals.untracedOrders,
-            campaignsAllTime: Object.keys(totals.campaignsAllTime).length,
-            revenueInclAllTime: totals.revenueInclAllTime,
-            botExcluded: !includeBotClicks
-          }, cardsHost);
-        } catch (insightsErr) {
-          log("Klaviyo insights render failed:", insightsErr);
-        }
-
-        return fetchAndRenderCampaignCards(1);
+        return syncStatusP.then(function (syncStatus) {
+          try {
+            klRenderInsights({
+              today: today,
+              lastDataDay: totals.lastDataDay,
+              monthly: totals.monthly,
+              tracedOrders: totals.tracedOrders,
+              untracedOrders: totals.untracedOrders,
+              campaignsAllTime: Object.keys(totals.campaignsAllTime).length,
+              revenueInclAllTime: totals.revenueInclAllTime,
+              botExcluded: !includeBotClicks,
+              syncStatus: syncStatus
+            }, cardsHost);
+          } catch (insightsErr) {
+            log("Klaviyo insights render failed:", insightsErr);
+          }
+          return fetchAndRenderCampaignCards(1);
+        });
       })
       .catch(function (err) {
         log("Klaviyo attribution fetch failed:", err);

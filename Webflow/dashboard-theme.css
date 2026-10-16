@@ -1017,6 +1017,11 @@ input[type="text"].is-invalid {
 .kl-pill--warn .kl-pill-dot { background: var(--kl-warn); }
 .kl-pill--ok { background: #e7f5f0; color: var(--kl-good-ink); }
 .kl-pill--ok .kl-pill-dot { background: var(--kl-s2); }
+/* Idle: sync fine, no campaign sent inside the attribution window. Neutral
+   on purpose — red read as a broken job (2026-10-16). */
+.kl-strip--idle { border-left-color: #9aa1ad; }
+.kl-pill--idle { background: #eef0f3; color: #4a5160; }
+.kl-pill--idle .kl-pill-dot { background: #9aa1ad; }
 
 /* ── Cards ────────────────────────────────────────────────────────────── */
 .kl-card {
