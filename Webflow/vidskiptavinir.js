@@ -351,10 +351,10 @@
     '.skv-check input{width:18px;height:18px;accent-color:var(--acc);cursor:pointer}',
     '.skv-selall{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mute);cursor:pointer}',
     '.skv-selall input{width:16px;height:16px;accent-color:var(--acc)}',
-    '.skv-bulk{position:sticky;bottom:0;z-index:2;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;background:var(--ink);color:#fff}',
+    '.skv-bulk{position:sticky;bottom:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 12px;background:var(--ink);color:#fff}',
     '.skv-bulk b{font-weight:600;margin-right:4px}',
-    '.skv-bulk .skv-btn{min-height:36px;padding:6px 11px;font-size:13px}',
-    '.skv-bulk .skv-sel{min-height:36px;font-size:13px}',
+    '.skv-bulk .skv-btn{min-height:34px;padding:5px 9px;font-size:12.5px}',
+    '.skv-bulk .skv-sel{min-height:34px;font-size:12.5px;max-width:140px}',
     '.skv-bulk .skv-link{background:transparent;border:0;color:#fff;text-decoration:underline;font:inherit;font-size:13px;cursor:pointer;padding:6px}',
     '.skv-row[aria-current="true"]{background:var(--acc-bg)}',
     '.skv-row b{font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
@@ -660,7 +660,7 @@
   var OPP = {
     lhfs: { label: 'Kaupa mikið utan vefs', help: 'Mest BC-sala utan vefs síðustu 365 daga, ×1,5 ef aldrei pantað á vef.' },
     desk: { label: 'Panta í afgreiðslu', help: 'Panta sjálf í síma, pósti eða við borð og afgreiðslan slær inn. Þau panta þegar sjálf — vefurinn er næsta skref. Flestar afgreiðslupantanir efst, síðustu 365 daga.' },
-    never_ordered: { label: 'Aldrei pantað á vef', help: 'Með vefaðgang en engin vefpöntun.' },
+    never_ordered: { label: 'Aldrei pantað á vef', help: 'Með vefaðgang en engin vefpöntun. Virkustu viðskiptavinirnir utan vefs efst.' },
     lapsing: { label: 'Að dofna á vef', help: 'Pöntuðu á vef en hafa hægt á sér.' },
     lapsed: { label: 'Hættir á vef', help: 'Pöntuðu á vef en ekki lengur.' }
   };
@@ -1163,16 +1163,37 @@
         });
       });
     } else {
+      // Raðað eftir pöntunum UTAN VEFS síðustu 365 d (get_customer_reps_v1):
+      // sá sem pantar vikulega hjá sölumanni er heitari frambjóðandi en
+      // aðgangur sem hefur ekkert pantað í ár. Áður stafrófsröð — 722
+      // fyrirtæki frá „1214 sf.“. Falli auðgunin stendur stafrófsröðin.
       p = rpc('get_web_activation', { p_only_with_account: true, p_states: [chip] }).then(function (rows) {
-        return (rows || []).map(function (r) {
-          var d = r.days_since_last_order;
-          return {
-            id: r.customer_key, name: r.company_name,
-            sub: '<span class="skv-mono">' + esc(kt(r.customer_key)) + '</span>' + (r.assigned_rep_name_norm ? ' · ' + esc(repLabel(r.assigned_rep_name_norm)) : ''),
-            badge: '',
-            meta: chip === 'never_ordered' ? 'Aldrei pantað' : (d != null ? 'Síðast á vef fyrir ' + d + ' d' : '')
-          };
-        }).sort(function (a, b) { return String(a.name || '').localeCompare(String(b.name || ''), 'is'); });
+        rows = rows || [];
+        var ids = rows.map(function (r) { return r.customer_key; });
+        return rpc('get_customer_reps_v1', { p_customer_ids: ids.slice(0, 2000) })
+          .then(function (info) {
+            var by = {};
+            (info || []).forEach(function (x) { by[flagKey(x.customer_id)] = x; state.repInfo[flagKey(x.customer_id)] = x; });
+            return by;
+          })
+          .catch(function (e) { console.error('[vidskiptavinir] opp enrich', e); return {}; })
+          .then(function (by) {
+            return rows.map(function (r) {
+              var d = r.days_since_last_order;
+              var info = by[flagKey(r.customer_key)] || {};
+              var off = Number(info.offline_orders) || 0;
+              var who = offlineRepLabel(info) || (r.assigned_rep_name_norm ? repLabel(r.assigned_rep_name_norm) : '');
+              return {
+                id: r.customer_key, name: r.company_name, offline: off,
+                sub: '<span class="skv-mono">' + esc(kt(r.customer_key)) + '</span>' + (who ? ' · ' + esc(who) : ''),
+                badge: '',
+                meta: (off ? num(off) + ' pantanir utan vefs' : 'Engar pantanir í ár') +
+                      (chip === 'never_ordered' ? '' : (d != null ? ' · á vef fyrir ' + d + ' d' : ''))
+              };
+            }).sort(function (a, b) {
+              return (b.offline - a.offline) || String(a.name || '').localeCompare(String(b.name || ''), 'is');
+            });
+          });
       });
     }
     p.then(function (rows) { state.oppRows[chip] = rows; render(); })
@@ -1366,6 +1387,11 @@
   function openEmail() {
     state.emailOpen = !state.emailOpen;
     if (!state.emailOpen) { render(); return; }
+    // Sá sem hefur aldrei pantað á vef fær vefkynningu sjálfgefið; aðrir
+    // fyrsta sniðmátið (cache-hjálp), eins og áður.
+    var c = state.card || {};
+    state.tmpl = (c.customer_name !== undefined && !Number(c.web_orders_365d) && !c.last_web_order) ? 'web_onboarding' : '';
+    state.lang = '';
     state.emailData = null; state.emailErr = '';
     render();
     var id = state.selectedId;
