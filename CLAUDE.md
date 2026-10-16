@@ -355,9 +355,9 @@ head), so each row carries its own date:
 
 | What | Value | Set |
 |---|---|---|
-| `data-storkaup-rev` — governs all bootstrap child files | `bbd567b` | 2026-10-15 (pin only — child files unchanged since `5681b62`, the lagersala card that shows when stock was read; moved together with the bootstrap tags, read off the live site that day) |
-| `dashboard-bootstrap.js` script-tag src | `bbd567b` | 2026-10-15 — no longer loads `customer-profiles.js` (deleted with the old customer pages) |
-| `website-dashboard-bootstrap.js` script-tag src | `bbd567b` | 2026-10-15 (pin only — file unchanged since `30f0908`) |
+| `data-storkaup-rev` — governs all bootstrap child files | `1b08cff` | 2026-10-16 (pin only — child files unchanged since `5681b62`, the lagersala card that shows when stock was read; moved together with the bootstrap tags, read off the live site that day) |
+| `dashboard-bootstrap.js` script-tag src | `1b08cff` | 2026-10-16 — no longer loads `top-products.js` (deleted with the old product pages); `bbd567b` before that dropped `customer-profiles.js` |
+| `website-dashboard-bootstrap.js` script-tag src | `1b08cff` | 2026-10-16 (pin only — file unchanged since `30f0908`) |
 | `auth.js` script-tag src, **site-wide head** (independent) | `af0191a` | 2026-10-09 — sign-in for KPI pages + token on GAS calls, see RUNBOOK → KPI page sign-in |
 | `vidskiptavinir.js` script-tag src, **in page head code** (independent) | `a013033` | 2026-10-16 — opportunity lists sorted by offline orders; onboarding template default for never-web customers; "Senda vefkynningu" only under „Aldrei pantað á vef“. `/kpi/vidskiptavinur`: bulk "Senda vefkynningu" (`send_template_bulk`, `core/sql/customer_email_log_v1.sql`), graduation off the worklist („Komnir á vef“, `core/sql/priority_graduation_v1.sql`), bulk actions, `?tab=` deep links. Signed-in user → rep by logic (`core/sql/kpi_staff_rep_v1.sql`) |
 | `vorur.js` script-tag src, **in page head code** (independent) | `ed515f6` | 2026-10-16 — new `/kpi/vorur`: one search (typing → web catalog, pasted list → `?tab=listi`), best sellers + categories, product card at `?sku=` (off-web products still get BC sales), buyer → `/kpi/vidskiptavinur?customer=`. No new SQL. Replaced top-products / voruuppfletting / voruportal, deleted the same day |
@@ -385,9 +385,7 @@ KPI page), `/kpi/voruuppfletting` (`lookup.js`) and `/kpi/voruportal`
 `?tab=listi` is the list lookup, `?sku=` the product card. Before
 `top-products.js` came out of `dashboard-bootstrap.js`, every nav page was
 checked live: only `/kpi/top-products` carried `[data-module="top-products"]`.
-The live `dashboard-bootstrap.js` src still loads it from `bbd567b` until the
-site-wide tag moves to the commit that removed it
-(`git log -1 -- Webflow/dashboard-bootstrap.js`) — harmless, just 28 KB per page.
+The site-wide tags moved to `1b08cff` the same day, so it no longer loads.
 
 The forgangslisti swap of 2026-10-08 (staging page took the slug) was the
 template for the 2026-10-15 customer-page swap; both pages it involved are
