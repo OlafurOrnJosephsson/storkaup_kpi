@@ -81,6 +81,9 @@ function parseExpected(md) {
     if (/data-storkaup-rev/.test(line)) set('rev', sha);
     else if (/website-dashboard-bootstrap\.js/.test(line)) set('websiteBootstrap', sha);
     else if (/dashboard-bootstrap\.js/.test(line)) set('dashboardBootstrap', sha);
+    // vorur.js a undan lookup/portal: rod hennar ma nefna thaer (hun leysir
+    // thaer af holmi) an thess ad lesast sem theirra pinni.
+    else if (/vorur\.js/.test(line)) set('vorur', sha);
     else if (/lookup\.js/.test(line)) set('lookup', sha);
     else if (/portal\.js/.test(line)) set('portal', sha);
     else if (/auth\.js/.test(line)) set('auth', sha);
@@ -186,7 +189,11 @@ const EMBED_PINNED = [
   { key: 'auth',          js: 'auth.js',          embed: null },
   // vidskiptavinir.js (2026-10-15): sameinud vidskiptavinasida, pinni i page
   // head code eins og forgangslisti.js.
-  { key: 'vidskiptavinir', js: 'vidskiptavinir.js', embed: 'vidskiptavinir-embed.html' }
+  { key: 'vidskiptavinir', js: 'vidskiptavinir.js', embed: 'vidskiptavinir-embed.html' },
+  // vorur.js (2026-10-16): sameinud vorusida /kpi/vorur, pinni i page head
+  // code. Tekur vid af lookup.js, portal.js og top-products.js; their tveir
+  // fyrrnefndu fara ur thessum lista thegar gomlu sidunum er eytt.
+  { key: 'vorur',          js: 'vorur.js',          embed: 'vorur-embed.html' }
 ];
 
 function embedPin(spec, expectedFromMd) {

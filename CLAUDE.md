@@ -88,6 +88,7 @@ are reading or editing. `clasp` flattens `core/x.js` to `core/x` in the project.
 | [core/order_monitor.js](core/order_monitor.js) | Magento pending-order monitor. |
 | [core/auth.js](core/auth.js) | Magento admin token cache. |
 | [webapp.js](webapp.js) | `doPost`/`doGet` for the anonymous deployment — key-guarded actions only. |
+| [Webflow/vorur.js](Webflow/vorur.js) · [Webflow/vidskiptavinir.js](Webflow/vidskiptavinir.js) | The two merged KPI pages, `/kpi/vorur` and `/kpi/vidskiptavinur`. Each builds its own markup and CSS; the Embed is a mount `<div>` only. |
 | [pim/buildPimWorksheet.js](pim/buildPimWorksheet.js) | PIM work sheet from the Plytix export. **Pushed with the main project** (`pim/` is not in `.claspignore`). |
 | [admin/](admin/) | The second GAS project. `app.js` routes, `auth.js` guards, `delegate.js` calls the main project, plus the two HTML apps. |
 
@@ -320,6 +321,7 @@ nothing to the dashboards. Change one, move that one.
 | `Webflow/portal.js` | `<script src>` inside the `portal-embed.html` Embed | `/kpi/voruportal` |
 | `Webflow/auth.js` | **site-wide head**, synchronous (no `defer`) — must run before every other script so its fetch wrapper is in place | all KPI pages; inert where `STORKAUP_CONFIG` is absent |
 | `Webflow/vidskiptavinir.js` | page head code — mirrored in `vidskiptavinir-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/vidskiptavinur` (since 2026-10-15; `-nyr` 301s there) |
+| `Webflow/vorur.js` | page head code — mirrored in `vorur-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/vorur` (since 2026-10-16) |
 
 ⚠️ This list read "The exception is `Webflow/lookup.js`" until 2026-09-21 —
 singular, and wrong. `activation.js` had been pinned in page code on
@@ -362,6 +364,7 @@ page Embed), so each row carries its own date:
 | `portal.js` script-tag src, **inside the Embed** (independent) | `c037bbd` | 2026-09-22, `/kpi/voruportal` only |
 | `auth.js` script-tag src, **site-wide head** (independent) | `af0191a` | 2026-10-09 — sign-in for KPI pages + token on GAS calls, see RUNBOOK → KPI page sign-in |
 | `vidskiptavinir.js` script-tag src, **in page head code** (independent) | `a013033` | 2026-10-16 — opportunity lists sorted by offline orders; onboarding template default for never-web customers; "Senda vefkynningu" only under „Aldrei pantað á vef“. `/kpi/vidskiptavinur`: bulk "Senda vefkynningu" (`send_template_bulk`, `core/sql/customer_email_log_v1.sql`), graduation off the worklist („Komnir á vef“, `core/sql/priority_graduation_v1.sql`), bulk actions, `?tab=` deep links. Signed-in user → rep by logic (`core/sql/kpi_staff_rep_v1.sql`) |
+| `vorur.js` script-tag src, **in page head code** (independent) | `ed515f6` | 2026-10-16 — new `/kpi/vorur`: one search (typing → web catalog, pasted list → `?tab=listi`), best sellers + categories, product card at `?sku=` (off-web products still get BC sales), buyer → `/kpi/vidskiptavinur?customer=`. No new SQL. Old product pages still live until the swap |
 
 `2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —
 gained `?customer=` deep-link support, so the new forgangslisti's row link has
@@ -378,6 +381,17 @@ did the frontend last actually change — stays answerable.
 datasheet / safety-sheet / brochure links, and a copy-and-open button for
 supplier portals. The check caught this row stale on the same deploy that
 shipped it — the table was updated from the tool's output, not from memory.
+
+**One product page from 2026-10-16 (swap pending).** `vorur.js` on
+`/kpi/vorur` merges `/kpi/top-products` (`top-products.js`, a bootstrap
+child), `/kpi/voruuppfletting` (`lookup.js`) and `/kpi/voruportal`
+(`portal.js`). Until the swap all four pages are live. The swap: 301 the
+three old slugs here (`voruuppfletting` → `?tab=listi`; check that Webflow's
+redirect keeps `?sku=` from `voruportal`), delete `lookup*`/`portal*` and
+their `EMBED_PINNED` rows, and take `top-products.js` out of
+`dashboard-bootstrap.js` **only after** confirming `/kpi/dashboard` carries
+no `[data-module="top-products"]` / `top-categories`. Also move
+`PAGE` in `tools/check-webflow-pins.js` off `/kpi/top-products`.
 
 The forgangslisti swap of 2026-10-08 (staging page took the slug) was the
 template for the 2026-10-15 customer-page swap; both pages it involved are

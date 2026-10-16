@@ -1,0 +1,46 @@
+<!--
+  VÖRUR (sameinuð vörusíða) — tveir hlutar, á tveimur stöðum.
+
+    A. PAGE HEAD CODE (Page settings → Custom code → Inside <head>):
+       STORKAUP_CONFIG + <script src> neðst í þessari skrá.
+    B. EMBED í body: AÐEINS <div id="sk-vorur"> hér að neðan.
+
+  Síðan er /kpi/vorur (2026-10-16). Hún tekur við af /kpi/top-products,
+  /kpi/voruuppfletting og /kpi/voruportal. Þær standa þangað til skipt er:
+  þá fá þær 301 hingað (voruuppfletting → /kpi/vorur?tab=listi), og það
+  þarf að prófa hvort tilvísun Webflow heldur ?sku= frá voruportal.
+
+  vorur.js ver sig gegn tvíræsingu (data-booted á festingunni). Script-
+  tagið á samt aðeins að vera á EINUM stað.
+
+  Markup og stílar eru smíðaðir í Webflow/vorur.js. Embed-ið ber ekkert
+  nema festingu, því Webflow-Embed tekur 10.000 stafi og sker afganginn
+  þegjandi.
+
+  ── KREFST ──────────────────────────────────────────────────────────
+  Page-scoped head code, ALDREI site-wide:
+    window.STORKAUP_CONFIG.supabaseUrl + .publishableKey
+  Afritaðu STORKAUP_CONFIG-blokkina úr head-kóða /kpi/voruportal.
+  auth.js (site-wide) sér um innskráninguna. Ekkert nýtt SQL.
+
+  ── PINNINN ─────────────────────────────────────────────────────────
+  <script src> neðst er pinnaður á EIGIN commit, ekki gegnum
+  data-storkaup-rev. Breytist Webflow/vorur.js: færðu pinnann í page head
+  code á síðunni, HÉR, og í pinnatöflunni í CLAUDE.md.
+  tools/check-webflow-pins.js les pinnann úr þessari skrá.
+
+  Scriptið keyrir ekki á Designer-canvas. Prófaðu á BIRTU síðunni.
+-->
+
+<!-- ═══ B. EMBED í body ═══ -->
+<div id="sk-vorur">
+  <p style="margin:0;padding:10px 12px;border-radius:6px;
+     background:#fce8e6;border:1px solid #f0b4ad;font:13px/1.45 Arial,sans-serif">
+    ⚠️ Vörusíðan hefur ekki ræst. Script keyrir ekki á Designer-canvas —
+    opnaðu birtu síðuna. Haldist þetta þar vantar líklega STORKAUP_CONFIG
+    eða script-tagið í head-kóða síðunnar.
+  </p>
+</div>
+
+<!-- ═══ A. PAGE HEAD CODE — á eftir STORKAUP_CONFIG. EKKI í Embed. ═══ -->
+<script src="https://cdn.jsdelivr.net/gh/OlafurOrnJosephsson/storkaup_kpi@ed515f6/Webflow/vorur.js"></script>
