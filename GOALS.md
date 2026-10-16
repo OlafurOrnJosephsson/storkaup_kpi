@@ -91,7 +91,7 @@ In rough priority order:
 8. ~~**Turn off DEBUG flags** (P10-4)~~ — Done: `DEBUG = false` in both files.
 9. **Lock down anon read RPCs with PII** (security) — `search_orders`, `get_customer_last_orders`, `get_customer_profile_family_summary` etc. are still executable by `anon`. Needs the auth migration / DataBricks-sourced rebuild before they can be closed without breaking dashboards. Progress 2026-10-08: digest RPCs closed (P11-5); others blocked on the auth migration (P11-6).
 10. **Pin `oauthScopes`** (security, low priority / careful) — Partly done: the main `appsscript.json` declares explicit scopes since 2026-07-13, but they are the previously auto-detected set, not least privilege. Narrowing is still open; re-authorize and watch Executions immediately — a missing scope can break triggers incl. `safePoll_v2`.
-11. **Move Webflow site to a company-owned workspace** (governance, key-person risk — assessment items 6/7) — the Stórkaup site lives in a personal "Olafur's Workspace" (Freelancer plan) alongside a personal site; billing email is `vefur@storkaup.is` (fine) but the workspace ownership is personal. Transfer the site into a company Webflow workspace with a second admin + company payment method. Bigger op (site transfer + re-auth of custom-code deploys); IT/decision item, not urgent.
+11. **Move Webflow site to a company-owned workspace** (governance, key-person risk — assessment items 6/7) — **Done 2026-10-16.** The site moved out of the personal "Olafur's Workspace" into a workspace owned by `vefur@storkaup.is`. URL unchanged (`storkaup.webflow.io`); `check-webflow-pins.js` clean and every KPI page served its custom code right after; sign-in, publish and billing confirmed by hand. Still open: add a second admin.
 
 ## Trigger Intent
 
