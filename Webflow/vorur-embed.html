@@ -5,10 +5,9 @@
        STORKAUP_CONFIG + <script src> neðst í þessari skrá.
     B. EMBED í body: AÐEINS <div id="sk-vorur"> hér að neðan.
 
-  Síðan er /kpi/vorur (2026-10-16). Hún tekur við af /kpi/top-products,
-  /kpi/voruuppfletting og /kpi/voruportal. Þær standa þangað til skipt er:
-  þá fá þær 301 hingað (voruuppfletting → /kpi/vorur?tab=listi), og það
-  þarf að prófa hvort tilvísun Webflow heldur ?sku= frá voruportal.
+  Síðan er /kpi/vorur (2026-10-16). Hún tók við af /kpi/top-products,
+  /kpi/voruuppfletting og /kpi/voruportal; skrár þeirra (top-products.js,
+  lookup*, portal*) fóru úr repoinu sama dag. ?tab=listi opnar uppflettinguna.
 
   vorur.js ver sig gegn tvíræsingu (data-booted á festingunni). Script-
   tagið á samt aðeins að vera á EINUM stað.
@@ -20,7 +19,7 @@
   ── KREFST ──────────────────────────────────────────────────────────
   Page-scoped head code, ALDREI site-wide:
     window.STORKAUP_CONFIG.supabaseUrl + .publishableKey
-  Afritaðu STORKAUP_CONFIG-blokkina úr head-kóða /kpi/voruportal.
+  Afritaðu STORKAUP_CONFIG-blokkina úr head-kóða /kpi/vidskiptavinur.
   auth.js (site-wide) sér um innskráninguna. Ekkert nýtt SQL.
 
   ── PINNINN ─────────────────────────────────────────────────────────

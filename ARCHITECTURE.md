@@ -192,10 +192,8 @@ The internal umsókn/vöruvöktun/vöruinnihald apps are **not** Webflow pages �
 | `/kpi/solutolur` | `dashboard.js` | Sales figures |
 | `/kpi/vidskiptavinur` | `vidskiptavinir.js` (page head code — **not** a bootstrap child; own pin; mount in `vidskiptavinir-embed.html`) | Look up a customer (name, kt or SKU): product list, orders, touch history. Tabs: worklist (`?tab=vinnulisti`) and opportunities (`?tab=taekifaeri`), bulk actions. Replaced the profile, forgangslisti and activation pages 2026-10-15 |
 | `/kpi/klaviyo` | `dashboard.js` | Klaviyo attribution KPIs |
-| `/kpi/top-products` | `top-products.js` | Top products and categories |
+| `/kpi/vorur` | `vorur.js` (page head code — **not** a bootstrap child; own pin; mount in `vorur-embed.html`) | Products: best sellers + categories, list lookup of supplier part numbers / SKUs (`?tab=listi`), product card (`?sku=`). Replaced top-products, voruuppfletting and voruportal 2026-10-16 |
 | `/kpi/vefur-kpi` | `website-dashboard.js` + `website-dashboard-bootstrap.js` | GA4 website metrics |
-| `/kpi/voruuppfletting` | `lookup.js` (via `lookup-embed.html` Embed — **not** a bootstrap child; own pin) | Look up a list of supplier part numbers or Stórkaup SKUs |
-| `/kpi/voruportal` | `portal.js` (via `portal-embed.html` Embed — own pin) | Product portal |
 
 `order-search.js` is also a bootstrap child, loaded by `dashboard-bootstrap.js`.
 
@@ -212,7 +210,7 @@ truth; update it whenever a Webflow file changes. (This used to point at
 `NEXT_TASKS.md`, which now only forwards here — one hop too many.)
 
 Note that `data-storkaup-rev` governs the bootstrap's child files only.
-Four files (`lookup.js`, `portal.js`, `auth.js`, `vidskiptavinir.js`) are
+Three files (`auth.js`, `vidskiptavinir.js`, `vorur.js`) are
 pinned independently in page-level code — `CLAUDE.md` lists where each pin lives.
 
 ---

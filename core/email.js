@@ -342,7 +342,7 @@ function buildWelcomeEmailHtml_() {
     + '<hr class="sk-divider">'
     + '<p class="sk-lbl">Markaðssetning og vörur</p>'
     + card('Markaðsherferðir', 'Tölvupóstar, pantanir og tekjur frá markaðsherferðum', '/kpi/klaviyo')
-    + card('Vinsælar vörur', 'Mest seldu vörurnar og flokkar á vef og BC', '/kpi/top-products')
+    + card('Vörur', 'Mest seldu vörurnar, uppfletting á birgjanúmerum og vöruspjald með kaupendum', '/kpi/vorur')
     + card('Vefmælaborð', 'Heimsóknir, notendur, körfusetning og kaup á vef', '/kpi/vefur-kpi')
     + '<hr class="sk-divider">'
     + '<p class="sk-lbl">Pantanir</p>'

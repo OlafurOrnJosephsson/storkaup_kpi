@@ -28,7 +28,7 @@
  * ── HVAÐ HÚN SÉR EKKI ───────────────────────────────────────────────
  * Aðeins það sem er í site-wide head-kóða. Beri einhver síða SITT EIGIÐ
  * `data-storkaup-rev` page-scoped getur það gildi verið annað og sést
- * ekki hér. Og `lookup.js` er pinnaður inni í Embed í síðubolnum, sem
+ * ekki hér. Og pinnar inni í Embed í síðubolnum (sjá EMBED_PINNED), sem
  * er á bak við hliðina — hann er merktur „óathugaður", ekki „í lagi".
  * Athugun sem þegir um það sem hún sér ekki er verri en engin.
  */
@@ -40,7 +40,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const PAGE = process.env.STORKAUP_PIN_PAGE ||
-             'https://storkaup.webflow.io/kpi/top-products';
+             'https://storkaup.webflow.io/kpi/vorur';
 const CLAUDE_MD = path.join(__dirname, '..', 'CLAUDE.md');
 
 // ENGIN KPI-síða má bera þetta (2026-10-09). Webflow-lykilorðið er farið og
@@ -81,11 +81,7 @@ function parseExpected(md) {
     if (/data-storkaup-rev/.test(line)) set('rev', sha);
     else if (/website-dashboard-bootstrap\.js/.test(line)) set('websiteBootstrap', sha);
     else if (/dashboard-bootstrap\.js/.test(line)) set('dashboardBootstrap', sha);
-    // vorur.js a undan lookup/portal: rod hennar ma nefna thaer (hun leysir
-    // thaer af holmi) an thess ad lesast sem theirra pinni.
     else if (/vorur\.js/.test(line)) set('vorur', sha);
-    else if (/lookup\.js/.test(line)) set('lookup', sha);
-    else if (/portal\.js/.test(line)) set('portal', sha);
     else if (/auth\.js/.test(line)) set('auth', sha);
     else if (/vidskiptavinir\.js/.test(line)) set('vidskiptavinir', sha);
   });
@@ -174,14 +170,10 @@ function freshness(liveRev) {
  * i thennan lista OG i toflunu i CLAUDE.md.
  */
 const EMBED_PINNED = [
-  { key: 'lookup',        js: 'lookup.js',        embed: 'lookup-embed.html' },
-  // activation.js og forgangslisti.js voru hér til 2026-10-15; síðunum var
-  // eytt og vidskiptavinir.js tók við (neðst).
+  // activation.js og forgangslisti.js voru hér til 2026-10-15 (vidskiptavinir.js
+  // tók við), lookup.js og portal.js til 2026-10-16 (vorur.js tók við).
   // portal.js fannst i FYRSTU keyrslu eftir ad thessi listi var buinn til:
-  // pinnadur i portal-embed.html fra 2026-09-21 og nefndur NULL sinnum i
-  // CLAUDE.md. Tveir oskradir embed-pinnar fundust um leid og hardkodunin
-  // a lookup.js var tekin ut. Their voru badir tharna allan timann.
-  { key: 'portal',        js: 'portal.js',        embed: 'portal-embed.html' },
+  // pinnadur i embed fra 2026-09-21 og nefndur NULL sinnum i CLAUDE.md.
   // auth.js (2026-10-09) er EKKI embed heldur site-wide head — en sjálfstæður
   // pinni eins og hinir, svo hann fer hér í gegnum sama ferskleikapróf. Ólíkt
   // embed-pinnunum SÉST hann á lykilorðasíðunni, svo lifandi gildið er lesið
@@ -191,8 +183,7 @@ const EMBED_PINNED = [
   // head code eins og forgangslisti.js.
   { key: 'vidskiptavinir', js: 'vidskiptavinir.js', embed: 'vidskiptavinir-embed.html' },
   // vorur.js (2026-10-16): sameinud vorusida /kpi/vorur, pinni i page head
-  // code. Tekur vid af lookup.js, portal.js og top-products.js; their tveir
-  // fyrrnefndu fara ur thessum lista thegar gomlu sidunum er eytt.
+  // code. Tok vid af lookup.js, portal.js og top-products.js.
   { key: 'vorur',          js: 'vorur.js',          embed: 'vorur-embed.html' }
 ];
 

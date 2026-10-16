@@ -204,10 +204,10 @@
     ensureScript("https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/is.js", "data-flatpickr-is-l10n", function () {
       // customer-profiles.js var hér til 2026-10-15 og hlóðst á ÖLLUM KPI-síðum
       // (117 KB). /kpi/vidskiptavinur keyrir nú vidskiptavinir.js í page head.
-      ensureScript(base + "top-products.js", "data-storkaup-top-products", function () {
-        ensureScript(base + "order-search.js", "data-storkaup-order-search", function () {
-          ensureScript(base + "dashboard.js", "data-storkaup-dashboard");
-        });
+      // top-products.js fór sömu leið 2026-10-16: /kpi/vorur (vorur.js, page
+      // head) tók við, og engin önnur síða bar [data-module="top-products"].
+      ensureScript(base + "order-search.js", "data-storkaup-order-search", function () {
+        ensureScript(base + "dashboard.js", "data-storkaup-dashboard");
       });
     });
   });

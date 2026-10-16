@@ -307,7 +307,7 @@ fails now records `partial`, not `success`, and sends an ops alert.
 The bootstrap scripts read `data-storkaup-rev` off their own `<script>` tag and
 load every child file from that revision (`getRevision()` in both bootstraps).
 Changing it moves `dashboard.js`, `order-search.js`,
-`top-products.js`, `website-dashboard.js` and `dashboard-theme.css` together.
+`website-dashboard.js` and `dashboard-theme.css` together.
 This list used to give a separate commit per file, which implied a per-file
 control that does not exist for those.
 
@@ -317,8 +317,6 @@ nothing to the dashboards. Change one, move that one.
 
 | File | Where its pin lives | Page |
 |---|---|---|
-| `Webflow/lookup.js` | `<script src>` inside the `lookup-embed.html` Embed | `/kpi/voruuppfletting` |
-| `Webflow/portal.js` | `<script src>` inside the `portal-embed.html` Embed | `/kpi/voruportal` |
 | `Webflow/auth.js` | **site-wide head**, synchronous (no `defer`) — must run before every other script so its fetch wrapper is in place | all KPI pages; inert where `STORKAUP_CONFIG` is absent |
 | `Webflow/vidskiptavinir.js` | page head code — mirrored in `vidskiptavinir-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/vidskiptavinur` (since 2026-10-15; `-nyr` 301s there) |
 | `Webflow/vorur.js` | page head code — mirrored in `vorur-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/vorur` (since 2026-10-16) |
@@ -352,19 +350,17 @@ Webflow *site-wide* custom code, two `<script>` tags that carry both the
 `@commit` in `src` and the `data-storkaup-rev` attribute. Earlier revisions of
 this section said the attribute was "bumped on all seven KPI pages"; that was
 never how it worked, and it made the job sound bigger and more error-prone than
-it is. The `lookup.js` pin is the one that genuinely lives elsewhere (inside a
-page Embed), so each row carries its own date:
+it is. The independent pins live elsewhere (page head code or site-wide
+head), so each row carries its own date:
 
 | What | Value | Set |
 |---|---|---|
 | `data-storkaup-rev` — governs all bootstrap child files | `bbd567b` | 2026-10-15 (pin only — child files unchanged since `5681b62`, the lagersala card that shows when stock was read; moved together with the bootstrap tags, read off the live site that day) |
 | `dashboard-bootstrap.js` script-tag src | `bbd567b` | 2026-10-15 — no longer loads `customer-profiles.js` (deleted with the old customer pages) |
 | `website-dashboard-bootstrap.js` script-tag src | `bbd567b` | 2026-10-15 (pin only — file unchanged since `30f0908`) |
-| `lookup.js` script-tag src, **inside the Embed** (independent) | `5368032` | 2026-09-21, `/kpi/voruuppfletting` only |
-| `portal.js` script-tag src, **inside the Embed** (independent) | `c037bbd` | 2026-09-22, `/kpi/voruportal` only |
 | `auth.js` script-tag src, **site-wide head** (independent) | `af0191a` | 2026-10-09 — sign-in for KPI pages + token on GAS calls, see RUNBOOK → KPI page sign-in |
 | `vidskiptavinir.js` script-tag src, **in page head code** (independent) | `a013033` | 2026-10-16 — opportunity lists sorted by offline orders; onboarding template default for never-web customers; "Senda vefkynningu" only under „Aldrei pantað á vef“. `/kpi/vidskiptavinur`: bulk "Senda vefkynningu" (`send_template_bulk`, `core/sql/customer_email_log_v1.sql`), graduation off the worklist („Komnir á vef“, `core/sql/priority_graduation_v1.sql`), bulk actions, `?tab=` deep links. Signed-in user → rep by logic (`core/sql/kpi_staff_rep_v1.sql`) |
-| `vorur.js` script-tag src, **in page head code** (independent) | `ed515f6` | 2026-10-16 — new `/kpi/vorur`: one search (typing → web catalog, pasted list → `?tab=listi`), best sellers + categories, product card at `?sku=` (off-web products still get BC sales), buyer → `/kpi/vidskiptavinur?customer=`. No new SQL. Old product pages still live until the swap |
+| `vorur.js` script-tag src, **in page head code** (independent) | `ed515f6` | 2026-10-16 — new `/kpi/vorur`: one search (typing → web catalog, pasted list → `?tab=listi`), best sellers + categories, product card at `?sku=` (off-web products still get BC sales), buyer → `/kpi/vidskiptavinur?customer=`. No new SQL. Replaced top-products / voruuppfletting / voruportal, deleted the same day |
 
 `2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —
 gained `?customer=` deep-link support, so the new forgangslisti's row link has
@@ -382,16 +378,16 @@ datasheet / safety-sheet / brochure links, and a copy-and-open button for
 supplier portals. The check caught this row stale on the same deploy that
 shipped it — the table was updated from the tool's output, not from memory.
 
-**One product page from 2026-10-16 (swap pending).** `vorur.js` on
-`/kpi/vorur` merges `/kpi/top-products` (`top-products.js`, a bootstrap
-child), `/kpi/voruuppfletting` (`lookup.js`) and `/kpi/voruportal`
-(`portal.js`). Until the swap all four pages are live. The swap: 301 the
-three old slugs here (`voruuppfletting` → `?tab=listi`; check that Webflow's
-redirect keeps `?sku=` from `voruportal`), delete `lookup*`/`portal*` and
-their `EMBED_PINNED` rows, and take `top-products.js` out of
-`dashboard-bootstrap.js` **only after** confirming `/kpi/dashboard` carries
-no `[data-module="top-products"]` / `top-categories`. Also move
-`PAGE` in `tools/check-webflow-pins.js` off `/kpi/top-products`.
+**One product page since 2026-10-16.** `vorur.js` on `/kpi/vorur` replaced
+`/kpi/top-products` (`top-products.js`, a bootstrap child that loaded on every
+KPI page), `/kpi/voruuppfletting` (`lookup.js`) and `/kpi/voruportal`
+(`portal.js`). The pages were deleted and the files removed the same day.
+`?tab=listi` is the list lookup, `?sku=` the product card. Before
+`top-products.js` came out of `dashboard-bootstrap.js`, every nav page was
+checked live: only `/kpi/top-products` carried `[data-module="top-products"]`.
+The live `dashboard-bootstrap.js` src still loads it from `bbd567b` until the
+site-wide tag moves to the commit that removed it
+(`git log -1 -- Webflow/dashboard-bootstrap.js`) — harmless, just 28 KB per page.
 
 The forgangslisti swap of 2026-10-08 (staging page took the slug) was the
 template for the 2026-10-15 customer-page swap; both pages it involved are
@@ -421,13 +417,12 @@ agree and both be wrong, which is exactly what happened here. It also fails if
 
 It runs at the end of `gas_deploy.ps1`, non-blocking.
 
-The `lookup.js` pin sits in a page Embed on `/kpi/voruuppfletting`, in the body
-and therefore behind the gate — it is **not** readable from outside, and the
-tool prints `ÓATHUGAÐUR` for it rather than a clean bill. What it does check
-locally is that `Webflow/lookup-embed.html` and this table agree, and that the
-pin contains the newest commit touching `Webflow/lookup.js`. Those two catch
-the realistic mistake (change the file, forget the pin); the live value is
-confirmed by hand, last on 2026-09-21.
+The independent pins (`EMBED_PINNED` in the tool) are read off every KPI page
+in the home-page nav — the password gate is gone since 2026-10-09, so page
+code is readable. A page missing from the nav is not scanned, and its pin
+prints `ÓATHUGAÐUR`. Locally the tool also checks that each `*-embed.html` and
+this table agree, and that the pin contains the newest commit touching the
+file — the realistic mistake (change the file, forget the pin).
 
 Only `data-storkaup-rev` was moved to `4131408`; the two script-tag `src`
 values were deliberately left at `6c992c5`, because **both bootstrap files are
