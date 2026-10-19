@@ -11,11 +11,11 @@
 
 Leitin á storkaup.is notar Cludo. Framendinn kallar á eigin route, `POST /api/search`, sem sendir leitina áfram til Cludo. Crawler Cludo les vörusíðurnar (`/vara/...`) og byggir leitarstuðulinn (index) úr þeim.
 
-Upphaflega var verkið um þrjú einkenni. Tvö af þeim eru þegar horfin (sjá „Staðan 2026-10-19“):
+Upphaflega var verkið um þrjú einkenni. Eitt þeirra er horfið og tvö standa enn (sjá „Staðan 2026-10-19“):
 
 1. **Sama vara birtist tvisvar í leitinni.** Viðskiptavinur kvartaði í sept. yfir „sama varan 2x 113258 á vef“. Það er **lagað í dag**, en lagfæringin byggir á handgerðum regex-listum í Cludo og hreinsun úr KPI-kerfinu. Hvort tveggja þarf viðhald.
 2. **Inn-límd vöruheiti skila engu.** Fólk afritar heil vöruheiti, t.d. úr flipaheiti eða Google, og fær 0 niðurstöður. Það á **enn við** þegar `| Merki | Stórkaup`-halinn fylgir með.
-3. **`te & kaffi` skilaði 0.** Það er **lagað í dag**, því villuleiðrétting Cludo breytir `&` í `og`.
+3. **`&` í leit skilar 0.** `te & kaffi` virkar núna, en aðeins vegna Misspellings-færslu sem var bætt við í Cludo 2026-10-19. Aðrar leitir með `&` gefa enn 0 (`salt & pipar` → 0, `salt og pipar` → 4).
 
 ## Staðan 2026-10-19 (prófað á `POST /api/search`)
 
@@ -31,7 +31,8 @@ Upphaflega var verkið um þrjú einkenni. Tvö af þeim eru þegar horfin (sjá
 | `Paprika Flögur 18x 175gr` | 1 | |
 | `hanskar stórkaup` | 89 | eins og `hanskar`. Cludo hunsar orðið „stórkaup“ eitt og sér |
 | `nesquik kakómalt, 12x 700g stórkaup` | 1 | var 0 í upphaflegu lýsingunni, virkar núna |
-| `te & kaffi` | 25 | `FixedQuery` = `te og kaffi`. Cludo leysir þetta sjálft |
+| `te & kaffi` | 25 | `FixedQuery` = `te og kaffi`, en aðeins vegna handgerðrar Misspellings-færslu |
+| `salt & pipar` | **0** | `salt og pipar` → 4. **`&` er ekki leyst almennt** |
 | `draumur fylltur lakkrís, 25x 45g freyja stórkaup` | 0 | **varan er ekki á vefnum**, sjá neðar |
 | `glerhreinsir 0,75l` | 0 | villuleiðrétting breytti `0,75l` í `0275` |
 
@@ -138,7 +139,7 @@ Bæta við litlu falli, t.d. `normalizeQuery(q)`, sem keyrir áður en strenguri
 - **Aðalatriðið:** fjarlægja ` | ...`-hala, þ.e. allt frá fyrsta `|`. Prófin sýna að stafurinn `|` einn og sér gefur 0, líklega af því að Cludo les hann sem virkja. Lágmarkslausnin er því ein lína, `q.replace(/\|/g, ' ')`. Að skera halann af er betra, því þá fer „Merki“ og „Stórkaup“ líka.
 - Fjarlægja orðið `stórkaup` / `storkaup` (óháð há- og lágstöfum), sem heilt orð. Cludo hunsar það í dag, svo þetta er varúðarráðstöfun, ekki lagfæring.
 - Skipta kommum út fyrir bil, **nema komma milli tveggja tölustafa**. Tugakomma er notuð í vöruheitum (`5,5kg`, `1,5L`). Kommur trufla Cludo ekki í dag, svo þetta má líka sleppa.
-- **Ekki** breyta `&`. Cludo breytir `te & kaffi` sjálft í `te og kaffi`, og ef framendinn gerir það líka hverfur `FixedQuery`-upplýsingin.
+- ` & ` (með bili báðum megin) → ` og `. `&` án bila, t.d. `H&M` eða `P&G`, helst óbreytt. Cludo leysir þetta ekki almennt: `te & kaffi` virkar aðeins út af handgerðri Misspellings-færslu, en `salt & pipar` gefur 0.
 - Þjappa mörgum bilum í eitt og trimma.
 - **Ekki** breyta tölum eða einingum eins og `25x`, `45g`, `5L` eða `5,5kg`.
 - Ef ekkert er eftir (fyrirspurnin var bara `stórkaup` eða byrjaði á `|`): senda upprunalega strenginn.
@@ -155,12 +156,13 @@ Bæta við einingaprófum (unit tests) með þessum dæmum:
 | `  nitril   hanskar ` | `nitril hanskar` |
 | `brúsi 5,5kg` | `brúsi 5,5kg` (tugakomma óbreytt) |
 | `sápa, 1,5L` | `sápa 1,5L` |
-| `te & kaffi` | `te & kaffi` (óbreytt, Cludo sér um þetta) |
+| `salt & pipar` | `salt og pipar` |
+| `H&M` | `H&M` (óbreytt) |
 | `Stórkaup` | `Stórkaup` (óbreytt, annars yrði strengurinn tómur) |
 
 **Valfrjálst, spyrðu mig fyrst:** varaleið þegar Cludo skilar `TotalDocument = 0`. Þá væri hægt að reyna aftur með fyrstu tveimur til þremur orðunum, eða án talna og eininga. Það myndi láta `draumur fylltur lakkrís, 25x 45g freyja` skila Drauma bitum í stað engu. Þetta kostar aðra Cludo-beiðni á hverja tóma leit, og niðurstöðusíðan þyrfti að segja „engar niðurstöður fyrir X, sýnum Y“. Komdu með tillögu, en ekki smíða þetta án samþykkis.
 
-Ef Cludo-APIið leyfir að slökkva á sjálfvirkri villuleiðréttingu í beiðninni, segðu mér frá því en **ekki kveikja á því/slökkva án samráðs**. Hún hjálpar (`te & kaffi`, „hanska“ → „hanskar“) en skemmir líka (`175gr` → `125g`, `0,75l` → `0275`).
+Ef Cludo-APIið leyfir að slökkva á sjálfvirkri villuleiðréttingu í beiðninni, segðu mér frá því en **ekki kveikja á því/slökkva án samráðs**. Hún hjálpar („hanska“ → „hanskar“, og Misspellings-færslur eins og `te & kaffi` fara sömu leið) en skemmir líka (`175gr` → `125g`, `0,75l` → `0275`).
 
 ## Hluti A: Merkja síður sem eru ekki kanónískar svo Cludo geti síað þær út
 
@@ -204,6 +206,7 @@ Ef Cludo-APIið leyfir að slökkva á sjálfvirkri villuleiðréttingu í beið
 Hluti B:
 - [ ] `Paprika Flögur, 18x 175gr | Lays | Stórkaup` skilar Lays paprikuflögunum
 - [ ] `Ryksugupokar Buddy II, 4stk | Nilfisk | Stórkaup` skilar 113258
+- [ ] `salt & pipar` skilar sömu niðurstöðum og `salt og pipar`
 - [ ] `te & kaffi` skilar áfram 25 niðurstöðum (afturför-próf)
 - [ ] `hanskar` og `nesquik kakómalt, 12x 700g stórkaup` skila sama og áður (afturför-próf)
 - [ ] Einingapróf fyrir `normalizeQuery` keyra græn

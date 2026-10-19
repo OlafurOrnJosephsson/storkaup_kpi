@@ -1178,15 +1178,21 @@ function installCludoCleanupTrigger_v1() {
  *                         fyrirspurnum. error: viðskiptavinur kvartaði
  *                         yfir nákvæmlega þessu í sept. (113258).
  *   cludo_search_pasted — flipaheiti („Vara | Merki | Stórkaup“) skilar
- *                         vörunni. warning: þekkt bilun, `|` gefur 0.
- *                         Bíður lagfæringar hjá Högum. Fer að standast
- *                         sjálfkrafa þegar hún kemur.
+ *                         vörunni og `salt & pipar` skilar einhverju.
+ *                         warning: þekktar bilanir, `|` og `&` gefa 0.
+ *                         Bíða lagfæringar hjá Högum. Fer að standast
+ *                         sjálfkrafa þegar hún kemur. (`te & kaffi` virkar
+ *                         aðeins út af Misspellings-færslu í Cludo, svo
+ *                         það er ekki notað sem prófun.)
  *
  * cludoLeitarvakt_v1() keyrir sömu athuganir handvirkt og skrifar í log.
  ************************************************************/
 var STORKAUP_SEARCH_URL_ = 'https://www.storkaup.is/api/search';
 var CLUDO_DUPE_QUERIES_ = ['113258', 'hanskar', 'ryksugupokar', 'kaffi', 'sápa'];
-var CLUDO_PASTED_PROBE_ = { query: 'Ryksugupokar Buddy II, 4stk | Nilfisk | Stórkaup', sku: '113258' };
+var CLUDO_PASTED_PROBES_ = [
+  { query: 'Ryksugupokar Buddy II, 4stk | Nilfisk | Stórkaup', sku: '113258' },
+  { query: 'salt & pipar', sku: null }   // `salt og pipar` -> 4 (2026-10-19)
+];
 var CLUDO_ALIVE_MIN_ = 20;
 
 function storkaupSearch_(query, pageSize) {
@@ -1247,12 +1253,19 @@ function evaluateCludoSearchHealth_() {
   }
 
   try {
-    var p = storkaupSearch_(CLUDO_PASTED_PROBE_.query, 10);
-    var hit = p.urls.some(function (u) { return cludoUrlSku_(u) === CLUDO_PASTED_PROBE_.sku; });
-    add_('cludo_search_pasted', hit,
-         hit ? 'Inn-límt flipaheiti finnur vöruna'
-             : 'Inn-límt flipaheiti („… | Nilfisk | Stórkaup“) -> ' + p.total +
-               ' niðurstöður. Þekkt: `|` í leit gefur 0, bíður Haga (docs/cludo/)',
+    var misses = [];
+    CLUDO_PASTED_PROBES_.forEach(function (probe) {
+      var p = storkaupSearch_(probe.query, 10);
+      var ok = probe.sku
+        ? p.urls.some(function (u) { return cludoUrlSku_(u) === probe.sku; })
+        : p.total > 0;
+      if (!ok) misses.push('`' + probe.query + '` -> ' + p.total);
+      Utilities.sleep(200);
+    });
+    add_('cludo_search_pasted', misses.length === 0,
+         misses.length
+           ? misses.join(' · ') + '. Þekkt: `|` og `&` í leit gefa 0, bíður Haga (docs/cludo/)'
+           : 'Inn-límt flipaheiti og `&` finna vörur',
          'warning');
   } catch (e3) {
     add_('cludo_search_pasted', false, String(e3 && e3.message || e3), 'warning');
