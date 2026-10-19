@@ -1094,3 +1094,178 @@ function cludoWriteStaleSheet_(rows, idx) {
   if (rows.length) sh.getRange(3, 1, rows.length, 4).setValues(rows);
   sh.setFrozenRows(2);
 }
+
+
+/************************************************************
+ * ⏱️ scheduledCludoCleanup_v1 — hreinsunin á tímastilli
+ *
+ * Vikulega, sunnudaga ~04:15 (síðan 2026-10-19). Fram að því var
+ * cludoHreinsaVaraDocs_v1 aðeins keyrð úr valmyndinni, og á milli
+ * keyrslna söfnuðust ~30 afrit á tveimur vikum: gömul slug sem vefurinn
+ * svarar enn með 200 og Cludo skríður aftur. Þetta heldur vísinum hreinum
+ * þar til vefurinn 301-ar (docs/cludo/TASK_cludo_leit.md).
+ *
+ * Öryggisstoppin í cludoPurgeStaleVaraDocs_v1 gilda óbreytt. Stopp
+ * (sitemap undir 4.000, fleiri en CLUDO_CLEAN_MAX_ til eyðingar) kastar
+ * og sendir [KPI ALERT]. Skoðaðu þá CLUDO_AFRIT áður en nokkuð er keyrt
+ * handvirkt.
+ *
+ * Ekki hluti af scheduledCludoSync_v1, því upptalning vísisins tekur
+ * 1–3 mín og sú keyrsla er þegar þung. Tekur heldur ekki ScriptLock:
+ * hreinsunin snertir engin gögn sem önnur verk skrifa, og lás í 3 mín
+ * léti Klaviyo- og Magento-keyrslur sleppa umferð.
+ ************************************************************/
+function scheduledCludoCleanup_v1() {
+  var runId = null;
+  var result = { startedAt: new Date().toISOString() };
+  try {
+    try {
+      runId = startIngestionRun_('scheduledCludoCleanup_v1', 'cludo_index', { trigger_type: 'time_based' });
+    } catch (logErr) {
+      Logger.log('[CLUDOCLEAN][WARN] Could not start ingestion run log: ' + logErr);
+    }
+
+    var out = cludoHreinsaVaraDocs_v1();
+    result.deleted = out.deleted;
+    result.passes = out.passes;
+    result.finishedAt = new Date().toISOString();
+
+    if (runId) {
+      try { finishIngestionRun_(runId, 'success', out.deleted, result, null); }
+      catch (logErr2) { Logger.log('[CLUDOCLEAN][WARN] Could not finish ingestion run log: ' + logErr2); }
+    }
+    Logger.log('[CLUDOCLEAN][INFO] ' + JSON.stringify(result));
+    return result;
+  } catch (e) {
+    result.finishedAt = new Date().toISOString();
+    result.error = String(e && e.message || e);
+    if (runId) {
+      try { finishIngestionRun_(runId, 'error', 0, result, result.error); }
+      catch (logErr3) { Logger.log('[CLUDOCLEAN][WARN] Could not finish ingestion run log: ' + logErr3); }
+    }
+    try { notifyTriggerFailure_('scheduledCludoCleanup_v1', e, result); }
+    catch (alertErr) { Logger.log('[CLUDOCLEAN][WARN] Failure alert failed: ' + alertErr); }
+    throw e;
+  }
+}
+
+function installCludoCleanupTrigger_v1() {
+  var fn = 'scheduledCludoCleanup_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function (t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[CLUDOCLEAN][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+  ScriptApp.newTrigger(fn).timeBased()
+    .onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(4).nearMinute(15).create();
+  Logger.log('[CLUDOCLEAN][INFO] Created trigger for ' + fn + ' (Sundays ~04:15)');
+  return { created: true, schedule: 'onWeekDay(SUNDAY).atHour(4).nearMinute(15)' };
+}
+
+
+/************************************************************
+ * 🔎 LEITARVAKT — það sem viðskiptavinur sér í leitinni
+ *
+ * Kallar á /api/search á storkaup.is, sömu leið og leitarboxið, svo
+ * vaktin nær bæði framendanum og Cludo. Keyrð daglega í
+ * runDailySanityChecks_v1 (síðan 2026-10-19):
+ *
+ *   cludo_search_alive  — `hanskar` skilar minnst 20 (89 þann 2026-10-19).
+ *                         error: leitin er niðri eða vísirinn tæmdist.
+ *   cludo_search_dupes  — sama vörunúmer tvisvar í efstu 50 á föstum
+ *                         fyrirspurnum. error: viðskiptavinur kvartaði
+ *                         yfir nákvæmlega þessu í sept. (113258).
+ *   cludo_search_pasted — flipaheiti („Vara | Merki | Stórkaup“) skilar
+ *                         vörunni. warning: þekkt bilun, `|` gefur 0.
+ *                         Bíður lagfæringar hjá Högum. Fer að standast
+ *                         sjálfkrafa þegar hún kemur.
+ *
+ * cludoLeitarvakt_v1() keyrir sömu athuganir handvirkt og skrifar í log.
+ ************************************************************/
+var STORKAUP_SEARCH_URL_ = 'https://www.storkaup.is/api/search';
+var CLUDO_DUPE_QUERIES_ = ['113258', 'hanskar', 'ryksugupokar', 'kaffi', 'sápa'];
+var CLUDO_PASTED_PROBE_ = { query: 'Ryksugupokar Buddy II, 4stk | Nilfisk | Stórkaup', sku: '113258' };
+var CLUDO_ALIVE_MIN_ = 20;
+
+function storkaupSearch_(query, pageSize) {
+  var res = UrlFetchApp.fetch(STORKAUP_SEARCH_URL_, {
+    method: 'post',
+    contentType: 'application/json',
+    muteHttpExceptions: true,
+    payload: JSON.stringify({ query: query, pageNumber: 1, pageSize: pageSize || 50,
+                              responseType: 'full', facets: { Category: [''] } })
+  });
+  if (res.getResponseCode() !== 200) {
+    throw new Error('/api/search "' + query + '" -> HTTP ' + res.getResponseCode() +
+                    ' — ' + truncateForLog_(res.getContentText(), 200));
+  }
+  var d = safeJsonParse_(res.getContentText()) || {};
+  var urls = (d.TypedDocuments || []).map(function (doc) {
+    var f = doc.Fields || {};
+    return (f.Url && f.Url.Value) || '';
+  }).filter(String);
+  return { total: Number(d.TotalDocument || 0), urls: urls, fixed: d.FixedQuery || '' };
+}
+
+function evaluateCludoSearchHealth_() {
+  var checks = [];
+  function add_(name, passed, details, severity) {
+    checks.push({ name: name, passed: !!passed, details: details, severity: severity || 'error' });
+  }
+
+  try {
+    var alive = storkaupSearch_('hanskar', 10);
+    add_('cludo_search_alive', alive.total >= CLUDO_ALIVE_MIN_,
+         '`hanskar` -> ' + alive.total + ' niðurstöður (lágmark ' + CLUDO_ALIVE_MIN_ + ')');
+  } catch (e) {
+    add_('cludo_search_alive', false, 'Leitin svarar ekki: ' + (e && e.message || e));
+    return checks;   // ekkert vit í hinum athugununum ef leitin er niðri
+  }
+
+  try {
+    var dupes = [];
+    CLUDO_DUPE_QUERIES_.forEach(function (q) {
+      var bySku = {};
+      storkaupSearch_(q, 50).urls.forEach(function (u) {
+        var s = cludoUrlSku_(u);
+        if (s) (bySku[s] = bySku[s] || []).push(u);
+      });
+      Object.keys(bySku).forEach(function (s) {
+        if (bySku[s].length > 1) dupes.push('`' + q + '`: ' + bySku[s].join(' + '));
+      });
+      Utilities.sleep(200);
+    });
+    add_('cludo_search_dupes', dupes.length === 0,
+         dupes.length
+           ? 'Sama vara oftar en einu sinni: ' + dupes.slice(0, 5).join(' | ') +
+             ' — keyrðu Stórkaup KPI → Cludo → Hreinsa leitarvísi'
+           : 'Engar tvítekningar í efstu 50 á ' + CLUDO_DUPE_QUERIES_.length + ' fyrirspurnum');
+  } catch (e2) {
+    add_('cludo_search_dupes', false, String(e2 && e2.message || e2), 'warning');
+  }
+
+  try {
+    var p = storkaupSearch_(CLUDO_PASTED_PROBE_.query, 10);
+    var hit = p.urls.some(function (u) { return cludoUrlSku_(u) === CLUDO_PASTED_PROBE_.sku; });
+    add_('cludo_search_pasted', hit,
+         hit ? 'Inn-límt flipaheiti finnur vöruna'
+             : 'Inn-límt flipaheiti („… | Nilfisk | Stórkaup“) -> ' + p.total +
+               ' niðurstöður. Þekkt: `|` í leit gefur 0, bíður Haga (docs/cludo/)',
+         'warning');
+  } catch (e3) {
+    add_('cludo_search_pasted', false, String(e3 && e3.message || e3), 'warning');
+  }
+
+  return checks;
+}
+
+function cludoLeitarvakt_v1() {
+  var checks = evaluateCludoSearchHealth_();
+  checks.forEach(function (c) {
+    Logger.log('[' + (c.passed ? 'PASS' : (c.severity === 'warning' ? 'WARN' : 'FAIL')) + '] ' +
+               c.name + ' - ' + c.details);
+  });
+  return checks;
+}

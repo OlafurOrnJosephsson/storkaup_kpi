@@ -3581,6 +3581,16 @@ function runDailySanityChecks_v1() {
     checkGa4PurchaseRatio_();
     checkStuckPendingOrders_();
 
+    // Leitarvaktin (core/cludo.js). Kastar ekki, en ef fallið vantar eða
+    // springur á það ekki að fella hinar athuganirnar.
+    try {
+      evaluateCludoSearchHealth_().forEach(function(c) {
+        addCheck_(c.name, c.passed, c.details, c.severity);
+      });
+    } catch (cludoErr) {
+      addCheck_('cludo_search', false, String(cludoErr && cludoErr.message || cludoErr), 'warning');
+    }
+
     result.passed = result.failedCount === 0;
     result.finishedAt = new Date().toISOString();
 
@@ -4873,6 +4883,7 @@ function requiredTimeTriggers_() {
     scheduledKlaviyoSync_v1:          { cadence: 'every 15 min',                         install: installScheduledKlaviyoSyncTrigger_v1 },
     scheduledReferenceSync_v1:        { cadence: 'every 6h ~:50',                        install: installScheduledReferenceSyncTrigger_v1 },
     scheduledCludoSync_v1:            { cadence: 'every 12h ~:55',                       install: installScheduledCludoSyncTrigger_v1 },
+    scheduledCludoCleanup_v1:         { cadence: 'Sundays ~04:15',                       install: installCludoCleanupTrigger_v1 },
     scheduledCustomerAnalysisSync_v1: { cadence: 'daily ~05:25',                         install: installScheduledCustomerAnalysisSyncTrigger_v1 },
     scheduledSearchConsoleSync_v1:    { cadence: 'daily ~05:30',                         install: installScheduledSearchConsoleSyncTrigger_v1 },
     scheduledKlaviyoProfileSync_v1:   { cadence: 'daily ~06:10',                         install: installScheduledKlaviyoProfileSyncTrigger_v1 },

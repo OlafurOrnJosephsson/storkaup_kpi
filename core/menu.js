@@ -85,6 +85,7 @@ function onOpen() {
       ui.createMenu('Cludo')
         .addItem('Hreinsa leitarvísi (gömul slug + horfnar vörur)', 'menu_cludoHreinsaVaraDocs')
         .addItem('Hreinsun — þurrkeyrsla (skrifar CLUDO_AFRIT, eyðir engu)', 'menu_cludoHreinsaThurrkeyrsla')
+        .addItem('Leitarvakt — prófa leitina núna', 'menu_cludoLeitarvakt')
         .addSeparator()
         .addItem('Keyra Cludo/vörulista sync núna', 'menu_runCludoSync')
     )
@@ -697,6 +698,14 @@ function menu_cludoHreinsaVaraDocs() {
   toast_('🧹 Hreinsa Cludo-vísinn (tekur 1–3 mín)...', 'KPI CORE');
   var out = cludoHreinsaVaraDocs_v1();
   toast_('Cludo: ' + out.deleted + ' skjölum eytt í ' + out.passes + ' umferð(um).', 'KPI CORE');
+}
+
+function menu_cludoLeitarvakt() {
+  var checks = cludoLeitarvakt_v1();
+  var bad = checks.filter(function (c) { return !c.passed; });
+  toast_(bad.length
+    ? bad.map(function (c) { return c.name + ': ' + c.details; }).join(' · ')
+    : 'Leitin í lagi (' + checks.length + ' athuganir)', 'KPI CORE');
 }
 
 function menu_cludoHreinsaThurrkeyrsla() {

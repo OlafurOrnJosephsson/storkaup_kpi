@@ -75,7 +75,7 @@ are reading or editing. `clasp` flattens `core/x.js` to `core/x` in the project.
 | [core/newsales_v2.js](core/newsales_v2.js) | Magento NEWWEB ingest, `safePoll_v2` and its run-window gate. |
 | [core/salessummaries.js](core/salessummaries.js) | Sales summary sheets and marts. |
 | [core/customers.js](core/customers.js) · [core/customer_analysis.js](core/customer_analysis.js) | Magento customers; customer profiles and scoring. |
-| [core/cludo.js](core/cludo.js) | Cludo search API and the PRODUCTS master catalog (breadcrumb crawl). Also the search-index cleanup, `cludoHreinsaVaraDocs_v1` (menu: Stórkaup KPI → Cludo) — run it when search shows duplicates again; the cause (storkaup.is answers 200 on any `/vara/` slug) is still unfixed on the site. |
+| [core/cludo.js](core/cludo.js) | Cludo search API and the PRODUCTS master catalog (breadcrumb crawl). Also the search-index cleanup, `cludoHreinsaVaraDocs_v1` (menu: Stórkaup KPI → Cludo), weekly on a trigger since 2026-10-19; the cause (storkaup.is answers 200 on any `/vara/` slug) is still unfixed on the site. And the search watch, `evaluateCludoSearchHealth_`, which `runDailySanityChecks_v1` calls: it hits storkaup.is `/api/search` and fails on duplicates or a dead search. Frontend fixes we need from Hagar are in `docs/cludo/`. |
 | [core/storkaup_pricing.js](core/storkaup_pricing.js) | storkaup.is GraphQL. Price health **and** product health (out of stock, negative stock, uncategorised) — feeds the vöruvöktun app. |
 | [core/web_catalog.js](core/web_catalog.js) | The published product list as data: fetch, SKU normalisation, and the `raw.web_catalog` sync (runs inside `scheduledCludoSync_v1`, every 12h). Holds `brand_sku` — the **supplier** part number — which nothing else does. `web_sku` is the raw GraphQL id; `sku` is the normalised join key to BC. Lookups read the table, not the web: a product added today is invisible until the next sync. |
 | [core/klaviyo_profiles.js](core/klaviyo_profiles.js) | Our data → Klaviyo profile properties (`stk_*`), daily bulk import from `mart.v_klaviyo_profiles_v1` ([core/sql/klaviyo_profiles_v1.sql](core/sql/klaviyo_profiles_v1.sql)). Own key `API.Klaviyo.PROFILES_API_KEY` (Profiles + Lists only). Sends no amounts, no kennitala, and only emails Klaviyo already knows unless `SETTINGS.KLAVIYO_PROFILE_SYNC_INCLUDE_NEW=true` — consent for new emails is unresolved. The events sync stays in `core/utils.js`. |
@@ -188,6 +188,7 @@ functions. Run it before trusting any list of what is scheduled.
 | `scheduledMagentoSync_v1` | Hourly ~:20 | Magento full incremental |
 | `scheduledReferenceSync_v1` | Every 6h ~:50 | Products, customers, Cludo, marts |
 | `scheduledCludoSync_v1` | Every 12h ~:55 | Cludo product coverage |
+| `scheduledCludoCleanup_v1` | Sundays ~04:15 | Deletes stale `/vara/` docs from the Cludo index (`cludoHreinsaVaraDocs_v1`) — until the site 301s, see `docs/cludo/` |
 | `scheduledCustomerAnalysisSync_v1` | Daily ~05:25 | Customer profiles + profiles MV |
 | `scheduledSearchConsoleSync_v1` | Daily ~05:30 | Search Console |
 | `scheduledKlaviyoProfileSync_v1` | Daily ~06:10 | Our data → Klaviyo profile properties |
