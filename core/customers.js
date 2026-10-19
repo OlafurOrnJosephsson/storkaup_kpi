@@ -228,6 +228,12 @@ function mapMagentoCustomer_(c) {
  * MAIN SYNC (full or incremental)
  ************************************************************/
 function syncMagentoCustomers() {
+  // Áætluðu kallararnir athuga rofann sjálfir; þetta grípur handvirku leiðina
+  // („Samstilla“ í umsóknarappinu, gegnum sync_magento_customers).
+  if (!isMagentoApiEnabled_()) {
+    Logger.log('[MAGENTO][INFO] syncMagentoCustomers skipped: Magento API lokað');
+    return { skipped: true, reason: 'magento_disabled' };
+  }
   const sh     = getMagentoCustomersSheet_();
   const header = ensureMagentoCustomersHeader_();
   const props  = PropertiesService.getScriptProperties();
@@ -618,6 +624,9 @@ function magentoKeysFromSheet_() {
 // hunsaði síuna og skilaði öðrum aðgöngum myndi ekkert færast að ósekju.
 function fetchMagentoKeysLive_(emails, kts) {
   const keys = { emails: new Set(), kts: new Set(), companyIds: new Set() };
+  // Lokað API → aðeins afritið í sheetinu gildir. Tóm lyklamengi færa ekkert
+  // að ósekju; þau geta aðeins orðið til þess að umsókn bíði lengur.
+  if (!isMagentoApiEnabled_()) return keys;
   const base = String(loadConfig_().ENDPOINTS.Magento.BASE_URL || '').replace(/\/$/, '');
   if (!base) return keys;
 

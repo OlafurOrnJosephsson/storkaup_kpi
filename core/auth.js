@@ -4,6 +4,27 @@
  * - Supports forced refresh after 401/403
  ************************************************************/
 
+/**
+ * Rofi á öll Magento API-köll (2026-10-19).
+ *
+ * Hagar loka Magento API fyrir öllu nema hvítlistuðum IP-tölum (BlockStrap,
+ * CVE-2026-103849), og GAS keyrir frá síbreytilegum IP-tölum Google — það
+ * verður aldrei hvítlistað beint. SETTINGS.MAGENTO_API_ENABLED = false lætur
+ * hvert inngangsfall sleppa keyrslu hljóðlega, í stað þess að kasta á 5 mín
+ * fresti og senda „safePoll_v2 er stopp“ á 3 klst fresti.
+ *
+ * Vanti stillinguna er KVEIKT — hegðun óbreytt þar til einhver slekkur. Lestur
+ * sem mistekst skilar líka kveikt: þá hefði kallið hvort eð er fallið.
+ */
+function isMagentoApiEnabled_() {
+  try {
+    const settings = (loadConfig_() || {}).SETTINGS || {};
+    return String(settings.MAGENTO_API_ENABLED || '').toLowerCase().trim() !== 'false';
+  } catch (e) {
+    return true;
+  }
+}
+
 function clearMagentoAdminTokenCache_() {
   const props = PropertiesService.getScriptProperties();
   props.deleteProperty('MAGENTO_ADMIN_TOKEN_CACHE');

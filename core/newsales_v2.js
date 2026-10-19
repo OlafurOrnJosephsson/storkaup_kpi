@@ -1241,6 +1241,12 @@ function logNewwebEvent_(lvl, msg, extra) {
  */
 function safePoll_v2(opts) {
   var force = !!(opts && opts.force === true);
+  // Logger eingöngu, ekki logNewwebEvent_: sú skrifar í log-sheetið, og það
+  // væru 288 línur á dag um að ekkert hafi gerst.
+  if (!isMagentoApiEnabled_()) {
+    Logger.log('[NEWWEB][INFO] Skipping: Magento API lokað (SETTINGS.MAGENTO_API_ENABLED=false)');
+    return { ran: false, reason: 'magento_disabled', forced: force };
+  }
   var windowDecision = getNewwebRunWindowDecision_v2_();
   if (!force && !windowDecision.shouldRun) {
     logNewwebEvent_('INFO', 'Skipping run by schedule window', windowDecision);
@@ -1309,6 +1315,10 @@ function safePollNow_v2() {
  * Scheduled status delta sync wrapper (v2)
  ************************************************************/
 function scheduledNewwebStatusSync_v2() {
+  if (!isMagentoApiEnabled_()) {
+    Logger.log('[NEWWEB][INFO] Status sync skipped: Magento API lokað (SETTINGS.MAGENTO_API_ENABLED=false)');
+    return { skipped: true, reason: 'magento_disabled' };
+  }
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
     logNewwebEvent_('WARN', 'Status sync skipped: another run in progress');

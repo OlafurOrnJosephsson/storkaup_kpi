@@ -3128,6 +3128,14 @@ function evaluateSafePollHeartbeat_() {
   var hour = Number(Utilities.formatDate(now, tz, 'H'));
   var minute = Number(Utilities.formatDate(now, tz, 'm'));
 
+  // Slökkt með vilja → engin krafa, en ok:false svo daglega athugunin skrái
+  // 'warning' (enginn póstur) og lokunin gleymist ekki í loggnum.
+  if (!isMagentoApiEnabled_()) {
+    return { applies: false, ok: false,
+      details: 'Magento API lokað (SETTINGS.MAGENTO_API_ENABLED=false) — safePoll_v2 sleppir '
+        + 'keyrslu, engar nýjar vefpantanir berast. Engin krafa gerð.' };
+  }
+
   if (hour < 7) {
     return { applies: false, ok: true,
       details: 'Næturgluggi (00:00-06:59) — safePoll_v2 á ekki að keyra, engin krafa gerð' };
@@ -3163,7 +3171,7 @@ function evaluateSafePollHeartbeat_() {
 function checkSafePollWatchdog_() {
   try {
     var hb = evaluateSafePollHeartbeat_();
-    if (hb.ok) return hb;
+    if (hb.ok || !hb.applies) return hb;
     sendOpsAlert_(
       '[KPI ALERT] safePoll_v2 er stopp — Magento-pantanir berast ekki inn',
       hb.details + '\n\n'
@@ -3468,6 +3476,12 @@ function runDailySanityChecks_v1() {
   }
 
   function checkStuckPendingOrders_() {
+    // Staðan frýs þegar Magento API er lokað: pending-pantanir frá því fyrir
+    // lokun sætu „fastar“ í viku og kveiktu á þessu daglega að ósekju.
+    if (!isMagentoApiEnabled_()) {
+      addCheck_('stuck_pending_orders', true, 'Magento API lokað — staða pantana ekki uppfærð, athugun sleppt', 'warning');
+      return;
+    }
     var STUCK_HOURS = 12;
     var LOOKBACK_DAYS = 7;
     var cutoffIso = new Date(nowMs - STUCK_HOURS * 60 * 60 * 1000).toISOString();
@@ -3781,7 +3795,9 @@ function scheduledReferenceSync_v1() {
       Logger.log('[REFSYNC][WARN] Could not start ingestion run log: ' + logErr);
     }
 
-    if (typeof syncMagentoCustomers === 'function') {
+    if (!isMagentoApiEnabled_()) {
+      result.magentoSync = 'disabled';
+    } else if (typeof syncMagentoCustomers === 'function') {
       runWithRetries_('syncMagentoCustomers', function() { syncMagentoCustomers(); }, { attempts: 2, delayMs: 7000 });
       result.magentoSync = 'ok';
     } else {
@@ -3979,7 +3995,9 @@ function scheduledMagentoSync_v1() {
       Logger.log('[MAGSYNC][WARN] Could not start ingestion run log: ' + logErr);
     }
 
-    if (typeof syncMagentoCustomers === 'function') {
+    if (!isMagentoApiEnabled_()) {
+      result.magentoSync = 'disabled';
+    } else if (typeof syncMagentoCustomers === 'function') {
       syncMagentoCustomers();
       result.magentoSync = 'ok';
     } else {

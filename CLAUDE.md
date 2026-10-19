@@ -207,6 +207,19 @@ functions. Run it before trusting any list of what is scheduled.
 `safePollNow_v2()` or the NEWWEB menu item — they pass `force: true` and ignore
 the window; bare `safePoll_v2()` obeys it and will silently no-op at 03:00.
 
+**Magento API has an off switch (2026-10-19).** Hagar are closing the Magento
+API to allowlisted IPs only (BlockStrap, CVE-2026-103849), and GAS calls from
+Google's shifting IPs, so it can never be allowlisted directly. Set
+`SETTINGS.MAGENTO_API_ENABLED = false` and every Magento entry point skips
+quietly (`isMagentoApiEnabled_()` in [core/auth.js](core/auth.js)): `safePoll_v2`,
+the status sync, both customer syncs, the live key lookup in application
+pruning, and pending orders in the admin app. The safePoll watchdog stays
+silent, and the daily check logs a `warning` instead of an `error`. A missing row
+means **on**. Nothing writes to Magento — only `GET /orders` and
+`GET /customers/search`, plus the admin-token login in `core/auth.js`. The fix
+under discussion is a proxy with a static IP in Hagar's Azure; until then, web
+orders stop at the cut-off.
+
 **A stopped `safePoll_v2` alerts within the hour.** It writes Script Property
 `SAFEPOLL_LAST_OK_MS` after every completed run; `checkSafePollWatchdog_()`
 reads it at the top of the hourly `scheduledMagentoSync_v1` and emails

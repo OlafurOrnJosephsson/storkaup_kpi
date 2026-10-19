@@ -163,6 +163,10 @@ function menu_refreshNEWWEB() {
     toast_('NEWWEB: önnur keyrsla í gangi — ekkert gert. Prófaðu aftur.', 'KPI CORE');
     return;
   }
+  if (out && out.reason === 'magento_disabled') {
+    toast_('NEWWEB: Magento API er lokað (SETTINGS.MAGENTO_API_ENABLED=false) — ekkert sótt.', 'KPI CORE');
+    return;
+  }
   toast_('NEWWEB updated.', 'KPI CORE');
 }
 

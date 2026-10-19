@@ -52,6 +52,9 @@ function fetchPendingMagentoOrders_() {
  *   ageHours = klukkustundir í bið. stuck48 = fjöldi >48 klst.
  ************************************************************/
 function getPendingOrdersForUi() {
+  if (!isMagentoApiEnabled_()) {
+    return { status: 'error', message: 'Magento API er lokað — pantanir í bið eru ekki sóttar.' };
+  }
   try {
     const data = fetchPendingMagentoOrders_();
     const items = data.items || [];
