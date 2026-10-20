@@ -48,3 +48,6 @@ pim/.tools/
 # vörunúmer, flokkatré og innri stöðu; repo er opinbert (jsDelivr). Sama rök og
 # bc_drop/ og pim_drop/. Skrárnar lifa á disknum, bara ekki í git.
 docs/voruinnihald/
+
+# Innri skjöl um lánshæfi/Creditinfo — innskráningar og kennitölur, repo-ið er opið
+docs/creditinfo/
