@@ -88,8 +88,15 @@ function creditinfoUrtak_v1() {
   var termsLoaded = Object.keys(bcMap).some(function (k) { return bcMap[k].payment_terms_code; });
 
   // Pantanafjöldi (BC-reikningar) — prófíla-MV-ið, endurnýjað daglega.
-  var ordMap = ci_byIds_('mv_customer_profiles_labeled_trends', 'customer_id',
-                         'customer_id,orders_bc_365d,total_bc_orders', Object.keys(bcMap), 'api');
+  // Valkvætt: service_role hafði ekki SELECT á MV-inu 2026-10-20 (42501). Án
+  // þess er dálkurinn tómur og „góður“ síast aðeins á sölu, ekki virkni.
+  var ordMap = {};
+  try {
+    ordMap = ci_byIds_('mv_customer_profiles_labeled_trends', 'customer_id',
+                       'customer_id,orders_bc_365d,total_bc_orders', Object.keys(bcMap), 'api');
+  } catch (e) {
+    console.warn('[CREDITINFO] pantanafjöldi sleppt: ' + String(e.message || e).slice(0, 160));
+  }
 
   function isCash(kt) {
     var bc = bcMap[kt];
