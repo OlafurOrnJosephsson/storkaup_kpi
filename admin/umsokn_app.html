@@ -826,8 +826,15 @@ function renderUmsokn(rows) {
 
       + '<div class="uc-act st-' + st + '">'
         + (r.bcFound
-          ? '<button class="btn btn-primary" onclick="confirmDone(' + i + ')">✓ Klárað</button>'
+          // Skor líka hér (2026-10-20): þegar bókhald stofnar viðskiptamann út
+          // frá umsókn skiptir spjaldið yfir í „Til í BC“ — áður hvarf skorreiturinn
+          // þá og skorið var aðeins vistað á höfnuðum umsóknum (17 af 435).
+          ? '<span class="uc-k">Skor</span>'
+            + '<input class="score-input" id="score-' + i + '" type="number" min="1" max="10" placeholder="1-10" value="' + esc(r.creditScore) + '" onchange="onScoreChange(' + i + ')" />'
+            + '<button class="btn btn-primary" onclick="confirmDone(' + i + ')">✓ Klárað</button>'
             + '<div class="uc-hint">Kveikja á <strong>Viðskiptamaður vefverslunar</strong> í BC og bæta við tengilið — syncast sjálfkrafa í Magento.</div>'
+            + '<div class="uc-hint">Skor úr Creditinfo ef viðskiptamaðurinn var stofnaður út frá þessari umsókn — tómt ef hann var þegar í viðskiptum.</div>'
+            + '<div class="uc-hint" id="score-badge-' + i + '">' + scoreBadge(r.creditScore) + '</div>'
           : '<span class="uc-k">Skor</span>'
             + '<input class="score-input" id="score-' + i + '" type="number" min="1" max="10" placeholder="1-10" value="' + esc(r.creditScore) + '" onchange="onScoreChange(' + i + ')" />'
             + '<select class="template-select" id="tmpl-' + i + '">'
@@ -856,12 +863,23 @@ function confirmDone(i) {
   var instructions = r.bcWebshopActive
     ? 'Bæta við Tengilið undir viðskiptavinaspjaldið í BC — syncast sjálfkrafa yfir í Magento.'
     : 'Kveikja á "Viðskiptamaður vefverslunar" toggle í BC og bæta við Tengilið — syncast sjálfkrafa yfir í Magento.';
+  var scoreEl = document.getElementById('score-' + i);
+  var score   = scoreEl ? scoreEl.value.trim() : '';
+  if (!score) {
+    instructions += ' Ekkert lánshæfisskor skráð — ef viðskiptamaðurinn var stofnaður út frá þessari umsókn, sláðu skorið inn fyrst.';
+  }
   openModal(
     'Merkja sem klárað',
     instructions,
     '<strong>' + esc(r.company || r.email) + '</strong>' + (r.companyKt ? '<br><span class="cell-sub">' + esc(r.companyKt) + '</span>' : ''),
     function() {
-      run('webapp_markUmsokn_Done', [{ rowIndex: r.rowIndex, email: r.email, companyKt: r.companyKt }])
+      // Skorið verður að vera komið í röðina ÁÐUR en hún er færð í „BC til - stofnað“
+      // — onchange-vistunin er ósamstillt og gæti annars lent á eftir.
+      var saved = (score && score !== String(r.creditScore || ''))
+        ? run('webapp_saveCreditScore', [r, score])
+        : Promise.resolve();
+      saved
+        .then(function() { return run('webapp_markUmsokn_Done', [{ rowIndex: r.rowIndex, email: r.email, companyKt: r.companyKt }]); })
         .then(function() {
           document.getElementById('ums-row-' + i).classList.add('done');
           setTimeout(function() {
@@ -945,6 +963,7 @@ function onScoreChange(i) {
     // Öll umsóknin, ekki línunúmer: þjónninn finnur röðina aftur eftir netfangi
     // + kennitölu, svo matið lendir ekki á röngum umsækjanda ef listinn hliðrast.
     run('webapp_saveCreditScore', [r, val])
+      .then(function() { r.creditScore = val; })
       .catch(function(e) { showToast('Villa við vistun skors: ' + (e.message || e), true); });
   }
 }

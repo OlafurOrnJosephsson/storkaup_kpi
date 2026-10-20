@@ -76,7 +76,7 @@ function creditinfoUrtak_v1() {
   var arrearsMap = {};
   arrearsRows.forEach(function (r) { arrearsMap[String(r.company_id)] = r; });
 
-  var topSales = ci_sbGet_('bc_customers_raw?select=' + BC_SEL + '&sales=gt.0&order=sales.desc&limit=300');
+  var topSales = ci_sbGet_('bc_customers_raw?select=' + BC_SEL + '&sales=gt.0&order=sales.desc&limit=1000');
   var personalBc = ci_sbGet_('bc_customers_raw?select=' + BC_SEL +
                              '&or=' + encodeURIComponent('(company_id.like.0*,company_id.like.1*,company_id.like.2*,company_id.like.3*)') +
                              '&sales=gt.0&order=sales.desc&limit=100');
@@ -93,7 +93,7 @@ function creditinfoUrtak_v1() {
   var ordMap = {};
   try {
     ordMap = ci_byIds_('mv_customer_profiles_labeled_trends', 'customer_id',
-                       'customer_id,orders_bc_365d,total_bc_orders', Object.keys(bcMap), 'api');
+                       'customer_id,orders_bc_365d,total_bc_orders,primary_category', Object.keys(bcMap), 'api');
   } catch (e) {
     console.warn('[CREDITINFO] pantanafjöldi sleppt: ' + String(e.message || e).slice(0, 160));
   }
@@ -114,7 +114,8 @@ function creditinfoUrtak_v1() {
       status: ci_num_(bc.status_sgm),
       terms: bcMap[kt] ? (bc.payment_terms_code || (termsLoaded ? 'Staðgreiðsla (tómt)' : '')) : '',
       sales: ci_num_(bc.sales),
-      orders365: ci_num_(ord.orders_bc_365d)
+      orders365: ci_num_(ord.orders_bc_365d),
+      category: ord.primary_category || ''
     };
   }
 
@@ -138,59 +139,127 @@ function creditinfoUrtak_v1() {
     ]));
   });
 
-  // ── 4. Kandídatar ────────────────────────────────────────────────────────
-  var head = ['Hópur', 'Fyrirtæki', 'Kennitala', 'Skor (umsókn)', 'Afdrif umsóknar', 'Dags. umsóknar',
-              'Heimild í BC', 'Greiðsluskilmálar', 'Vanskil', 'Staða reiknings', 'Sala BC alls (SGM)', 'BC-pantanir 12 mán'];
+  // ── 4. Tillaga að úrtaki ─────────────────────────────────────────────────
+  // Skriftan leggur til 20 eftir „Valviðmið úrtaks“ (5/4/6/3/2) og sýnir
+  // nokkra varamenn í hverjum hópi. Bókhald staðfestir eða skiptir út — en
+  // byrjar ekki á 140 raða lista.
+  var head = ['Tillaga', 'Hópur', 'Fyrirtæki', 'Kennitala', 'Af hverju', 'Vöruflokkur',
+              'Heimild í BC', 'Greiðsluskilmálar', 'Vanskil', 'Staða reiknings', 'Sala BC alls (SGM)',
+              'BC-pantanir 12 mán', 'Skor (umsókn)', 'Afdrif umsóknar', 'Dags. umsóknar'];
   var cand = [];
+  var used = {};
   var appByKt = {};
   apps.forEach(function (a) { if (a.kt && (!appByKt[a.kt] || a.score != null)) appByKt[a.kt] = a; });
 
-  function push(group, kt, app) {
+  function line(pick, group, kt, why, app) {
     var i = info(kt);
     app = app || appByKt[kt] || {};
-    cand.push([group, app.company || i.name, kt, app.score == null ? '' : app.score, app.outcome || '',
-               app.date || '', i.limit == null ? '' : i.limit, i.terms, i.arrears == null ? '' : i.arrears,
-               i.status == null ? '' : i.status, i.sales == null ? '' : i.sales,
-               i.orders365 == null ? '' : i.orders365]);
+    used[kt] = true;
+    return [pick ? '✓' : '', group, app.company || i.name, kt, why, i.category,
+            i.limit == null ? '' : i.limit, i.terms, i.arrears == null ? '' : i.arrears,
+            i.status == null ? '' : i.status, i.sales == null ? '' : i.sales,
+            i.orders365 == null ? '' : i.orders365,
+            app.score == null ? '' : app.score, app.outcome || '', app.date || ''];
   }
+  // Tillögur (vísar í list) fyrst, svo allt að ALT varamenn úr sama lista.
+  var ALT = 5;
+  function emit(group, list, picks, why) {
+    var chosen = {};
+    picks.forEach(function (ix) { chosen[ix] = true; });
+    picks.forEach(function (ix) { cand.push(line(true, group, list[ix].kt, why(list[ix], ix), list[ix].app)); });
+    var alts = 0;
+    list.forEach(function (x, ix) {
+      if (chosen[ix] || alts >= ALT || used[x.kt]) return;
+      cand.push(line(false, group, x.kt, why(x, ix), x.app)); alts++;
+    });
+  }
+  // n vísar dreifðir jafnt yfir listann — blandar stórum og litlum.
+  function spread(len, n) {
+    n = Math.min(len, n);
+    if (n <= 1) return n === 1 ? [0] : [];
+    var out = [];
+    for (var k = 0; k < n; k++) out.push(Math.round(k * (len - 1) / (n - 1)));
+    return out;
+  }
+  function first(len, n) {
+    var out = [];
+    for (var k = 0; k < Math.min(len, n); k++) out.push(k);
+    return out;
+  }
+  // Opinberir aðilar fara beint í samþykkt (viðmið 8) og innri reikningar
+  // (STORKAUP) segja ekkert um lánshæfi — hvorugt á heima í úrtakinu.
+  var PUBLIC_RE = /sjúkratrygg|ríkis|ráðuneyt|stofnun|sveitarf|hreppur|kaupstaður|\bbær\b|borg\b|skóli|leikskól|heilsugæsl|landspítal|lögregl|háskól|sýslumann/i;
+  function eligibleOrg(kt) {
+    var bc = bcMap[kt] || {};
+    if (kt.length !== 10 || used[kt]) return false;
+    if (PUBLIC_RE.test(bc.company_name || '')) return false;
+    if (bc.payment_terms_code === 'STORKAUP' || bc.payment_terms_code === 'SJUKRA') return false;
+    return true;
+  }
+  function kr(v) { return Math.round(Number(v) || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' kr.'; }
 
-  // Tap: staðgreiðsluviðskiptamenn sem skulda. Mynstrið 2026-10-20 (11 talsins,
-  // ~1,44 m.kr.) bendir til viðskiptamanna sem voru færðir í staðgreiðslu eftir
-  // vanskil — bókhald staðfestir hverjir eru í raun tap.
-  arrearsRows.filter(function (r) { return isCash(String(r.company_id)); })
-    .forEach(function (r) { push('Tap? — staðgreiðsla með skuld (velja 5)', String(r.company_id)); });
-
-  // Vanskil í reikningsviðskiptum. Opinberir aðilar (t.d. Sjúkratryggingar)
-  // lenda hér líka en eiga ekki heima í úrtakinu — viðmið 8 sendir þá beint í samþykkt.
-  arrearsRows.filter(function (r) { return !isCash(String(r.company_id)); }).slice(0, 25)
-    .forEach(function (r) { push('Vanskil í reikningsviðskiptum (velja 4)', String(r.company_id)); });
-
-  // Góðir: söluhæstu lögaðilar án vanskila, í reikningsviðskiptum (ekki
-  // staðgreiðsla, ekki SJUKRA) og virkir — a.m.k. 4 BC-pantanir síðustu 12 mán.
-  var good = 0;
-  topSales.forEach(function (r) {
-    var kt = String(r.company_id);
-    if (good >= 25 || kt.length !== 10 || ci_isPersonal_(kt) || arrearsMap[kt] || isCash(kt)) return;
-    if (r.payment_terms_code === 'SJUKRA') return;
-    var ord = ordMap[kt];
-    if (ord && ci_num_(ord.orders_bc_365d) != null && ci_num_(ord.orders_bc_365d) < 4) return;
-    push('Góður og stöðugur (velja 6)', kt); good++;
+  // Tap (5): staðgreiðsla með skuld, stærstu skuldir. Smáupphæðir (<10 þús.) segja lítið.
+  var tap = arrearsRows.map(function (r) { return { kt: String(r.company_id), r: r }; })
+    .filter(function (x) { return isCash(x.kt) && eligibleOrg(x.kt) && ci_num_(x.r.arrears) >= 10000; });
+  emit('Tap / afskrifað (5)', tap, first(tap.length, 5), function (x) {
+    return 'Í staðgreiðslu en skuldar ' + kr(x.r.arrears) + ' — líklega færður eftir vanskil. Bókhald staðfestir tap.';
   });
 
-  // Höfnuð: staðgreiðsluflipinn, nýjustu fyrst.
-  apps.filter(function (a) { return a.outcome === 'Staðgreiðsla' && a.kt; })
-      .sort(function (x, y) { return String(y.date).localeCompare(String(x.date)); })
-      .forEach(function (a) { push('Umsókn sem við höfnuðum (velja 3)', a.kt, a); });
+  // Vanskil (4): í reikningsviðskiptum, dreift yfir stærð vanskila.
+  var van = arrearsRows.map(function (r) { return { kt: String(r.company_id), r: r }; })
+    .filter(function (x) { return !isCash(x.kt) && eligibleOrg(x.kt); });
+  emit('Vanskil eða greiðslufrestir (4)', van, spread(van.length, 4), function (x) {
+    return 'Reikningsviðskipti (' + (x.r.payment_terms_code || '?') + '), ' + kr(x.r.arrears) + ' í vanskilum.';
+  });
 
-  // Einstaklingsfyrirtæki: umsækjendur á eigin kennitölu + núverandi í
-  // reikningsviðskiptum (SJUKRA eru einstaklingar vegna Sjúkratrygginga, ekki rekstur).
-  apps.filter(function (a) { return a.outcome === 'Einstaklingur' && a.kt; })
-      .forEach(function (a) { push('Einstaklingsfyrirtæki (velja 2)', a.kt, a); });
-  var pers = 0;
-  personalBc.forEach(function (r) {
-    var kt = String(r.company_id);
-    if (pers >= 15 || kt.length !== 10 || arrearsMap[kt] || isCash(kt) || r.payment_terms_code === 'SJUKRA') return;
-    push('Einstaklingsfyrirtæki (velja 2)', kt); pers++;
+  // Góðir (6): virkir lögaðilar í reikningsviðskiptum án vanskila. 2 stórir,
+  // 2 miðlungs, 2 minni — og ekki tveir úr sama vöruflokki.
+  var goodPool = topSales.map(function (r) { return { kt: String(r.company_id), r: r }; })
+    .filter(function (x) {
+      if (!eligibleOrg(x.kt) || ci_isPersonal_(x.kt) || arrearsMap[x.kt] || isCash(x.kt)) return false;
+      var o = ordMap[x.kt];
+      return !o || ci_num_(o.orders_bc_365d) == null || ci_num_(o.orders_bc_365d) >= 4;
+    });
+  var goodPicks = [], cats = {};
+  [0, 1, 2].forEach(function (tier) {
+    var lo = Math.floor(tier * goodPool.length / 3), hi = Math.floor((tier + 1) * goodPool.length / 3);
+    var got = 0;
+    for (var ix = lo; ix < hi && got < 2; ix++) {
+      var c = (ordMap[goodPool[ix].kt] || {}).primary_category || ('?' + ix);
+      if (cats[c]) continue;
+      cats[c] = true; goodPicks.push(ix); got++;
+    }
+  });
+  function tierName(ix) { return ix < Math.floor(goodPool.length / 3) ? 'Stór' : ix < Math.floor(2 * goodPool.length / 3) ? 'Miðlungs' : 'Minni'; }
+  emit('Góður og stöðugur (6)', goodPool, goodPicks, function (x, ix) {
+    var o = ordMap[x.kt] || {};
+    return tierName(ix) + ' viðskiptavinur, ' + kr(x.r.sales) + ' í sölu' +
+           (o.orders_bc_365d != null ? ', ' + o.orders_bc_365d + ' pantanir síðustu 12 mán.' : '') + ', engin vanskil.';
+  });
+
+  // Höfnuð (3): staðgreiðsluflipinn — með skor fyrst, svo nýjustu.
+  var seenRej = {};
+  var rej = apps.filter(function (a) { return a.outcome === 'Staðgreiðsla' && a.kt && a.kt.length === 10; })
+    .sort(function (x, y) {
+      if ((x.score != null) !== (y.score != null)) return x.score != null ? -1 : 1;
+      return String(y.date).localeCompare(String(x.date));
+    })
+    .filter(function (a) { if (seenRej[a.kt]) return false; seenRej[a.kt] = true; return true; })
+    .map(function (a) { return { kt: a.kt, app: a }; });
+  emit('Umsókn sem við höfnuðum (3)', rej, first(rej.length, 3), function (x) {
+    return 'Hafnað í staðgreiðslu' + (x.app.score != null ? ' á skori ' + x.app.score : '') + '. Hefði kerfið verið sammála?';
+  });
+
+  // Einstaklingsfyrirtæki (2): einn umsækjandi + einn núverandi í reikningsviðskiptum.
+  var persApps = apps.filter(function (a) { return a.outcome === 'Einstaklingur' && a.kt && a.kt.length === 10; })
+    .sort(function (x, y) { return String(y.date).localeCompare(String(x.date)); })
+    .map(function (a) { return { kt: a.kt, app: a, src: 'umsókn' }; });
+  var persBc = personalBc.map(function (r) { return { kt: String(r.company_id), r: r, src: 'bc' }; })
+    .filter(function (x) { return x.kt.length === 10 && !arrearsMap[x.kt] && !isCash(x.kt) && x.r.payment_terms_code !== 'SJUKRA'; });
+  var pers = persApps.slice(0, 1).concat(persBc.slice(0, 1), persApps.slice(1, 4), persBc.slice(1, 4));
+  emit('Einstaklingsfyrirtæki (2)', pers, first(pers.length, 2), function (x) {
+    return (x.src === 'umsókn' ? 'Sótti um á eigin kennitölu.' : 'Í reikningsviðskiptum á eigin kennitölu, ' + kr(x.r.sales) + ' í sölu.') +
+           ' Skrifleg heimild áður en kennitalan fer til Creditinfo.';
   });
 
   // ── 5. Skrifa flipann ────────────────────────────────────────────────────
@@ -210,20 +279,27 @@ function creditinfoUrtak_v1() {
   out.getRange(row, 1, summary.length, summary[0].length).setValues(summary);
   out.getRange(row, 1, 1, summary[0].length).setFontWeight('bold').setBackground('#e8e8e8');
   row += summary.length + 2;
-  out.getRange(row, 1).setValue('Kandídatar í úrtak — valið er handvirkt').setFontWeight('bold');
+  var picked = cand.filter(function (c) { return c[0]; }).length;
+  out.getRange(row, 1).setValue('Tillaga að úrtaki: ' + picked + ' merktar ✓, varamenn undir hverjum hópi. ' +
+                                'Skiptu út eftir þörfum og afritaðu ✓-línurnar í Prófunarlisti 20.').setFontWeight('bold');
   row++;
   var table = [head].concat(cand);
   // Texti áður en gildin fara inn — annars verður 0101…-kennitala að tölu og núllið hverfur.
-  out.getRange(row + 1, 3, cand.length || 1, 1).setNumberFormat('@');
+  out.getRange(row + 1, 4, cand.length || 1, 1).setNumberFormat('@');
   out.getRange(row, 1, table.length, head.length).setValues(table);
   out.getRange(row, 1, 1, head.length).setFontWeight('bold').setBackground('#e8e8e8');
   out.getRange(row + 1, 7, cand.length || 1, 1).setNumberFormat('#,##0');
   out.getRange(row + 1, 9, cand.length || 1, 3).setNumberFormat('#,##0');
+  cand.forEach(function (c, k) {
+    if (c[0]) out.getRange(row + 1 + k, 1, 1, head.length).setBackground('#e1ede6');
+  });
+  out.setColumnWidth(5, 380);
+  out.getRange(row + 1, 5, cand.length || 1, 1).setWrap(true);
 
   var withScore = apps.filter(function (a) { return a.score != null; }).length;
   console.log('[CREDITINFO] úrtak: ' + apps.length + ' umsóknir, ' + withScore + ' með skor, ' +
-              arrearsRows.length + ' í vanskilum, ' + cand.length + ' kandídatar');
-  return { applications: apps.length, withScore: withScore, inArrears: arrearsRows.length, candidates: cand.length };
+              arrearsRows.length + ' í vanskilum, ' + picked + ' í tillögu, ' + cand.length + ' línur alls');
+  return { applications: apps.length, withScore: withScore, inArrears: arrearsRows.length, picked: picked, rows: cand.length };
 }
 
 function ci_kt_(v) {
