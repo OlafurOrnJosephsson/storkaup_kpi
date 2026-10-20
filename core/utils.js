@@ -2021,6 +2021,7 @@ function upsertBcCustomersToSupabase_(rows) {
       arrears: toNum_(r.ARREARS),
       status_sgm: r.STATUS_SGM || null,
       contact_name: r.CONTACT || null,
+      payment_terms_code: String(r.PAYMENT_TERMS || '').trim() || null,
       source: 'bc_customers_backfill'
     };
   }).filter(function(x) { return x.company_id; });

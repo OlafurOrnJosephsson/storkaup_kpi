@@ -85,8 +85,11 @@ BC_CUSTOMERS: {
     STATUS_SGM: 'Staða (SGM)',         // ATH: upphæð, ekki staða — Balance (LCY), oftast
                                        // = Hreyfing (SGM). Lokun viðskiptamanns er reiturinn
                                        // 'Lokað', sem er ekki í exportinu.
-    CONTACT: 'Tengiliður'              // sýnir hvort BC-tengiliður er þegar
+    CONTACT: 'Tengiliður',             // sýnir hvort BC-tengiliður er þegar
                                        // skráður — skrefið í "Klárað"-flæðinu
+    PAYMENT_TERMS: 'Kóði greiðsluskilmála' // 2026-10-20. LM+10D/LM+25D…, SJUKRA;
+                                       // tómt = staðgreiðsla (sniðmát STGR).
+                                       // Creditinfo-úrtakið les hann.
   }
 },
 

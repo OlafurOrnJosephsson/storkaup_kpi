@@ -66,7 +66,8 @@ function creditinfoUrtak_v1() {
 
   // ── 2. BC-gögn ───────────────────────────────────────────────────────────
   var appKts = apps.map(function (a) { return a.kt; }).filter(Boolean);
-  var arrearsRows = ci_sbGet_('bc_customers_raw?select=company_id,company_name,credit_limit,arrears,status_sgm' +
+  var BC_SEL = 'company_id,company_name,credit_limit,arrears,status_sgm,payment_terms_code';
+  var arrearsRows = ci_sbGet_('bc_customers_raw?select=' + BC_SEL +
                               '&arrears=gt.0&order=arrears.desc&limit=1000');
   var arrearsMap = {};
   arrearsRows.forEach(function (r) { arrearsMap[String(r.company_id)] = r; });
@@ -80,8 +81,12 @@ function creditinfoUrtak_v1() {
   var lookupKts = appKts.concat(arrearsRows.slice(0, 40).map(function (r) { return String(r.company_id); }));
   var caMap = ci_byIds_('customer_analysis_raw', 'customer_id',
                         'customer_id,customer_name,credit_limit,lifetime_bc_sales,last_bc_order_date', lookupKts);
-  var bcMap = ci_byIds_('bc_customers_raw', 'company_id',
-                        'company_id,company_name,credit_limit,arrears,status_sgm', appKts);
+  var bcMap = ci_byIds_('bc_customers_raw', 'company_id', BC_SEL,
+                        appKts.concat(topSales.concat(personalBc).map(function (r) { return String(r.customer_id); })));
+  arrearsRows.forEach(function (r) { bcMap[String(r.company_id)] = bcMap[String(r.company_id)] || r; });
+  // Greiðsluskilmálar komu í exportið 2026-10-20 (core/sql/bc_customers_payment_terms.sql).
+  // Fyrir fyrsta innlestur eru þeir null alls staðar — þá má ekki lesa null sem staðgreiðslu.
+  var termsLoaded = Object.keys(bcMap).some(function (k) { return bcMap[k].payment_terms_code; });
   topSales.concat(personalBc).forEach(function (r) { caMap[String(r.customer_id)] = caMap[String(r.customer_id)] || r; });
 
   function info(kt) {
@@ -94,6 +99,7 @@ function creditinfoUrtak_v1() {
       limit: limit,
       arrears: ci_num_((arrearsMap[kt] || bc).arrears),
       status: (arrearsMap[kt] || bc).status_sgm || '',
+      terms: bcMap[kt] ? (bcMap[kt].payment_terms_code || (termsLoaded ? 'Staðgreiðsla (tómt)' : '')) : '',
       sales: ci_num_(ca.lifetime_bc_sales),
       lastOrder: ca.last_bc_order_date ? String(ca.last_bc_order_date).substring(0, 10) : ''
     };
@@ -121,7 +127,7 @@ function creditinfoUrtak_v1() {
 
   // ── 4. Kandídatar ────────────────────────────────────────────────────────
   var head = ['Hópur', 'Fyrirtæki', 'Kennitala', 'Skor (umsókn)', 'Afdrif umsóknar', 'Dags. umsóknar',
-              'Heimild í BC', 'Vanskil', 'Staða reiknings', 'Velta BC alls', 'Síðasta BC-pöntun'];
+              'Heimild í BC', 'Greiðsluskilmálar', 'Vanskil', 'Staða reiknings', 'Velta BC alls', 'Síðasta BC-pöntun'];
   var cand = [];
   var appByKt = {};
   apps.forEach(function (a) { if (a.kt && (!appByKt[a.kt] || a.score != null)) appByKt[a.kt] = a; });
@@ -130,20 +136,23 @@ function creditinfoUrtak_v1() {
     var i = info(kt);
     app = app || appByKt[kt] || {};
     cand.push([group, app.company || i.name, kt, app.score == null ? '' : app.score, app.outcome || '',
-               app.date || '', i.limit == null ? '' : i.limit, i.arrears == null ? '' : i.arrears,
+               app.date || '', i.limit == null ? '' : i.limit, i.terms, i.arrears == null ? '' : i.arrears,
                i.status, i.sales == null ? '' : i.sales, i.lastOrder]);
   }
 
   // Tap / vanskil — sami listinn; staða (SGM) og BC skera úr hvor er hvað.
   arrearsRows.slice(0, 30).forEach(function (r) { push('Tap eða vanskil (velja 5 + 4)', String(r.company_id)); });
 
-  // Góðir: veltuhæstu lögaðilar án vanskila og ekki staðgreiðslu (-1).
+  // Góðir: veltuhæstu lögaðilar án vanskila, í reikningsviðskiptum — ekki
+  // staðgreiðsla (-1 eða tómir skilmálar) og ekki SJUKRA.
   var good = 0;
   topSales.forEach(function (r) {
     var kt = String(r.customer_id);
     if (good >= 25 || kt.length !== 10 || ci_isPersonal_(kt) || arrearsMap[kt]) return;
     var lim = ci_num_(r.credit_limit);
     if (lim != null && lim < 0) return;
+    var bc = bcMap[kt];
+    if (termsLoaded && bc && (!bc.payment_terms_code || bc.payment_terms_code === 'SJUKRA')) return;
     push('Góður og stöðugur (velja 6)', kt); good++;
   });
 
@@ -184,8 +193,8 @@ function creditinfoUrtak_v1() {
   out.getRange(row + 1, 3, cand.length || 1, 1).setNumberFormat('@');
   out.getRange(row, 1, table.length, head.length).setValues(table);
   out.getRange(row, 1, 1, head.length).setFontWeight('bold').setBackground('#e8e8e8');
-  out.getRange(row + 1, 7, cand.length || 1, 2).setNumberFormat('#,##0');
-  out.getRange(row + 1, 10, cand.length || 1, 1).setNumberFormat('#,##0');
+  out.getRange(row + 1, 7, cand.length || 1, 1).setNumberFormat('#,##0');
+  out.getRange(row + 1, 9, cand.length || 1, 3).setNumberFormat('#,##0');
 
   var withScore = apps.filter(function (a) { return a.score != null; }).length;
   console.log('[CREDITINFO] úrtak: ' + apps.length + ' umsóknir, ' + withScore + ' með skor, ' +
