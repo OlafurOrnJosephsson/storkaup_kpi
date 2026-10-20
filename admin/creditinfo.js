@@ -17,8 +17,10 @@
  * Takmarkanir gagnanna:
  *   - Afskriftir eru hvergi hjá okkur. „Tap“ og „vanskil“ koma úr sama lista
  *     (vanskil > 0); staða (SGM) og BC sjálft skera úr hvor er hvað.
- *   - Hámarksskuld (SGM) hvarf úr BC-útflutningnum 2026-08, svo heimildin er
- *     oft tóm. Þá þarf að lesa hana af viðskiptamannaspjaldinu í BC.
+ *   - Hámarksskuld (SGM) hvarf úr BC-útflutningnum 2026-08 og kom aftur
+ *     2026-10-20. Viðskiptamaður sem var ekki í nýjum innlestri síðan hefur
+ *     enn tóma heimild. -1 = staðgreiðsla.
+ *   - status_sgm er 'Staða (SGM)' = staða reiknings í krónum, ekki lokunarstaða.
  *   - Vanskil miðast við síðasta BC-innlestur (BC Sync valmyndin).
  *
  * Kennitölur og vanskil eru PII: aðeins deployer má keyra þetta, ekki
@@ -119,7 +121,7 @@ function creditinfoUrtak_v1() {
 
   // ── 4. Kandídatar ────────────────────────────────────────────────────────
   var head = ['Hópur', 'Fyrirtæki', 'Kennitala', 'Skor (umsókn)', 'Afdrif umsóknar', 'Dags. umsóknar',
-              'Heimild í BC', 'Vanskil', 'Staða (SGM)', 'Velta BC alls', 'Síðasta BC-pöntun'];
+              'Heimild í BC', 'Vanskil', 'Staða reiknings', 'Velta BC alls', 'Síðasta BC-pöntun'];
   var cand = [];
   var appByKt = {};
   apps.forEach(function (a) { if (a.kt && (!appByKt[a.kt] || a.score != null)) appByKt[a.kt] = a; });
@@ -164,7 +166,7 @@ function creditinfoUrtak_v1() {
   var notes = [
     ['Creditinfo úrtak — keyrt ' + Utilities.formatDate(new Date(), 'Atlantic/Reykjavik', 'yyyy-MM-dd HH:mm') +
      ' af creditinfoUrtak_v1 (admin/creditinfo.js). Keyrt aftur skrifar yfir flipann.'],
-    ['Heimild í BC er oft tóm: Hámarksskuld (SGM) hvarf úr BC-útflutningnum 2026-08 — lesa af viðskiptamannaspjaldinu. ' +
+    ['Tóm heimild = viðskiptamaður ekki í BC-innlestri síðan Hámarksskuld kom aftur (2026-10-20); -1 = staðgreiðsla. Staða reiknings er í krónum. ' +
      'Afskriftir eru ekki í gögnunum; tap og vanskil koma úr sama lista. Einstaklingar: skrifleg heimild áður en kennitala fer til Creditinfo.']
   ];
   var row = 1;

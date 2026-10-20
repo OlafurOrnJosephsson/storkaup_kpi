@@ -68,7 +68,7 @@ BC_CUSTOMERS: {
   COLUMNS: {
     COMPANY_ID: 'Nr.',
     COMPANY_NAME: 'Heiti',
-    CREDIT_LIMIT: 'Hamarksskuld (SGM)',  // hvarf úr SaaS-exportinu 2026-08 → null
+    CREDIT_LIMIT: 'Hamarksskuld (SGM)',  // hvarf úr SaaS-exportinu 2026-08, aftur inni 2026-10-20 (-1 = staðgreiðsla)
     PHONE: 'Simi',
     BALANCE: 'Hreyfing (SGM)',
     PAYMENTS: 'Greidslur (SGM)',
@@ -82,7 +82,9 @@ BC_CUSTOMERS: {
     // einhver mappi rangan síðar.
     ARREARS: 'Upphæð vanskila (SGM)',  // vanskil — staðreynd úr eigin bókhaldi,
                                        // nýtist í lánshæfismati á umsóknum
-    STATUS_SGM: 'Staða (SGM)',         // staða viðskiptamanns, parast við vanskil
+    STATUS_SGM: 'Staða (SGM)',         // ATH: upphæð, ekki staða — Balance (LCY), oftast
+                                       // = Hreyfing (SGM). Lokun viðskiptamanns er reiturinn
+                                       // 'Lokað', sem er ekki í exportinu.
     CONTACT: 'Tengiliður'              // sýnir hvort BC-tengiliður er þegar
                                        // skráður — skrefið í "Klárað"-flæðinu
   }
