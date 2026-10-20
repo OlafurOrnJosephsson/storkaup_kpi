@@ -2,6 +2,12 @@
 
 ## Recent Release Notes
 
+- Webflow deploys 2026-10-16 (pin values: `CLAUDE.md` → *Current production pins*):
+  - `data-storkaup-rev` → `5bac261`: `/kpi/klaviyo` status strip tells a stopped sync (red) from "no campaign sent in 30 d" (grey), via `api.klaviyo_sync_status_v1` (`core/sql/klaviyo_sync_status_v1.sql`); falls back to the old attribution-age rule if that call fails. `dashboard.js` + `dashboard-theme.css`. Both bootstrap `src` pins moved too (pin only — `dashboard-bootstrap.js` unchanged since `1b08cff`, which stopped loading `top-products.js`; `website-dashboard-bootstrap.js` since `30f0908`).
+  - `vidskiptavinir.js` → `a013033`: opportunity lists sorted by offline orders; onboarding template default for never-web customers; "Senda vefkynningu" only under „Aldrei pantað á vef“. `/kpi/vidskiptavinur`: bulk "Senda vefkynningu" (`send_template_bulk`, `core/sql/customer_email_log_v1.sql`), graduation off the worklist („Komnir á vef“, `core/sql/priority_graduation_v1.sql`), bulk actions, `?tab=` deep links. Signed-in user → rep by logic (`core/sql/kpi_staff_rep_v1.sql`).
+  - `vorur.js` → `ed515f6`: new `/kpi/vorur` — one search (typing → web catalog, pasted list → `?tab=listi`), best sellers + categories, product card at `?sku=` (off-web products still get BC sales), buyer → `/kpi/vidskiptavinur?customer=`. No new SQL. Replaced top-products / voruuppfletting / voruportal, deleted the same day.
+  - `auth.js` stays at `af0191a` (2026-10-09, KPI page sign-in).
+
 - Vöruuppfletting á birgjanúmerum (2026-09-18 → 2026-09-21):
   - **Hvað**: birgjalistar koma án Stórkaups-SKU, svo uppflettingin var handavinna. Nú er hún á þremur stöðum með sömu gögnum: `/kpi/voruuppfletting` (listi í einu), leitarreiturinn á `/kpi/top-products` (eitt í senn), og `Uppfletting`-flipinn í PIM-skjalinu.
   - `core/web_catalog.js` + `core/sql/web_catalog_v1.sql` — `raw.web_catalog` með `brand_sku` (birgjanúmerið), fyllt úr getProductsV2 í `scheduledCludoSync_v1` á 12 klst. fresti. `partial` á ingestion_run ef það skref fellur.
@@ -206,8 +212,8 @@ Production pins now live in a single source of truth: **`CLAUDE.md` → Current 
 
 1. Check Apps Script executions for failures in the last 24h.
 2. Confirm new NEWWEB rows continue landing during business hours (`safePoll_v2` window: every run 07:00-21:59, quarter-hours 22:00-23:59, off 00:00-06:59). No `[KPI ALERT] safePoll_v2 er stopp` email this week (`checkSafePollWatchdog_`, hourly inside `scheduledMagentoSync_v1`) and `safepoll_heartbeat` OK in `runDailySanityChecks_v1`. Manual run: `safePollNow_v2()`, not bare `safePoll_v2()`. Monthly: run `auditNewwebSheetVsSupabase_v1()` and expect `missingInSupabaseCount: 0`; if not, `repairNewwebMissingInSupabase_v1()` (upserts only the missing rows).
-3. Run `auditTriggers_v1()` (function picker) and expect `[AUDIT][OK] All 13 required triggers are installed`. If one is missing, run its idempotent `install*` function — not `resetRecommendedTimeTriggers_v1`. The audit never warns about OPTIONAL jobs (`collectInvoicesToDrive_v1`, `runScheduledSeoAutomation_v1`); see CLAUDE.md.
-4. Check BC freshness by hand — BC has no trigger and is not in the sanity check's freshness map. Has someone run BC Sync → `processBcDrop_v1` on a recent `bc_sync.ps1` export (rolling ~3-month window, so a skipped month is a real gap)? Does the dashboard's BC last-sync timestamp (`bc-last-sync-at`, from `bc_sync_status`) look recent, and does BC share still match Supabase?
+3. Run `auditTriggers_v1()` (function picker) and expect `[AUDIT][OK] All N required triggers are installed` (16 as of 2026-10-20). If one is missing, run its idempotent `install*` function — not `resetRecommendedTimeTriggers_v1`. The audit never warns about OPTIONAL jobs (`collectInvoicesToDrive_v1`, `runScheduledSeoAutomation_v1`); see RUNBOOK → *Trigger Baseline*.
+4. Check BC freshness — BC has no trigger. The sanity check fails `bc_freshness` only after 35 days without an import, so look sooner by hand. Has someone run BC Sync → `processBcDrop_v1` on a recent `bc_sync.ps1` export (rolling ~3-month window, so a skipped month is a real gap)? Does the dashboard's BC last-sync timestamp (`bc-last-sync-at`, from `bc_sync_status`) look recent, and does BC share still match Supabase?
 5. Confirm Magento incremental sync has no recurring 401 or timeout errors. `ingestion_partial_24h` in the sanity check means a sub-step (e.g. a mart refresh) failed, not the whole job.
 6. Spot-check one parent/child customer case for profile correctness.
 7. Move completed tasks to `Done` and add next concrete action.

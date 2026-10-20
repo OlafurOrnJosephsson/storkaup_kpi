@@ -8,9 +8,10 @@ GAS + Supabase SQL + Webflow source repo for Storkaup KPI.
 
 | Doc | Covers |
 |---|---|
-| `CLAUDE.md` | Deploy workflow, **production pins (single source of truth)**, file map, triggers, non-negotiables |
-| `ARCHITECTURE.md` | Data flow and the two web-app projects |
-| `RUNBOOK.md` | Operations and recovery |
+| `CLAUDE.md` | Deploy rules, **production pin values (single source of truth)**, file map, access-control rules, non-negotiables |
+| `ARCHITECTURE.md` | Data flow, the two web-app projects, trigger table |
+| `RUNBOOK.md` | Operations and recovery, BC import, trigger recovery, Webflow deploy and how pins work |
+| `.claude/rules/` | Path-scoped guidance for Claude Code (Webflow, SEO, GA4/GTM, Klaviyo profiles, PIM lock) |
 | `NEXT_TASKS.md` · `GOALS.md` | Open work and goals |
 | `pim/README.md` · `pim/VORUINNIHALD.md` | PIM tools; vöruinnihald handover |
 
@@ -25,14 +26,14 @@ Two separate Apps Script projects live in this repo:
 - `Webflow/`: browser-only frontend scripts (deployed to Webflow, **not** pushed to GAS). Mostly read-only dashboards, but the customer page (`vidskiptavinir.js`) also writes priority flags / rep assignments through RPCs; every update/delete is kept in `raw.customer_priority_flags_history`.
 - `core/sql/`: Supabase SQL, applied by hand in the Supabase SQL editor.
 - `pim/`: PIM / vöruinnihald — `.js` (Plytix export, worksheet, AI copy, related products) is pushed with the main project; `.py` are local tools. `pim_sync.ps1` uploads Plytix CSVs from `pim_drop/` to Drive. `core/web_catalog.js` keeps the published catalog in `raw.web_catalog`.
-- `bc_sync.ps1`: uploads BC XLSX from `bc_drop/` to Drive. **BC has no trigger** — the data loads only when someone runs the BC Sync menu (`processBcDrop_v1`). Export a rolling ~3-month window (see `CLAUDE.md`).
+- `bc_sync.ps1`: uploads BC XLSX from `bc_drop/` to Drive. **BC has no trigger** — the data loads only when someone runs the BC Sync menu (`processBcDrop_v1`). Export a rolling ~3-month window (see `RUNBOOK.md` → *BC import*).
 - `tools/check-webflow-pins.js`: compares live Webflow pins against `CLAUDE.md`; runs at the end of `gas_deploy.ps1`.
 - `gtm/`: GTM export. `email-preview/`: browser mockups of the emails.
 - `.claspignore`: excludes `Webflow/`, `admin/`, `email-preview/`, `docs/` and `tools/` from the main push. **Any `.js` in a non-ignored directory is pushed as Apps Script** — a top-level `require()` throws on load and kills every trigger.
 
 See `ARCHITECTURE.md` → *Web-app projects* for why the split exists (PII must sit behind real login, not URL secrecy / a shared Webflow password).
 
-Scheduled jobs: `auditTriggers_v1()` is the source of truth (it shares `requiredTimeTriggers_()` with `resetRecommendedTimeTriggers_v1`). `safePoll_v2` is the core Magento ingest and has a watchdog. See `CLAUDE.md` → *Key scheduled triggers* and `RUNBOOK.md`.
+Scheduled jobs: `auditTriggers_v1()` is the source of truth (it shares `requiredTimeTriggers_()` with `resetRecommendedTimeTriggers_v1`). `safePoll_v2` is the core Magento ingest and has a watchdog. See `ARCHITECTURE.md` → *Scheduled triggers* and `RUNBOOK.md` → *Trigger Baseline*.
 
 ## Daily Workflow
 
@@ -45,22 +46,15 @@ Scheduled jobs: `auditTriggers_v1()` is the source of truth (it shares `required
 4. Deploy Webflow script changes:
    - copy/paste from `Webflow/*.js` into Webflow custom code (or your Webflow pipeline)
 5. Commit and backup:
-   - `git add .`
+   - `git add <changed files>` — by name; never `git add .`, which would pick up local files such as `GAS.code-workspace`
    - `git commit -m "your message"`
    - `git push`
 
 ## Production Pins (Webflow/jsDelivr)
 
-Use commit-pinned jsDelivr URLs in Webflow custom code:
-- `https://cdn.jsdelivr.net/gh/OlafurOrnJosephsson/storkaup_kpi@<commit>/Webflow/<file>.js`
+Current pin values live in a single source of truth: **`CLAUDE.md` → Current production pins** (`tools/check-webflow-pins.js` parses it there).
 
-Current pin values live in a single source of truth: **`CLAUDE.md` → Current production pins**.
-
-When updating Webflow scripts:
-1. Commit and push to `main`
-2. Move only the pin that governs the changed file, and only when its content changed: one `data-storkaup-rev` in site-wide code covers all bootstrap child files; a few files are pinned independently in page Embeds / page code. Which is which: `CLAUDE.md` → *Current production pins*.
-3. Update the pins section in `CLAUDE.md`
-4. Run `node tools/check-webflow-pins.js` to compare the live site against the table, then hard refresh and smoke-test the affected pages
+Deploy steps, which pin governs which file, and the URL pattern: **`RUNBOOK.md` → Webflow deploy and production pins**.
 
 ## Quick Safety Checks
 

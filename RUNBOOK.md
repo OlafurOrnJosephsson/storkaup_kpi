@@ -5,7 +5,8 @@
 This runbook covers daily operations for:
 - NEWWEB ingestion (Magento orders -> GAS sheet -> Supabase)
 - Magento customer sync
-- BC import (**manual**: BC Sync menu -> `processBcDrop_v1`, XLSX dropped in Drive by `bc_sync.ps1`). Dashboard monthly BC ratios are entered by hand per month (`window.STORKAUP_BC_MANUAL`), not read from Supabase.
+- BC import (**manual**: BC Sync menu -> `processBcDrop_v1`, XLSX dropped in Drive by `bc_sync.ps1`). Dashboard monthly BC ratios are entered by hand per month into `raw.bc_manual_monthly` in the Supabase SQL editor (since 2026-10-09, [core/sql/bc_manual_monthly.sql](core/sql/bc_manual_monthly.sql)), read by `public.get_bc_manual_monthly()` for signed-in users only. `window.STORKAUP_BC_MANUAL` in page code is a legacy fallback in `dashboard.js` and must not be on any page.
+- Webflow deploy and production pins (see the section of that name below).
 
 ## Apps Script projects
 
@@ -31,7 +32,15 @@ If someone reports "You need access" / a blank umsókn or vöruvöktun screen: t
 
 ## KPI page sign-in (since 2026-10-09)
 
-KPI pages require a personal Google sign-in on top of the Webflow folder password. `Webflow/auth.js` (site-wide head, pinned) runs the Supabase Auth flow and swaps the anon key for the user's token on every Supabase call; it does nothing on pages without `STORKAUP_CONFIG`. Two gates, both needed:
+> **Status: intended design, not verified live.** On 2026-10-20 the 8 pages the
+> pin checker scans answered HTTP 200 without credentials and all carried
+> `auth.js`, so page code is public. Nobody has yet confirmed against production
+> that an unauthenticated or non-allowlisted caller is actually refused by
+> Supabase (`kpi_auth_revoke_anon.sql`, the `auth.users` trigger) or by GAS
+> (`webflowCaller_`). Treat everything below as how it is meant to work until
+> that test is done.
+
+The Webflow folder password was removed 2026-10-09; data access is meant to require a personal Google sign-in instead. `Webflow/auth.js` (site-wide head, pinned) runs the Supabase Auth flow and swaps the anon key for the user's token on every Supabase call; it does nothing on pages without `STORKAUP_CONFIG`. Two gates, both needed:
 
 1. **Google Admin** — the person has a @storkaup.is Google account in the `KPI-notendur` org unit. Staff without Gmail get a **Cloud Identity Free** licence (no cost, 50 seats), never Business Standard (automatic licensing is OFF for that unit). 2-Step Verification is enforced there. Mail for @storkaup.is is in Outlook, so these accounts carry no mailbox.
 2. **Supabase allowlist** — `raw.kpi_staff_access`. A trigger on `auth.users` rejects any account not on it, whatever the sign-in route.
@@ -102,6 +111,23 @@ Notes:
      `installSafePollTrigger_v2()` — not the reset (see Trigger Baseline).
   2. Check Executions for failing `safePoll_v2` runs or lock contention.
   3. Run `safePollNow_v2()` by hand to catch up.
+- History: before 2026-10-08 the daily sanity check was the only reader of the
+  heartbeat, ran once a day and logged as `warning` (which never emails), so a
+  dead order pipeline sent nothing at all.
+
+### 1b) Magento API off switch (since 2026-10-19)
+- Hagar are closing the Magento API to allowlisted IPs only (BlockStrap,
+  CVE-2026-103849). GAS calls from Google's shifting IPs, so it can never be
+  allowlisted directly. The fix under discussion is a proxy with a static IP in
+  Hagar's Azure; until then, web orders stop at the cut-off.
+- Switch: `SETTINGS.MAGENTO_API_ENABLED = false` in STORKAUP_CONFIG. Every
+  Magento entry point then skips quietly (`isMagentoApiEnabled_()` in
+  [core/auth.js](core/auth.js)): `safePoll_v2`, the status sync, both customer
+  syncs, the live key lookup in application pruning, and pending orders in the
+  admin app. The safePoll watchdog stays silent, and the daily check logs a
+  `warning` instead of an `error`. **A missing row means on.**
+- Nothing writes to Magento — only `GET /orders` and `GET /customers/search`,
+  plus the admin-token login in `core/auth.js`.
 
 ### 2) Magento customers
 - Function: `scheduledMagentoSync_v1`
@@ -117,8 +143,23 @@ Notes:
   (`SETTINGS.BC_DROP_FOLDER_ID`). They sit unread until someone clicks
   **BC Sync -> Importa BC skrár úr Drive Drop** (`processBcDrop_v1`). Processed
   files move to the `archive/` subfolder.
-- Export a rolling ~3-month window from BC, not full history. Nothing schedules
-  this, so **a skipped month is a real gap** in `bc_lines_raw`.
+- Export a rolling ~3-month window from BC, not full history (decided
+  2026-08-31). Nothing schedules this, so **a skipped month is a real gap** in
+  `bc_lines_raw`. Three months of overlap is the margin; don't cut it to one.
+  - Why not full history: lines are deduped against a 2-year-windowed
+    *invoice* key set (`cutoff` in `processBcDrop_v1`, [core/utils.js](core/utils.js)),
+    so every line whose invoice predates that window counts as new on every
+    run. A full-history export re-sent 217,790 of 484,768 rows per import —
+    harmless (`resolution=ignore-duplicates` drops them server-side) but 4m14s
+    of the 6-minute execution budget, growing ~6%/month.
+- **An interrupted import no longer loses lines (2026-10-09).** Lines are
+  filtered on the invoice key set, so a run that uploaded invoices and died
+  before finishing the lines file used to drop those invoices' lines for good.
+  Script Property `BC_DROP_LINES_OWED` is set before invoices upload and
+  cleared when a lines file completes; while set, lines go up unfiltered (safe —
+  `ignore-duplicates`). `markBcLinesOwed_v1()` sets it by hand. The daily sanity
+  check fails on `bc_freshness` (no successful import in 35 days) and on
+  `bc_lines_owed`.
 - New export format? Run `diagnoseBcDropHeaders_v1` first (reports unknown/missing
   columns, touches no files).
 - **Never run `processBcDropForce_v1` on the invoice file** — it nulls `order_no`
@@ -171,7 +212,7 @@ Note: `refresh_mv_top_products_all` may timeout (statement timeout) during busy 
    - `safePoll_v2` mostly completed
    - no recurring failures
 2. `scheduledMagentoSync_v1` recent run has `magentoSync":"ok"`
-3. `auditTriggers_v1()` logs `[AUDIT][OK] All 13 required triggers are installed`
+3. `auditTriggers_v1()` logs `[AUDIT][OK] All N required triggers are installed` (N = handlers in `requiredTimeTriggers_()`, 16 as of 2026-10-20)
 4. Confirm `[SALES_REPS_REF][INFO] Sync completed. Uploaded: N` in Magento/ref sync logs
 5. Spot-check one fresh order in `NEWWEB` sheet + frontend
 
@@ -182,7 +223,7 @@ drop folder holds no unprocessed XLSX.
 ## Metric Contract
 
 Dashboard BC cards: monthly cards use net BC figures entered by hand in
-`window.STORKAUP_BC_MANUAL`; daily cards use `day_kpi_pack`; the canonical web
+`raw.bc_manual_monthly` (formerly `window.STORKAUP_BC_MANUAL`); daily cards use `day_kpi_pack`; the canonical web
 tag is `salesperson_code = 'VEFUR'`.
 
 The sheet metric families below are **legacy and frozen** (the BC_INVOICES sheet
@@ -205,7 +246,7 @@ Use when dashboard and sheet differ.
 
 1. Dashboard month values. `webOrdersPct` / `webRevenuePct` are **null by design**
    (BC stripped from the anon RPC); only `salesRepPct` and `selfServePct` are
-   meaningful. For BC figures compare against `STORKAUP_BC_MANUAL` or
+   meaningful. For BC figures compare against `raw.bc_manual_monthly` or
    `mart.v_bc_monthly_net_v1` (service_role / authenticated; not anon).
 ```sql
 select
@@ -273,10 +314,22 @@ order by 1,3;
 - The real BC numbers live in Supabase and are correct: `public.day_kpi_pack`
   (BC fields deliberately nulled for anon), `mart.v_bc_monthly_net_v1`,
   `raw.bc_invoices_raw`. Dashboard BC ratios come from
-  `window.STORKAUP_BC_MANUAL`, entered by hand.
+  `raw.bc_manual_monthly`, entered by hand.
 - If these columns ever need to be real: repoint the `loadBCMonthly*` family in
   `core/salessummaries.js` at `raw.bc_invoices_raw` via service_role. Do NOT
   reinstate the manual paste — that is assessment item 10 (brittle manual step).
+
+### Not an issue: GA4 `purchases` and `begin_checkout` drop from 2026-10-01
+- `scheduledGa4Sync_v1` reads event counts only for `add_to_cart`,
+  `begin_checkout` and `purchase` (plus sessions/users/pageviews/eventCount and
+  channel). Other GTM changes do not affect the KPIs.
+- **GTM v96 (2026-10-01):** `purchase` stopped firing when old orders are
+  viewed under Mínar síður. It now fires only after `/afgreida`, once per order
+  (localStorage). `purchases` and `ga4_purchase_ratio_7d` drop from that day.
+- **GTM v97 (same day):** `begin_checkout` is sent once per visit to
+  `/afgreida` (10 min) and drops too.
+- Both are corrections, not a collapse. See P8-5–P8-7 in `NEXT_TASKS.md`; GTM
+  export in `gtm/`.
 
 ### Fixed 2026-10-14: customer-profile BC fields were empty — now computed live
 - Symptom (before): on `/kpi/vidskiptavinur` every customer was LHFS `Very High`,
@@ -402,12 +455,14 @@ order by 1,3;
 ## Trigger Baseline
 
 Do not keep a hand list here. `requiredTimeTriggers_()` in
-[core/utils.js](core/utils.js) is the source of truth (13 required handlers),
-shared by `auditTriggers_v1()` and `resetRecommendedTimeTriggers_v1()`.
+[core/utils.js](core/utils.js) is the source of truth (16 required handlers as
+of 2026-10-20), shared by `auditTriggers_v1()` and
+`resetRecommendedTimeTriggers_v1()`. `ARCHITECTURE.md` → *Scheduled triggers*
+has a readable copy; when the two disagree, the code wins.
 
 Recovering a lost trigger:
 1. Run `auditTriggers_v1()`. It logs `[AUDIT][WARN] Missing trigger for: X` per
-   missing handler, or `[AUDIT][OK] All 13 required triggers are installed`.
+   missing handler, or `[AUDIT][OK] All N required triggers are installed`.
 2. Run that handler's own `install*Trigger*` function (listed in
    `requiredTimeTriggers_()`). They are idempotent — `{created:false}` if one
    already exists.
@@ -419,5 +474,176 @@ Recovering a lost trigger:
 OPTIONAL handlers are recognised but **never warned about when absent**:
 `onOpen`, `pruneCompletedApplications`, `collectInvoicesToDrive_v1`,
 `runScheduledSeoAutomation_v1`, `zeroPriceScanFromTrigger_v1`. As of
-2026-09-09 neither `collectInvoicesToDrive_v1` nor
-`runScheduledSeoAutomation_v1` is installed (see CLAUDE.md).
+2026-09-09 neither `collectInvoicesToDrive_v1` (the Gmail → Drive invoice
+collector, mapped as "daily ~07:10") nor `runScheduledSeoAutomation_v1`
+("every 30 min, install on demand") is installed, so both run only when
+someone clicks.
+- If the invoice collector is meant to be daily, run
+  `installInvoiceCollectorTrigger_v1` ([core/invoices.js](core/invoices.js))
+  once — it is idempotent.
+- `runScheduledSeoAutomation_v1` is deliberately hand-run: SEO batches are
+  reviewed in the sheet before anything ships, so a schedule would not help.
+
+### Trigger history (why the rules above exist)
+- **Four triggers lost ~2026-05-07..11, found 2026-08-06:** Klaviyo, Customer
+  Analysis, Cludo, Search Console. Nobody noticed for three months because
+  `auditTriggers_v1`'s map was wrong in five places and missing five handlers,
+  so its real warnings were buried in false ones. A job whose sub-step fails
+  now records `partial`, not `success`, and sends an ops alert.
+- **The reset deleted three triggers for good** until 2026-10-08:
+  `resetRecommendedTimeTriggers_v1()` removed thirteen handlers and reinstalled
+  ten — Cludo, CustomerAnalysis and Klaviyo were never put back. The bug came
+  in with `542ab7d` (2026-05-11), the same window in which exactly those went
+  missing. Audit and reset now share `requiredTimeTriggers_()`.
+- **The monthly digest was dead code until 2026-09-01.** `scheduledMonthlyDigest`
+  ([core/email.js](core/email.js)) and its installer existed, but nothing called
+  `installMonthlyDigestTrigger_v1()` and the audit listed the handler as
+  OPTIONAL, so its absence was never warned about. It is now required.
+- **BC has no trigger.** `scheduledBcSync_v1` was deleted 2026-04-30
+  (`d83c7c5`); docs listed it as "twice daily" for three months afterwards.
+- Last full verification on record: `auditTriggers_v1` on 2026-09-09 returned
+  `[AUDIT][OK] All 13 required triggers are installed` (16 triggers total).
+  Three required handlers have been added since (Klaviyo profile sync, Cludo
+  cleanup, lagersala) — re-run the audit rather than trust that result.
+
+## Webflow deploy and production pins
+
+**The pin values themselves live in `CLAUDE.md` → *Current production pins*,
+and only there** — `tools/check-webflow-pins.js` parses that section, so it
+cannot move. This section explains how the pins work and why.
+
+### Deploy steps
+A Webflow change takes **two commits**. A pin can only point at a commit that
+already exists on GitHub, so the source goes first and the pin table follows
+once the new pin is live.
+
+1. `node --check Webflow/<file>.js`.
+2. **If GAS code changed too, run `.\gas_deploy.ps1 "desc"` first**, before
+   the first commit — same order as the normal deploy (`/deploy`). Its pin check
+   at the end runs before the commit and before anything in Webflow changes, so
+   it can only show the old live pin, and its freshness test (`git log`) cannot
+   see the uncommitted change. Do not take the new value from it.
+3. **First commit: stage the changed files by name, commit, push.** Note the
+   SHA — it is the new pin, since jsDelivr serves `@<sha>` from GitHub.
+4. **Update and publish the Webflow pin.** Move only the pin that governs the
+   changed file (see *Which pin governs what* below): site-wide custom code for
+   `data-storkaup-rev`, the bootstrap `src` tags and `auth.js`; page head code
+   for an independently pinned page file. Publish the site.
+5. **Update the table in `CLAUDE.md`** → *Current production pins* to the SHA
+   from step 3. For an independently pinned file, also update its mirror in
+   `Webflow/<page>-embed.html`. The check compares that file against the table.
+6. **Run `node tools/check-webflow-pins.js`**, now that both the live site and
+   the table carry the new pin. Expect `í lagi` on every row, the freshness
+   check passing, and no `?`/`FANNST EKKI`/`ÓATHUGAÐUR` lines you cannot
+   explain. If the table and site disagree, find out which is right before
+   changing either.
+7. Hard-refresh and smoke-test the affected pages.
+8. **Commit and push the documentation update** (`CLAUDE.md`, plus the
+   `*-embed.html` mirror). Do not put any `Webflow/*.js` change in this
+   commit. If you do, the pin from step 3 no longer contains the newest change
+   to that file, and the freshness check fails.
+
+URL pattern: `https://cdn.jsdelivr.net/gh/OlafurOrnJosephsson/storkaup_kpi@<commit>/Webflow/<file>.js`.
+Always an immutable commit, never `@main`: a mutable branch would let a
+compromised repo inject straight into the KPI pages.
+
+### Which pin governs what
+- **`data-storkaup-rev`** governs the bootstrap's child files. The bootstrap
+  scripts read it off their own `<script>` tag and load every child from that
+  revision (`getRevision()` in both bootstraps). Changing it moves
+  `dashboard.js`, `order-search.js`, `website-dashboard.js` and
+  `dashboard-theme.css` together. There is no per-file control for those.
+- All three bootstrap pins live in **one place** — Webflow *site-wide* custom
+  code, two `<script>` tags that carry both the `@commit` in `src` and the
+  `data-storkaup-rev` attribute. (Older docs said the attribute was bumped on
+  every KPI page; that was never how it worked.)
+- **Independent pins** — bumping `data-storkaup-rev` does nothing to these, and
+  bumping them does nothing to the dashboards:
+
+  | File | Where its pin lives | Page |
+  |---|---|---|
+  | `Webflow/auth.js` | **site-wide head**, synchronous (no `defer`) — must run before every other script so its fetch wrapper is in place | all KPI pages; inert where `STORKAUP_CONFIG` is absent |
+  | `Webflow/vidskiptavinir.js` | page head code — mirrored in `vidskiptavinir-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/vidskiptavinur` (since 2026-10-15; `-nyr` 301s there) |
+  | `Webflow/vorur.js` | page head code — mirrored in `vorur-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/vorur` (since 2026-10-16) |
+
+  A new independently pinned file must be registered in **both** `EMBED_PINNED`
+  in the tool and the table in `CLAUDE.md`; the tool complains when it is in
+  neither.
+- **When to change a pin:** only when a file under `Webflow/` actually changes.
+  The pin freezes content; it does not track HEAD. Re-pinning to a newer commit
+  with identical bytes only busts caches and makes the table misreport when the
+  frontend last changed. When the bootstrap files themselves did not change,
+  record a `src` move as "pin only" (check with
+  `git diff --stat <old> <new> -- Webflow/*-bootstrap.js`).
+
+### What the check tool does
+`node tools/check-webflow-pins.js` reads the live pins off the site and does two
+separate things: compares live against the `CLAUDE.md` table, **and**
+independently checks that the live rev contains the newest commit touching the
+files the bootstrap loads. The second test is the one that matters — the table
+and the site can agree and both be wrong. It also fails if `gasKey`,
+`STORKAUP_BC_MANUAL` or `EXEC_URL` appear on a scanned page (`NEVER_PUBLIC`).
+Scanned pages are `/`, `/kpi/umsoknir` and every `/kpi/` link in the home-page
+nav. That was 8 pages on 2026-10-20, all HTTP 200 without credentials. The scan
+is a string match: it does not test that sign-in actually blocks data access,
+and it skips pages that are not linked from the nav.
+Independent pins are read off those same pages; a page
+missing from the nav prints `ÓATHUGAÐUR`. Locally it checks that each
+`*-embed.html` and the table agree, and that the pin contains the newest commit
+touching the file — the realistic mistake (change the file, forget the pin).
+
+### Hardcoded fallbacks
+Used only if `data-storkaup-rev` is missing from the tag. Both bootstraps carry
+a "Keep in sync with CLAUDE.md pins" comment.
+
+| File | Fallback | Date |
+|---|---|---|
+| `dashboard-bootstrap.js` | `2458fc5` | 2026-06-30 |
+| `website-dashboard-bootstrap.js` | `53b118c` | 2026-06-29 |
+
+The two differ from each other and both lag the live rev, so if the attribute
+were dropped, `/kpi/dashboard` and the website dashboard would load different
+vintages. Bumping them is circular — the fallback lives *inside* the bootstrap,
+so changing it changes that file's bytes and forces the `src` pins to move too.
+Left deliberately as a last-resort floor, not a mirror.
+
+### Page consolidation (2026-10-15/16)
+- **One customer page:** `vidskiptavinir.js` on `/kpi/vidskiptavinur` replaced
+  `customer-profiles.js` (a bootstrap child that loaded on *every* KPI page,
+  117 KB), `forgangslisti.js` and `activation.js`. `/kpi/forgangslisti`,
+  `/kpi/activation` and `/kpi/emails` were deleted 2026-10-15. Tabs:
+  `?tab=vinnulisti`, `?tab=taekifaeri`. Data layer:
+  `core/sql/vidskiptavinir_v1.sql`, `customer_not_web_v1.sql`,
+  `kpi_staff_rep_v1.sql`. Its `<script src>` sits in page head code only; it
+  guards against double boot (`data-booted`), but one tag is still the rule.
+- **One product page:** `vorur.js` on `/kpi/vorur` replaced `/kpi/top-products`
+  (`top-products.js`, a bootstrap child), `/kpi/voruuppfletting` (`lookup.js`)
+  and `/kpi/voruportal` (`portal.js`); pages and files removed the same day.
+  `?tab=listi` is the list lookup, `?sku=` the product card. Before
+  `top-products.js` came out of `dashboard-bootstrap.js`, every nav page was
+  checked live for `[data-module="top-products"]`; the site-wide tags moved to
+  `1b08cff` the same day.
+
+### Pin incidents (why the rules above exist)
+- **2026-09-21 — a stale table rolled production back.** The table read
+  `4131408` while the site served `5368032`. A warning written *from the table*
+  concluded the site was behind, so the live pin was rolled back to `4131408`
+  and the `/kpi/top-products` drawer fix (`2d50477`) dropped out of production.
+  Restored the same day. Lesson: a stale table reads exactly like a current
+  one, so when table and site disagree, find out which is right before changing
+  either.
+- **Unregistered embed pins.** Until 2026-09-21 the docs said `lookup.js` was
+  the only independent pin; `activation.js` had been pinned in page code since
+  2026-06-15, and `portal.js` in `portal-embed.html`, neither recorded. The tool
+  hard-coded the same assumption, which is why `EMBED_PINNED` now exists.
+- **Stale values before `6c992c5`** (`aff3278`, `df2956f`, `b55e8c4`): the deploy
+  had moved to `6c992c5` on 2026-07-14 and the table was not updated.
+- `4131408` (Klaviyo insights block) fixed `klaviyo-last-sync-date` printing
+  today's date unconditionally (now `max(order_date)`), and an `init()` guard
+  that left a stripped-down `/kpi/klaviyo` blank (now also accepts
+  `hasKlaviyoMetricTargets()`).
+
+### Reference baselines
+Not deploy pins — historical anchors for comparison: trigger schedule
+`ab2931a`; parent/child profile aggregation `ab0aafd`; parent/child last-orders
+merge `ca32334`.

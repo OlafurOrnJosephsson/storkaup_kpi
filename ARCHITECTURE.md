@@ -35,7 +35,9 @@ Two separate Apps Script projects live in this repo. The split keeps applicant P
 | **Admin-apps** | `admin/` | `DOMAIN` (@storkaup.is) + `ADMIN_APP_EMAILS` allowlist | Three HTML apps, routed by `?app=` in `admin/app.js`: umsókn (applications — names, kennitölur, credit scores), vöruvöktun/listaverð, and vöruinnihald (`admin/voruinnihald.js`) |
 
 - Anonymous main deployment serves **no HTML app and no PII** — the old `?app=umsokn`/`?app=listaverd` routes and `core/webapp.js` were removed. Applicant data can only be reached through the admin project after Google login.
-- Admin apps guard every `google.script.run` entry with `adminGuard_()` (`admin/auth.js`), with an app key (`adminGuard_(app)`); deployer always allowed, others must be in `SETTINGS.ADMIN_APP_EMAILS` (all apps) or the app's own `SETTINGS.<APP>_APP_EMAILS` row (that app only); access is audit-logged per user.
+- Admin apps guard every `google.script.run` entry with `adminGuard_()` (`admin/auth.js`), with an app key (`adminGuard_(app)`); deployer always allowed, others must be in `SETTINGS.ADMIN_APP_EMAILS` (all apps) or the app's own `SETTINGS.<APP>_APP_EMAILS` row (that app only).
+- Audit logging: `adminGuard_` logs only denials and page opens. **Actions** are logged per user only where the app does it itself — the umsókn app writes every action to the `Aðgerðaskrá` tab of the applications sheet (`webapp_audit_`, since 2026-10-09), vöruinnihald logs claim/release/submit, vöruvöktun and AI drafts log the acting user to console (`delegate_audit_`). The app runs as the deployer, so Sheets/Gmail history alone never shows who acted.
+- History of the public `loadConfig()` exposure (main project 2026-05-15 → 2026-07-02, admin project until 2026-10-08; keys rotated): `SECURITY_REVIEW.md`.
 - Heavy/stateful ops (Magento customer sync, application pruning, zero-price scan) stay in the main project; the admin project reaches them via key-protected `doPost` actions (`admin/delegate.js`, using `API.Dashboard.KEY` + `API.Dashboard.EXEC_URL`).
 - `access: DOMAIN` is deliberate — auth is tied to the company Workspace (governed offboarding + MFA). Do not switch to `ANYONE`; route external users through IT as Workspace guests.
 - Webflow nav links open the admin `/exec` URL in a **new tab** (logged-in GAS apps break inside an iframe).
@@ -49,7 +51,7 @@ All ingest runs in the **main** Apps Script project. No backend server. (Trigger
 
 The required trigger set is defined once, in `requiredTimeTriggers_()` (`core/utils.js`). `auditTriggers_v1()` checks the installed triggers against it, and `resetRecommendedTimeTriggers_v1()` reinstalls from it. **`auditTriggers_v1()` is the source of truth for what is actually installed** — not this table.
 
-### Scheduled triggers (13 required handlers)
+### Scheduled triggers (16 required handlers as of 2026-10-20)
 
 | Function | Cadence | Source | File |
 |---|---|---|---|
@@ -58,9 +60,12 @@ The required trigger set is defined once, in `requiredTimeTriggers_()` (`core/ut
 | `scheduledKlaviyoSync_v1` | Every 15 min | Klaviyo events | `core/utils.js` |
 | `scheduledReferenceSync_v1` | Every 6h ~:50 | Reference tables (products, customers, Cludo, marts) | `core/utils.js` |
 | `scheduledCludoSync_v1` | Every 12h ~:55 | Cludo product coverage; also syncs `raw.web_catalog` and product relations | `core/utils.js` |
+| `scheduledCludoCleanup_v1` | Sundays ~04:15 | Deletes stale `/vara/` docs from the Cludo index (`cludoHreinsaVaraDocs_v1`) — until storkaup.is 301s dead slugs, see `docs/cludo/` | `core/cludo.js` |
 | `scheduledCustomerAnalysisSync_v1` | Daily ~05:25 | Customer profiles + profiles MV | `core/utils.js` |
 | `scheduledSearchConsoleSync_v1` | Daily ~05:30 | Search Console | `core/search_console.js` |
+| `scheduledKlaviyoProfileSync_v1` | Daily ~06:10 | Our data → Klaviyo profile properties (`stk_*`) | `core/klaviyo_profiles.js` |
 | `scheduledGa4Sync_v1` | Daily ~06:30 | GA4 | `core/ga4.js` |
+| `scheduledLagersalaSync_v1` | Every 15 min, runs 07:00–21:59 | Stock snapshot of storkaup.is/lagersala — remove when the sale ends | `core/lagersala.js` |
 | `scheduledZeroPriceScan_v1` | Daily ~06:50 | storkaup.is zero list-price scan | `core/storkaup_pricing.js` |
 | `runDailySanityChecks_v1` | Daily ~07:40 | Cross-source validation | `core/utils.js` |
 | `scheduledNewwebStatusSync_v2` | Daily ~11:30 & ~17:30 (2 triggers) | Magento order status | `core/newsales_v2.js` |
@@ -73,7 +78,7 @@ The required trigger set is defined once, in `requiredTimeTriggers_()` (`core/ut
 
 ### Business Central — manual drop, no trigger
 
-BC has no trigger (`scheduledBcSync_v1` was deleted 2026-04-30). `bc_sync.ps1` / `bc_sync.bat` upload XLSX exports to a Drive drop folder, and the **BC Sync** menu runs `processBcDrop_v1`, which writes `raw.bc_invoices_raw`, `raw.bc_lines_raw`, `raw.bc_credit_invoices_raw` and `raw.bc_customers_raw`. Exports cover a rolling ~3-month window, so a skipped month is a real gap. Never run `processBcDropForce_v1` on the invoice file. Details in `CLAUDE.md` → *Key scheduled triggers*.
+BC has no trigger (`scheduledBcSync_v1` was deleted 2026-04-30). `bc_sync.ps1` / `bc_sync.bat` upload XLSX exports to a Drive drop folder, and the **BC Sync** menu runs `processBcDrop_v1`, which writes `raw.bc_invoices_raw`, `raw.bc_lines_raw`, `raw.bc_credit_invoices_raw` and `raw.bc_customers_raw`. Exports cover a rolling ~3-month window, so a skipped month is a real gap. Never run `processBcDropForce_v1` on the invoice file. Details in `RUNBOOK.md` → *BC import*.
 
 ### Key ingest files
 
@@ -117,6 +122,7 @@ A third area alongside ingest and dashboards: product names and descriptions wor
 - `pim_sync.ps1` / `pim_sync.bat` upload Plytix CSV exports from `pim_drop/` to a Drive drop folder (same pattern as BC).
 - The Python tools in `pim/` (`heitalinter.py`, `vorumynd.py`) run locally and are never pushed. See `pim/README.md` and `pim/VORUINNIHALD.md`.
 - The admin project's vöruinnihald app (`admin/voruinnihald.js`) reads and writes the same work sheet behind Google login.
+- **Cross-project rebuild lock — `ScriptLock` does not cross projects.** `buildPimWorksheet_` (main, `pim/`) marks the spreadsheet with developer metadata `PIM_REBUILD_STARTED_MS`, waits 30 s for in-flight saves, rebuilds, and removes the mark in `finally`. Every admin write path opens the sheet with `vi_open_(true)` inside its lock and refuses while the mark is fresh (<15 min — a run killed at the 6-min limit never reaches `finally`). The key is a string constant in both `pim/buildPimWorksheet.js` and `admin/voruinnihald.js`; rename it in one project and the lock silently stops working.
 - `raw.web_catalog` (below) is the published side of the same product data.
 
 ---
@@ -154,7 +160,7 @@ Not exhaustive: Search Console, GA4, OLDWEB orders (`oldweb_orders_raw`), Magent
 | `mart.mv_klaviyo_attribution_daily_nobot` | Same, bot clicks excluded |
 | `mart.top_products_all` | Top products aggregation (heavy — runs off-peak) |
 
-`raw.web_catalog` sits alongside these: the published storkaup.is product list (sku, supplier `brand_sku`, name, brand, slug), written by `syncWebCatalogToSupabase_v1` inside `scheduledCludoSync_v1` every 12h. It is the only place the supplier part number exists, and it is deliberately separate from `products_raw`, which is derived from sales records and therefore cannot answer "is this on the web".
+`raw.web_catalog` sits alongside these: the published storkaup.is product list (sku, supplier `brand_sku`, name, brand, slug), written by `syncWebCatalogToSupabase_v1` inside `scheduledCludoSync_v1` every 12h. It is the only place the supplier part number exists, and it is deliberately separate from `products_raw`, which is derived from sales records and therefore cannot answer "is this on the web". `web_sku` is the raw GraphQL id; `sku` is the normalised join key to BC. Lookups read the table, not the web, so a product added today is invisible until the next sync.
 
 ### Key RPCs (called by Webflow)
 
@@ -168,7 +174,7 @@ Not exhaustive: Search Console, GA4, OLDWEB orders (`oldweb_orders_raw`), Magent
 
 `api.resolve_customer_family_ids` is an internal helper used by other `api` functions (e.g. `get_customer_last_orders`); Webflow does not call it directly.
 
-The digest RPCs `weekly_digest_stats` and `monthly_digest_stats` are callable by `service_role` only — i.e. from GAS, not Webflow. `public.web_records_v1` feeds the monthly digest's records section.
+The digest RPCs `weekly_digest_stats` and `monthly_digest_stats` are callable by `service_role` only — i.e. from GAS, not Webflow. `public.web_records_v1` ([core/sql/web_records_v1.sql](core/sql/web_records_v1.sql), applied by hand) feeds the monthly digest's "Met og áfangar" block. It is deliberately a second RPC: `monthly_digest_stats` is already slow, and `fetchWebRecords_` (`core/email.js`) swallows any failure, so a broken records query costs one section, not the whole email. Records rank **NEWWEB + OLDWEB** unioned, and revenue records are **m/VSK** — OLDWEB has no usable excl figure (see `RUNBOOK.md` → OLDWEB `revenue_excl`).
 
 ### SQL migrations
 
@@ -180,7 +186,7 @@ All schema changes are in `core/sql/`. Apply manually in Supabase SQL editor —
 
 Dashboards are read-only; all data comes from Supabase RPCs via `fetch`. **The customer page writes.** `vidskiptavinir.js` calls priority-flag RPCs — `set_customer_priority_flag`, `bulk_set_customer_priority_flags`, `assign_customer_priority_rep`, `bulk_assign_customer_priority_rep`, `log_customer_priority_touch`, `set_customer_not_web_v1`. The server records who acted (`raw.kpi_actor_name_`, from the signed-in JWT). Until 2026-10-15 three pages did this (`customer-profiles.js`, `forgangslisti.js`, `activation.js`, now deleted); sales tasks went with them. Every update or delete of a flag row is copied to `raw.customer_priority_flags_history` by a trigger. For the security posture of these writes, see the security review (kept outside git).
 
-Webflow site-wide custom code is also served on the unauthenticated password-gate page, so secrets stay in page-scoped code only. `tools/check-webflow-pins.js` (run at the end of `gas_deploy.ps1`) checks this.
+Since 2026-10-09 there is no Webflow password, so page code is readable by anyone. On 2026-10-20 the 8 pages the checker scans (`/`, `/kpi/umsoknir` and the `/kpi/` links in the home-page nav) answered HTTP 200 without credentials and all carried `auth.js`. Data access is **designed** to require Google sign-in (`Webflow/auth.js` → Supabase token; GAS calls carry it as `authToken`; anon grants revoked by `kpi_auth_revoke_anon.sql`). That enforcement has not been verified live. So **no secret may sit in any Webflow custom code**, site-wide or page-level — not `gasKey`, not `EXEC_URL`, not BC figures (those live in `raw.bc_manual_monthly`). `tools/check-webflow-pins.js` (run at the end of `gas_deploy.ps1`) exits non-zero if any of those strings appear on a scanned page. It does not scan pages missing from the nav, and it does not test sign-in.
 
 The internal umsókn/vöruvöktun/vöruinnihald apps are **not** Webflow pages — the nav links open the admin-apps GAS project in a new tab (see *Web-app projects* above).
 
@@ -188,14 +194,15 @@ The internal umsókn/vöruvöktun/vöruinnihald apps are **not** Webflow pages �
 
 | URL | JS file(s) | Purpose |
 |---|---|---|
-| `/kpi/dashboard` | `dashboard.js` + `dashboard-bootstrap.js` | Main sales KPIs, BC web share |
+| `/` (`/kpi/dashboard` 301s here) | `dashboard.js` + `dashboard-bootstrap.js` | Main sales KPIs, BC web share |
+| `/kpi/pantanir` | `order-search.js` (bootstrap child, mounts on `[data-el="order-search-root"]`) | Order search |
 | `/kpi/solutolur` | `dashboard.js` | Sales figures |
 | `/kpi/vidskiptavinur` | `vidskiptavinir.js` (page head code — **not** a bootstrap child; own pin; mount in `vidskiptavinir-embed.html`) | Look up a customer (name, kt or SKU): product list, orders, touch history. Tabs: worklist (`?tab=vinnulisti`) and opportunities (`?tab=taekifaeri`), bulk actions. Replaced the profile, forgangslisti and activation pages 2026-10-15 |
 | `/kpi/klaviyo` | `dashboard.js` | Klaviyo attribution KPIs |
 | `/kpi/vorur` | `vorur.js` (page head code — **not** a bootstrap child; own pin; mount in `vorur-embed.html`) | Products: best sellers + categories, list lookup of supplier part numbers / SKUs (`?tab=listi`), product card (`?sku=`). Replaced top-products, voruuppfletting and voruportal 2026-10-16 |
 | `/kpi/vefur-kpi` | `website-dashboard.js` + `website-dashboard-bootstrap.js` | GA4 website metrics |
 
-`order-search.js` is also a bootstrap child, loaded by `dashboard-bootstrap.js`.
+`order-search.js` is a bootstrap child, loaded by `dashboard-bootstrap.js` on every page that carries it; it only renders where `[data-el="order-search-root"]` exists. Verified live 2026-10-20: `/kpi/dashboard` → 301 to `/`; `/kpi/pantanir` has the order-search root.
 
 ### Non-negotiables
 
@@ -205,13 +212,13 @@ The internal umsókn/vöruvöktun/vöruinnihald apps are **not** Webflow pages �
 
 ### Production pins (jsDelivr / Webflow custom code)
 
-See `CLAUDE.md` → *Current production pins*. That section is the single source of
-truth; update it whenever a Webflow file changes. (This used to point at
-`NEXT_TASKS.md`, which now only forwards here — one hop too many.)
+Values: `CLAUDE.md` → *Current production pins* (single source of truth; the
+check tool parses it). How the pins work, where each one lives, and the deploy
+steps: `RUNBOOK.md` → *Webflow deploy and production pins*.
 
 Note that `data-storkaup-rev` governs the bootstrap's child files only.
-Three files (`auth.js`, `vidskiptavinir.js`, `vorur.js`) are
-pinned independently in page-level code — `CLAUDE.md` lists where each pin lives.
+Three files (`auth.js`, `vidskiptavinir.js`, `vorur.js`) are pinned
+independently.
 
 ---
 

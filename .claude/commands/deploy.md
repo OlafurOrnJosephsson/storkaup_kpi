@@ -13,11 +13,34 @@ Deploy the GAS projects end-to-end. Steps:
    the root project and `admin/`, then bumps each one's *versioned* deployment
    (keeping the same `/exec` URLs). It refuses to target either `@HEAD`
    deployment and aborts before pushing if a `.clasp.json` is missing.
-3. Stage the changed files, commit, and `git push origin main`.
+3. Stage **only the files this change touched, by name**
+   (`git add path/one.js path/two.md`), then `git diff --cached --stat` to check,
+   commit, and `git push origin main`. Never `git add .` or `git add -A`: the
+   working tree carries unrelated local files such as `GAS.code-workspace`.
+   `gas_deploy.ps1` (step 2) therefore always runs **before** this first commit.
+
+   If no `Webflow/` file changed, the deploy is done here. The pin check at the
+   end of `gas_deploy.ps1` should report no drift.
+
+4. If a `Webflow/` file changed, the commit from step 3 is only the first half.
+   Its SHA is what the new pin points at, and nothing can be pinned before it is
+   pushed. Do **not** read the new pin from the check at the end of
+   `gas_deploy.ps1`: it ran before anything in Webflow changed (and before the
+   step-3 commit, so its freshness test could not see the change either). It
+   can only report the old live pin. Continue with `RUNBOOK.md` → *Webflow deploy and
+   production pins*, steps 4–8:
+   - Stop and ask the user to update the governing pin in Webflow custom code
+     to the step-3 SHA and publish the site. Claude cannot do this part.
+   - Once they confirm, update the `CLAUDE.md` pin table (and the matching
+     `Webflow/*-embed.html` mirror for an independently pinned file).
+   - Run `node tools/check-webflow-pins.js` and expect no drift and no stale pin.
+   - Stage those files by name, commit and push as a second commit.
 
 Use `$ARGUMENTS` as the deploy/commit description when provided; otherwise summarize the changes yourself.
 
-Report back: the new deployment version number **for each project** and the commit hash.
+Report back: the new deployment version number **for each project**, the commit
+hash(es), and — for a Webflow change — the pin check's result after the live
+update.
 
 Notes:
 - **Both projects need a new version, not just a push.** Live `/exec` runs a

@@ -1,497 +1,185 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code in this repo. This file holds only what almost every
+task needs. Reference material lives elsewhere and loads when relevant:
+
+| Where | What |
+|---|---|
+| [RUNBOOK.md](RUNBOOK.md) | Deploy flags, BC import, Magento off switch, safePoll watchdog, triggers + their history, **Webflow deploy and pins** (mechanics, fallbacks, incidents), GA4 data breaks |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Data flow, web-app split, trigger table, Supabase layout, PIM lock, Webflow pages |
+| [NEXT_TASKS.md](NEXT_TASKS.md) | Open work, release notes |
+| `SECURITY_REVIEW.md` · `SECURITY_RESPONSE.md` | Security history (e.g. the `loadConfig()` exposure) |
+| [.claude/rules/](.claude/rules/) | Path-scoped rules: Webflow, SEO manager, GA4/GTM, Klaviyo profiles, PIM lock |
+| `/deploy` ([.claude/commands/deploy.md](.claude/commands/deploy.md)) | The deploy checklist |
 
 ## Deploy workflow
 
 ```bash
 .\gas_deploy.ps1 "short description"   # push + new version, BOTH projects
-git add .
+git add <the files you changed>          # by name — never `git add .` / `-A`
 git commit -m "..."
 git push
 ```
 
-Two Apps Script projects live in this repo (see [Web-app projects](#web-app-projects)):
-- **Main** (repo root) — ingest + anonymous web app.
-- **Admin-apps** (`admin/`) — internal PII apps behind Google login. `admin/**` is excluded from the main push via `.claspignore`.
+Stage by name: the working tree carries unrelated local files (e.g.
+`GAS.code-workspace`) that must not be committed.
 
-`clasp` only ever works on one project at a time — it reads `.clasp.json` from
-the current directory. **A bare `clasp push` from the root therefore covers only
-half the code.** [gas_deploy.ps1](gas_deploy.ps1) wraps both projects and is the
-single source of truth for the two deployment IDs; it refuses to target either
-`@HEAD` deployment. Never create a *new* deployment — that changes the `/exec`
-URL and breaks the Webflow iframe plus the nav links to the admin apps.
-
-Web app changes only go live when a **new version is deployed**, not on
-`clasp push` alone — `push` updates `@HEAD`, but `/exec` runs the pinned
-version. **This applies to the main project too, for a non-obvious reason:** the
-admin app's "Keyra aftur" button calls `doPost` on the *main* project's `/exec`,
-which is also pinned. Push the main project without deploying it and that button
-runs the old code, overwriting fresh scan results with stale ones.
-
-A root `clasp push` also uploads **every** uncommitted change under `core/`, and
-any `.js` in a non-ignored subdirectory (`pim/` included). Check `git status`
-first, and make sure a new `.js` is real Apps Script — a top-level `require()`
-throws on load and kills every trigger in the project (see the `email-preview/**`
-note in `.claspignore`).
-
-Webflow JS files (`Webflow/*.js`) are **not** pushed via clasp — deploy by copy/paste into Webflow custom code and by updating the jsDelivr commit pin. The pins live in [Current production pins](#current-production-pins) below and nowhere else; `README.md` and `NEXT_TASKS.md` only forward there.
-
-**Secrets never live in Webflow site-wide custom code** — Webflow serves site-wide `<head>` code on the unauthenticated password-gate page too. Page-scoped custom code (`STORKAUP_CONFIG` with `gasKey`, `STORKAUP_BC_MANUAL`) stays per-page on the KPI pages. Monthly BC figures go into page-level head code on `/kpi/dashboard` + `/kpi/solutolur`.
-
-After any Webflow deploy: run `node --check Webflow/<file>.js` before touching Webflow custom code.
+- **Two Apps Script projects:** Main (repo root — ingest + anonymous web app)
+  and Admin-apps (`admin/` — PII apps behind Google login; excluded from the
+  main push by `.claspignore`). `clasp` reads `.clasp.json` from the current
+  directory, so **a bare `clasp push` from the root covers only half the code.**
+- [gas_deploy.ps1](gas_deploy.ps1) is the single source of truth for both
+  deployment IDs and refuses either `@HEAD` deployment. **Never create a new
+  deployment** (`clasp deploy` without `-i`) — it changes the `/exec` URL and
+  breaks the Webflow iframe and the nav links to the admin apps.
+- Changes go live only on a **new version**, not on `clasp push` (that moves
+  `@HEAD`; `/exec` runs the pinned version). **The main project too:** the admin
+  app's "Keyra aftur" button calls the main project's pinned `/exec`; push
+  without deploying and it runs old code, overwriting fresh results with stale.
+- **Check `git status` first.** A root push uploads every uncommitted change
+  under `core/` and any `.js` in a non-ignored subdirectory (`pim/` included).
+  A new `.js` must be real Apps Script — a top-level `require()` throws on load
+  and kills every trigger in the project.
+- `Webflow/*.js` is not pushed by clasp: it ships via GitHub → jsDelivr at a
+  pinned commit. Run `node --check Webflow/<file>.js` first. It takes **two
+  commits**: push the source, publish the new pin in Webflow, *then* update the
+  pin table, run the check and commit that. Steps and which pin to move:
+  [RUNBOOK.md → Webflow deploy and production pins](RUNBOOK.md#webflow-deploy-and-production-pins).
+- `-Only Main|Admin`, `-PushOnly` and the 200-version limit:
+  [RUNBOOK.md → Deploying](RUNBOOK.md#deploying-gas_deployps1).
 
 ## Architecture
 
 ```
-Magento / BC / Klaviyo / GA4 / Cludo
+Magento / BC / Klaviyo / GA4 / Cludo / storkaup.is GraphQL / Typeform
         ↓
 Google Apps Script (core/*.js)     ← scheduled triggers, ingest
         ↓
-Supabase raw.*                     ← append-only source tables
+Supabase raw.* → mart.* → api.* / public.* RPCs
         ↓
-Supabase mart.*                    ← materialized views / aggregations
-        ↓
-Supabase api.* / public.*          ← RPC functions
-        ↓
-Webflow (Webflow/*.js)             ← read-only dashboards
+Webflow (Webflow/*.js)             ← dashboards; the customer page writes flags via RPC
 ```
 
-No backend server. All ingest runs in Apps Script via time-based triggers managed by `resetRecommendedTimeTriggers_v1()`.
+No backend server. All ingest runs in Apps Script on time-based triggers.
+SQL lives in `core/sql/` and is applied by hand in the Supabase SQL editor.
 
 ## Where things live
 
-**In Apps Script the file does not matter for running a function.** Every
-function is global across the project, so the editor's function picker lists
-them all regardless of which file they sit in. The file only matters when you
-are reading or editing. `clasp` flattens `core/x.js` to `core/x` in the project.
+Every Apps Script function is global across its project; the file only matters
+for reading and editing. `clasp` flattens `core/x.js` to `core/x`.
 
 | File | Holds |
 |---|---|
-| [core/utils.js](core/utils.js) | The grab-bag, and the biggest file (4.7k lines, 123 fns). **Trigger management** — `auditTriggers_v1`, `resetRecommendedTimeTriggers_v1`, `requiredTimeTriggers_` (the one map both read), the `install*Trigger*` functions. Also `loadTableBySchema_`, `applySheetStyling_`, Supabase upserts, backfills, and the date/string/number/fuzzy helpers. |
-| [core/menu.js](core/menu.js) | `onOpen` and every `menu_*` entry point. Start here to find what a menu item actually calls. |
-| [core/config.js](core/config.js) | `loadConfig_()` and the STORKAUP_CONFIG reader. |
-| [core/schema.js](core/schema.js) | `STORKAUP_SCHEMA` header maps. Data only, no functions. |
+| [core/utils.js](core/utils.js) | The grab-bag (~5k lines). Trigger management (`auditTriggers_v1`, `resetRecommendedTimeTriggers_v1`, `requiredTimeTriggers_`, `install*Trigger*`), BC drop, sanity checks, Supabase upserts, Klaviyo events sync, shared helpers. |
+| [core/menu.js](core/menu.js) | `onOpen` and every `menu_*` entry point — start here to find what a menu item calls. |
+| [core/config.js](core/config.js) · [core/schema.js](core/schema.js) | `loadConfig_()`; `STORKAUP_SCHEMA` header maps (data only). |
 | [core/newsales_v2.js](core/newsales_v2.js) | Magento NEWWEB ingest, `safePoll_v2` and its run-window gate. |
+| [core/auth.js](core/auth.js) | Magento admin token cache; `isMagentoApiEnabled_()`. |
 | [core/salessummaries.js](core/salessummaries.js) | Sales summary sheets and marts. |
 | [core/customers.js](core/customers.js) · [core/customer_analysis.js](core/customer_analysis.js) | Magento customers; customer profiles and scoring. |
-| [core/cludo.js](core/cludo.js) | Cludo search API and the PRODUCTS master catalog (breadcrumb crawl). Also the search-index cleanup, `cludoHreinsaVaraDocs_v1` (menu: Stórkaup KPI → Cludo), weekly on a trigger since 2026-10-19; the cause (storkaup.is answers 200 on any `/vara/` slug) is still unfixed on the site. And the search watch, `evaluateCludoSearchHealth_`, which `runDailySanityChecks_v1` calls: it hits storkaup.is `/api/search` and fails on duplicates or a dead search. Frontend fixes we need from Hagar are in `docs/cludo/`. |
-| [core/storkaup_pricing.js](core/storkaup_pricing.js) | storkaup.is GraphQL. Price health **and** product health (out of stock, negative stock, uncategorised) — feeds the vöruvöktun app. |
-| [core/web_catalog.js](core/web_catalog.js) | The published product list as data: fetch, SKU normalisation, and the `raw.web_catalog` sync (runs inside `scheduledCludoSync_v1`, every 12h). Holds `brand_sku` — the **supplier** part number — which nothing else does. `web_sku` is the raw GraphQL id; `sku` is the normalised join key to BC. Lookups read the table, not the web: a product added today is invisible until the next sync. |
-| [core/klaviyo_profiles.js](core/klaviyo_profiles.js) | Our data → Klaviyo profile properties (`stk_*`), daily bulk import from `mart.v_klaviyo_profiles_v1` ([core/sql/klaviyo_profiles_v1.sql](core/sql/klaviyo_profiles_v1.sql)). Own key `API.Klaviyo.PROFILES_API_KEY` (Profiles + Lists only). Sends no amounts, no kennitala, and only emails Klaviyo already knows unless `SETTINGS.KLAVIYO_PROFILE_SYNC_INCLUDE_NEW=true` — consent for new emails is unresolved. The events sync stays in `core/utils.js`. |
-| [core/email.js](core/email.js) | Weekly/monthly digests, `installMonthlyDigestTrigger_v1`, cache-help templates. |
-| [core/seo_manager.js](core/seo_manager.js) | SEO copy generation queue. |
-| [core/search_console.js](core/search_console.js) · [core/ga4.js](core/ga4.js) | Search Console and GA4 ingest. |
-| [core/solution_pages.js](core/solution_pages.js) | Cross-category solution pages. |
+| [core/cludo.js](core/cludo.js) | Cludo search API, PRODUCTS master catalog, weekly index cleanup (`cludoHreinsaVaraDocs_v1`), search watch (`evaluateCludoSearchHealth_`). Frontend fixes needed from Hagar: `docs/cludo/`. |
+| [core/storkaup_pricing.js](core/storkaup_pricing.js) | storkaup.is GraphQL: price and product health (feeds vöruvöktun), zero-price scan. |
+| [core/web_catalog.js](core/web_catalog.js) | Published product list → `raw.web_catalog`; the only source of supplier `brand_sku`. |
+| [core/klaviyo_profiles.js](core/klaviyo_profiles.js) | Our data → Klaviyo `stk_*` profile properties (privacy rules in `.claude/rules/`). |
+| [core/email.js](core/email.js) | Weekly/monthly digests, cache-help templates. |
+| [core/seo_manager.js](core/seo_manager.js) | SEO copy queue (rules in `.claude/rules/seo-manager.md`). |
+| [core/ga4.js](core/ga4.js) · [core/search_console.js](core/search_console.js) | GA4 and Search Console ingest. |
 | [core/applications.js](core/applications.js) | Typeform applications (kennitölur, credit scores). |
-| [core/invoices.js](core/invoices.js) | Gmail → Drive invoice collector. |
-| [core/order_monitor.js](core/order_monitor.js) | Magento pending-order monitor. |
-| [core/auth.js](core/auth.js) | Magento admin token cache. |
-| [webapp.js](webapp.js) | `doPost`/`doGet` for the anonymous deployment — key-guarded actions only. |
-| [Webflow/vorur.js](Webflow/vorur.js) · [Webflow/vidskiptavinir.js](Webflow/vidskiptavinir.js) | The two merged KPI pages, `/kpi/vorur` and `/kpi/vidskiptavinur`. Each builds its own markup and CSS; the Embed is a mount `<div>` only. |
-| [pim/buildPimWorksheet.js](pim/buildPimWorksheet.js) | PIM work sheet from the Plytix export. **Pushed with the main project** (`pim/` is not in `.claspignore`). |
-| [admin/](admin/) | The second GAS project. `app.js` routes, `auth.js` guards, `delegate.js` calls the main project, plus the two HTML apps. |
+| [core/invoices.js](core/invoices.js) · [core/order_monitor.js](core/order_monitor.js) | Gmail → Drive invoices; pending-order monitor. |
+| [core/solution_pages.js](core/solution_pages.js) · [core/lagersala.js](core/lagersala.js) | Solution pages; lagersala stock snapshot. |
+| [webapp.js](webapp.js) | `doPost`/`doGet` for the anonymous deployment — guarded actions only. |
+| [Webflow/](Webflow/) | Frontend. `vorur.js` (`/kpi/vorur`) and `vidskiptavinir.js` (`/kpi/vidskiptavinur`) build their own markup; their Embed is a mount `<div>`. |
+| [pim/](pim/) | PIM work sheet / Plytix. `.js` **is pushed with the main project**. |
+| [admin/](admin/) | The second GAS project: `app.js` routes three apps (umsókn, listaverð/vöruvöktun, vöruinnihald), `auth.js` guards, `delegate.js` calls the main project. |
 
-Two things that trip people up. `core/utils.js` section headers are
-double-encoded UTF-8 (`ðŸ§©` where an emoji belongs) — cosmetic, comments only.
-And a `_` suffix means private: those functions do **not** appear in the Apps
-Script function picker, so anything you need to run by hand ends in `_v1` or
-has no suffix.
+`core/utils.js` section headers are double-encoded UTF-8 (`ðŸ§©`) — cosmetic.
 
-## Web-app projects
-
-Access to internal data is split across two GAS deployments so PII never sits behind mere URL-secrecy:
+## Web-app projects and access control
 
 | Project | Location | Web app access | Serves |
 |---|---|---|---|
-| Main | repo root | `ANYONE_ANONYMOUS` | Typeform webhook (`doPost`, token-checked); key-protected dashboard JSON, badge count, cache-help send; delegation actions for the admin project |
-| Admin-apps | `admin/` | `DOMAIN` (@storkaup.is) + `ADMIN_APP_EMAILS` allowlist | umsókn (applications, kennitölur, credit scores) + vöruvöktun/listaverð HTML apps |
+| Main | repo root | `ANYONE_ANONYMOUS` | Typeform webhook (token-checked); guarded dashboard JSON, badge count, cache-help send; key-only delegation actions for the admin project |
+| Admin-apps | `admin/` | `DOMAIN` (@storkaup.is) + allowlist | umsókn (applicant PII, kennitölur, credit scores), vöruvöktun/listaverð, vöruinnihald |
 
-- The anonymous main deployment serves **no HTML app and no applicant PII** — `?app=umsokn`/`?app=listaverd` were removed. Do **not** re-add them.
-- Admin apps guard every `google.script.run` entry point with `adminGuard_()` ([admin/auth.js](admin/auth.js)); the deployer is always allowed, others must be in `SETTINGS.ADMIN_APP_EMAILS`. `adminGuard_` logs only denials and page opens; **actions** are logged per user only where the app does it itself — the umsókn app writes every action to the `Aðgerðaskrá` tab of the applications sheet (`webapp_audit_`, since 2026-10-09), vöruinnihald logs claim/release/submit, vöruvöktun and AI drafts log the acting user to console (`delegate_audit_`).
-- **The PIM worksheet is shared across projects, and `ScriptLock` does not cross them.** `buildPimWorksheet_` (main, `pim/`) marks the spreadsheet with developer metadata `PIM_REBUILD_STARTED_MS`, waits 30 s for in-flight saves, rebuilds, and removes the mark in `finally`. Every admin write path opens the sheet with `vi_open_(true)` inside its lock and refuses while the mark is fresh (<15 min — a run killed at the 6-min limit never reaches `finally`). Rename the key in one project and the lock silently stops working. The app runs as the deployer, so Sheets/Gmail history alone never shows who acted.
-- **Every admin function without a trailing `_` is a `google.script.run` entry point** — not just the ones the HTML calls. Any @storkaup.is user can call it from the browser console. Until 2026-10-08 `loadConfig()` sat unguarded in [admin/config.js](admin/config.js) and returned the whole config, `SERVICE_ROLE_KEY` included. A helper or a hand-run diagnostic either ends in `_` or calls `adminGuard_()` first (the editor runs as the owner, so the guard never blocks you there). Note that the access-denied page is itself HtmlService output, so non-allowlisted users get `google.script.run` too.
-- **The same rule binds the main project the moment it serves any HtmlService page.** From 2026-05-15 to 2026-07-02 it served `?app=umsokn` on the anonymous deployment, and its public `loadConfig()` was then callable by anyone with the `/exec` URL. Both `loadConfig()` wrappers were removed 2026-10-08 and the config's keys rotated. Do not re-add a public config reader in either project.
-- Heavy/stateful ops (Magento sync, application pruning, zero-price scan state) stay in the main project; the admin project calls them via key-protected `doPost` actions ([admin/delegate.js](admin/delegate.js)) using `API.Dashboard.KEY` + `API.Dashboard.EXEC_URL`.
-- Keep `access: DOMAIN` on the admin project — it ties auth to the company Workspace (offboarding + MFA governed), matching the security assessment. `ANYONE` (personal Google/Gmail) would reintroduce ungoverned access; route external users through IT as Workspace guests instead.
-- Webflow nav links to the umsókn/vöruvöktun apps point directly at the admin `/exec` URL and open in a **new tab** (logged-in GAS apps break inside an iframe).
+- The anonymous main deployment serves **no HTML app and no applicant PII**.
+  `?app=umsokn`/`?app=listaverd` were removed — do **not** re-add them.
+- Admin apps guard every `google.script.run` entry point with `adminGuard_()`
+  ([admin/auth.js](admin/auth.js)); the deployer is always allowed, others need
+  `SETTINGS.ADMIN_APP_EMAILS` or the app's own `<APP>_APP_EMAILS` row.
+- **Every admin function without a trailing `_` is a `google.script.run` entry
+  point** — not just the ones the HTML calls; any @storkaup.is user can call it
+  from the browser console (the access-denied page is HtmlService output too).
+  A helper or diagnostic either ends in `_` or calls `adminGuard_()` first.
+- **The same rule binds the main project the moment it serves any HtmlService
+  page.** Do not re-add a public config reader (`loadConfig()`) in either
+  project — it once leaked `SERVICE_ROLE_KEY` (history: `SECURITY_REVIEW.md`).
+- Heavy/stateful ops stay in the main project; the admin project calls them via
+  key-protected `doPost` actions ([admin/delegate.js](admin/delegate.js)).
+- Keep `access: DOMAIN` on the admin project (Workspace offboarding + MFA).
+  Never `ANYONE`; route external users through IT as Workspace guests.
+- Webflow nav links open the admin `/exec` URL in a **new tab** (logged-in GAS
+  apps break inside an iframe).
+- **No secret in any Webflow custom code**, site-wide or page-level — not
+  `gasKey`, not `EXEC_URL`, not BC figures. The Webflow password was removed
+  2026-10-09, so page code is readable by anyone: the 8 pages the checker scans
+  answered HTTP 200 without credentials on 2026-10-20. Data is **meant** to be
+  protected by Google sign-in (`Webflow/auth.js`, anon revoked in Supabase) —
+  that enforcement has not been verified live. `tools/check-webflow-pins.js`
+  fails if a secret appears on a scanned page; that is a string scan, not proof
+  that access control works.
+- Audit logging per app, and how the PIM worksheet is locked across the two
+  projects: [ARCHITECTURE.md](ARCHITECTURE.md) → *Web-app projects*, *PIM*.
 
 ## Config system
 
-All runtime config lives in a separate Google Sheet (`STORKAUP_CONFIG`, ID hardcoded in `core/config.js`). `loadConfig_()` reads and caches it for 5 min via Script Properties. Structure:
+All runtime config lives in the `STORKAUP_CONFIG` Google Sheet (ID in
+`core/config.js`), read and cached 5 min by `loadConfig_()`:
+`cfg.API.<Service>.<KEY>`, `cfg.SETTINGS.<KEY>`, `cfg.SHEETS.<Service>.ID`,
+`cfg.ENDPOINTS.<Service>.<KEY>`. New key: add a row in the API tab
+(`Service | Key | Value`). **The repo is public — never commit secrets, IDs or
+passwords.**
 
-- `cfg.API.<Service>.<KEY>` — API keys and tokens
-- `cfg.SETTINGS.<KEY>` — feature flags and model settings
-- `cfg.SHEETS.<Service>.ID` — spreadsheet IDs
-- `cfg.ENDPOINTS.<Service>.<KEY>` — resolved URL templates
-
-To add a new API key: add a row in STORKAUP_CONFIG → API tab (`Service | Key | Value`). Reference via `cfg.API.ServiceName.KEY_NAME`.
-
-Security-relevant config rows:
-- `API.Typeform.WEBHOOK_TOKEN` — shared secret in the Typeform webhook URL (`?token=…`); enforced when `SETTINGS.TYPEFORM_TOKEN_ENFORCE=true`.
-- `API.Dashboard.KEY` — validates dashboard/badge/cache-help/delegation `doPost` actions (`isApiKeyValid_`, **fail-closed** — missing key rejects all actions). Webflow sends it as `STORKAUP_CONFIG.gasKey`.
-- `API.Dashboard.EXEC_URL` — main-project `/exec` URL the admin project delegates to.
-- `SETTINGS.ADMIN_APP_EMAILS` — comma-separated allowlist for the admin apps.
-
-SEO-specific settings in SETTINGS tab: `SEO_PROVIDER` (`gemini`/`claude`/`openai`), `SEO_GEMINI_MODEL`, `SEO_GEMINI_FALLBACK_MODELS`, `SEO_CLAUDE_MODEL`.
+Security-relevant rows:
+- `API.Typeform.WEBHOOK_TOKEN` — `?token=` on the Typeform webhook; enforced when `SETTINGS.TYPEFORM_TOKEN_ENFORCE=true`.
+- `API.Dashboard.KEY` — `isApiKeyValid_`, **fail-closed** (missing key rejects all). Delegation actions accept only this key; Webflow actions accept a signed-in user's `authToken` (`webflowCaller_` in `webapp.js`).
+- `API.Dashboard.EXEC_URL` — main-project `/exec` the admin project delegates to.
+- `SETTINGS.ADMIN_APP_EMAILS` — admin-app allowlist.
+- `SETTINGS.MAGENTO_API_ENABLED` — `false` makes every Magento entry point skip quietly; a missing row means on. See RUNBOOK → *Magento API off switch*.
 
 ## GAS code conventions
 
-- Functions ending in `_` are private (hidden from Apps Script run menu).
-- Public menu entry points are in `core/menu.js` as `menu_*` functions.
-- Sheet reads use `loadTableBySchema_('SCHEMA_NAME')` which resolves through `STORKAUP_SCHEMA` in `core/schema.js`.
-- `safeJsonParse_`, `truncateForLog_`, `toast_` are shared utilities in `core/utils.js`.
-- `applySheetStyling_()` is slow on large sheets — only call it during one-time setup/seed operations, never in per-row or batch loops.
+- A `_` suffix means private — hidden from the Apps Script function picker. Anything to run by hand ends in `_v1` or has no suffix.
+- Menu entry points are `menu_*` in `core/menu.js`.
+- Sheet reads use `loadTableBySchema_('SCHEMA_NAME')` via `STORKAUP_SCHEMA`.
+- Shared helpers: `safeJsonParse_`, `truncateForLog_`, `toast_` in `core/utils.js`.
+- `applySheetStyling_()` is slow on large sheets — one-time setup/seed only, **never** in per-row, generate/revise or batch loops (100+ s runs).
 
 ## Non-negotiables
 
-- **`safePoll_v2` 5-minute cadence must not be broken.** This is the primary Magento order ingest.
+- **`safePoll_v2`'s 5-minute trigger must not be broken.** It is the primary Magento order ingest. The trigger is not the cadence: `getNewwebRunWindowDecision_v2_()` gates it (off 00:00–06:59, every run 07:00–21:59, quarter-hours 22:00–23:59). Manual run: `safePollNow_v2()` — bare `safePoll_v2()` silently no-ops outside the window.
 - **BC web share logic must not change casually.** Monthly cards use net BC; daily cards use `day_kpi_pack`; canonical tag is `salesperson_code = 'VEFUR'`.
 - **Webflow dashboards must degrade gracefully** if a secondary RPC fails — the primary dashboard must still render.
-- Never call `applySheetStyling_()` inside generate/revise/batch loops — it causes 100+ second execution times on large sheets.
-
-## SEO Manager (`core/seo_manager.js`)
-
-Queue-driven Icelandic B2B SEO copy generation. Flow:
-
-1. Categories seed into `SEO_QUEUE` sheet via `buildSeoQueueFromCludo_v1()` or `mergeSeoFromSheet_v1()`
-2. AI generates/revises via `runSeoAutomationBatch_v1()` or `runSeoForSelectedRow_v1()` / `runReviseSeoForSelectedRows_v1()`
-3. Human reviews in sheet, marks `Approved = true`, pastes into Prismic
-
-Provider chain: `SEO_PROVIDER=gemini` → tries model chain (`gemini-2.0-flash` preferred, `gemini-2.0-flash-lite` returns 404 on this API key); `SEO_PROVIDER=claude` → Anthropic API (`API.Anthropic.API_KEY` required).
-
-Prompt versions: `buildSeoPromptV2_` (default), `buildSeoPromptV3_` (level-aware, brand/attribute detection, varied title endings) — pass `opts.useV3=true, opts.level=1|2|3` to `generateSEOTitles()`. Revise flow uses `temperature: 0.5`; generate uses `0.3`.
-
-Title rules (V3, from SEO review Apr 2025):
-- LVL1: `X í heildsölu | Stórkaup`
-- LVL2: `Flokkur | Undirflokkur | Stórkaup`
-- LVL3: `Vara | Hook (magn/tegund/notkunarsvið) | Stórkaup`
-- No adjectives. No "í heildsölu" on LVL2/3. No "pantaðu í dag" / "skjót afhending" CTA.
-
-## GA4 / GTM tracking notes
-
-- `scheduledGa4Sync_v1` les aðeins event-fjölda fyrir `add_to_cart`, `begin_checkout` og `purchase` (auk sessions/users/pageviews/eventCount og channel). Aðrar GTM-breytingar hafa ekki áhrif á KPI.
-- **2026-10-01 (GTM v96):** purchase hætti að teljast þegar gamlar pantanir eru skoðaðar í Mínum síðum. Fer nú bara af stað eftir `/afgreida` og einu sinni á pöntun (localStorage). `purchases` og `ga4_purchase_ratio_7d` lækka frá þessum degi. **GTM v97 (sama dag):** `begin_checkout` sendist einu sinni á hverja heimsókn í `/afgreida` (10 mín) og lækkar líka — leiðrétting, ekki hrun. Sjá P8-5–P8-7 í NEXT_TASKS.md.
-- GTM-export: `gtm/`.
-
-## Key scheduled triggers
-
-**`auditTriggers_v1()` is the source of truth, not this table.** It reads the
-installed triggers and compares them against `requiredTimeTriggers_()` in
-[core/utils.js](core/utils.js); that map's cadences come from the `install*`
-functions. Run it before trusting any list of what is scheduled.
-
-| Function | Cadence | Source |
-|---|---|---|
-| `safePoll_v2` | Every 5 min | Magento new orders |
-| `scheduledKlaviyoSync_v1` | Every 15 min | Klaviyo events |
-| `scheduledMagentoSync_v1` | Hourly ~:20 | Magento full incremental |
-| `scheduledReferenceSync_v1` | Every 6h ~:50 | Products, customers, Cludo, marts |
-| `scheduledCludoSync_v1` | Every 12h ~:55 | Cludo product coverage |
-| `scheduledCludoCleanup_v1` | Sundays ~04:15 | Deletes stale `/vara/` docs from the Cludo index (`cludoHreinsaVaraDocs_v1`) — until the site 301s, see `docs/cludo/` |
-| `scheduledCustomerAnalysisSync_v1` | Daily ~05:25 | Customer profiles + profiles MV |
-| `scheduledSearchConsoleSync_v1` | Daily ~05:30 | Search Console |
-| `scheduledKlaviyoProfileSync_v1` | Daily ~06:10 | Our data → Klaviyo profile properties |
-| `scheduledGa4Sync_v1` | Daily ~06:30 | GA4 |
-| `scheduledLagersalaSync_v1` | Every 15 min, runs 07:00–21:59 | Stock snapshot of storkaup.is/lagersala (`core/lagersala.js`) — remove when the sale ends |
-| `scheduledZeroPriceScan_v1` | Daily ~06:50 | Zero list-price scan |
-| `runDailySanityChecks_v1` | Daily ~07:40 | Cross-source validation |
-| `scheduledNewwebStatusSync_v2` | Daily ~11:30 & ~17:30 | Magento order status |
-| `scheduledWeeklyDigest` | Mondays ~08:00 | Weekly email |
-| `scheduledMonthlyDigest` | Monthly, 1st ~08:00 | Monthly email + records |
-
-**`safePoll_v2`'s 5-minute trigger is not a 5-minute cadence.**
-`getNewwebRunWindowDecision_v2_()` gates it: off 00:00-06:59, every run
-07:00-21:59, quarter-hours only 22:00-23:59. Runs outside the window log
-`Skipping run by schedule window` and do nothing. For a manual run use
-`safePollNow_v2()` or the NEWWEB menu item — they pass `force: true` and ignore
-the window; bare `safePoll_v2()` obeys it and will silently no-op at 03:00.
-
-**Magento API has an off switch (2026-10-19).** Hagar are closing the Magento
-API to allowlisted IPs only (BlockStrap, CVE-2026-103849), and GAS calls from
-Google's shifting IPs, so it can never be allowlisted directly. Set
-`SETTINGS.MAGENTO_API_ENABLED = false` and every Magento entry point skips
-quietly (`isMagentoApiEnabled_()` in [core/auth.js](core/auth.js)): `safePoll_v2`,
-the status sync, both customer syncs, the live key lookup in application
-pruning, and pending orders in the admin app. The safePoll watchdog stays
-silent, and the daily check logs a `warning` instead of an `error`. A missing row
-means **on**. Nothing writes to Magento — only `GET /orders` and
-`GET /customers/search`, plus the admin-token login in `core/auth.js`. The fix
-under discussion is a proxy with a static IP in Hagar's Azure; until then, web
-orders stop at the cut-off.
-
-**A stopped `safePoll_v2` alerts within the hour.** It writes Script Property
-`SAFEPOLL_LAST_OK_MS` after every completed run; `checkSafePollWatchdog_()`
-reads it at the top of the hourly `scheduledMagentoSync_v1` and emails
-`[KPI ALERT] safePoll_v2 er stopp` (throttled 3h). The daily sanity check reads
-the same value via `evaluateSafePollHeartbeat_()`. Before 2026-10-08 that
-check was the only reader, ran once a day, and logged as `warning` — which
-never emails — so a dead order pipeline sent nothing at all.
-
-**The monthly digest was dead code until 2026-09-01.** `scheduledMonthlyDigest`
-([core/email.js](core/email.js)) and its installer both existed, but nothing
-called `installMonthlyDigestTrigger_v1()` and `auditTriggers_v1` listed the
-handler under `OPTIONAL` ("install on demand"), so an absent trigger was never
-warned about — the same silence that hid four uninstalled triggers for three
-months. It is now in `requiredTimeTriggers_()`, which both the audit and the
-reset read.
-
-**The trigger is installed and verified** — `auditTriggers_v1` on 2026-09-09
-returned `[AUDIT][OK] All 13 required triggers are installed`, 16 triggers
-total (14 required instances plus `onOpen` and `pruneCompletedApplications`),
-no warnings. Nothing left to run here.
-
-**The reset used to delete three triggers for good.** Until 2026-10-08
-`resetRecommendedTimeTriggers_v1()` removed thirteen handlers and reinstalled
-ten — Cludo, CustomerAnalysis and Klaviyo were never put back. The bug came in
-with `542ab7d` (2026-05-11), the same window in which exactly those went
-missing. Audit and reset now share one map, `requiredTimeTriggers_()` in
-[core/utils.js](core/utils.js); add a handler there and both see it.
-
-**Still, do not reach for the reset to install one trigger.** It now removes
-and reinstalls one handler at a time and runs the audit at the end, so an
-interruption costs at most the handler in flight — but it still touches
-`safePoll_v2`. The individual `install*Trigger*` functions are idempotent: each
-checks for an existing trigger and returns `{created:false}` instead of adding
-a second one.
-
-**Two OPTIONAL jobs have no trigger, and the audit will never tell you.**
-By design — `OPTIONAL` handlers are recognised so they do not log as unknown,
-but their absence is never warned about. As of 2026-09-09 neither
-`collectInvoicesToDrive_v1` (the Gmail → Drive invoice collector, mapped as
-"daily ~07:10") nor `runScheduledSeoAutomation_v1` ("every 30 min, install on
-demand") is installed. Both therefore run only when someone clicks. If the
-invoice collector is meant to be daily, run
-`installInvoiceCollectorTrigger_v1` ([core/invoices.js](core/invoices.js)) once
-— it is idempotent and returns `{created:false}` if a trigger already exists.
-`runScheduledSeoAutomation_v1` is deliberately hand-run: SEO batches are
-reviewed in the sheet before anything ships, so a schedule would not help.
-
-The digest's "Met og áfangar" block comes from a **second** RPC,
-`public.web_records_v1` ([core/sql/web_records_v1.sql](core/sql/web_records_v1.sql)),
-which must be applied in the Supabase SQL editor. It is deliberately separate
-from `monthly_digest_stats`: that function already exceeds the 8s anon
-statement_timeout, and `fetchWebRecords_` swallows any failure so a broken
-records query costs one section, not the whole email. Records rank **NEWWEB +
-OLDWEB** unioned, and revenue records are **m/VSK** — OLDWEB has no usable excl
-figure (see RUNBOOK.md).
-
-**BC has no trigger.** `scheduledBcSync_v1` was deleted 2026-04-30 (`d83c7c5`);
-this table listed it as "twice daily" for three months after it stopped existing.
-BC now loads only from the **BC Sync menu** (`processBcDrop_v1`), reading XLSX
-dropped in Drive. Files uploaded by `bc_sync.ps1` sit unread until someone clicks
-it. Never run `processBcDropForce_v1` on the invoice file — it nulls `order_no`
-and `email` across all history (see `core/sql/generate_shopping_list_v2.sql`).
-
-**Export a rolling ~3-month window from BC, not the full history.** Decided
-2026-08-31. Lines are deduped against a 2-year-windowed *invoice* key set
-([core/utils.js](core/utils.js), `cutoff` in `processBcDrop_v1`), so every line
-whose invoice predates that window counts as new on every run. With a
-full-history export that was 217,790 of 484,768 rows re-sent per import —
-harmless (`resolution=ignore-duplicates` drops them server-side) but 4m14s of a
-6-minute execution budget, growing ~6%/month.
-
-**An interrupted import no longer loses lines (2026-10-09).** Lines are
-filtered on the *invoice* key set, so a run that uploaded invoices and died
-before finishing the lines file used to drop those invoices' lines for good.
-Script Property `BC_DROP_LINES_OWED` is set before invoices upload and cleared
-when a lines file completes; while set, lines go up unfiltered (safe —
-`ignore-duplicates`). `markBcLinesOwed_v1()` sets it by hand. The daily sanity
-check now fails on `bc_freshness` (no successful import in 35 days) and on
-`bc_lines_owed`.
-
-Two consequences of the narrow window:
-- Because nothing triggers this, **a skipped month is a real gap** in
-  `bc_lines_raw`. Three months of overlap is the margin; don't cut it to one.
-- `processBcDropForce_v1` is no longer a full rebuild — it force-upserts only
-  what the file contains. A genuine rebuild needs a deliberate full-history
-  export for that one run.
-
-Four triggers were found **uninstalled** on 2026-08-06, lost around 2026-05-07..11:
-Klaviyo, Customer Analysis, Cludo, Search Console. Nobody noticed for three
-months because `auditTriggers_v1`'s map was wrong in five places and missing five
-handlers, so its real warnings were buried in false ones. A job whose sub-step
-fails now records `partial`, not `success`, and sends an ops alert.
+- **`auditTriggers_v1()` is the source of truth for triggers**, not any table. Install a missing one with its own idempotent `install*Trigger*` function; don't reach for `resetRecommendedTimeTriggers_v1()` — it touches `safePoll_v2`. Add new handlers to `requiredTimeTriggers_()` ([core/utils.js](core/utils.js)) so audit and reset both see them.
+- **BC has no trigger.** It loads only from the BC Sync menu (`processBcDrop_v1`); export a rolling ~3-month window. **Never run `processBcDropForce_v1` on the invoice file** — it nulls `order_no` and `email` across all history. Details: RUNBOOK → *BC import*.
 
 ## Current production pins
 
-**This section is the single source of truth for production pins.** `NEXT_TASKS.md` and `README.md` point here — do not duplicate pin values elsewhere. Update these whenever Webflow custom code changes.
-
-**One pin governs the bootstrap's child files — and one file sits outside it.**
-The bootstrap scripts read `data-storkaup-rev` off their own `<script>` tag and
-load every child file from that revision (`getRevision()` in both bootstraps).
-Changing it moves `dashboard.js`, `order-search.js`,
-`website-dashboard.js` and `dashboard-theme.css` together.
-This list used to give a separate commit per file, which implied a per-file
-control that does not exist for those.
-
-**These files sit outside it**, each pinned to its own commit in page-level
-code. Bumping `data-storkaup-rev` does nothing to them, and bumping them does
-nothing to the dashboards. Change one, move that one.
-
-| File | Where its pin lives | Page |
-|---|---|---|
-| `Webflow/auth.js` | **site-wide head**, synchronous (no `defer`) — must run before every other script so its fetch wrapper is in place | all KPI pages; inert where `STORKAUP_CONFIG` is absent |
-| `Webflow/vidskiptavinir.js` | page head code — mirrored in `vidskiptavinir-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/vidskiptavinur` (since 2026-10-15; `-nyr` 301s there) |
-| `Webflow/vorur.js` | page head code — mirrored in `vorur-embed.html`, whose Embed part is the mount `<div>` only | `/kpi/vorur` (since 2026-10-16) |
-
-⚠️ This list read "The exception is `Webflow/lookup.js`" until 2026-09-21 —
-singular, and wrong. `activation.js` had been pinned in page code on
-`/kpi/activation` since 2026-06-15 and appeared nowhere in this file. Nothing
-caught it because `tools/check-webflow-pins.js` hard-coded the same assumption:
-it knew about exactly one embed pin. Both now read from one list
-(`EMBED_PINNED` in that tool), so a fifth file has two places to be registered
-and a check that complains when it is in neither.
-
-That check earned itself on the first run. `portal.js` turned out to be pinned
-in `portal-embed.html` and mentioned **zero** times in this file — a second
-unregistered embed pin, found the moment the `lookup.js` hard-coding came out.
-Both had been there all along; the tool simply could not see past the one file
-it was written for.
-
-**One customer page since 2026-10-15.** `vidskiptavinir.js` on
-`/kpi/vidskiptavinur` replaced three scripts: `customer-profiles.js` (a
-bootstrap child that loaded on *every* KPI page, 117 KB), `forgangslisti.js`
-and `activation.js`. `/kpi/forgangslisti`, `/kpi/activation` and `/kpi/emails` were deleted 2026-10-15; their files are gone
-from the repo. The worklist and the activation segments are tabs
-(`?tab=vinnulisti`, `?tab=taekifaeri`), with bulk actions. Its data layer is
-`core/sql/vidskiptavinir_v1.sql`, `customer_not_web_v1.sql` and
-`kpi_staff_rep_v1.sql`. Its `<script src>` sits in **page head code** only;
-it guards against double boot (`data-booted`), but one tag is still the rule.
-
-**Live**, per the deployer. All three bootstrap pins live in **one place** —
-Webflow *site-wide* custom code, two `<script>` tags that carry both the
-`@commit` in `src` and the `data-storkaup-rev` attribute. Earlier revisions of
-this section said the attribute was "bumped on all seven KPI pages"; that was
-never how it worked, and it made the job sound bigger and more error-prone than
-it is. The independent pins live elsewhere (page head code or site-wide
-head), so each row carries its own date:
+**This section is the single source of truth for pin values, and it must stay
+in this file under this exact heading** — `tools/check-webflow-pins.js` parses
+it (first SHA per labelled table row wins). The table describes the site; it
+does not govern it — when they disagree, run the tool and find out which is
+right before changing either. How the pins work, the independent-pin locations,
+fallbacks and history: [RUNBOOK.md → Webflow deploy and production pins](RUNBOOK.md#webflow-deploy-and-production-pins).
+What each deploy shipped: `NEXT_TASKS.md` → *Recent Release Notes*.
 
 | What | Value | Set |
 |---|---|---|
-| `data-storkaup-rev` — governs all bootstrap child files | `5bac261` | 2026-10-16 — `/kpi/klaviyo` status strip tells a stopped sync (red) from "no campaign sent in 30 d" (grey), via `api.klaviyo_sync_status_v1` (`core/sql/klaviyo_sync_status_v1.sql`); falls back to the old attribution-age rule if that call fails. `dashboard.js` + `dashboard-theme.css` |
-| `dashboard-bootstrap.js` script-tag src | `5bac261` | 2026-10-16 (pin only — file unchanged since `1b08cff`, which stopped loading `top-products.js`) |
+| `data-storkaup-rev` — governs all bootstrap child files | `5bac261` | 2026-10-16 — Klaviyo sync status strip (`dashboard.js` + `dashboard-theme.css`) |
+| `dashboard-bootstrap.js` script-tag src | `5bac261` | 2026-10-16 (pin only — file unchanged since `1b08cff`) |
 | `website-dashboard-bootstrap.js` script-tag src | `5bac261` | 2026-10-16 (pin only — file unchanged since `30f0908`) |
-| `auth.js` script-tag src, **site-wide head** (independent) | `af0191a` | 2026-10-09 — sign-in for KPI pages + token on GAS calls, see RUNBOOK → KPI page sign-in |
-| `vidskiptavinir.js` script-tag src, **in page head code** (independent) | `a013033` | 2026-10-16 — opportunity lists sorted by offline orders; onboarding template default for never-web customers; "Senda vefkynningu" only under „Aldrei pantað á vef“. `/kpi/vidskiptavinur`: bulk "Senda vefkynningu" (`send_template_bulk`, `core/sql/customer_email_log_v1.sql`), graduation off the worklist („Komnir á vef“, `core/sql/priority_graduation_v1.sql`), bulk actions, `?tab=` deep links. Signed-in user → rep by logic (`core/sql/kpi_staff_rep_v1.sql`) |
-| `vorur.js` script-tag src, **in page head code** (independent) | `ed515f6` | 2026-10-16 — new `/kpi/vorur`: one search (typing → web catalog, pasted list → `?tab=listi`), best sellers + categories, product card at `?sku=` (off-web products still get BC sales), buyer → `/kpi/vidskiptavinur?customer=`. No new SQL. Replaced top-products / voruuppfletting / voruportal, deleted the same day |
+| `auth.js` script-tag src, **site-wide head** (independent) | `af0191a` | 2026-10-09 — KPI page sign-in, see RUNBOOK → KPI page sign-in |
+| `vidskiptavinir.js` script-tag src, **in page head code** (independent) | `a013033` | 2026-10-16 — opportunity lists, onboarding template, bulk "Senda vefkynningu" |
+| `vorur.js` script-tag src, **in page head code** (independent) | `ed515f6` | 2026-10-16 — new `/kpi/vorur` |
 
-`2ecd444` moved the rev because `customer-profiles.js` — a bootstrap child —
-gained `?customer=` deep-link support, so the new forgangslisti's row link has
-somewhere to land. `30f0908` moved it again for the fyrirtækjaleit checkbox fix;
-between the two, `customer-profiles.js`, `forgangslisti.js` and its embed
-changed. **The two bootstrap files themselves did not change in either step**
-(`git diff --stat 2ecd444 30f0908 -- Webflow/*-bootstrap.js` is empty); their
-`src` pins were moved anyway, which cost one cache-bust fetch and nothing else.
-Recorded as "pin only" so the question this table is supposed to answer — when
-did the frontend last actually change — stays answerable.
-
-`c037bbd` moved the `portal.js` pin for certifications and document links on
-`/kpi/voruportal`: `ProductLabels` (732 products carry one of 12 values),
-datasheet / safety-sheet / brochure links, and a copy-and-open button for
-supplier portals. The check caught this row stale on the same deploy that
-shipped it — the table was updated from the tool's output, not from memory.
-
-**One product page since 2026-10-16.** `vorur.js` on `/kpi/vorur` replaced
-`/kpi/top-products` (`top-products.js`, a bootstrap child that loaded on every
-KPI page), `/kpi/voruuppfletting` (`lookup.js`) and `/kpi/voruportal`
-(`portal.js`). The pages were deleted and the files removed the same day.
-`?tab=listi` is the list lookup, `?sku=` the product card. Before
-`top-products.js` came out of `dashboard-bootstrap.js`, every nav page was
-checked live: only `/kpi/top-products` carried `[data-module="top-products"]`.
-The site-wide tags moved to `1b08cff` the same day, so it no longer loads.
-
-The forgangslisti swap of 2026-10-08 (staging page took the slug) was the
-template for the 2026-10-15 customer-page swap; both pages it involved are
-now gone.
-
-⚠️ **This table describes the site; it does not govern it.** On 2026-09-21 it
-still read `4131408` while the site was already serving `5368032`. A warning
-written *from the table* concluded the site was behind, so the live pin was
-rolled **back** to `4131408` — and the `/kpi/top-products` drawer fix
-(`2d50477`) dropped out of production. Restored the same day.
-
-The lesson is not "keep the table current". It is that a stale table reads
-exactly like a current one, so when the two disagree, find out which is right
-before changing either:
-
-```bash
-node tools/check-webflow-pins.js
-```
-
-That reads the pins straight off the password-gate response (no credentials
-needed — Webflow serves site-wide head code there) and does two separate
-things. It compares live against this table, **and** it independently checks
-that the live rev contains the newest commit touching the files the bootstrap
-loads. The second test is the one that matters: the table and the site can
-agree and both be wrong, which is exactly what happened here. It also fails if
-`gasKey` or `STORKAUP_BC_MANUAL` ever appear on the gate page.
-
-It runs at the end of `gas_deploy.ps1`, non-blocking.
-
-The independent pins (`EMBED_PINNED` in the tool) are read off every KPI page
-in the home-page nav — the password gate is gone since 2026-10-09, so page
-code is readable. A page missing from the nav is not scanned, and its pin
-prints `ÓATHUGAÐUR`. Locally the tool also checks that each `*-embed.html` and
-this table agree, and that the pin contains the newest commit touching the
-file — the realistic mistake (change the file, forget the pin).
-
-Only `data-storkaup-rev` was moved to `4131408`; the two script-tag `src`
-values were deliberately left at `6c992c5`, because **both bootstrap files are
-byte-identical between the two revisions** — the `4131408` deploy touched only
-`dashboard.js` and `dashboard-theme.css`. Re-pinning the tags would have busted
-their cache for no content change. Verify with:
-
-```bash
-git diff --stat 6c992c5 4131408 -- Webflow/dashboard-bootstrap.js Webflow/website-dashboard-bootstrap.js
-```
-
-`4131408` shipped the Klaviyo insights block on `/kpi/klaviyo` (monthly
-timeline with un-measured months drawn as voids, traceability split, campaign
-table) and fixed two things worth knowing about:
-
-- `klaviyo-last-sync-date` printed *today's date* unconditionally, so the page
-  always claimed to be current. It now reports `max(order_date)`.
-- `init()` bailed unless it found `.dashboard-date-item[data-month]`, any
-  `[data-metric]`, or a day picker. A `/kpi/klaviyo` stripped down to just
-  `[data-klaviyo-campaign-cards]` matched none of them and came up blank. The
-  guard now also accepts `hasKlaviyoMetricTargets()`.
-
-⚠️ The **hardcoded fallbacks below are now two revisions stale** and were not
-bumped with this deploy. Bumping them is circular — the fallback lives *inside*
-the bootstrap, so changing it changes that file's bytes, which means the
-script-tag `src` pins would then have to move too. Left deliberately; see the
-warning under the fallback table.
-
-Historical note: the values recorded here before `6c992c5` (`aff3278`,
-`df2956f`, `b55e8c4`) were stale — the deploy had moved to `6c992c5` on
-2026-07-14 and nobody updated this table.
-
-**Hardcoded fallbacks** — used only if `data-storkaup-rev` is missing from the
-tag. Both bootstraps carry a comment saying "Keep in sync with CLAUDE.md pins";
-neither value was ever recorded here. They are immutable commits by design (never
-`@main`: a mutable branch would let a compromised repo inject straight into the
-KPI pages).
-
-| File | Fallback | Date |
-|---|---|---|
-| `dashboard-bootstrap.js` | `2458fc5` | 2026-06-30 |
-| `website-dashboard-bootstrap.js` | `53b118c` | 2026-06-29 |
-
-⚠️ The two fallbacks differ from each other and both lag the live rev. If the
-attribute is ever dropped, `/kpi/dashboard` and `/kpi/vefmaelabord` would silently
-load different vintages. Bump them when you bump the live rev, or accept that
-they are a last-resort floor rather than a mirror.
-
-**When to change a pin:** only when a file under `Webflow/` actually changes.
-The pin freezes content; it does not track HEAD. Re-pinning to a newer commit
-that contains identical bytes only busts caches and makes this table misreport
-when the frontend last changed.
-
-**Reference baselines** (not deploy pins — historical anchors for comparison):
-
-- Trigger schedule baseline: `ab2931a`
-- Parent/child profile aggregation baseline: `ab0aafd`
-- Parent/child last-orders merge: `ca32334`
-
-jsDelivr URL pattern: `https://cdn.jsdelivr.net/gh/OlafurOrnJosephsson/storkaup_kpi@<commit>/Webflow/<file>.js`
+Move a pin only when a file under `Webflow/` actually changed; a new
+independently pinned file goes in this table **and** `EMBED_PINNED` in the tool.
