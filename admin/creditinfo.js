@@ -190,7 +190,7 @@ function creditinfoUrtak_v1() {
   }
   // Opinberir aðilar fara beint í samþykkt (viðmið 8) og innri reikningar
   // (STORKAUP) segja ekkert um lánshæfi — hvorugt á heima í úrtakinu.
-  var PUBLIC_RE = /sjúkratrygg|ríkis|ráðuneyt|stofnun|sveitarf|hreppur|kaupstaður|\bbær\b|borg\b|skóli|leikskól|heilsugæsl|landspítal|lögregl|háskól|sýslumann/i;
+  var PUBLIC_RE = /sjúkratrygg|ríkis|ráðuneyt|stofnun|sveitarf|hreppur|kaupstaður|\bbær\b|borg\b|skóli|leikskól|heilsugæsl|landspítal|sjúkrahús|heilbrigðisstofnun|lögregl|háskól|sýslumann/i;
   function eligibleOrg(kt) {
     var bc = bcMap[kt] || {};
     if (kt.length !== 10 || used[kt]) return false;
