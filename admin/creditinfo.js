@@ -65,43 +65,49 @@ function creditinfoUrtak_v1() {
   });
 
   // ── 2. BC-gögn ───────────────────────────────────────────────────────────
+  // Allt úr bc_customers_raw (Viðskiptamenn-exportið). customer_analysis_raw
+  // er EKKI notað: BC-reitirnir þar hafa verið 0 síðan blöðin frusu 2026-05
+  // (sjá core/sql/customer_profiles_live_bc_v1.sql). Sala (SGM) er ævivelta
+  // til dags exportsins; pantanafjöldi kemur úr prófíla-MV-inu.
   var appKts = apps.map(function (a) { return a.kt; }).filter(Boolean);
-  var BC_SEL = 'company_id,company_name,credit_limit,arrears,status_sgm,payment_terms_code';
+  var BC_SEL = 'company_id,company_name,credit_limit,arrears,status_sgm,payment_terms_code,sales';
   var arrearsRows = ci_sbGet_('bc_customers_raw?select=' + BC_SEL +
                               '&arrears=gt.0&order=arrears.desc&limit=1000');
   var arrearsMap = {};
   arrearsRows.forEach(function (r) { arrearsMap[String(r.company_id)] = r; });
 
-  var topSales = ci_sbGet_('customer_analysis_raw?select=customer_id,customer_name,credit_limit,lifetime_bc_sales,last_bc_order_date' +
-                           '&order=lifetime_bc_sales.desc.nullslast&limit=300');
-  var personalBc = ci_sbGet_('customer_analysis_raw?select=customer_id,customer_name,credit_limit,lifetime_bc_sales,last_bc_order_date' +
-                             '&or=' + encodeURIComponent('(customer_id.like.0*,customer_id.like.1*,customer_id.like.2*,customer_id.like.3*)') +
-                             '&lifetime_bc_sales=gt.0&order=lifetime_bc_sales.desc&limit=100');
+  var topSales = ci_sbGet_('bc_customers_raw?select=' + BC_SEL + '&sales=gt.0&order=sales.desc&limit=300');
+  var personalBc = ci_sbGet_('bc_customers_raw?select=' + BC_SEL +
+                             '&or=' + encodeURIComponent('(company_id.like.0*,company_id.like.1*,company_id.like.2*,company_id.like.3*)') +
+                             '&sales=gt.0&order=sales.desc&limit=100');
 
-  var lookupKts = appKts.concat(arrearsRows.slice(0, 40).map(function (r) { return String(r.company_id); }));
-  var caMap = ci_byIds_('customer_analysis_raw', 'customer_id',
-                        'customer_id,customer_name,credit_limit,lifetime_bc_sales,last_bc_order_date', lookupKts);
-  var bcMap = ci_byIds_('bc_customers_raw', 'company_id', BC_SEL,
-                        appKts.concat(topSales.concat(personalBc).map(function (r) { return String(r.customer_id); })));
-  arrearsRows.forEach(function (r) { bcMap[String(r.company_id)] = bcMap[String(r.company_id)] || r; });
+  var bcMap = ci_byIds_('bc_customers_raw', 'company_id', BC_SEL, appKts);
+  arrearsRows.concat(topSales, personalBc).forEach(function (r) { bcMap[String(r.company_id)] = bcMap[String(r.company_id)] || r; });
   // Greiðsluskilmálar komu í exportið 2026-10-20 (core/sql/bc_customers_payment_terms.sql).
   // Fyrir fyrsta innlestur eru þeir null alls staðar — þá má ekki lesa null sem staðgreiðslu.
   var termsLoaded = Object.keys(bcMap).some(function (k) { return bcMap[k].payment_terms_code; });
-  topSales.concat(personalBc).forEach(function (r) { caMap[String(r.customer_id)] = caMap[String(r.customer_id)] || r; });
+
+  // Pantanafjöldi (BC-reikningar) — prófíla-MV-ið, endurnýjað daglega.
+  var ordMap = ci_byIds_('mv_customer_profiles_labeled_trends', 'customer_id',
+                         'customer_id,orders_bc_365d,total_bc_orders', Object.keys(bcMap), 'api');
+
+  function isCash(kt) {
+    var bc = bcMap[kt];
+    if (!bc) return false;
+    return ci_num_(bc.credit_limit) === -1 || (termsLoaded && !bc.payment_terms_code);
+  }
 
   function info(kt) {
-    var ca = caMap[kt] || {}, bc = bcMap[kt] || arrearsMap[kt] || {};
-    var limit = ci_num_(bc.credit_limit);
-    if (limit == null) limit = ci_num_(ca.credit_limit);
+    var bc = bcMap[kt] || {}, ord = ordMap[kt] || {};
     return {
-      inBc: !!(caMap[kt] || bcMap[kt] || arrearsMap[kt]),
-      name: ca.customer_name || bc.company_name || '',
-      limit: limit,
-      arrears: ci_num_((arrearsMap[kt] || bc).arrears),
-      status: (arrearsMap[kt] || bc).status_sgm || '',
-      terms: bcMap[kt] ? (bcMap[kt].payment_terms_code || (termsLoaded ? 'Staðgreiðsla (tómt)' : '')) : '',
-      sales: ci_num_(ca.lifetime_bc_sales),
-      lastOrder: ca.last_bc_order_date ? String(ca.last_bc_order_date).substring(0, 10) : ''
+      inBc: !!bcMap[kt],
+      name: bc.company_name || '',
+      limit: ci_num_(bc.credit_limit),
+      arrears: ci_num_(bc.arrears),
+      status: ci_num_(bc.status_sgm),
+      terms: bcMap[kt] ? (bc.payment_terms_code || (termsLoaded ? 'Staðgreiðsla (tómt)' : '')) : '',
+      sales: ci_num_(bc.sales),
+      orders365: ci_num_(ord.orders_bc_365d)
     };
   }
 
@@ -127,7 +133,7 @@ function creditinfoUrtak_v1() {
 
   // ── 4. Kandídatar ────────────────────────────────────────────────────────
   var head = ['Hópur', 'Fyrirtæki', 'Kennitala', 'Skor (umsókn)', 'Afdrif umsóknar', 'Dags. umsóknar',
-              'Heimild í BC', 'Greiðsluskilmálar', 'Vanskil', 'Staða reiknings', 'Velta BC alls', 'Síðasta BC-pöntun'];
+              'Heimild í BC', 'Greiðsluskilmálar', 'Vanskil', 'Staða reiknings', 'Sala BC alls (SGM)', 'BC-pantanir 12 mán'];
   var cand = [];
   var appByKt = {};
   apps.forEach(function (a) { if (a.kt && (!appByKt[a.kt] || a.score != null)) appByKt[a.kt] = a; });
@@ -137,22 +143,30 @@ function creditinfoUrtak_v1() {
     app = app || appByKt[kt] || {};
     cand.push([group, app.company || i.name, kt, app.score == null ? '' : app.score, app.outcome || '',
                app.date || '', i.limit == null ? '' : i.limit, i.terms, i.arrears == null ? '' : i.arrears,
-               i.status, i.sales == null ? '' : i.sales, i.lastOrder]);
+               i.status == null ? '' : i.status, i.sales == null ? '' : i.sales,
+               i.orders365 == null ? '' : i.orders365]);
   }
 
-  // Tap / vanskil — sami listinn; staða (SGM) og BC skera úr hvor er hvað.
-  arrearsRows.slice(0, 30).forEach(function (r) { push('Tap eða vanskil (velja 5 + 4)', String(r.company_id)); });
+  // Tap: staðgreiðsluviðskiptamenn sem skulda. Mynstrið 2026-10-20 (11 talsins,
+  // ~1,44 m.kr.) bendir til viðskiptamanna sem voru færðir í staðgreiðslu eftir
+  // vanskil — bókhald staðfestir hverjir eru í raun tap.
+  arrearsRows.filter(function (r) { return isCash(String(r.company_id)); })
+    .forEach(function (r) { push('Tap? — staðgreiðsla með skuld (velja 5)', String(r.company_id)); });
 
-  // Góðir: veltuhæstu lögaðilar án vanskila, í reikningsviðskiptum — ekki
-  // staðgreiðsla (-1 eða tómir skilmálar) og ekki SJUKRA.
+  // Vanskil í reikningsviðskiptum. Opinberir aðilar (t.d. Sjúkratryggingar)
+  // lenda hér líka en eiga ekki heima í úrtakinu — viðmið 8 sendir þá beint í samþykkt.
+  arrearsRows.filter(function (r) { return !isCash(String(r.company_id)); }).slice(0, 25)
+    .forEach(function (r) { push('Vanskil í reikningsviðskiptum (velja 4)', String(r.company_id)); });
+
+  // Góðir: söluhæstu lögaðilar án vanskila, í reikningsviðskiptum (ekki
+  // staðgreiðsla, ekki SJUKRA) og virkir — a.m.k. 4 BC-pantanir síðustu 12 mán.
   var good = 0;
   topSales.forEach(function (r) {
-    var kt = String(r.customer_id);
-    if (good >= 25 || kt.length !== 10 || ci_isPersonal_(kt) || arrearsMap[kt]) return;
-    var lim = ci_num_(r.credit_limit);
-    if (lim != null && lim < 0) return;
-    var bc = bcMap[kt];
-    if (termsLoaded && bc && (!bc.payment_terms_code || bc.payment_terms_code === 'SJUKRA')) return;
+    var kt = String(r.company_id);
+    if (good >= 25 || kt.length !== 10 || ci_isPersonal_(kt) || arrearsMap[kt] || isCash(kt)) return;
+    if (r.payment_terms_code === 'SJUKRA') return;
+    var ord = ordMap[kt];
+    if (ord && ci_num_(ord.orders_bc_365d) != null && ci_num_(ord.orders_bc_365d) < 4) return;
     push('Góður og stöðugur (velja 6)', kt); good++;
   });
 
@@ -161,12 +175,15 @@ function creditinfoUrtak_v1() {
       .sort(function (x, y) { return String(y.date).localeCompare(String(x.date)); })
       .forEach(function (a) { push('Umsókn sem við höfnuðum (velja 3)', a.kt, a); });
 
-  // Einstaklingsfyrirtæki: umsækjendur á eigin kennitölu + núverandi í BC.
+  // Einstaklingsfyrirtæki: umsækjendur á eigin kennitölu + núverandi í
+  // reikningsviðskiptum (SJUKRA eru einstaklingar vegna Sjúkratrygginga, ekki rekstur).
   apps.filter(function (a) { return a.outcome === 'Einstaklingur' && a.kt; })
       .forEach(function (a) { push('Einstaklingsfyrirtæki (velja 2)', a.kt, a); });
-  personalBc.slice(0, 15).forEach(function (r) {
-    var kt = String(r.customer_id);
-    if (kt.length === 10 && !arrearsMap[kt]) push('Einstaklingsfyrirtæki (velja 2)', kt);
+  var pers = 0;
+  personalBc.forEach(function (r) {
+    var kt = String(r.company_id);
+    if (pers >= 15 || kt.length !== 10 || arrearsMap[kt] || isCash(kt) || r.payment_terms_code === 'SJUKRA') return;
+    push('Einstaklingsfyrirtæki (velja 2)', kt); pers++;
   });
 
   // ── 5. Skrifa flipann ────────────────────────────────────────────────────
@@ -216,11 +233,11 @@ function ci_num_(v) {
   return isNaN(n) ? null : n;
 }
 
-function ci_sbGet_(path) {
+function ci_sbGet_(path, profile) {
   var conf = getSupabaseRestConfig_();
   var res = UrlFetchApp.fetch(conf.baseUrl + '/' + path, {
     method: 'get',
-    headers: { apikey: conf.serviceRole, Authorization: 'Bearer ' + conf.serviceRole, 'Accept-Profile': 'raw' },
+    headers: { apikey: conf.serviceRole, Authorization: 'Bearer ' + conf.serviceRole, 'Accept-Profile': profile || 'raw' },
     muteHttpExceptions: true
   });
   if (res.getResponseCode() !== 200) {
@@ -231,12 +248,12 @@ function ci_sbGet_(path) {
   return Array.isArray(rows) ? rows : [];
 }
 
-function ci_byIds_(table, idCol, select, ids) {
+function ci_byIds_(table, idCol, select, ids, profile) {
   var uniq = ids.filter(function (v, i, a) { return v && a.indexOf(v) === i; });
   var map = {};
   for (var i = 0; i < uniq.length; i += 80) {
     var list = uniq.slice(i, i + 80).map(function (kt) { return '"' + kt + '"'; }).join(',');
-    ci_sbGet_(table + '?select=' + select + '&' + idCol + '=in.(' + encodeURIComponent(list) + ')')
+    ci_sbGet_(table + '?select=' + select + '&' + idCol + '=in.(' + encodeURIComponent(list) + ')', profile)
       .forEach(function (r) { map[String(r[idCol])] = r; });
   }
   return map;
