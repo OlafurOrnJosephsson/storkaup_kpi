@@ -55,7 +55,9 @@ function creditinfoUrtak_v1() {
     var sh = ss.getSheetByName(t.tab || src.mainTab);
     if (!sh) return;
     webapp_readRows_(sh, src).forEach(function (r) {
-      var kt = ci_kt_(r.companyKt);
+      // Einstaklingur í rekstri skráir oft eigin kennitölu sem tengiliður og
+      // lætur fyrirtækisreitinn tóman.
+      var kt = ci_kt_(r.companyKt) || (t.outcome === 'Einstaklingur' ? ci_kt_(r.personKt) : '');
       var score = parseInt(String(r.creditScore || '').replace(/\/.*$/, ''), 10);
       apps.push({
         outcome: t.outcome, date: r.date, company: r.company, kt: kt,
@@ -79,7 +81,7 @@ function creditinfoUrtak_v1() {
   var topSales = ci_sbGet_('bc_customers_raw?select=' + BC_SEL + '&sales=gt.0&order=sales.desc&limit=1000');
   var personalBc = ci_sbGet_('bc_customers_raw?select=' + BC_SEL +
                              '&or=' + encodeURIComponent('(company_id.like.0*,company_id.like.1*,company_id.like.2*,company_id.like.3*)') +
-                             '&sales=gt.0&order=sales.desc&limit=100');
+                             '&payment_terms_code=not.eq.SJUKRA&sales=gt.0&order=sales.desc&limit=100');
 
   var bcMap = ci_byIds_('bc_customers_raw', 'company_id', BC_SEL, appKts);
   arrearsRows.concat(topSales, personalBc).forEach(function (r) { bcMap[String(r.company_id)] = bcMap[String(r.company_id)] || r; });
@@ -207,7 +209,7 @@ function creditinfoUrtak_v1() {
 
   // Vanskil (4): í reikningsviðskiptum, dreift yfir stærð vanskila.
   var van = arrearsRows.map(function (r) { return { kt: String(r.company_id), r: r }; })
-    .filter(function (x) { return !isCash(x.kt) && eligibleOrg(x.kt); });
+    .filter(function (x) { return !isCash(x.kt) && eligibleOrg(x.kt) && ci_num_(x.r.arrears) >= 10000; });
   emit('Vanskil eða greiðslufrestir (4)', van, spread(van.length, 4), function (x) {
     return 'Reikningsviðskipti (' + (x.r.payment_terms_code || '?') + '), ' + kr(x.r.arrears) + ' í vanskilum.';
   });
@@ -245,6 +247,7 @@ function creditinfoUrtak_v1() {
       return String(y.date).localeCompare(String(x.date));
     })
     .filter(function (a) { if (seenRej[a.kt]) return false; seenRej[a.kt] = true; return true; })
+    .filter(function (a) { return !used[a.kt]; })
     .map(function (a) { return { kt: a.kt, app: a }; });
   emit('Umsókn sem við höfnuðum (3)', rej, first(rej.length, 3), function (x) {
     return 'Hafnað í staðgreiðslu' + (x.app.score != null ? ' á skori ' + x.app.score : '') + '. Hefði kerfið verið sammála?';
@@ -253,9 +256,10 @@ function creditinfoUrtak_v1() {
   // Einstaklingsfyrirtæki (2): einn umsækjandi + einn núverandi í reikningsviðskiptum.
   var persApps = apps.filter(function (a) { return a.outcome === 'Einstaklingur' && a.kt && a.kt.length === 10; })
     .sort(function (x, y) { return String(y.date).localeCompare(String(x.date)); })
+    .filter(function (a) { return !used[a.kt]; })
     .map(function (a) { return { kt: a.kt, app: a, src: 'umsókn' }; });
   var persBc = personalBc.map(function (r) { return { kt: String(r.company_id), r: r, src: 'bc' }; })
-    .filter(function (x) { return x.kt.length === 10 && !arrearsMap[x.kt] && !isCash(x.kt) && x.r.payment_terms_code !== 'SJUKRA'; });
+    .filter(function (x) { return x.kt.length === 10 && !used[x.kt] && !arrearsMap[x.kt] && !isCash(x.kt) && x.r.payment_terms_code !== 'SJUKRA'; });
   var pers = persApps.slice(0, 1).concat(persBc.slice(0, 1), persApps.slice(1, 4), persBc.slice(1, 4));
   emit('Einstaklingsfyrirtæki (2)', pers, first(pers.length, 2), function (x) {
     return (x.src === 'umsókn' ? 'Sótti um á eigin kennitölu.' : 'Í reikningsviðskiptum á eigin kennitölu, ' + kr(x.r.sales) + ' í sölu.') +

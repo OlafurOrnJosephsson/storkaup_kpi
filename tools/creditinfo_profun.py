@@ -10,6 +10,13 @@ er EKKI í git: það ber kennitölur og innra mat. Þetta tól er í git; gögn
       - Úttektarheimild: dálkurinn „Hver framfylgir“ við reglur 1–5.
       - Spurningar til CI: nr. 9 um uppflettingar.
 
+  python tools/creditinfo_profun.py saekja <úrtak.csv> [--yfirskrifa]
+      Les flipann „Creditinfo úrtak“ úr umsóknarskjalinu (File → Download →
+      CSV, sækir aðeins þann flipa) og fyllir ✓-línurnar í Prófunarlisti 20:
+      nafn, kennitölu, núverandi heimild og viðskiptasögu, í rétta hópa.
+      Eigið mat (G) er bókhalds og er ekki snert. Færðu ✓ á milli lína í
+      Google Sheets fyrst ef þú vilt skipta út.
+
   python tools/creditinfo_profun.py flytja-ut [--leyfa-drog]
       Býr til docs/creditinfo/Til_Creditinfo_<dags>.xlsx: Lesið fyrst, reglurnar,
       núverandi framkvæmd, prófunarlistinn (Nr, kennitala, heiti — ekkert annað),
@@ -22,6 +29,7 @@ er EKKI í git: það ber kennitölur og innra mat. Þetta tól er í git; gögn
       Prófunarlisti 20, parað á kennitölu.
 """
 import datetime
+import io
 import os
 import re
 import shutil
@@ -153,6 +161,81 @@ def undirbua():
 
     save(wb, MASTER)
     say('Vinnuskjal undirbúið. Afrit fyrir breytingu: ' + os.path.basename(MASTER.replace('.xlsx', '_fyrir_undirbuning.xlsx')))
+
+
+# ── saekja ─────────────────────────────────────────────────────────────────
+def read_table(path):
+    """Línur blaðsins „Creditinfo úrtak“ frá og með fyrirsagnarlínunni „Tillaga“."""
+    if path.lower().endswith('.csv'):
+        import csv
+        with io.open(path, encoding='utf-8-sig', newline='') as f:
+            rows = list(csv.reader(f))
+    else:
+        wb = load(path)
+        ws = wb['Creditinfo úrtak'] if 'Creditinfo úrtak' in wb.sheetnames else wb.active
+        rows = [['' if v is None else str(v) for v in r] for r in ws.iter_rows(values_only=True)]
+    start = next((i for i, r in enumerate(rows) if r and r[0].strip() == 'Tillaga'), None)
+    if start is None:
+        die('Fann ekki fyrirsagnarlínuna „Tillaga“ í ' + os.path.basename(path) +
+            ' — sóttirðu flipann „Creditinfo úrtak“?')
+    head = [h.strip() for h in rows[start]]
+    return [dict(zip(head, [c.strip() for c in r])) for r in rows[start + 1:] if any(c.strip() for c in r)]
+
+
+def num(v):
+    v = re.sub(r'[^0-9\-]', '', str(v or ''))
+    return int(v) if v not in ('', '-') else None
+
+
+def saekja(path, yfirskrifa):
+    picked = [r for r in read_table(path) if r.get('Tillaga')]
+    groups = {}
+    for r in picked:
+        groups.setdefault(re.sub(r'\s*\(\d+\)\s*$', '', r.get('Hópur', '')), []).append(r)
+
+    wb = load(MASTER)
+    p = wb['Prófunarlisti 20']
+    slots = {}
+    for row in DATA_ROWS:
+        slots.setdefault(str(p.cell(row, 2).value or '').strip(), []).append(row)
+
+    filled = [p.cell(row, 1).value for row in DATA_ROWS if p.cell(row, 4).value]
+    if filled and not yfirskrifa:
+        die('Kennitölur eru þegar á Prófunarlisti 20 (Nr %s). Keyrðu með --yfirskrifa til að skipta þeim út.'
+            % ', '.join(map(str, filled)))
+
+    notes = []
+    for label, rows in slots.items():
+        got = groups.pop(label, [])
+        if len(got) != len(rows):
+            notes.append('%s: %d ✓ en %d sæti.' % (label, len(got), len(rows)))
+        for row in rows:
+            for col in (3, 4, 5, 6):
+                p.cell(row, col).value = None
+        for row, r in zip(rows, got):
+            heimild = num(r.get('Heimild í BC'))
+            saga = [r.get('Af hverju', '')]
+            if r.get('Greiðsluskilmálar'):
+                saga.append('Skilmálar ' + r['Greiðsluskilmálar'])
+            if r.get('Vöruflokkur'):
+                saga.append(r['Vöruflokkur'])
+            if r.get('Skor (umsókn)'):
+                saga.append('Skor %s við umsókn %s (%s)' % (r['Skor (umsókn)'], r.get('Dags. umsóknar', ''),
+                                                            r.get('Afdrif umsóknar', '')))
+            p.cell(row, 3).value = r.get('Fyrirtæki', '')
+            p.cell(row, 4).value = kt_digits(r.get('Kennitala'))
+            p.cell(row, 4).number_format = '@'
+            p.cell(row, 5).value = 'Staðgreiðsla (-1)' if heimild == -1 else heimild
+            p.cell(row, 6).value = ' · '.join(x for x in saga if x)
+    for label in groups:
+        notes.append('Hópurinn „%s“ er ekki á Prófunarlisti 20 — sleppt.' % label)
+
+    shutil.copy(MASTER, MASTER.replace('.xlsx', '_fyrir_saekja.xlsx'))
+    save(wb, MASTER)
+    n = sum(1 for row in DATA_ROWS if p.cell(row, 4).value)
+    say('Fyllt: %d af 20 á Prófunarlisti 20. Eigið mat (G) er eftir — það er bókhalds.' % n)
+    for x in notes:
+        say('ATH: ' + x)
 
 
 # ── flytja-ut ───────────────────────────────────────────────────────────────
@@ -328,6 +411,8 @@ if __name__ == '__main__':
         sys.exit(__doc__)
     if args[0] == 'undirbua':
         undirbua()
+    elif args[0] == 'saekja' and len(args) > 1:
+        saekja(args[1], '--yfirskrifa' in args)
     elif args[0] == 'flytja-ut':
         flytja_ut('--leyfa-drog' in args)
     elif args[0] == 'lesa-inn' and len(args) > 1:
