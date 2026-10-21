@@ -453,6 +453,91 @@ function installGa4PurchaseSyncTrigger_v1() {
   return { created: true, schedule: 'everyHours(1)' };
 }
 
+/************************************************************
+ * GA4 Realtime → raw.ga4_realtime_purchases_raw (2026-10-21, tilraun)
+ *
+ * Venjulega Data API-ið skilar deginum í dag nokkrum klukkutímum of seint.
+ * Realtime API sér síðustu 30 mínútur innan 1–2 mín, en gefur aðeins FJÖLDA
+ * purchase-atburða á mínútu — enga upphæð, ekkert transactionId. Upphæð er
+ * því áætluð í SQL (fjöldi × meðalpöntun) og realtime-mínútur gilda aðeins
+ * þar til venjulega API-ið hefur náð þeirri klukkustund
+ * (core/sql/ga4_realtime_v1.sql).
+ *
+ * minutesAgo miðast við klukkumínútur („00“ = mínútan sem er að líða), svo
+ * mínúta = núverandi klukkumínúta − minutesAgo. Hver keyrsla skrifar yfir
+ * mínútur gluggans með nýjustu talningu. Keyrir á 10 mín fresti — oftar en
+ * 30 mín glugginn, annars týnast mínútur.
+ ************************************************************/
+function scheduledGa4RealtimeSync_v1() {
+  try {
+    var resp = AnalyticsData.Properties.runRealtimeReport({
+      dimensions: [{ name: 'minutesAgo' }],
+      metrics: [{ name: 'eventCount' }],
+      dimensionFilter: {
+        filter: { fieldName: 'eventName', stringFilter: { value: 'purchase', matchType: 'EXACT' } }
+      },
+      minuteRanges: [{ startMinutesAgo: 29, endMinutesAgo: 0 }],
+      limit: 100
+    }, 'properties/' + getGa4PropertyId_());
+
+    var nowMinute = Math.floor(Date.now() / 60000) * 60000;
+    var syncedAt = new Date().toISOString();
+    var rows = (resp && resp.rows || []).map(function(r) {
+      var ago = Number(r.dimensionValues[0].value);
+      return {
+        minute_ts: new Date(nowMinute - ago * 60000).toISOString(),
+        purchases: Number(r.metricValues[0].value) || 0,
+        synced_at: syncedAt
+      };
+    }).filter(function(r) { return r.purchases > 0; });
+
+    if (rows.length) {
+      var conf = getSupabaseRestConfig_();
+      var res = UrlFetchApp.fetch(conf.baseUrl + '/ga4_realtime_purchases_raw?on_conflict=minute_ts', {
+        method: 'post',
+        contentType: 'application/json',
+        headers: {
+          apikey: conf.serviceRole,
+          Authorization: 'Bearer ' + conf.serviceRole,
+          'Content-Profile': 'raw',
+          'Accept-Profile': 'raw',
+          Prefer: 'resolution=merge-duplicates,return=minimal'
+        },
+        payload: JSON.stringify(rows),
+        muteHttpExceptions: true
+      });
+      var code = res.getResponseCode();
+      if (code < 200 || code >= 300) {
+        throw new Error('GA4 realtime Supabase upsert failed: ' + code + ' ' + res.getContentText());
+      }
+    }
+    var result = { minutesWithPurchases: rows.length, purchases: rows.reduce(function(s, r) { return s + r.purchases; }, 0) };
+    Logger.log('[GA4][REALTIME] ' + JSON.stringify(result));
+    return result;
+  } catch (e) {
+    var errObj = serializeError_(e);
+    Logger.log('[GA4][REALTIME][ERROR] ' + JSON.stringify(errObj));
+    if (typeof notifyTriggerFailure_ === 'function') {
+      try { notifyTriggerFailure_('scheduledGa4RealtimeSync_v1', errObj, {}); } catch (alertErr) {}
+    }
+    throw e;
+  }
+}
+
+function installGa4RealtimeSyncTrigger_v1() {
+  var fn = 'scheduledGa4RealtimeSync_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[GA4][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+  ScriptApp.newTrigger(fn).timeBased().everyMinutes(10).create();
+  Logger.log('[GA4][INFO] Created trigger for ' + fn + ' (every 10 min)');
+  return { created: true, schedule: 'everyMinutes(10)' };
+}
+
 /**
  * Kvörðun: nær GA4 vefpöntunum? (2026-10-21)
  *
