@@ -341,6 +341,118 @@ function runGa4Sync_v1() {
   return scheduledGa4Sync_v1({ startDate: '35daysAgo', endDate: 'today' });
 }
 
+/************************************************************
+ * GA4 pantanir → raw.ga4_purchases_raw (2026-10-21)
+ *
+ * Brú fyrir vefsöluna á mælaborðinu eftir að Magento API lokaðist. Ein röð á
+ * pöntun (transaction_id), upphæðin = grand_total m/VSK (kvörðun 1.–20. okt:
+ * 721 af 721 pörðum pöntunum stemmdu upp á krónu). GA4 nær ~89% pantana;
+ * uppreikningur og síun á gömlum pöntunarnúmerum fer fram í SQL
+ * (core/sql/ga4_purchases_v1.sql), ekki hér — hér er geymt það sem GA4 sagði.
+ *
+ * GA4 bætir við gögnum fyrir liðna daga í nokkra klukkutíma, svo hver keyrsla
+ * sækir síðustu 3 daga aftur. Sama pöntun getur birst í fleiri en einni
+ * klukkustund; sú fyrsta gildir.
+ ************************************************************/
+function fetchGa4Purchases_(startDate, endDate) {
+  var resp = runGa4Report_({
+    dateRanges: [{ startDate: startDate, endDate: endDate }],
+    dimensions: [{ name: 'date' }, { name: 'hour' }, { name: 'transactionId' }],
+    metrics: [{ name: 'purchaseRevenue' }],
+    limit: 100000
+  });
+  var byId = {};
+  (resp && resp.rows || []).forEach(function(r) {
+    var id = String(r.dimensionValues[2].value || '').trim();
+    if (!id || id === '(not set)') return;
+    var day = formatGa4DateToIso_(r.dimensionValues[0].value);
+    var hour = Number(r.dimensionValues[1].value);
+    if (isNaN(hour)) hour = null;
+    var prev = byId[id];
+    if (prev && (prev.purchase_day < day || (prev.purchase_day === day && prev.purchase_hour <= hour))) return;
+    byId[id] = {
+      transaction_id: id,
+      purchase_day: day,
+      purchase_hour: hour,
+      revenue_incl: Number(r.metricValues[0].value) || 0,
+      synced_at: new Date().toISOString()
+    };
+  });
+  return Object.keys(byId).map(function(k) { return byId[k]; });
+}
+
+function upsertGa4PurchasesToSupabase_(rows) {
+  if (!rows || !rows.length) return { uploaded: 0 };
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/ga4_purchases_raw?on_conflict=transaction_id';
+  var chunkSize = 500;
+  var uploaded = 0;
+
+  for (var i = 0; i < rows.length; i += chunkSize) {
+    var chunk = rows.slice(i, i + chunkSize);
+    var res = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw',
+        'Accept-Profile': 'raw',
+        Prefer: 'resolution=merge-duplicates,return=minimal'
+      },
+      payload: JSON.stringify(chunk),
+      muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error('GA4 purchases Supabase upsert failed: ' + code + ' ' + res.getContentText());
+    }
+    uploaded += chunk.length;
+  }
+
+  return { uploaded: uploaded };
+}
+
+function scheduledGa4PurchaseSync_v1(options) {
+  var opts = options || {};
+  var startDate = String(opts.startDate || '3daysAgo');
+  var endDate = String(opts.endDate || 'today');
+  try {
+    var rows = fetchGa4Purchases_(startDate, endDate);
+    var out = upsertGa4PurchasesToSupabase_(rows);
+    var result = { startDate: startDate, endDate: endDate, fetched: rows.length, uploaded: out.uploaded };
+    Logger.log('[GA4][PURCHASES] ' + JSON.stringify(result));
+    return result;
+  } catch (e) {
+    var errObj = serializeError_(e);
+    Logger.log('[GA4][PURCHASES][ERROR] ' + JSON.stringify(errObj));
+    if (!opts.manual && typeof notifyTriggerFailure_ === 'function') {
+      try { notifyTriggerFailure_('scheduledGa4PurchaseSync_v1', errObj, {}); } catch (alertErr) {}
+    }
+    throw e;
+  }
+}
+
+// Fyllir töfluna frá 1. okt — skörunin við Magento (1.–21. okt) er það sem
+// SQL-ið kvarðar á og sannreynir. Keyra einu sinni eftir ga4_purchases_v1.sql.
+function backfillGa4Purchases_v1() {
+  return scheduledGa4PurchaseSync_v1({ startDate: '2026-10-01', endDate: 'today', manual: true });
+}
+
+function installGa4PurchaseSyncTrigger_v1() {
+  var fn = 'scheduledGa4PurchaseSync_v1';
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === fn;
+  });
+  if (existing.length) {
+    Logger.log('[GA4][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
+    return { created: false, existing: existing.length };
+  }
+  ScriptApp.newTrigger(fn).timeBased().everyHours(1).create();
+  Logger.log('[GA4][INFO] Created trigger for ' + fn + ' (every hour)');
+  return { created: true, schedule: 'everyHours(1)' };
+}
+
 /**
  * Kvörðun: nær GA4 vefpöntunum? (2026-10-21)
  *
