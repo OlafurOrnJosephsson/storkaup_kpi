@@ -3180,7 +3180,10 @@ function checkSafePollWatchdog_() {
         + '1. auditTriggers_v1() — er trigger fyrir safePoll_v2 enn uppsettur?\n'
         + '   Ef ekki: installSafePollTrigger_v2() (ekki resetRecommendedTimeTriggers_v1).\n'
         + '2. Executions í Apps Script — er safePoll_v2 að falla eða að fá ekki lás?\n'
-        + '3. safePollNow_v2() — keyrir handvirkt framhjá tímaglugganum.',
+        + '3. safePollNow_v2() — keyrir handvirkt framhjá tímaglugganum.\n'
+        + '4. NEWWEB_Logs — „UrlFetch non-200“ með status 403 þýðir að Magento hafnar\n'
+        + '   IP-tölunni (Hagar hvítlista Magento API). Ef lokunin er varanleg:\n'
+        + '   SETTINGS.MAGENTO_API_ENABLED = false (sjá RUNBOOK → Magento API off switch).',
       'safepoll_watchdog',
       getAlertThrottleMinutes_('safepoll_watchdog', 180)
     );

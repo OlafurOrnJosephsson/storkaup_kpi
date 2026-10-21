@@ -777,6 +777,13 @@ function fetchOrdersAndMapRows_(existingIds, headers, startAfter) {
   return { rows: mappedRows, lastWrittenCreatedAt };
 }
 
+// Sett þegar Magento svarar öðru en 200 í þessari keyrslu. fetchMagentoPage_
+// skilar þá tómri síðu í stað þess að kasta, svo safePoll_v2 „tókst“ og skrifaði
+// lífsmark — hafnað kall (403 við IP-hvítlistun, 2026-10) leit út eins og engar
+// nýjar pantanir og varðhundurinn þagði. safePoll_v2 les þetta og sleppir
+// lífsmarkinu. Ný keyrsla = nýtt runtime, svo gildið lifir ekki á milli keyrslna.
+var NEWWEB_V2_FETCH_FAILED_ = false;
+
 function fetchMagentoPage_(createdAfter, page) {
   const CONFIG = loadConfig_();
   const base = String(CONFIG.ENDPOINTS.Magento.BASE_URL || '').replace(/\/$/, '');
@@ -855,6 +862,7 @@ function fetchMagentoPage_(createdAfter, page) {
   }
 
   if (status !== 200) {
+    NEWWEB_V2_FETCH_FAILED_ = true;
     logNewwebEvent_('ERROR', 'UrlFetch non-200 (v2)', {
       url,
       status,
@@ -1262,7 +1270,15 @@ function safePoll_v2(opts) {
     return { ran: false, reason: 'locked', forced: force, windowDecision: windowDecision };
   }
   try {
+    NEWWEB_V2_FETCH_FAILED_ = false;
     pollMagentoOrders_v2();
+
+    if (NEWWEB_V2_FETCH_FAILED_) {
+      // Ekkert lífsmark: varðhundurinn (klst.) á að taka eftir þessu. Engin
+      // tilkynning héðan — hún færi á 15 mín fresti allan daginn.
+      Logger.log('[NEWWEB][WARN] Magento svaraði ekki 200 — lífsmark ekki skrifað');
+      return { ran: true, reason: 'magento_non200', forced: force, windowDecision: windowDecision };
+    }
 
     // Hjartsláttur (2026-08-11). safePoll_v2 skráði aldrei í raw.ingestion_runs,
     // en checkIngestionRuns_ bjóst við keyrslu innan 4 klst — svo
