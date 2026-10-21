@@ -19,7 +19,12 @@
 function isMagentoApiEnabled_() {
   try {
     const settings = (loadConfig_() || {}).SETTINGS || {};
-    return String(settings.MAGENTO_API_ENABLED || '').toLowerCase().trim() !== 'false';
+    // loadSettingsConfig_ breytir „false“ í boolean false (og sheet-reitur með
+    // FALSE er þegar boolean). `String(v || '')` gerði false að '' = kveikt, svo
+    // rofinn virkaði ekki fyrsta morguninn sem á hann reyndi (2026-10-21).
+    const v = settings.MAGENTO_API_ENABLED;
+    if (v === false) return false;
+    return String(v == null ? '' : v).toLowerCase().trim() !== 'false';
   } catch (e) {
     return true;
   }
