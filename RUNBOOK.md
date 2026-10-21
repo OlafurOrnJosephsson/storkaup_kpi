@@ -126,6 +126,16 @@ Notes:
   syncs, the live key lookup in application pruning, and pending orders in the
   admin app. The safePoll watchdog stays silent, and the daily check logs a
   `warning` instead of an `error`. **A missing row means on.**
+- The switch also pauses `scheduledKlaviyoProfileSync_v1` (since 2026-10-21).
+  Once web orders stop, the BC side cannot fill in, because it excludes
+  `VEFUR` on purpose. Web customers' last order then freezes, they drift to
+  `lapsing`/`lapsed`, and win-back (which reads `stk_customer_state`) would
+  email people who are still ordering. Klaviyo keeps the values it had at the
+  cut-off.
+- Reports that freeze at the cut-off: every SQL reading
+  `raw.newweb_orders_raw` (daily dashboard, weekly and monthly digests, web
+  records, customer page, graduation, web activation). Only BC-only figures
+  keep moving.
 - Nothing writes to Magento — only `GET /orders` and `GET /customers/search`,
   plus the admin-token login in `core/auth.js`.
 

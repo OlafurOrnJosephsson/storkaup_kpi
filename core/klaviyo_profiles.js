@@ -193,6 +193,17 @@ function scheduledKlaviyoProfileSync_v1() {
   var result = { startedAt: startedAt.toISOString(), rows: 0, sent: 0, skippedNew: 0, jobs: [] };
   Logger.log('[KLAVIYO_PROFILES][INFO] Started scheduledKlaviyoProfileSync_v1');
 
+  // Magento lokað → vefpantanir hætta að berast, og BC-hlutinn útilokar VEFUR
+  // viljandi (annars tvítalið). Síðasta pöntun vefviðskiptavina frýs því, þeir
+  // renna í 'lapsing'/'lapsed' og win-back (les stk_customer_state) færi að
+  // senda fólki sem er enn að panta. Klaviyo heldur gildunum frá lokun — þau
+  // eru rétt miðað við þann dag, ný gildi væru röng.
+  if (typeof isMagentoApiEnabled_ === 'function' && !isMagentoApiEnabled_()) {
+    Logger.log('[KLAVIYO_PROFILES][INFO] Skipped: Magento API lokað — vefpantanir frosnar, stk_* ekki uppfært');
+    result.skipped = 'magento_disabled';
+    return result;
+  }
+
   try {
     try {
       runId = startIngestionRun_('scheduledKlaviyoProfileSync_v1', 'klaviyo_profiles', { trigger_type: 'time_based' });
