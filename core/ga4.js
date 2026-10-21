@@ -340,3 +340,111 @@ function scheduledGa4Sync_v1(options) {
 function runGa4Sync_v1() {
   return scheduledGa4Sync_v1({ startDate: '35daysAgo', endDate: 'today' });
 }
+
+/**
+ * Kvörðun: nær GA4 vefpöntunum? (2026-10-21)
+ *
+ * Magento API lokaðist 2026-10-21 og GA4 á að brúa vefsöluna á mælaborðinu.
+ * Purchase-taggið (GTM) sendir transaction_id, value og currency=ISK, svo GA4
+ * telur bæði pantanir og veltu. Þetta ber það saman við raw.newweb_orders_raw
+ * dag fyrir dag á tímabili þar sem báðar uppsprettur voru virkar. Byrjar
+ * 1. okt: GTM v96/v97 breytti talningunni þann dag, eldri dagar eru ekki
+ * sambærilegir (.claude/rules/ga4-gtm.md).
+ *
+ * Les eingöngu. Keyra í ritlinum: ga4PurchaseCalibration_v1()
+ */
+function ga4PurchaseCalibration_v1(startIso, endIso) {
+  var start = startIso || '2026-10-01';
+  var end = endIso || '2026-10-20';
+
+  // GA4 dag fyrir dag
+  var resp = runGa4Report_({
+    dateRanges: [{ startDate: start, endDate: end }],
+    dimensions: [{ name: 'date' }],
+    metrics: [{ name: 'transactions' }, { name: 'purchaseRevenue' }],
+    limit: 1000
+  });
+  var ga = {};
+  (resp && resp.rows || []).forEach(function(r) {
+    ga[formatGa4DateToIso_(r.dimensionValues[0].value)] = {
+      tx: Number(r.metricValues[0].value) || 0,
+      rev: Number(r.metricValues[1].value) || 0
+    };
+  });
+
+  // GA4 á hverja pöntun — til að sjá hvort value = grand_total
+  var txResp = runGa4Report_({
+    dateRanges: [{ startDate: start, endDate: end }],
+    dimensions: [{ name: 'transactionId' }],
+    metrics: [{ name: 'purchaseRevenue' }],
+    limit: 10000
+  });
+  var gaTx = {};
+  (txResp && txResp.rows || []).forEach(function(r) {
+    gaTx[String(r.dimensionValues[0].value || '').trim()] = Number(r.metricValues[0].value) || 0;
+  });
+
+  // Magento úr Supabase, síðað (PostgREST skilar mest 1000 í einu)
+  var mag = {};
+  var magById = {};
+  for (var offset = 0; offset < 50000; offset += 1000) {
+    var page = supabaseRestGetJson_(
+      'newweb_orders_raw?select=order_id,purchase_date,grand_total'
+        + '&purchase_date=gte.' + start + 'T00:00:00Z'
+        + '&purchase_date=lte.' + end + 'T23:59:59Z'
+        + '&order=purchase_date.asc&limit=1000&offset=' + offset,
+      'raw'
+    );
+    page = Array.isArray(page) ? page : [];
+    page.forEach(function(r) {
+      var id = String(r.order_id || '').trim();
+      if (!id || magById[id] != null) return;
+      magById[id] = Number(r.grand_total) || 0;
+      var d = String(r.purchase_date || '').slice(0, 10);
+      if (!mag[d]) mag[d] = { orders: 0, rev: 0 };
+      mag[d].orders += 1;
+      mag[d].rev += magById[id];
+    });
+    if (page.length < 1000) break;
+  }
+
+  function pct(a, b) { return b ? Math.round(1000 * a / b) / 10 : null; }
+
+  var days = Object.keys(mag).concat(Object.keys(ga))
+    .filter(function(d, i, arr) { return arr.indexOf(d) === i; }).sort();
+  var tot = { magOrders: 0, gaTx: 0, magRev: 0, gaRev: 0 };
+  var lines = ['dagur       | mag_pant | ga4_pant | %     | mag_velta   | ga4_velta   | %'];
+  days.forEach(function(d) {
+    var m = mag[d] || { orders: 0, rev: 0 };
+    var g = ga[d] || { tx: 0, rev: 0 };
+    tot.magOrders += m.orders; tot.gaTx += g.tx; tot.magRev += m.rev; tot.gaRev += g.rev;
+    lines.push([d, m.orders, g.tx, pct(g.tx, m.orders), Math.round(m.rev), Math.round(g.rev), pct(g.rev, m.rev)].join(' | '));
+  });
+
+  // Pöntun fyrir pöntun: finnast transaction_id-in í Magento og stemmir upphæðin?
+  var ids = Object.keys(gaTx).filter(function(k) { return k && k !== '(not set)'; });
+  var matched = 0, sameAmount = 0;
+  ids.forEach(function(k) {
+    if (magById[k] == null) return;
+    matched += 1;
+    if (Math.abs(gaTx[k] - magById[k]) <= 1) sameAmount += 1;
+  });
+
+  var out = {
+    period: start + '..' + end,
+    magentoOrders: tot.magOrders,
+    ga4Transactions: tot.gaTx,
+    ordersCapturedPct: pct(tot.gaTx, tot.magOrders),
+    magentoRevenue: Math.round(tot.magRev),
+    ga4Revenue: Math.round(tot.gaRev),
+    revenueCapturedPct: pct(tot.gaRev, tot.magRev),
+    ga4TransactionIds: ids.length,
+    idsFoundInMagento: matched,
+    idsSameAmountAsGrandTotal: sameAmount,
+    sampleGa4Ids: ids.slice(0, 5),
+    sampleMagentoIds: Object.keys(magById).slice(0, 5)
+  };
+  Logger.log('[GA4][CALIBRATION] dag fyrir dag:\n' + lines.join('\n'));
+  Logger.log('[GA4][CALIBRATION] ' + JSON.stringify(out));
+  return out;
+}
