@@ -398,6 +398,48 @@ function webapp_pruneApplications() {
   return out;
 }
 
+// ── Lokið handvirkt (2026-10-22) ──────────────────────────────────────────────
+// Magento API lokaðist 2026-10-21, og þar með beina uppflettingin sem
+// pruneCompletedApplications_ notaði til að sjá hvort aðgangur væri kominn.
+// „Samstilla“ finnur nú aðeins það sem var í frosna MAGENTO_CUSTOMERS-afritinu.
+// Þetta færir EINA umsókn í sama LOKID-flipa og prune gerði, þegar
+// starfsmaður veit að aðgangurinn er stofnaður. Enginn póstur.
+//
+// sourceKey kemur úr vafranum (google.script.run) — leyft aðeins það sem er
+// í APP_SOURCES.
+function webapp_markLokid(rowData, sourceKey) {
+  var user = adminGuard_('umsokn');
+  return webapp_withLock_(function () {
+    var out = webapp_markLokidLocked_(rowData, sourceKey);
+    webapp_audit_(user, 'lokid_handvirkt_' + (sourceKey === 'RAFRAEN_INNSKRANING' ? 'rafraen' : 'umsokn'),
+                  rowData, out.removed ? '' : 'röð fannst ekki');
+    return out;
+  });
+}
+
+function webapp_markLokidLocked_(rowData, sourceKey) {
+  var src = APP_SOURCES.find(function(s) { return s.key === sourceKey; });
+  if (!src) throw new Error('Óþekkt biðröð: ' + sourceKey);
+  var ss      = SpreadsheetApp.openById(loadConfig_().SHEETS[src.key].ID);
+  var sheet   = ss.getSheetByName(src.mainTab) || ss.getSheets()[0];
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+  var idx = webapp_findRowIndexByEmail_(sheet, src.emailHeader, rowData.email, src.companyKtHeader, rowData.companyKt);
+  if (idx > 0) {
+    // Sama flipi og sama uppsetning og pruneCompletedApplications_ (core/customers.js).
+    var dest = ss.getSheetByName('LOKID');
+    if (!dest) {
+      dest = ss.insertSheet('LOKID');
+      dest.appendRow(headers);
+      dest.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+      dest.setFrozenRows(1);
+    }
+    dest.appendRow(sheet.getRange(idx, 1, 1, headers.length).getValues()[0]);
+    sheet.deleteRow(idx);
+  }
+  return { ok: true, removed: idx > 0 };
+}
+
 function webapp_markUmsokn_Done(rowData) {
   var user = adminGuard_('umsokn');
   return webapp_withLock_(function () {

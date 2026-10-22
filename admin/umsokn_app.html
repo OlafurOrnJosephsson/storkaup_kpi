@@ -651,7 +651,7 @@ function emptyCardHtml(tab) {
       + '<div class="uc-f"><div class="uc-k">Hvaðan</div><div class="uc-v">' + c.from + '</div></div>'
     + '</div>'
     + '<div class="uc-act st-clear">'
-      + '<div class="uc-hint">Nýjar umsóknir birtast hér sjálfkrafa. <strong>Samstilla</strong> færir umsóknir sem komnar eru með aðgang í Magento í LOKID.</div>'
+      + '<div class="uc-hint">Nýjar umsóknir birtast hér sjálfkrafa. <strong>Lokið</strong> á kortinu færir umsókn í LOKID þegar aðgangur er stofnaður. <strong>Samstilla</strong> finnur aðeins aðganga sem voru til í Magento fyrir 21. okt.</div>'
     + '</div>'
   + '</div></div>';
 }
@@ -715,6 +715,7 @@ function renderRafraen(rows) {
           + '<option value="workplace">Vantar vinnustað (undirkennitala)</option>'
         + '</select>'
         + '<button class="btn btn-primary" onclick="confirmRafraen(' + i + ')">Senda</button>'
+        + '<button class="btn btn-ghost" onclick="confirmLokid(\'rafraen\',' + i + ')" title="Aðgangur stofnaður — færa í LOKID">Lokið</button>'
       + '</div>'
 
       + '</div>';
@@ -844,6 +845,7 @@ function renderUmsokn(rows) {
               + '<option value="3">3 — Staðgreiðsla einungis</option>'
             + '</select>'
             + '<button class="btn btn-primary" onclick="confirmUmsokn(' + i + ')">Senda</button>'
+            + '<button class="btn btn-ghost" onclick="confirmLokid(\'umsokn\',' + i + ')" title="Aðgangur stofnaður — færa í LOKID">Lokið</button>'
             // Aðskilið frá skor-merkinu: onScoreChange skrifar yfir #score-badge,
             // og þá mátti skýringin um einstaklingskennitölu ekki hverfa með.
             + (personal ? '<div class="uc-hint">Einstaklingskennitala — svarbréf 2 valið sjálfkrafa.</div>' : '')
@@ -857,6 +859,50 @@ function renderUmsokn(rows) {
   el.innerHTML = html;
 }
 
+
+// „Lokið“ (2026-10-22): Magento API er lokað og Samstilla sér ekki lengur
+// aðganga sem stofnaðir eru eftir 21. okt. Færir eina umsókn í LOKID þegar
+// aðgangur er stofnaður. Enginn póstur.
+function confirmLokid(tab, i) {
+  var isRaf = tab === 'rafraen';
+  var r     = isRaf ? appData.rafraen[i] : appData.umsokn[i];
+  var rowId = (isRaf ? 'raf-row-' : 'ums-row-') + i;
+  openModal(
+    'Merkja sem lokið',
+    'Færir umsóknina í LOKID. Notaðu þetta þegar aðgangur að vefverslun hefur verið stofnaður. Enginn póstur er sendur.',
+    '<strong>' + esc(r.company || r.name || r.email) + '</strong><br>' + esc(r.email)
+      + (r.companyKt ? '<br><span class="cell-sub">' + esc(r.companyKt) + '</span>' : ''),
+    function() {
+      run('webapp_markLokid', [{ rowIndex: r.rowIndex, email: r.email, companyKt: r.companyKt, company: r.company },
+                               isRaf ? 'RAFRAEN_INNSKRANING' : 'UMSOKN_VIDSKIPTI'])
+        .then(function(out) {
+          if (out && out.removed === false) {
+            showToast('Umsóknin fannst ekki í blaðinu — sæktu listann aftur.', true);
+            return;
+          }
+          var el = document.getElementById(rowId);
+          if (el) el.classList.add('done');
+          setTimeout(function() {
+            var el2 = document.getElementById(rowId);
+            if (el2) el2.remove();
+            var left;
+            if (isRaf) {
+              left = document.querySelectorAll('#tab-rafraen .card:not(.done)').length;
+            } else {
+              appData.umsokn[i]._done = true;
+              left = appData.umsokn.filter(function(x) { return x && !x._done; }).length;
+            }
+            document.getElementById('badge-' + tab).textContent = left;
+            showEmptyIfNone(tab);
+            notifyParentPending();
+          }, 600);
+          showToast((r.company || r.email) + ' fært í LOKID');
+        })
+        .catch(function(e) { showToast('Villa: ' + (e.message || e), true); });
+    },
+    'Lokið'
+  );
+}
 
 function confirmDone(i) {
   var r = appData.umsokn[i];
