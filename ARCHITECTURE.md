@@ -65,14 +65,17 @@ The required trigger set is defined once, in `requiredTimeTriggers_()` (`core/ut
 | `scheduledSearchConsoleSync_v1` | Daily ~05:30 | Search Console | `core/search_console.js` |
 | `scheduledKlaviyoProfileSync_v1` | Daily ~06:10 | Our data → Klaviyo profile properties (`stk_*`) | `core/klaviyo_profiles.js` |
 | `scheduledGa4Sync_v1` | Daily ~06:30 | GA4 | `core/ga4.js` |
+| `scheduledGa4RealtimeSync_v1` | Every 10 min | GA4 Realtime purchases (experiment); also runs `scheduledGa4PurchaseSync_v1` once an hour — that has no trigger of its own | `core/ga4.js` |
 | `scheduledLagersalaSync_v1` | Every 15 min, runs 07:00–21:59 | Stock snapshot of storkaup.is/lagersala — remove when the sale ends | `core/lagersala.js` |
 | `scheduledZeroPriceScan_v1` | Daily ~06:50 | storkaup.is zero list-price scan | `core/storkaup_pricing.js` |
 | `runDailySanityChecks_v1` | Daily ~07:40 | Cross-source validation | `core/utils.js` |
-| `scheduledNewwebStatusSync_v2` | Daily ~11:30 & ~17:30 (2 triggers) | Magento order status | `core/newsales_v2.js` |
+| `scheduledNewwebStatusSync_v2` | Hourly trigger, runs only at 11 and 17 | Magento order status | `core/newsales_v2.js` |
 | `scheduledWeeklyDigest` | Mondays ~08:00 | Weekly email | `core/email.js` |
 | `scheduledMonthlyDigest` | Monthly, 1st ~08:00 | Monthly email + records (`web_records_v1`) | `core/email.js` |
 
 `safePoll_v2`'s 5-minute trigger is gated by `getNewwebRunWindowDecision_v2_()`: off 00:00–06:59, every run 07:00–21:59, quarter-hours only 22:00–23:59. `safePollNow_v2()` (or the NEWWEB menu item) forces a run.
+
+**20-trigger cap.** Apps Script allows 20 triggers per user per project. The main project hit it on 2026-10-22 and "Keyra aftur" in vöruvöktun failed (`This script has too many triggers`), because it creates a one-off trigger. `consolidateTriggers_v1` freed two slots. Fold a new job into an existing trigger before giving it its own.
 
 `auditTriggers_v1` also knows a set of **OPTIONAL** handlers — `onOpen`, `pruneCompletedApplications`, `runScheduledSeoAutomation_v1`, `collectInvoicesToDrive_v1`, `zeroPriceScanFromTrigger_v1` — which it recognises but **never warns about when absent**.
 

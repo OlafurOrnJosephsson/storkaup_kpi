@@ -4898,6 +4898,9 @@ function removeTriggersByHandler_v1(handlerFn) {
  * deleted and never put back. That came in with 542ab7d (2026-05-11), the
  * same window in which those triggers went missing for three months.
  */
+// Apps Script caps a project at 20 triggers per user. One-off triggers
+// (zeroPriceScanFromTrigger_v1) need free slots on top of these — before adding
+// a handler, fold it into an existing trigger if it can (consolidateTriggers_v1).
 function requiredTimeTriggers_() {
   return {
     safePoll_v2:                      { cadence: 'every 5 min',                          install: installSafePollTrigger_v2 },
@@ -4910,12 +4913,11 @@ function requiredTimeTriggers_() {
     scheduledSearchConsoleSync_v1:    { cadence: 'daily ~05:30',                         install: installScheduledSearchConsoleSyncTrigger_v1 },
     scheduledKlaviyoProfileSync_v1:   { cadence: 'daily ~06:10',                         install: installScheduledKlaviyoProfileSyncTrigger_v1 },
     scheduledGa4Sync_v1:              { cadence: 'daily ~06:30',                         install: installScheduledGa4SyncTrigger_v1 },
-    scheduledGa4PurchaseSync_v1:      { cadence: 'hourly',                               install: installGa4PurchaseSyncTrigger_v1 },
-    scheduledGa4RealtimeSync_v1:      { cadence: 'every 10 min',                         install: installGa4RealtimeSyncTrigger_v1 },
+    scheduledGa4RealtimeSync_v1:      { cadence: 'every 10 min (+ GA4 purchase sync hourly)', install: installGa4RealtimeSyncTrigger_v1 },
     scheduledLagersalaSync_v1:        { cadence: 'every 15 min, runs 07:00–21:59',      install: installLagersalaSyncTrigger_v1 },
     scheduledZeroPriceScan_v1:        { cadence: 'daily ~06:50',                         install: installZeroPriceScanTrigger_v1 },
     runDailySanityChecks_v1:          { cadence: 'daily ~07:40',                         install: installDailySanityChecksTrigger_v1 },
-    scheduledNewwebStatusSync_v2:     { cadence: 'daily ~11:30 & ~17:30 (2 triggers)',  install: installNewwebStatusSyncTrigger_v2 },
+    scheduledNewwebStatusSync_v2:     { cadence: 'hourly, runs at 11 and 17',            install: installNewwebStatusSyncTrigger_v2 },
     scheduledWeeklyDigest:            { cadence: 'Mondays ~08:00',                       install: installWeeklyDigestTrigger_v1 },
     scheduledMonthlyDigest:           { cadence: 'monthly, 1st ~08:00',                  install: installMonthlyDigestTrigger_v1 }
   };
@@ -5050,11 +5052,45 @@ function installNewwebStatusSyncTrigger_v2() {
     Logger.log('[NEWWEB][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
     return { created: false, existing: existing.length };
   }
-  // Twice daily: late morning and late afternoon, catching same-day status changes.
-  ScriptApp.newTrigger(fn).timeBased().everyDays(1).atHour(11).nearMinute(30).create();
-  ScriptApp.newTrigger(fn).timeBased().everyDays(1).atHour(17).nearMinute(30).create();
-  Logger.log('[NEWWEB][INFO] Created triggers for ' + fn + ' (~11:30 and ~17:30)');
-  return { created: true, schedule: 'everyDays(1) at ~11:30 and ~17:30' };
+  // One hourly trigger; the handler runs only at 11 and 17 (NEWWEB_STATUS_SYNC_HOURS_).
+  // Was two daily triggers until 2026-10-22 — see consolidateTriggers_v1.
+  ScriptApp.newTrigger(fn).timeBased().everyHours(1).create();
+  Logger.log('[NEWWEB][INFO] Created trigger for ' + fn + ' (hourly, runs at 11 and 17)');
+  return { created: true, schedule: 'everyHours(1), gated to 11 and 17' };
+}
+
+/************************************************************
+ * consolidateTriggers_v1 — one-off, 2026-10-22
+ *   Apps Script allows 20 triggers per user per project. The main project hit
+ *   it, and "Keyra aftur" in vöruvöktun (startZeroPriceScanForUi) failed with
+ *   "This script has too many triggers". This frees two slots:
+ *     - scheduledGa4PurchaseSync_v1 (hourly) now runs inside the 10-min
+ *       scheduledGa4RealtimeSync_v1 trigger → its own trigger is deleted.
+ *     - scheduledNewwebStatusSync_v2: two daily triggers → one hourly, gated.
+ *   Touches nothing else (safePoll_v2 untouched). Safe to re-run.
+ ************************************************************/
+function consolidateTriggers_v1() {
+  var removed = { scheduledGa4PurchaseSync_v1: 0, scheduledNewwebStatusSync_v2: 0 };
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    var h = t.getHandlerFunction();
+    if (h === 'scheduledGa4PurchaseSync_v1') { ScriptApp.deleteTrigger(t); removed[h]++; }
+  });
+
+  var statusTriggers = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === 'scheduledNewwebStatusSync_v2';
+  });
+  // Exactly one means it is already the hourly trigger; leave it.
+  if (statusTriggers.length !== 1) {
+    statusTriggers.forEach(function(t) { ScriptApp.deleteTrigger(t); removed.scheduledNewwebStatusSync_v2++; });
+    installNewwebStatusSyncTrigger_v2();
+  }
+
+  // Purchase sync now depends on this one.
+  installGa4RealtimeSyncTrigger_v1();
+
+  Logger.log('[TRIGGERS][CONSOLIDATE] removed ' + JSON.stringify(removed));
+  var audit = auditTriggers_v1();
+  return { removed: removed, total: audit.total, missing: audit.missing, unknown: audit.unknown };
 }
 
 function resetRecommendedTimeTriggers_v1() {

@@ -439,18 +439,21 @@ function backfillGa4Purchases_v1() {
   return scheduledGa4PurchaseSync_v1({ startDate: '2026-10-01', endDate: 'today', manual: true });
 }
 
-function installGa4PurchaseSyncTrigger_v1() {
-  var fn = 'scheduledGa4PurchaseSync_v1';
-  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
-    return t.getHandlerFunction() === fn;
-  });
-  if (existing.length) {
-    Logger.log('[GA4][INFO] Trigger already exists for ' + fn + ' (' + existing.length + ')');
-    return { created: false, existing: existing.length };
-  }
-  ScriptApp.newTrigger(fn).timeBased().everyHours(1).create();
-  Logger.log('[GA4][INFO] Created trigger for ' + fn + ' (every hour)');
-  return { created: true, schedule: 'everyHours(1)' };
+// Purchase-sync á ekki eigin trigger lengur (2026-10-22): verkefnið var komið í
+// 20 triggera hámark Apps Script og „Keyra aftur“ í vöruvöktun gat ekki búið
+// til einskiptis-trigger. 10 mín realtime-triggerinn keyrir hana í staðinn,
+// einu sinni á hverri klukkustund. Fari realtime-tilraunin, þarf purchase-sync
+// aftur eigin trigger.
+var GA4_PURCHASE_LAST_HOUR_KEY_ = 'GA4_PURCHASE_SYNC_LAST_HOUR';
+
+function runGa4PurchaseSyncIfDue_() {
+  var hourKey = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT', 'yyyy-MM-dd HH');
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty(GA4_PURCHASE_LAST_HOUR_KEY_) === hourKey) return null;
+  // Merkt fyrir keyrslu: villa fær sína einu viðvörun þessa klukkustund og
+  // reynt aftur á þeirri næstu, ekki á 10 mín fresti.
+  props.setProperty(GA4_PURCHASE_LAST_HOUR_KEY_, hourKey);
+  return scheduledGa4PurchaseSync_v1();
 }
 
 /************************************************************
@@ -467,8 +470,27 @@ function installGa4PurchaseSyncTrigger_v1() {
  * mínúta = núverandi klukkumínúta − minutesAgo. Hver keyrsla skrifar yfir
  * mínútur gluggans með nýjustu talningu. Keyrir á 10 mín fresti — oftar en
  * 30 mín glugginn, annars týnast mínútur.
+ *
+ * Sami trigger keyrir purchase-sync einu sinni á klukkustund
+ * (runGa4PurchaseSyncIfDue_). Villa í öðru stoppar ekki hitt.
  ************************************************************/
 function scheduledGa4RealtimeSync_v1() {
+  var realtimeErr = null, result = null;
+  try {
+    result = syncGa4Realtime_();
+  } catch (e) {
+    realtimeErr = e;
+  }
+  try {
+    runGa4PurchaseSyncIfDue_();
+  } catch (e) {
+    // scheduledGa4PurchaseSync_v1 hefur þegar loggað og sent viðvörun.
+  }
+  if (realtimeErr) throw realtimeErr;
+  return result;
+}
+
+function syncGa4Realtime_() {
   try {
     var resp = AnalyticsData.Properties.runRealtimeReport({
       dimensions: [{ name: 'minutesAgo' }],

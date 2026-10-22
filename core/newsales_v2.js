@@ -1329,8 +1329,17 @@ function safePollNow_v2() {
 
 /************************************************************
  * Scheduled status delta sync wrapper (v2)
+ *   Einn klukkutíma-trigger sem keyrir aðeins kl. 11 og 17 (áður tveir
+ *   daglegir triggerar — sparar trigger-pláss, 20 er hámarkið). Hliðið gildir
+ *   aðeins þegar trigger kallar (e.triggerUid); handvirk keyrsla fer alltaf.
  ************************************************************/
-function scheduledNewwebStatusSync_v2() {
+var NEWWEB_STATUS_SYNC_HOURS_ = [11, 17];
+
+function scheduledNewwebStatusSync_v2(e) {
+  if (e && e.triggerUid) {
+    var hour = Number(Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT', 'H'));
+    if (NEWWEB_STATUS_SYNC_HOURS_.indexOf(hour) < 0) return { skipped: true, reason: 'outside_hours', hour: hour };
+  }
   if (!isMagentoApiEnabled_()) {
     Logger.log('[NEWWEB][INFO] Status sync skipped: Magento API lokað (SETTINGS.MAGENTO_API_ENABLED=false)');
     return { skipped: true, reason: 'magento_disabled' };
