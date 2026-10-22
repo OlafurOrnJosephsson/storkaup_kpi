@@ -176,6 +176,17 @@ body {
   border-bottom: 1px solid #c9cce8; padding-bottom: 1px;
 }
 .uc-ktlink:hover { border-bottom-color: var(--sk-blue); }
+/* Afritunarhnappur við reit (2026-10-22) — daufur þar til bendillinn er yfir. */
+.cp-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; margin-left: 3px; padding: 0;
+  border: 0; border-radius: 4px; background: transparent;
+  color: var(--sk-ink-3); cursor: pointer; vertical-align: -3px;
+  opacity: .55; transition: opacity .15s, background .15s;
+}
+.cp-btn:hover { opacity: 1; background: rgba(0,0,0,.06); }
+.cp-btn.copied { opacity: 1; color: #1f8a4c; }
+.cp-btn svg { width: 12px; height: 12px; }
 
 /* ── Aðgerðareitur: litaður eftir stöðu ── */
 .uc-act {
@@ -694,15 +705,15 @@ function renderRafraen(rows) {
 
       + '<div class="uc-body">'
         + '<div class="uc-f"><div class="uc-k">Tengiliður</div><div class="uc-v">'
-          + '<strong>' + esc(r.name || '—') + '</strong>'
-          + (r.email ? '<br>' + esc(r.email) : '')
-          + (tel ? '<br><span class="tel">' + esc(tel) + '</span>' : '')
-          + (showPersonKt ? (tel ? ' · ' : '<br>') + '<span class="tel">' + esc(r.personKt) + '</span>' : '')
+          + '<strong>' + esc(r.name || '—') + '</strong>' + cp(r.name)
+          + (r.email ? '<br>' + esc(r.email) + cp(r.email) : '')
+          + (tel ? '<br><span class="tel">' + esc(tel) + '</span>' + cp(tel) : '')
+          + (showPersonKt ? (tel ? ' · ' : '<br>') + '<span class="tel">' + esc(r.personKt) + '</span>' + cp(r.personKt) : '')
         + '</div></div>'
         + '<div class="uc-f"><div class="uc-k">Fyrirtæki</div><div class="uc-v">'
           + (r.companyKt
               ? '<a class="uc-ktlink" target="_blank" rel="noopener" href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/'
-                + esc(r.companyKt) + '">' + esc(r.companyKt) + '</a>'
+                + esc(r.companyKt) + '">' + esc(r.companyKt) + '</a>' + cp(r.companyKt)
               : '<span style="color:var(--sk-ink-3)">Engin kennitala skráð</span>')
         + '</div></div>'
       + '</div>'
@@ -809,17 +820,17 @@ function renderUmsokn(rows) {
 
       + '<div class="uc-body">'
         + '<div class="uc-f"><div class="uc-k">Tengiliður</div><div class="uc-v">'
-          + '<strong>' + esc(r.name || '—') + '</strong>'
-          + (r.email ? '<br>' + esc(r.email) : '')
-          + (tel ? '<br><span class="tel">' + esc(tel) + '</span>' : '')
-          + (showPersonKt ? (tel ? ' · ' : '<br>') + '<span class="tel">' + esc(r.personKt) + '</span>' : '')
+          + '<strong>' + esc(r.name || '—') + '</strong>' + cp(r.name)
+          + (r.email ? '<br>' + esc(r.email) + cp(r.email) : '')
+          + (tel ? '<br><span class="tel">' + esc(tel) + '</span>' + cp(tel) : '')
+          + (showPersonKt ? (tel ? ' · ' : '<br>') + '<span class="tel">' + esc(r.personKt) + '</span>' + cp(r.personKt) : '')
         + '</div></div>'
         + '<div class="uc-f"><div class="uc-k">Fyrirtæki</div><div class="uc-v">'
           + (r.companyKt
               ? '<a class="uc-ktlink" target="_blank" rel="noopener" href="https://www.skatturinn.is/fyrirtaekjaskra/leit/kennitala/'
-                + esc(r.companyKt) + '">' + esc(r.companyKt) + '</a>'
+                + esc(r.companyKt) + '">' + esc(r.companyKt) + '</a>' + cp(r.companyKt)
               : '')
-          + (r.companyEmail ? (r.companyKt ? '<br>' : '') + esc(r.companyEmail) : '')
+          + (r.companyEmail ? (r.companyKt ? '<br>' : '') + esc(r.companyEmail) + cp(r.companyEmail) : '')
           + (addr ? '<br>' + esc(addr) : '')
           + (r.billingInfo ? '<br>' + esc(r.billingInfo) : '')
         + '</div></div>'
@@ -1066,6 +1077,48 @@ document.addEventListener('copy', function(e) {
 
 function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Lítill afritunarhnappur við reit (2026-10-22). Gildið fer í data-copy og er
+// lesið þaðan, svo sérstafir í nöfnum fari óbreyttir á klemmuspjaldið. esc()
+// sleppir gæsalöppum, svo þær eru teknar sérstaklega fyrir eigindið.
+var CP_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></svg>';
+var CP_OK   = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3 3 7-7"/></svg>';
+
+function cp(val) {
+  var v = String(val == null ? '' : val).trim();
+  if (!v) return '';
+  return '<button type="button" class="cp-btn" title="Afrita" aria-label="Afrita" data-copy="'
+    + esc(v).replace(/"/g, '&quot;') + '" onclick="copyVal(this)">' + CP_ICON + '</button>';
+}
+
+function copyVal(btn) {
+  var text = btn.getAttribute('data-copy') || '';
+  function done() {
+    btn.classList.add('copied');
+    btn.innerHTML = CP_OK;
+    setTimeout(function() { btn.classList.remove('copied'); btn.innerHTML = CP_ICON; }, 1200);
+  }
+  // HtmlService keyrir í sandboxuðum iframe og þar getur Clipboard API verið
+  // bannað. execCommand('copy') virkar innan smells og er varaleiðin.
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    if (ok) done(); else showToast('Gat ekki afritað. Veldu textann og ýttu á Ctrl+C.', true);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, fallback);
+  } else {
+    fallback();
+  }
 }
 
 // ── Sync ───────────────────────────────────────────────────────────────────
