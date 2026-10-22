@@ -1229,3 +1229,56 @@ function installZeroPriceScanTrigger_v1() {
   Logger.log('[ZEROPRICE][INFO] Created trigger for ' + fn + ' (every 1 day at ~06:50)');
   return { created: true, schedule: 'everyDays(1).atHour(6).nearMinute(50)' };
 }
+
+/************************************************************
+ * Prófun á storkaup.is frá Google (2026-10-22)
+ *
+ * Hagar færðu storkaup.is á bak við Azure Front Door. Vafrar taka ekki eftir
+ * því, en WAF/bot-vörn getur farið öðruvísi með köll frá IP-tölum Google —
+ * sama gerð umferðar og Magento-lokunin stöðvaði. Prófun af neti Haga segir
+ * ekkert um það; þetta gerir sömu köllin og triggerarnir, innan úr GAS.
+ *
+ * Les eingöngu. Keyra í ritlinum: checkStorkaupEndpoints_v1()
+ ************************************************************/
+function checkStorkaupEndpoints_v1() {
+  var checks = [
+    { name: 'graphql getProductsV2', url: STORKAUP_GQL_URL_, opts: {
+        method: 'post', contentType: 'application/json',
+        headers: { Accept: '*/*', Origin: 'https://www.storkaup.is' },
+        payload: JSON.stringify({
+          query: 'query getProductsV2($pagination: PaginationInput){ getProductsV2(pagination:$pagination){ totalCount } }',
+          variables: { pagination: { first: 1, offset: 0 } }, operationName: 'getProductsV2' }) },
+      ok: function(t) { var d = safeJsonParse_(t) || {}; return ((d.data || {}).getProductsV2 || {}).totalCount > 0; } },
+    { name: 'api/search', url: 'https://www.storkaup.is/api/search', opts: {
+        method: 'post', contentType: 'application/json',
+        payload: JSON.stringify({ query: 'kaffi', pageNumber: 1, pageSize: 5, responseType: 'full', facets: { Category: [''] } }) },
+      ok: function(t) { return Number((safeJsonParse_(t) || {}).TotalDocument || 0) > 0; } },
+    { name: 'lagersala', url: 'https://www.storkaup.is/lagersala',
+      opts: { headers: { 'User-Agent': 'Mozilla/5.0 (Storkaup KPI)' } } },
+    { name: 'sitemap.xml', url: 'https://www.storkaup.is/sitemap.xml', opts: {} },
+    { name: 'flokkur', url: 'https://www.storkaup.is/flokkur/afengi-og-nikotin', opts: { followRedirects: false } },
+    { name: 'vara', url: 'https://www.storkaup.is/vara/abs-korfubraut-bein-364x325-24stk-107768', opts: { followRedirects: false } }
+  ];
+
+  var out = checks.map(function(c) {
+    var t0 = Date.now();
+    try {
+      c.opts.muteHttpExceptions = true;
+      var res = UrlFetchApp.fetch(c.url, c.opts);
+      var code = res.getResponseCode();
+      var headers = res.getAllHeaders() || {};
+      var body = res.getContentText() || '';
+      var good = code === 200 && (!c.ok || c.ok(body));
+      return { check: c.name, ok: good, status: code, ms: Date.now() - t0,
+               azure: !!(headers['x-azure-ref'] || headers['X-Azure-Ref']),
+               snippet: good ? '' : truncateForLog_(body, 160) };
+    } catch (e) {
+      return { check: c.name, ok: false, status: null, ms: Date.now() - t0, error: String(e && e.message || e) };
+    }
+  });
+
+  out.forEach(function(r) { Logger.log('[STORKAUP_CHECK] ' + JSON.stringify(r)); });
+  var failed = out.filter(function(r) { return !r.ok; }).length;
+  Logger.log('[STORKAUP_CHECK] ' + (failed ? failed + ' af ' + out.length + ' féllu' : 'Allt í lagi (' + out.length + ')'));
+  return out;
+}
