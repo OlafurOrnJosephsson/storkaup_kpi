@@ -265,6 +265,57 @@ function backfillGa4AiReferrals_v1() {
   return syncGa4AiReferrals_v1({ startDate: '2025-01-01', endDate: 'today' });
 }
 
+/**
+ * Að hverju leitar gervigreindin fyrir notandann á storkaup.is? (2026-10-23)
+ *
+ * Lendingar á /leit frá ChatGPT o.fl. með fyrirspurnarstrengnum, utm_* fjarlægt.
+ * Les eingöngu, skrifar í log. Keyra í ritlinum: ga4AiSearchQueries_v1()
+ */
+function ga4AiSearchQueries_v1(startDate) {
+  var resp = runGa4Report_({
+    dateRanges: [{ startDate: startDate || '2025-01-01', endDate: 'today' }],
+    dimensions: [{ name: 'sessionSource' }, { name: 'landingPagePlusQueryString' }],
+    metrics: [{ name: 'sessions' }, { name: 'transactions' }],
+    dimensionFilter: {
+      andGroup: { expressions: [
+        { filter: { fieldName: 'sessionSource',
+                    stringFilter: { value: GA4_AI_SOURCE_REGEX_, matchType: 'PARTIAL_REGEXP', caseSensitive: false } } },
+        { filter: { fieldName: 'landingPagePlusQueryString',
+                    stringFilter: { value: '/leit', matchType: 'BEGINS_WITH' } } }
+      ] }
+    },
+    limit: 10000
+  });
+
+  var byQuery = {};
+  (resp && resp.rows || []).forEach(function(r) {
+    var page = String(r.dimensionValues[1].value || '');
+    var qs = page.indexOf('?') >= 0 ? page.slice(page.indexOf('?') + 1) : '';
+    var params = qs.split('&').filter(function(p) {
+      return p && !/^utm_/i.test(p);
+    }).map(function(p) {
+      try { return decodeURIComponent(p.replace(/\+/g, ' ')); } catch (e) { return p; }
+    });
+    var key = params.join(' & ') || '(enginn strengur)';
+    var o = byQuery[key] || (byQuery[key] = { sessions: 0, transactions: 0, sources: {} });
+    o.sessions += Number(r.metricValues[0].value) || 0;
+    o.transactions += Number(r.metricValues[1].value) || 0;
+    o.sources[r.dimensionValues[0].value] = true;
+  });
+
+  var rows = Object.keys(byQuery).map(function(k) {
+    return { query: k, sessions: byQuery[k].sessions, transactions: byQuery[k].transactions,
+             sources: Object.keys(byQuery[k].sources).join(',') };
+  }).sort(function(a, b) { return b.sessions - a.sessions; });
+
+  Logger.log('[GA4][AI][LEIT] ' + rows.length + ' ólíkar leitir, ' +
+             rows.reduce(function(s, r) { return s + r.sessions; }, 0) + ' lotur');
+  rows.forEach(function(r) {
+    Logger.log(r.sessions + '\t' + r.transactions + '\t' + r.query + '\t' + r.sources);
+  });
+  return rows;
+}
+
 function upsertGa4DailyMetricsToSupabase_(rows) {
   if (!rows || !rows.length) return { uploaded: 0 };
   var conf = getSupabaseRestConfig_();
