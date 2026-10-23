@@ -360,6 +360,45 @@ function ga4AiClickCheck_v1(startDate) {
   return agg;
 }
 
+/**
+ * Referrer í upphafi AI-lotu (2026-10-23). utm-prófunin í ga4AiClickCheck_v1
+ * greindi ekki á milli (engin lending bar utm_source). Hér er pageReferrer á
+ * session_start: smellur úr spjalli ber chatgpt.com o.s.frv., lota sem hófst
+ * eftir hlé á vefnum ber storkaup.is, og erfð bein lota er tóm.
+ * Les eingöngu. Keyra í ritlinum: ga4AiReferrerCheck_v1()
+ */
+function ga4AiReferrerCheck_v1(startDate) {
+  var resp = runGa4Report_({
+    dateRanges: [{ startDate: startDate || '2025-01-01', endDate: 'today' }],
+    dimensions: [{ name: 'sessionMedium' }, { name: 'newVsReturning' }, { name: 'pageReferrer' }],
+    metrics: [{ name: 'eventCount' }],
+    dimensionFilter: {
+      andGroup: { expressions: [
+        { filter: { fieldName: 'sessionSource',
+                    stringFilter: { value: GA4_AI_SOURCE_REGEX_, matchType: 'PARTIAL_REGEXP', caseSensitive: false } } },
+        { filter: { fieldName: 'eventName', stringFilter: { value: 'session_start', matchType: 'EXACT' } } }
+      ] }
+    },
+    limit: 100000
+  });
+
+  var agg = {};
+  (resp && resp.rows || []).forEach(function(r) {
+    var d = r.dimensionValues;
+    var ref = String(d[2].value || '').trim();
+    var host = (ref.match(/^https?:\/\/([^\/?#]+)/i) || [])[1] || '';
+    host = host.toLowerCase().replace(/^www\./, '');
+    var refKind = !ref || ref === '(not set)' ? '(tómur)' : host;
+    var key = [d[0].value, d[1].value || '?', refKind].join(' | ');
+    agg[key] = (agg[key] || 0) + (Number(r.metricValues[0].value) || 0);
+  });
+
+  var keys = Object.keys(agg).sort(function(a, b) { return agg[b] - agg[a]; });
+  Logger.log('[GA4][AI][REF] miðill | nýr/endurkominn | referrer -> session_start');
+  keys.forEach(function(k) { Logger.log(k + ' -> ' + agg[k]); });
+  return agg;
+}
+
 function upsertGa4DailyMetricsToSupabase_(rows) {
   if (!rows || !rows.length) return { uploaded: 0 };
   var conf = getSupabaseRestConfig_();
