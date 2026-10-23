@@ -30,6 +30,19 @@
 --    If this function is ever round-tripped through a CSV again, check those
 --    three strings before applying — mojibake in a fallback label is easy to miss.
 --
+-- 3. BC RESTORED (2026-10-23). Note 1 no longer holds: anon lost execute on
+--    2026-10-09 and BC ingest runs again, so the six BC fields come back from
+--    the invoice and credit tables (booking date = p_day, one row per invoice,
+--    index range scans, ~0.5 ms). Before this change the live body matched
+--    this file exactly (md5 of the body, checked via Supabase MCP).
+--    Web share changed on purpose: it is now VEFUR invoices / all invoices of
+--    the same day, both from BC. It used to be d0 (Magento orders) / BC
+--    invoices, but since the Magento API closed (2026-10-21) d0 is a GA4
+--    estimate by purchase hour — dividing that by BC bookings mixes sources.
+--    Pre-2025-08-18 web invoices also count CO22-* external doc numbers (as
+--    before). BC loads only by the manual BC Sync, so today is usually 0 → the
+--    frontend shows "-" with its hint.
+--
 -- ROLLBACK: the pre-change live body is in
 -- core/sql/_audit_output/day_kpi_pack_live.csv (gitignored). Keep that file.
 -- ============================================================================
@@ -390,6 +403,33 @@ weekday_hourly_json as (
 weekday_days_count as (
   select count(*)::int as n
   from weekday_days
+),
+-- BC day figures, restored 2026-10-23 (see header note 3).
+bc_invoices_day as (
+  select
+    count(*)::numeric as orders,
+    coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl,
+    count(*) filter (
+      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+         or (i.booking_date < timestamp '2025-08-18'
+             and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%')
+    )::numeric as web_orders,
+    coalesce(sum(i.amount_excl) filter (
+      where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+         or (i.booking_date < timestamp '2025-08-18'
+             and upper(trim(coalesce(i.external_doc_no, ''))) like 'CO22-%')
+    ), 0)::numeric as web_revenue_excl
+  from raw.bc_invoices_raw i
+  where i.booking_date >= (select day from params)
+    and i.booking_date <  (select day from params) + 1
+),
+bc_credits_day as (
+  select
+    count(*)::numeric as orders,
+    coalesce(sum(i.amount_excl), 0)::numeric as revenue_excl
+  from raw.bc_credit_invoices_raw i
+  where i.booking_date >= (select day from params)
+    and i.booking_date <  (select day from params) + 1
 )
 select
   d0.day,
@@ -456,20 +496,14 @@ select
   coalesce((select wdc.n from weekday_days_count wdc), 0) as weekday_hourly_avg_days,
   coalesce((select wat.avg_orders_per_day from weekday_avg_totals wat), 0) as weekday_avg_orders_per_day,
   coalesce((select wat.avg_revenue_excl_per_day from weekday_avg_totals wat), 0) as weekday_avg_revenue_excl_per_day,
-  -- ── BC fields: nulled 2026-08-05. See header note 1 for the full rationale. ─
-  -- Two things this comment deliberately avoids, both learned the hard way:
-  --   * the BC source table names — a bare table name here makes a naive audit
-  --     grep match this very comment and report a false positive;
-  --   * the dollar-quote delimiter — writing it inside the body it delimits ends
-  --     the body early and breaks the CREATE with a syntax error.
-  -- Anything stored inside the function body comes back from pg_get_functiondef,
-  -- so keep detail like that in the header comment above instead.
-  null::numeric as bc_invoices_day_orders,
-  null::numeric as bc_invoices_day_revenue_excl,
-  null::numeric as bc_credits_day_orders,
-  null::numeric as bc_credits_day_revenue_excl,
-  null::numeric as web_orders_pct_of_bc_day,
-  null::numeric as web_revenue_pct_of_bc_day
+  -- BC fields: see header note 3. Never write the dollar-quote delimiter in a
+  -- comment inside this body; it ends the body early.
+  bi.orders as bc_invoices_day_orders,
+  bi.revenue_excl as bc_invoices_day_revenue_excl,
+  bcr.orders as bc_credits_day_orders,
+  bcr.revenue_excl as bc_credits_day_revenue_excl,
+  case when bi.orders > 0 then bi.web_orders / bi.orders end as web_orders_pct_of_bc_day,
+  case when bi.revenue_excl > 0 then bi.web_revenue_excl / bi.revenue_excl end as web_revenue_pct_of_bc_day
 from d0
 cross join d1
 cross join d7
@@ -477,32 +511,35 @@ left join buyer_stats bs on true
 left join registration_stats rs on true
 left join hourly_pick hp on true
 left join forecast fc on true
-left join noon_compare nc on true;
+left join noon_compare nc on true
+cross join bc_invoices_day bi
+cross join bc_credits_day bcr;
 $function$;
 
 
--- ── GRANT — unchanged; the dashboard needs this ─────────────────────────────
+-- ── GRANT ──────────────────────────────────────────────────────────────────
 -- Kept in this file so it travels with the object. That is the lesson from
 -- security_restore_priority_writes.sql, where a grant living in a separate file
--- silently undid a lockdown for two months.
-grant execute on function public.day_kpi_pack(date) to anon, authenticated;
+-- silently undid a lockdown for two months. Signed-in users only since
+-- 2026-10-09 (kpi_auth_revoke_anon.sql): this function returns BC figures, so
+-- never grant it to anon again.
+revoke all on function public.day_kpi_pack(date) from public, anon;
+grant execute on function public.day_kpi_pack(date) to authenticated, service_role;
 
 
 -- ── VERIFY after applying ──────────────────────────────────────────────────
--- 1. The six BC columns must come back null, everything else populated:
---      select bc_invoices_day_orders, web_revenue_pct_of_bc_day,
---             orders, revenue_excl, unique_buyers
---      from public.day_kpi_pack(current_date - 1);
+-- 1. BC columns populated for a booked day (21.10: 98 invoices, 6,268,450 kr;
+--    2 credits; VEFUR 43 = 43.9 % of orders, 46.8 % of revenue):
+--      select bc_invoices_day_orders, bc_invoices_day_revenue_excl,
+--             bc_credits_day_orders, web_orders_pct_of_bc_day,
+--             web_revenue_pct_of_bc_day, orders, revenue_excl
+--      from public.day_kpi_pack(date '2026-10-21');
 --
--- 2. No BC table reads remain — expect false. Match on an actual FROM clause,
---    not a bare table name: a plain `like '%bc_invoices_raw%'` also matches
---    comments stored in the function body and returns a false positive.
---      select pg_get_functiondef('public.day_kpi_pack(date)'::regprocedure)
---             ~* 'from\s+raw\.bc_' as still_reads_bc;
---    (pg_depend is not an option here — Postgres does not record dependencies
---    for string-literal function bodies, only for BEGIN ATOMIC ones.)
+-- 2. anon has no execute — expect false:
+--      select has_function_privilege('anon', 'public.day_kpi_pack(date)', 'execute');
 --
--- 3. In the browser, /kpi/dashboard: daily cards still render; the BC ratio
---    cards show "-" with the no-BC-sales hint; and the Icelandic fallback
+-- 3. In the browser, /kpi/solutolur: column 1 shows BC orders/revenue/credits
+--    for a booked day and 0 for a day not yet exported; the ratio cards show
+--    "-" with the no-BC-sales hint when BC is empty; and the Icelandic fallback
 --    labels ("Óþekktur viðskiptavinur", "Óflokkað") are not mojibake in the
 --    top-customer / top-category lists.
