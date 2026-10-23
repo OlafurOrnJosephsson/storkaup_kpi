@@ -316,6 +316,50 @@ function ga4AiSearchQueries_v1(startDate) {
   return rows;
 }
 
+/**
+ * Eru „AI-lotur“ raunverulegir smellir úr spjalli? (2026-10-23)
+ *
+ * GA4 gefur beinni lotu (direct) síðasta þekkta uppruna notandans, svo
+ * fastakúnni sem kom einu sinni úr ChatGPT getur haldið chatgpt.com sem
+ * sessionSource í seinni heimsóknum. ChatGPT bætir utm_source=chatgpt.com
+ * við tengla sína; erfð lota hefur hann ekki í lendingarslóðinni.
+ * Skiptir AI-lotum eftir miðli × utm í slóð × nýr/endurkominn.
+ * Les eingöngu. Keyra í ritlinum: ga4AiClickCheck_v1()
+ */
+function ga4AiClickCheck_v1(startDate) {
+  var resp = runGa4Report_({
+    dateRanges: [{ startDate: startDate || '2025-01-01', endDate: 'today' }],
+    dimensions: [{ name: 'sessionSource' }, { name: 'sessionMedium' },
+                 { name: 'landingPagePlusQueryString' }, { name: 'newVsReturning' }],
+    metrics: [{ name: 'sessions' }, { name: 'transactions' }, { name: 'purchaseRevenue' }],
+    dimensionFilter: {
+      filter: { fieldName: 'sessionSource',
+                stringFilter: { value: GA4_AI_SOURCE_REGEX_, matchType: 'PARTIAL_REGEXP', caseSensitive: false } }
+    },
+    limit: 100000
+  });
+
+  var agg = {};
+  (resp && resp.rows || []).forEach(function(r) {
+    var d = r.dimensionValues;
+    var page = String(d[2].value || '');
+    var path = page.split('?')[0];
+    var kind = path === '/' ? 'forsíða' : (path.indexOf('/leit') === 0 ? 'leit' : 'önnur');
+    var key = [d[1].value, /utm_source=/i.test(page) ? 'utm' : 'án utm', d[3].value || '?', kind].join(' | ');
+    var o = agg[key] || (agg[key] = { sessions: 0, transactions: 0, revenue: 0 });
+    o.sessions += Number(r.metricValues[0].value) || 0;
+    o.transactions += Number(r.metricValues[1].value) || 0;
+    o.revenue += Number(r.metricValues[2].value) || 0;
+  });
+
+  var keys = Object.keys(agg).sort(function(a, b) { return agg[b].sessions - agg[a].sessions; });
+  Logger.log('[GA4][AI][CLICK] miðill | utm í slóð | nýr/endurkominn | lending -> lotur, pantanir, velta');
+  keys.forEach(function(k) {
+    Logger.log(k + ' -> ' + agg[k].sessions + ', ' + agg[k].transactions + ', ' + Math.round(agg[k].revenue));
+  });
+  return agg;
+}
+
 function upsertGa4DailyMetricsToSupabase_(rows) {
   if (!rows || !rows.length) return { uploaded: 0 };
   var conf = getSupabaseRestConfig_();
