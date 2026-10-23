@@ -514,6 +514,15 @@
     return active ? active.getAttribute("data-month") : (first ? first.getAttribute("data-month") : null);
   }
 
+  // Svar fyrir annan dag en þann sem er valinn núna er hunsað (2026-10-23).
+  // Hæg beiðni fyrir daginn í dag — t.d. day_kpi_pack sem rann út á tíma og fór
+  // í varaleiðina — gat skilað sér á eftir beiðni fyrir valinn dag og skrifað
+  // yfir efstu tölurnar. Síðan sýndi þá tvo daga í einu (21. okt: 1 pöntun
+  // efst, en meðalpöntun og spá 21. október).
+  function isStaleDay(day) {
+    return normalizeDay(selectedDay || getTodayIso()) !== normalizeDay(day);
+  }
+
   function applyDayMetrics(dayKey, orders, revenueExcl, revenueIncl) {
     var revExcl = toNumberSafe(revenueExcl);
     var revIncl = toNumberSafe(revenueIncl);
@@ -1063,6 +1072,7 @@
         return r.json();
       })
       .then(function (raw) {
+        if (isStaleDay(day)) return;
         var row = normalizeSingleRow(raw);
         if (!row) throw new Error("Day pack returned empty payload");
         applyDayMetrics(
@@ -1091,6 +1101,7 @@
             return r.json();
           })
           .then(function (rows) {
+            if (isStaleDay(day)) return;
             var row = Array.isArray(rows) && rows.length ? rows[0] : null;
             applyDayMetrics(
               day,
@@ -1140,6 +1151,7 @@
         return r.json();
       })
       .then(function (rows) {
+        if (isStaleDay(day)) return;
         rows = Array.isArray(rows) ? rows : [];
 
         // Template is the Webflow-designed row; rendered clones are marked data-day-order-rendered
