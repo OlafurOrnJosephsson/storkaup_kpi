@@ -88,9 +88,13 @@ as $$
     from raw.newweb_orders_raw
     where purchase_date >= date '2026-10-01' and purchase_date < date '2026-10-21'
   ),
+  -- external_doc_no er stundum „<innkaupanr. kúnna> / <pöntunarnr.>“
+  -- (t.d. „04126 / 12699983“, „SO91165 / 12759710“): pöntunarnúmerið er
+  -- síðasta 7–9 stafa talan. Annars reiturinn eins og hann er.
   vefur as (
     select
-      nullif(trim(i.external_doc_no), '') as order_no,
+      coalesce(substring(trim(i.external_doc_no) from '(\d{7,9})\s*$'),
+               nullif(trim(i.external_doc_no), '')) as order_no,
       i.booking_date::date as day,
       nullif(trim(i.company_name), '') as company_name,
       i.company_id::text as company_id,
