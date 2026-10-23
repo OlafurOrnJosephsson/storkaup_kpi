@@ -132,6 +132,13 @@ Notes:
   `lapsing`/`lapsed`, and win-back (which reads `stk_customer_state`) would
   email people who are still ordering. Klaviyo keeps the values it had at the
   cut-off.
+- **Turning Magento back on?** Run `select mart.refresh_web_bridge_frozen_v1();`
+  in Supabase once safePoll has caught up. Since 2026-10-23 the daily web
+  totals and first-purchase days read frozen snapshots of the Magento data
+  (`core/sql/web_bridge_perf_v1.sql`), because recomputing them on every call
+  timed out `day_kpi_pack`. The GA4 bridge skips any order that exists in
+  `raw.newweb_orders_raw`, so new Magento orders are missing from the
+  dashboard until the snapshot is refreshed.
 - Reports that freeze at the cut-off: every SQL reading
   `raw.newweb_orders_raw` (daily dashboard, weekly and monthly digests, web
   records, customer page, graduation, web activation). Only BC-only figures
