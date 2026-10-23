@@ -96,12 +96,15 @@ as $$
     select distinct company_key from vefur where company_key <> ''
   ),
   -- Fyrsta vefkaup á kennitölu: frosin Magento-saga + VEFUR-reikningar, aðeins
-  -- fyrir kennitölur sem birtast hér.
+  -- fyrir kennitölur sem birtast hér. Flett upp á company_id EINS OG HÚN ER í
+  -- BC (vísir idx_bc_invoices_company_id). Fyrsta útgáfan bar regex-kennitölu
+  -- saman við hverja röð: full skönnun á 110 þús. reikningum × 51 kennitala
+  -- = 2,06 af 2,07 s fallsins (explain 2026-10-23).
   vefur_first as (
     select regexp_replace(coalesce(i.company_id, ''), '\D', '', 'g') as k, min(i.booking_date)::date as first_day
     from raw.bc_invoices_raw i
-    where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-      and regexp_replace(coalesce(i.company_id, ''), '\D', '', 'g') in (select company_key from keys)
+    where i.company_id in (select distinct v.company_id from vefur v where v.company_id is not null)
+      and upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
     group by 1
   ),
   first_kt as (
