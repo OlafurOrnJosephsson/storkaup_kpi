@@ -158,6 +158,113 @@ function fetchGa4ChannelDaily_(startDate, endDate) {
   }).filter(function(row) { return !!row.day && !!row.channel_group; });
 }
 
+/************************************************************
+ * GA4 umferð frá gervigreindarspjalli → raw.ga4_ai_referrals_daily (2026-10-23)
+ *
+ * AEO-mæling, fyrsta skref: hvaða síður ChatGPT, Perplexity, Copilot o.fl.
+ * vísa á og hvort sú umferð kaupir. Í channel-skiptingunni hér að ofan lendir
+ * hún í „Referral“ og sést ekki, svo hér er síað á sessionSource.
+ *
+ * Lágmarkstala: öpp sem senda engan referrer lenda í „Direct“. Pantanir fyrir
+ * 2026-10-01 eru ekki sambærilegar (GTM v96/v97, .claude/rules/ga4-gtm.md).
+ * Flokkun eftir aðstoðarmanni er í SQL (core/sql/ga4_ai_referrals_v1.sql).
+ ************************************************************/
+var GA4_AI_SOURCE_REGEX_ = 'chatgpt\\.com|openai\\.com|perplexity|copilot\\.microsoft|gemini\\.google|bard\\.google' +
+  '|claude\\.ai|you\\.com|meta\\.ai|deepseek|grok\\.com|chat\\.mistral|phind\\.com';
+
+function fetchGa4AiReferralsDaily_(startDate, endDate) {
+  var response = runGa4Report_({
+    dateRanges: [{ startDate: startDate, endDate: endDate }],
+    dimensions: [{ name: 'date' }, { name: 'sessionSource' }, { name: 'sessionMedium' }, { name: 'landingPage' }],
+    metrics: [
+      { name: 'sessions' },
+      { name: 'engagedSessions' },
+      { name: 'transactions' },
+      { name: 'purchaseRevenue' }
+    ],
+    dimensionFilter: {
+      filter: {
+        fieldName: 'sessionSource',
+        stringFilter: { value: GA4_AI_SOURCE_REGEX_, matchType: 'PARTIAL_REGEXP', caseSensitive: false }
+      }
+    },
+    keepEmptyRows: false,
+    limit: 100000
+  });
+  var rows = response && response.rows ? response.rows : [];
+  var syncedAt = new Date().toISOString();
+  return rows.map(function(row) {
+    var dims = row.dimensionValues || [];
+    var vals = row.metricValues || [];
+    return {
+      day: formatGa4DateToIso_(dims[0] ? dims[0].value : ''),
+      session_source: String(dims[1] ? dims[1].value : '').trim().toLowerCase(),
+      session_medium: String(dims[2] ? dims[2].value : '').trim() || '(not set)',
+      landing_page: String(dims[3] ? dims[3].value : '').trim() || '(not set)',
+      sessions: Number(vals[0] ? vals[0].value : 0) || 0,
+      engaged_sessions: Number(vals[1] ? vals[1].value : 0) || 0,
+      transactions: Number(vals[2] ? vals[2].value : 0) || 0,
+      purchase_revenue: Number(vals[3] ? vals[3].value : 0) || 0,
+      synced_at: syncedAt
+    };
+  }).filter(function(row) { return !!row.day && !!row.session_source; });
+}
+
+function upsertGa4AiReferralsToSupabase_(rows) {
+  if (!rows || !rows.length) return { uploaded: 0 };
+  var conf = getSupabaseRestConfig_();
+  var endpoint = conf.baseUrl + '/ga4_ai_referrals_daily?on_conflict=day,session_source,session_medium,landing_page';
+  var chunkSize = 500;
+  var uploaded = 0;
+
+  for (var i = 0; i < rows.length; i += chunkSize) {
+    var chunk = rows.slice(i, i + chunkSize);
+    var res = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        apikey: conf.serviceRole,
+        Authorization: 'Bearer ' + conf.serviceRole,
+        'Content-Profile': 'raw',
+        'Accept-Profile': 'raw',
+        Prefer: 'resolution=merge-duplicates,return=minimal'
+      },
+      payload: JSON.stringify(chunk),
+      muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error('GA4 AI referrals Supabase upsert failed: ' + code + ' ' + res.getContentText());
+    }
+    uploaded += chunk.length;
+  }
+
+  return { uploaded: uploaded };
+}
+
+function syncGa4AiReferrals_v1(options) {
+  var opts = options || {};
+  var startDate = String(opts.startDate || '35daysAgo');
+  var endDate = String(opts.endDate || 'today');
+  var rows = fetchGa4AiReferralsDaily_(startDate, endDate);
+  var out = upsertGa4AiReferralsToSupabase_(rows);
+  var result = {
+    startDate: startDate,
+    endDate: endDate,
+    fetched: rows.length,
+    uploaded: out.uploaded,
+    sessions: rows.reduce(function(s, r) { return s + r.sessions; }, 0),
+    transactions: rows.reduce(function(s, r) { return s + r.transactions; }, 0)
+  };
+  Logger.log('[GA4][AI] ' + JSON.stringify(result));
+  return result;
+}
+
+// Fyllir töfluna aftur í tímann. Keyra einu sinni eftir ga4_ai_referrals_v1.sql.
+function backfillGa4AiReferrals_v1() {
+  return syncGa4AiReferrals_v1({ startDate: '2025-01-01', endDate: 'today' });
+}
+
 function upsertGa4DailyMetricsToSupabase_(rows) {
   if (!rows || !rows.length) return { uploaded: 0 };
   var conf = getSupabaseRestConfig_();
@@ -258,6 +365,16 @@ function syncGa4ToSupabase_v1(options) {
 
   var dailyOut = upsertGa4DailyMetricsToSupabase_(dailyRows);
   var channelOut = upsertGa4ChannelDailyToSupabase_(channelRows);
+
+  // AEO-mælingin má ekki fella aðal-GA4-syncið (t.d. ef taflan er ekki komin).
+  var aiOut = null;
+  try {
+    aiOut = syncGa4AiReferrals_v1({ startDate: startDate, endDate: endDate });
+  } catch (aiErr) {
+    aiOut = { error: aiErr && aiErr.message ? aiErr.message : String(aiErr) };
+    Logger.log('[GA4][AI][WARN] ' + aiOut.error);
+  }
+
   return {
     propertyId: getGa4PropertyId_(),
     startDate: startDate,
@@ -265,7 +382,8 @@ function syncGa4ToSupabase_v1(options) {
     dailyRowsFetched: dailyRows.length,
     channelRowsFetched: channelRows.length,
     dailyUploaded: dailyOut.uploaded || 0,
-    channelUploaded: channelOut.uploaded || 0
+    channelUploaded: channelOut.uploaded || 0,
+    aiReferrals: aiOut
   };
 }
 
