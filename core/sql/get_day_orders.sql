@@ -21,6 +21,14 @@
 -- Skilagerð óbreytt (dashboard.js les þessa fimm dálka). Heimildir: anon tekið
 -- af 2026-10-09 (kpi_auth_revoke_anon.sql) — gefið það ekki aftur.
 
+-- Vísir fyrir „fyrsti VEFUR-reikningur fyrirtækis“ (2026-10-23). Án hans las
+-- hver kennitala ~146 dreifða reikninga (79 ms × 56 = 4,4 s, explain í gegnum
+-- Supabase MCP). Partial: aðeins VEFUR-raðir, og tjáningin verður að vera
+-- NÁKVÆMLEGA sú sama og í fallinu svo plannerinn noti hann.
+create index if not exists idx_bc_invoices_vefur_company_booking
+  on raw.bc_invoices_raw (company_id, booking_date)
+  where upper(trim(coalesce(salesperson_code, ''))) = 'VEFUR';
+
 create or replace function public.get_day_orders(
   p_day   date default current_date,
   p_limit int  default 10
@@ -96,16 +104,18 @@ as $$
     select distinct company_key from vefur where company_key <> ''
   ),
   -- Fyrsta vefkaup á kennitölu: frosin Magento-saga + VEFUR-reikningar, aðeins
-  -- fyrir kennitölur sem birtast hér. Flett upp á company_id EINS OG HÚN ER í
-  -- BC (vísir idx_bc_invoices_company_id). Fyrsta útgáfan bar regex-kennitölu
-  -- saman við hverja röð: full skönnun á 110 þús. reikningum × 51 kennitala
-  -- = 2,06 af 2,07 s fallsins (explain 2026-10-23).
+  -- fyrir kennitölur sem birtast hér. Saga (explain 2026-10-23): regex á hverja
+  -- röð = full skönnun, 2,06 s; uppfletting á company_id-vísi = 146 dreifðir
+  -- reikningar á fyrirtæki, 4,4 s. Nú ein min()-uppfletting á fyrirtæki í
+  -- partial-vísinum idx_bc_invoices_vefur_company_booking (efst í skránni).
   vefur_first as (
-    select regexp_replace(coalesce(i.company_id, ''), '\D', '', 'g') as k, min(i.booking_date)::date as first_day
-    from raw.bc_invoices_raw i
-    where i.company_id in (select distinct v.company_id from vefur v where v.company_id is not null)
-      and upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
-    group by 1
+    select
+      v.company_key as k,
+      (select min(i.booking_date)::date
+         from raw.bc_invoices_raw i
+        where i.company_id = v.company_id
+          and upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR') as first_day
+    from (select distinct company_id, company_key from vefur where company_id is not null) v
   ),
   first_kt as (
     select k.company_key as k, least(fz.first_day, vf.first_day) as first_day
