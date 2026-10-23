@@ -167,6 +167,25 @@ function fetchWeeklyDigestStats_(weekStartIso) {
 
 // ── HTML: weekly digest ───────────────────────────────────────────────────────
 
+// Vefsalan kemur úr bókuðum VEFUR-reikningum í BC síðan 2026-10-23 (Magento
+// API lokað 2026-10-21; core/sql/weekly_digest.sql). BC hefur engan trigger:
+// gleymist útflutningurinn nær bc_as_of ekki út vikuna og vefsalan sýnist lægri
+// en hún er. Vikan telst tæmandi ef BC nær að föstudegi hennar — um helgar er
+// lítið bókað. null = eldri útgáfa SQL-fallsins (Magento), engin merking.
+function weeklyWebSourceNote_(s) {
+  if (!s || s.web_source !== 'bc_vefur') return null;
+  var asOf = s.bc_as_of ? String(s.bc_as_of).slice(0, 10) : '';
+  var fri = s.week_end ? new Date(new Date(s.week_end).getTime() - 3 * 86400000).toISOString().slice(0, 10) : '';
+  var stale = !asOf || (fri && asOf < fri);
+  var d = asOf ? asOf.slice(8, 10) + '.' + asOf.slice(5, 7) + '.' : '?';
+  return {
+    stale: !!stale,
+    text: stale
+      ? 'BC-gögn ná aðeins til ' + d + ' og vefsala vikunnar er því ekki tæmandi. Taka BC-útflutning og keyra BC Sync.'
+      : 'Vefsala = bókaðir reikningar með sölumann VEFUR í BC (gögn til ' + d + ').'
+  };
+}
+
 function buildWeeklyDigestHtml_(s) {
   var ws = s.week_start ? new Date(s.week_start) : null;
   var weRaw = s.week_end ? new Date(s.week_end) : null;
@@ -177,8 +196,9 @@ function buildWeeklyDigestHtml_(s) {
   var period     = ws && we      ? digestPeriodLabel_(ws,     we,      true)  : '?';
   var prevPeriod = prevWs && prevWe ? digestPeriodLabel_(prevWs, prevWe, false) : '?';
 
-  // BC fields intentionally not shown — weekly digest is pure web-sales data
-  // (BC ingestion on hold pending DataBricks/Power BI).
+  // BC-heildartölur ekki sýndar; vefsalan sjálf kemur úr BC VEFUR síðan
+  // 2026-10-23 (sjá weeklyWebSourceNote_).
+  var webNote       = weeklyWebSourceNote_(s);
   var webRev        = emailNum_(s.web_revenue_excl);
   var webOrd        = emailNum_(s.web_orders);
   var prevWebRev    = emailNum_(s.prev_web_revenue_excl);
@@ -257,6 +277,10 @@ function buildWeeklyDigestHtml_(s) {
     + emailGrid2_(
         kpi('Vefvelta vikuna', emailIskShort_(webRev), emailPctSpan_(webRev, prevWebRev)),
         kpi('Vefpantanir',     String(webOrd),          emailPctSpan_(webOrd, prevWebOrd)))
+    + (webNote
+        ? '<p style="margin:8px 0 0;font-size:12px;line-height:1.5;color:' + (webNote.stale ? '#c0392b' : '#888') + ';">'
+          + emailEsc_(webNote.text) + '</p>'
+        : '')
     + '<hr class="sk-divider">'
 
     // Nýir viðskiptavinir
@@ -367,7 +391,8 @@ function buildWeeklyDigestPlain_(s) {
     'Vikulegt yfirlit — ' + period, '',
     'VEFSALA',
     'Vefvelta  : ' + emailIskShort_(emailNum_(s.web_revenue_excl)) + ' (án VSK)',
-    'Vefpant.  : ' + emailNum_(s.web_orders), '',
+    'Vefpant.  : ' + emailNum_(s.web_orders),
+    (weeklyWebSourceNote_(s) || { text: '' }).text, '',
     'NÝIR VIÐSKIPTAVINIR',
     'Þessa viku    : ' + emailNum_(s.new_customers),
     'Síðustu 30 d. : ' + emailNum_(s.new_customers_30d)
@@ -492,6 +517,28 @@ function menu_testMonthlyDigest() {
   var subject = 'TEST — Mánaðaryfirlit — ' + digestMonthLabel_(stats.month);
   GmailApp.sendEmail(to, subject, buildMonthlyDigestPlain_(stats), {
     htmlBody: buildMonthlyDigestHtml_(stats),
+    from: 'vefur@storkaup.is',
+    name: 'Stórkaup ehf'
+  });
+  toast_('TEST sent til ' + to, 'Email');
+}
+
+// Prufa á vikuyfirlitinu (2026-10-23), bara á eigandann. Tekur síðustu heilu
+// viku mán–sun, svo hún sýnir það sama og mánudagspósturinn myndi sýna — líka
+// þegar keyrt er á miðri viku. Bætt við þegar vefsalan fór yfir á BC VEFUR.
+function menu_testWeeklyDigest() {
+  var to = 'oj@storkaup.is';
+  toast_('Sendi TEST vikuyfirlit til ' + to + '...', 'Email');
+  var today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  var sinceMonday = (today.getUTCDay() + 6) % 7;
+  var weekEnd = new Date(today.getTime() - sinceMonday * 86400000);
+  var weekStart = new Date(weekEnd.getTime() - 7 * 86400000);
+  var stats = fetchWeeklyDigestStats_(digestIso_(weekStart));
+  var subject = 'TEST — Vikulegt yfirlit — '
+    + digestPeriodLabel_(weekStart, new Date(weekEnd.getTime() - 86400000), true);
+  GmailApp.sendEmail(to, subject, buildWeeklyDigestPlain_(stats), {
+    htmlBody: buildWeeklyDigestHtml_(stats),
     from: 'vefur@storkaup.is',
     name: 'Stórkaup ehf'
   });

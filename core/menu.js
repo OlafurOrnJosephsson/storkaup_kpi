@@ -101,6 +101,7 @@ function onOpen() {
         .addItem('Senda vikulegt yfirlit', 'menu_sendWelcomeEmail')
         .addItem('Senda mánaðaryfirlit', 'menu_sendMonthlyDigest')
         .addItem('TEST — mánaðaryfirlit (bara á mig)', 'menu_testMonthlyDigest')
+        .addItem('TEST — vikuyfirlit (bara á mig)', 'menu_testWeeklyDigest')
         .addSeparator()
         .addItem('Rafræn — senda redirect póst', 'menu_sendRafraenRedirect')
         .addItem('Rafræn — TEST redirect póst', 'menu_testRafraenRedirect')

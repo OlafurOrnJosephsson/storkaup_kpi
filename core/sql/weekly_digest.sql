@@ -1,6 +1,21 @@
 -- Weekly digest stats — called by scheduledWeeklyDigest in core/email.js
 -- Returns one JSONB object with all KPIs for the 7-day window [p_week_start, p_week_start+7).
 -- Apply in Supabase SQL editor.
+--
+-- VEFSALA ÚR BC (2026-10-23). Magento API lokaðist 2026-10-21 og
+-- raw.newweb_orders_raw hætti að fyllast, svo vefhlutinn sýndi hrun. Vefsala er
+-- nú bókaðir reikningar með salesperson_code = 'VEFUR' — sama regla og
+-- vefhlutfallið (mart.v_bc_monthly_net_v1). Vikan miðast við BÓKUNARDAG
+-- reiknings, báðar vikur, svo samanburðurinn er sambærilegur; 90% vefpantana
+-- eru bókaðar innan dags (mælt 2026-10-21).
+--   web_orders        = fjöldi VEFUR-reikninga (kreditreikningar eru skil, ekki
+--                       neikvæðar pantanir)
+--   web_revenue_excl  = VEFUR-reikningar − VEFUR-kreditreikningar, án VSK
+--   nýir viðskiptavinir: fyrsta vefkaup fyrirtækis (kennitala) úr Magento-sögu
+--                       OG VEFUR-reikningum, svo eldri vefkúnnar teljist ekki nýir
+--   bc_as_of          = síðasti bókunardagur í BC-gögnunum. Pósturinn varar við
+--                       ef hann nær ekki út vikuna (BC-útflutningur gleymdist).
+-- Lyklarnir sem core/email.js les eru óbreyttir.
 
 create or replace function public.weekly_digest_stats(
   p_week_start date default (current_date - 7)
@@ -24,22 +39,43 @@ prev_params as (
     p_week_start::date       as week_end
 ),
 
--- ── Web orders ────────────────────────────────────────────────────────────────
+-- ── Web = bókaðir VEFUR-reikningar í BC ──────────────────────────────────────
+vefur_inv as (
+  select
+    i.document_no,
+    i.booking_date::date as day,
+    regexp_replace(coalesce(i.company_id, ''), '\D', '', 'g') as buyer_key,
+    nullif(trim(i.company_name), '') as name,
+    coalesce(i.amount_excl, 0) as amount_excl
+  from raw.bc_invoices_raw i
+  where upper(trim(coalesce(i.salesperson_code, ''))) = 'VEFUR'
+    and i.booking_date is not null
+),
+vefur_cr as (
+  select c.booking_date::date as day, coalesce(c.amount_excl, 0) as amount_excl
+  from raw.bc_credit_invoices_raw c
+  where upper(trim(coalesce(c.salesperson_code, ''))) = 'VEFUR'
+    and c.booking_date is not null
+),
 web_agg as (
   select
-    count(distinct order_id)::int     as orders,
-    coalesce(sum(subtotal_excl), 0)   as revenue_excl
-  from raw.newweb_orders_raw, params
-  where purchase_date >= week_start::timestamp
-    and purchase_date <  week_end::timestamp
+    (select count(distinct v.document_no) from vefur_inv v
+      where v.day >= p.week_start and v.day < p.week_end)::int as orders,
+    (select coalesce(sum(v.amount_excl), 0) from vefur_inv v
+      where v.day >= p.week_start and v.day < p.week_end)
+    - (select coalesce(sum(c.amount_excl), 0) from vefur_cr c
+      where c.day >= p.week_start and c.day < p.week_end) as revenue_excl
+  from params p
 ),
 prev_web as (
   select
-    count(distinct order_id)::int     as orders,
-    coalesce(sum(subtotal_excl), 0)   as revenue_excl
-  from raw.newweb_orders_raw, prev_params
-  where purchase_date >= week_start::timestamp
-    and purchase_date <  week_end::timestamp
+    (select count(distinct v.document_no) from vefur_inv v
+      where v.day >= p.week_start and v.day < p.week_end)::int as orders,
+    (select coalesce(sum(v.amount_excl), 0) from vefur_inv v
+      where v.day >= p.week_start and v.day < p.week_end)
+    - (select coalesce(sum(c.amount_excl), 0) from vefur_cr c
+      where c.day >= p.week_start and c.day < p.week_end) as revenue_excl
+  from prev_params p
 ),
 
 -- ── BC invoices ───────────────────────────────────────────────────────────────
@@ -65,29 +101,35 @@ prev_bc_cr as (
 ),
 
 -- ── Buyer identity (used for new-customer detection) ─────────────────────────
+-- Fyrsta vefkaup = það fyrra af Magento-sögunni (til 2026-10-21) og
+-- VEFUR-reikningum. Lykill = kennitala, aðeins tölustafir, báðum megin.
 first_seen as (
-  select
-    coalesce(
-      nullif(trim(company_id),   ''),
-      nullif(trim(real_email),   ''),
-      nullif(trim(company_name), '')
-    ) as buyer_key,
-    min(purchase_date::date) as first_day
-  from raw.newweb_orders_raw
-  where purchase_date is not null
+  select buyer_key, min(first_day) as first_day
+  from (
+    select regexp_replace(coalesce(n.company_id, ''), '\D', '', 'g') as buyer_key,
+           min(n.purchase_date::date) as first_day
+    from raw.newweb_orders_raw n
+    where n.purchase_date is not null
+    group by 1
+    union all
+    select v.buyer_key, min(v.day)
+    from vefur_inv v
+    group by 1
+  ) u
+  where buyer_key <> ''
   group by 1
 ),
 
 -- Aggregate current-week orders by buyer (used for top buyers + new customer list)
 weekly_buyer_agg as (
   select
-    coalesce(nullif(trim(company_id),''), nullif(trim(real_email),''), nullif(trim(company_name),'')) as buyer_key,
-    max(coalesce(nullif(trim(company_name),''), nullif(trim(customer_name),''), 'Óþekktur'))          as name,
-    count(distinct order_id)::int            as orders,
-    coalesce(sum(subtotal_excl), 0)::numeric as revenue
-  from raw.newweb_orders_raw, params
-  where purchase_date >= week_start::timestamp
-    and purchase_date <  week_end::timestamp
+    nullif(v.buyer_key, '')                          as buyer_key,
+    max(coalesce(v.name, 'Óþekktur'))                as name,
+    count(distinct v.document_no)::int               as orders,
+    coalesce(sum(v.amount_excl), 0)::numeric         as revenue
+  from vefur_inv v, params
+  where v.day >= params.week_start
+    and v.day <  params.week_end
   group by 1
 ),
 
@@ -145,6 +187,10 @@ select jsonb_build_object(
   -- Window labels
   'week_start',               (select week_start from params),
   'week_end',                 (select week_end   from params),
+
+  -- Hvaðan vefsalan kemur og hversu ferskt BC er
+  'web_source',               'bc_vefur',
+  'bc_as_of',                 (select max(booking_date)::date from raw.bc_invoices_raw),
 
   -- Current week web
   'web_orders',               (select orders       from web_agg),
