@@ -174,9 +174,9 @@ What each deploy shipped: `NEXT_TASKS.md` → *Recent Release Notes*.
 
 | What | Value | Set |
 |---|---|---|
-| `data-storkaup-rev` — governs all bootstrap child files | `5bac261` | 2026-10-16 — Klaviyo sync status strip (`dashboard.js` + `dashboard-theme.css`) |
-| `dashboard-bootstrap.js` script-tag src | `5bac261` | 2026-10-16 (pin only — file unchanged since `1b08cff`) |
-| `website-dashboard-bootstrap.js` script-tag src | `5bac261` | 2026-10-16 (pin only — file unchanged since `30f0908`) |
+| `data-storkaup-rev` — governs all bootstrap child files | `bddf84f` | 2026-10-23 — `dashboard.js` ignores a day response that arrives after another day was picked (a slow `day_kpi_pack` for today overwrote the picked day's top figures) |
+| `dashboard-bootstrap.js` script-tag src | `bddf84f` | 2026-10-23 (pin only — file unchanged since `1b08cff`) |
+| `website-dashboard-bootstrap.js` script-tag src | `bddf84f` | 2026-10-23 (pin only — file unchanged since `30f0908`) |
 | `auth.js` script-tag src, **site-wide head** (independent) | `af0191a` | 2026-10-09 — KPI page sign-in, see RUNBOOK → KPI page sign-in |
 | `vidskiptavinir.js` script-tag src, **in page head code** (independent) | `a013033` | 2026-10-16 — opportunity lists, onboarding template, bulk "Senda vefkynningu" |
 | `vorur.js` script-tag src, **in page head code** (independent) | `ed515f6` | 2026-10-16 — new `/kpi/vorur` |
