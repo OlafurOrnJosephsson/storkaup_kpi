@@ -1184,6 +1184,9 @@ function installCludoCleanupTrigger_v1() {
  *                         sjálfkrafa þegar hún kemur. (`te & kaffi` virkar
  *                         aðeins út af Misspellings-færslu í Cludo, svo
  *                         það er ekki notað sem prófun.)
+ *   cludo_search_sku    — algeng vörunúmer (CLUDO_SKU_PROBES_) finna sína
+ *                         vöru. warning. Bætt við 2026-10-23 eftir greiningu
+ *                         á leitum án niðurstaðna (docs/cludo/samheiti_*.md).
  *
  * cludoLeitarvakt_v1() keyrir sömu athuganir handvirkt og skrifar í log.
  ************************************************************/
@@ -1194,6 +1197,11 @@ var CLUDO_PASTED_PROBES_ = [
   { query: 'salt & pipar', sku: null }   // `salt og pipar` -> 4 (2026-10-19)
 ];
 var CLUDO_ALIVE_MIN_ = 20;
+// Vörunúmer sem eru á vefnum en skiluðu oftast 0 í Cludo-útflutningi
+// 1.10.2025–23.10.2026 (111139: 93×, 117320: 74×, …). Í beinni prófun
+// 2026-10-23 fundust þau öll, svo tómu leitirnar eru háðar aðstæðum. Líkleg
+// skýring: flokkasía virk — 117320 + Category „Rekstrarvörur“ gefur 0.
+var CLUDO_SKU_PROBES_ = ['111139', '117320', '75378', '119909', '109149', '120257'];
 
 function storkaupSearch_(query, pageSize) {
   var res = UrlFetchApp.fetch(STORKAUP_SEARCH_URL_, {
@@ -1269,6 +1277,22 @@ function evaluateCludoSearchHealth_() {
          'warning');
   } catch (e3) {
     add_('cludo_search_pasted', false, String(e3 && e3.message || e3), 'warning');
+  }
+
+  try {
+    var skuMisses = [];
+    CLUDO_SKU_PROBES_.forEach(function (sku) {
+      var r = storkaupSearch_(sku, 10);
+      if (!r.urls.some(function (u) { return cludoUrlSku_(u) === sku; })) skuMisses.push(sku + ' -> ' + r.total);
+      Utilities.sleep(200);
+    });
+    add_('cludo_search_sku', skuMisses.length === 0,
+         skuMisses.length
+           ? 'Vörunúmer finnast ekki: ' + skuMisses.join(' · ')
+           : CLUDO_SKU_PROBES_.length + ' algeng vörunúmer finna sína vöru',
+         'warning');
+  } catch (e4) {
+    add_('cludo_search_sku', false, String(e4 && e4.message || e4), 'warning');
   }
 
   return checks;
