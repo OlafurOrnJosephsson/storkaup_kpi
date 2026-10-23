@@ -165,6 +165,11 @@ function fetchGa4ChannelDaily_(startDate, endDate) {
  * vísa á og hvort sú umferð kaupir. Í channel-skiptingunni hér að ofan lendir
  * hún í „Referral“ og sést ekki, svo hér er síað á sessionSource.
  *
+ * OFMETIÐ fyrir endurkomna: GA4 gefur beinni lotu síðasta uppruna, svo
+ * fastakúnni sem kom einu sinni úr ChatGPT ber hann áfram (ga4AiReferrerCheck_v1,
+ * 2026-10-23: 39% AI-lota hófust með referrer storkaup.is). new_vs_returning =
+ * 'new' er hreina talan. Allar 20 pantanirnar til þessa voru hjá endurkomnum.
+ *
  * Lágmarkstala: öpp sem senda engan referrer lenda í „Direct“. Pantanir fyrir
  * 2026-10-01 eru ekki sambærilegar (GTM v96/v97, .claude/rules/ga4-gtm.md).
  * Flokkun eftir aðstoðarmanni er í SQL (core/sql/ga4_ai_referrals_v1.sql).
@@ -175,7 +180,8 @@ var GA4_AI_SOURCE_REGEX_ = 'chatgpt\\.com|openai\\.com|perplexity|copilot\\.micr
 function fetchGa4AiReferralsDaily_(startDate, endDate) {
   var response = runGa4Report_({
     dateRanges: [{ startDate: startDate, endDate: endDate }],
-    dimensions: [{ name: 'date' }, { name: 'sessionSource' }, { name: 'sessionMedium' }, { name: 'landingPage' }],
+    dimensions: [{ name: 'date' }, { name: 'sessionSource' }, { name: 'sessionMedium' }, { name: 'landingPage' },
+                 { name: 'newVsReturning' }],
     metrics: [
       { name: 'sessions' },
       { name: 'engagedSessions' },
@@ -201,6 +207,7 @@ function fetchGa4AiReferralsDaily_(startDate, endDate) {
       session_source: String(dims[1] ? dims[1].value : '').trim().toLowerCase(),
       session_medium: String(dims[2] ? dims[2].value : '').trim() || '(not set)',
       landing_page: String(dims[3] ? dims[3].value : '').trim() || '(not set)',
+      new_vs_returning: String(dims[4] ? dims[4].value : '').trim() || '(not set)',
       sessions: Number(vals[0] ? vals[0].value : 0) || 0,
       engaged_sessions: Number(vals[1] ? vals[1].value : 0) || 0,
       transactions: Number(vals[2] ? vals[2].value : 0) || 0,
@@ -213,7 +220,7 @@ function fetchGa4AiReferralsDaily_(startDate, endDate) {
 function upsertGa4AiReferralsToSupabase_(rows) {
   if (!rows || !rows.length) return { uploaded: 0 };
   var conf = getSupabaseRestConfig_();
-  var endpoint = conf.baseUrl + '/ga4_ai_referrals_daily?on_conflict=day,session_source,session_medium,landing_page';
+  var endpoint = conf.baseUrl + '/ga4_ai_referrals_daily?on_conflict=day,session_source,session_medium,landing_page,new_vs_returning';
   var chunkSize = 500;
   var uploaded = 0;
 

@@ -4,6 +4,8 @@
 -- Perplexity, Copilot, Gemini, Claude o.fl., dag × uppruni × lendingarsíða,
 -- með lotum, virkum lotum, pöntunum og veltu (m/VSK, eins og GA4 skilar).
 --
+-- v2 (ga4_ai_referrals_v2.sql) bætir new_vs_returning við — keyra hana líka.
+--
 -- Fyllt af syncGa4AiReferrals_v1 (core/ga4.js), sem keyrir með
 -- scheduledGa4Sync_v1 á hverjum morgni (síðustu 35 dagar endurskrifaðir).
 -- Afturfylling: backfillGa4AiReferrals_v1() einu sinni eftir að þetta er keyrt.
